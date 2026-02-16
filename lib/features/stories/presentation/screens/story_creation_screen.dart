@@ -10,9 +10,10 @@ import 'package:loading_animation_widget/loading_animation_widget.dart';
 import '../../core/story_enums.dart';
 import '../../domain/entities/story_editor_models.dart';
 import '../../domain/repositories/i_story_repository.dart';
-import '../../presentation/providers/story_upload_provider.dart';
+import '../providers/story_providers.dart';
 import 'story_editor_screen.dart';
 import 'story_privacy_settings_screen.dart';
+import '../../../../utils/user_friendly_error_utils.dart';
 
 /// صفحه ایجاد استوری - مشابه اینستاگرام
 class StoryCreationScreen extends ConsumerStatefulWidget {
@@ -239,8 +240,7 @@ class _StoryCreationScreenState extends ConsumerState<StoryCreationScreen>
 
   Future<void> _processMedia(File file, StoryMediaType type) async {
     if (type == StoryMediaType.video) {
-      // TODO: Video editor
-      await _uploadStory(file, type);
+      await _showVideoUploadOptions(file);
     } else {
       // رفتن به ویرایشگر
       if (!mounted) return;
@@ -268,6 +268,197 @@ class _StoryCreationScreenState extends ConsumerState<StoryCreationScreen>
               StoryPrivacyType.everyone,
         );
       }
+    }
+  }
+
+  Future<void> _showVideoUploadOptions(File file) async {
+    final captionController = TextEditingController();
+    var selectedDuration = StoryDuration.hours24;
+    var selectedPrivacy = StoryPrivacyType.everyone;
+
+    final shouldUpload = await showModalBottomSheet<bool>(
+          context: context,
+          isScrollControlled: true,
+          backgroundColor: Colors.grey[950],
+          shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          builder: (context) {
+            return StatefulBuilder(
+              builder: (context, setModalState) {
+                return Padding(
+                  padding: EdgeInsets.only(
+                    left: 16,
+                    right: 16,
+                    top: 16,
+                    bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Center(
+                        child: SizedBox(
+                          width: 40,
+                          child: Divider(thickness: 3, color: Colors.white30),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      const Text(
+                        'تنظیمات استوری ویدیویی',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      TextField(
+                        controller: captionController,
+                        maxLength: 2200,
+                        style: const TextStyle(color: Colors.white),
+                        decoration: InputDecoration(
+                          labelText: 'کپشن',
+                          labelStyle: const TextStyle(color: Colors.white70),
+                          hintText: 'چیزی بنویسید...',
+                          hintStyle:
+                              TextStyle(color: Colors.white.withOpacity(0.5)),
+                          filled: true,
+                          fillColor: Colors.white.withOpacity(0.08),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<StoryDuration>(
+                        initialValue: selectedDuration,
+                        dropdownColor: Colors.grey[900],
+                        decoration: InputDecoration(
+                          labelText: 'مدت نمایش',
+                          labelStyle: const TextStyle(color: Colors.white70),
+                          filled: true,
+                          fillColor: Colors.white.withOpacity(0.08),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
+                        ),
+                        style: const TextStyle(color: Colors.white),
+                        items: StoryDuration.values.map((duration) {
+                          return DropdownMenuItem(
+                            value: duration,
+                            child: Text(_storyDurationLabel(duration)),
+                          );
+                        }).toList(),
+                        onChanged: (value) {
+                          if (value != null) {
+                            setModalState(() => selectedDuration = value);
+                          }
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<StoryPrivacyType>(
+                        initialValue: selectedPrivacy,
+                        dropdownColor: Colors.grey[900],
+                        decoration: InputDecoration(
+                          labelText: 'حریم خصوصی',
+                          labelStyle: const TextStyle(color: Colors.white70),
+                          filled: true,
+                          fillColor: Colors.white.withOpacity(0.08),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
+                        ),
+                        style: const TextStyle(color: Colors.white),
+                        items: StoryPrivacyType.values.map((privacy) {
+                          return DropdownMenuItem(
+                            value: privacy,
+                            child: Text(_storyPrivacyLabel(privacy)),
+                          );
+                        }).toList(),
+                        onChanged: (value) {
+                          if (value != null) {
+                            setModalState(() => selectedPrivacy = value);
+                          }
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: () => Navigator.pop(context, false),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: Colors.white70,
+                                side: const BorderSide(color: Colors.white30),
+                              ),
+                              child: const Text('انصراف'),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: ElevatedButton(
+                              onPressed: () => Navigator.pop(context, true),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.white,
+                                foregroundColor: Colors.black,
+                              ),
+                              child: const Text('انتشار'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                );
+              },
+            );
+          },
+        ) ??
+        false;
+
+    final caption = captionController.text.trim();
+    captionController.dispose();
+
+    if (!shouldUpload || !mounted) return;
+
+    try {
+      await _uploadStory(
+        file,
+        StoryMediaType.video,
+        caption: caption.isEmpty ? null : caption,
+        duration: selectedDuration,
+        privacy: selectedPrivacy,
+      );
+    } catch (e) {
+      if (mounted) {
+        UserFriendlyErrorUtils.showErrorSnackBar(context, e);
+      }
+    }
+  }
+
+  String _storyDurationLabel(StoryDuration duration) {
+    switch (duration) {
+      case StoryDuration.hours24:
+        return '۲۴ ساعت';
+      case StoryDuration.hours48:
+        return '۴۸ ساعت';
+    }
+  }
+
+  String _storyPrivacyLabel(StoryPrivacyType privacy) {
+    switch (privacy) {
+      case StoryPrivacyType.everyone:
+        return 'همه';
+      case StoryPrivacyType.contacts:
+        return 'مخاطبین';
+      case StoryPrivacyType.closeFriends:
+        return 'دوستان نزدیک';
+      case StoryPrivacyType.custom:
+        return 'سفارشی';
     }
   }
 

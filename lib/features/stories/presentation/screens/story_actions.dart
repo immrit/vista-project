@@ -61,6 +61,9 @@ extension StoryPrivacyLevelX on StoryPrivacyLevel {
 class StoryActions extends StatefulWidget {
   final Story story;
   final bool isOwnStory;
+  final String? storyOwnerUsername;
+  final StoryReplyPermission replyPermission;
+  final bool canReply;
   final bool isPreUpload; // ✅ حالت قبل از آپلود
   final StoryPrivacyLevel initialPrivacy;
   final Function(String message)? onReply;
@@ -73,6 +76,9 @@ class StoryActions extends StatefulWidget {
     super.key,
     required this.story,
     required this.isOwnStory,
+    this.storyOwnerUsername,
+    this.replyPermission = StoryReplyPermission.everyone,
+    this.canReply = true,
     this.isPreUpload = false,
     this.initialPrivacy = StoryPrivacyLevel.everyone,
     this.onReply,
@@ -264,13 +270,29 @@ class _StoryActionsState extends State<StoryActions> {
   }
 
   Widget _buildViewerActions() {
+    final ownerDisplayName =
+        (widget.storyOwnerUsername?.trim().isNotEmpty ?? false)
+            ? widget.storyOwnerUsername!.trim()
+            : 'کاربر';
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // واکنش‌ها
         if (_showReactions) _buildReactionPicker(),
-
-        // فیلد پاسخ
+        if (!widget.canReply)
+          Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.black45,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Text(
+              _replyPermissionLabel(),
+              style: const TextStyle(color: Colors.white70, fontSize: 12),
+              textDirection: TextDirection.rtl,
+            ),
+          ),
         Row(
           children: [
             Expanded(
@@ -279,49 +301,55 @@ class _StoryActionsState extends State<StoryActions> {
                 decoration: BoxDecoration(
                   color: Colors.white.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(22),
-                  border:
-                      Border.all(color: Colors.white.withValues(alpha: 0.3)),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.3),
+                  ),
                 ),
                 child: Row(
                   children: [
                     Expanded(
                       child: TextField(
                         controller: _replyController,
+                        enabled: widget.canReply,
                         style: const TextStyle(color: Colors.white),
                         decoration: InputDecoration(
-                          hintText: 'پاسخ به ${widget.story.userId}...',
+                          hintText: _replyHint(ownerDisplayName),
                           hintStyle: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.5)),
+                            color: Colors.white.withValues(alpha: 0.5),
+                          ),
                           border: InputBorder.none,
                           contentPadding:
                               const EdgeInsets.symmetric(horizontal: 16),
                         ),
                         onSubmitted: (value) {
-                          if (value.isNotEmpty) {
-                            widget.onReply?.call(value);
+                          if (widget.canReply && value.trim().isNotEmpty) {
+                            widget.onReply?.call(value.trim());
                             _replyController.clear();
                           }
                         },
                       ),
                     ),
-                    // دکمه ارسال
                     IconButton(
-                      onPressed: () {
-                        if (_replyController.text.isNotEmpty) {
-                          widget.onReply?.call(_replyController.text);
-                          _replyController.clear();
-                        }
-                      },
-                      icon:
-                          const Icon(Icons.send, color: Colors.white, size: 20),
+                      onPressed: widget.canReply
+                          ? () {
+                              final text = _replyController.text.trim();
+                              if (text.isNotEmpty) {
+                                widget.onReply?.call(text);
+                                _replyController.clear();
+                              }
+                            }
+                          : null,
+                      icon: Icon(
+                        Icons.send,
+                        color: widget.canReply ? Colors.white : Colors.white38,
+                        size: 20,
+                      ),
                     ),
                   ],
                 ),
               ),
             ),
             const SizedBox(width: 8),
-
-            // دکمه واکنش
             GestureDetector(
               onTap: () => setState(() => _showReactions = !_showReactions),
               onLongPress: () => _quickReact(StoryReactionType.like),
@@ -341,6 +369,32 @@ class _StoryActionsState extends State<StoryActions> {
         ),
       ],
     );
+  }
+
+  String _replyHint(String ownerDisplayName) {
+    if (widget.canReply) {
+      return 'پاسخ به $ownerDisplayName...';
+    }
+
+    switch (widget.replyPermission) {
+      case StoryReplyPermission.off:
+        return 'پاسخ‌دادن غیرفعال است';
+      case StoryReplyPermission.following:
+        return 'فقط دنبال‌شده‌ها می‌توانند پاسخ دهند';
+      case StoryReplyPermission.everyone:
+        return 'پاسخ‌دادن در دسترس نیست';
+    }
+  }
+
+  String _replyPermissionLabel() {
+    switch (widget.replyPermission) {
+      case StoryReplyPermission.off:
+        return 'اجازه پاسخ این استوری غیرفعال است';
+      case StoryReplyPermission.following:
+        return 'فقط افرادی که صاحب استوری دنبال می‌کند مجاز هستند';
+      case StoryReplyPermission.everyone:
+        return 'ارسال پاسخ ممکن نیست';
+    }
   }
 
   Widget _buildReactionPicker() {

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../domain/entities/entities.dart';
 import '../../core/story_enums.dart';
 import '../providers/story_providers.dart';
+import '../../../../utils/user_friendly_error_utils.dart';
 
 class StoryPrivacySettingsScreen extends ConsumerStatefulWidget {
   const StoryPrivacySettingsScreen({super.key});
@@ -31,22 +32,28 @@ class _StoryPrivacySettingsScreenState
     try {
       final repository = ref.read(storyRepositoryProvider);
 
-      // 1. دریافت لیست دوستان
       final friendsResult = await repository.getFriends();
-
-      // 2. دریافت لیست Close Friends فعلی
       final closeFriendsResult = await repository.getCloseFriends();
+      final replyPermissionResult = await repository.getStoryReplyPermission();
 
       if (mounted) {
         setState(() {
-          _allFriends = friendsResult.fold((l) => [], (r) => r);
-          _closeFriendIds =
-              closeFriendsResult.fold((l) => {}, (r) => r.toSet());
+          _allFriends = friendsResult.fold((_) => [], (value) => value);
+          _closeFriendIds = closeFriendsResult.fold(
+              (_) => <String>{}, (value) => value.toSet());
+          _selectedReplyPermission = replyPermissionResult.fold(
+            (_) => StoryReplyPermission.everyone,
+            (value) => value,
+          );
           _isLoading = false;
         });
       }
-    } catch (e) {
-      if (mounted) setState(() => _isLoading = false);
+    } catch (_) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        UserFriendlyErrorUtils.showErrorSnackBar(
+            context, 'خطا در بارگذاری تنظیمات');
+      }
     }
   }
 
@@ -56,25 +63,30 @@ class _StoryPrivacySettingsScreenState
 
     try {
       final repository = ref.read(storyRepositoryProvider);
-      await repository.updateCloseFriends(_closeFriendIds.toList());
+      final closeFriendsResult =
+          await repository.updateCloseFriends(_closeFriendIds.toList());
+      final replyPermissionResult =
+          await repository.updateStoryReplyPermission(_selectedReplyPermission);
 
-      // رفرش کردن پروایدر برای اپدیت سایر بخش‌ها
+      if (!closeFriendsResult.isSuccess) {
+        throw Exception(
+            closeFriendsResult.error ?? 'خطا در ذخیره دوستان نزدیک');
+      }
+      if (!replyPermissionResult.isSuccess) {
+        throw Exception(
+            replyPermissionResult.error ?? 'خطا در ذخیره تنظیمات پاسخ');
+      }
+
       ref.invalidate(closeFriendsProvider);
 
       if (mounted) {
         Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('تنظیمات با موفقیت ذخیره شد'),
-            backgroundColor: Colors.green,
-          ),
-        );
+        UserFriendlyErrorUtils.showSuccessSnackBar(
+            context, 'تنظیمات با موفقیت ذخیره شد');
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('خطا در ذخیره تنظیمات: $e')),
-        );
+        UserFriendlyErrorUtils.showErrorSnackBar(context, e);
       }
     } finally {
       if (mounted) setState(() => _isSaving = false);

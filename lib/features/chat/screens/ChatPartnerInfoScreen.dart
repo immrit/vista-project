@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../../provider/chat_provider.dart' as legacy_chat;
 import '../../../services/smart_share_service.dart';
+import '../providers/chat_providers.dart';
+import '../../../utils/user_friendly_error_utils.dart';
 
 /// صفحه اطلاعات مخاطب گفتگو - طراحی مدرن و تمیز
 class ChatPartnerInfoScreen extends ConsumerStatefulWidget {
@@ -236,9 +238,7 @@ class _ChatPartnerInfoScreenState extends ConsumerState<ChatPartnerInfoScreen>
               icon: Icons.notifications_off_outlined,
               label: 'بی‌صدا',
               isDark: isDark,
-              onTap: () {
-                // TODO: بی‌صدا کردن
-              },
+              onTap: _toggleMute,
             ),
           ),
           const SizedBox(width: 12),
@@ -248,14 +248,50 @@ class _ChatPartnerInfoScreenState extends ConsumerState<ChatPartnerInfoScreen>
               label: 'مسدود',
               isDark: isDark,
               isDestructive: true,
-              onTap: () {
-                // TODO: مسدود کردن
-              },
+              onTap: _toggleBlock,
             ),
           ),
         ],
       ),
     );
+  }
+
+  Future<void> _toggleMute() async {
+    try {
+      final repo = ref.read(chatRepositoryProvider);
+      await repo.toggleMuteConversation(widget.conversationId);
+      if (!mounted) return;
+      UserFriendlyErrorUtils.showSuccessSnackBar(
+        context,
+        'تنظیمات اعلان گفت\u200cوگو به\u200cروزرسانی شد',
+      );
+    } catch (e) {
+      if (!mounted) return;
+      UserFriendlyErrorUtils.showErrorSnackBar(context, e);
+    }
+  }
+
+  Future<void> _toggleBlock() async {
+    try {
+      final notifier = ref.read(legacy_chat.userBlockNotifierProvider.notifier);
+      final isBlocked = await ref
+          .read(legacy_chat.userBlockStatusProvider(widget.otherUserId).future);
+
+      if (isBlocked) {
+        await notifier.unblockUser(widget.otherUserId);
+      } else {
+        await notifier.blockUser(widget.otherUserId);
+      }
+
+      if (!mounted) return;
+      UserFriendlyErrorUtils.showSuccessSnackBar(
+        context,
+        isBlocked ? 'کاربر از حالت مسدود خارج شد' : 'کاربر مسدود شد',
+      );
+    } catch (e) {
+      if (!mounted) return;
+      UserFriendlyErrorUtils.showErrorSnackBar(context, e);
+    }
   }
 
   Widget _buildActionButton({

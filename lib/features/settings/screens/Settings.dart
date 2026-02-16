@@ -12,6 +12,7 @@ import 'subpages/notification_settings_page.dart';
 import 'subpages/data_storage_settings_page.dart';
 import 'subpages/AboutSettingsPage.dart';
 import 'vistaStore/pricing_page.dart';
+import 'TermsAndConditions.dart';
 
 /// صفحه تنظیمات ساده و تمیز - الهام گرفته از اینستاگرام
 class Settings extends ConsumerWidget {
@@ -171,8 +172,12 @@ class Settings extends ConsumerWidget {
               icon: Icons.description_outlined,
               title: 'قوانین و مقررات',
               onTap: () {
-                // TODO: صفحه قوانین
-                _showComingSoon(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const TermsAndConditionsScreen(),
+                  ),
+                );
               },
             ),
             _SettingsTile(
@@ -323,15 +328,6 @@ class Settings extends ConsumerWidget {
             ],
           );
         }),
-      ),
-    );
-  }
-
-  void _showComingSoon(BuildContext context) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('این قابلیت به زودی اضافه می‌شود'),
-        duration: Duration(seconds: 2),
       ),
     );
   }

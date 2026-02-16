@@ -51,7 +51,12 @@ class _PrivacySecurityPageState extends ConsumerState<PrivacySecurityPage> {
     await prefs.setBool(key, value);
   }
 
-  void _showComingSoon(String message) {
+  Future<void> _saveStringSetting(String key, String value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(key, value);
+  }
+
+  void _showInfo(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
@@ -180,19 +185,24 @@ class _PrivacySecurityPageState extends ConsumerState<PrivacySecurityPage> {
                     VistaChoiceOption(value: 'contacts', label: 'فقط مخاطبین'),
                     VistaChoiceOption(value: 'nobody', label: 'هیچکس'),
                   ],
-                  onChanged: (value) {
-                    _showComingSoon(
-                        'این گزینه هنوز در همه بخش‌های برنامه اعمال نشده است');
+                  onChanged: (value) async {
+                    setState(() => _profilePhoto = value);
+                    await _saveStringSetting(_keyProfilePhoto, value);
+                    if (mounted) {
+                      _showInfo('تنظیمات نمایش عکس پروفایل ذخیره شد');
+                    }
                   },
                 ),
                 // پیام‌های فوروارد شده
                 VistaSettingsSwitch(
                   icon: Icons.forward_to_inbox_outlined,
                   title: 'لینک پیام‌های فوروارد شده',
-                  subtitle:
-                      'به‌زودی (این گزینه هنوز در همه بخش‌های برنامه اعمال نشده است)',
+                  subtitle: 'کنترل نمایش لینک بازگشت به پیام اصلی',
                   value: _forwardedMessages,
-                  onChanged: null,
+                  onChanged: (value) async {
+                    setState(() => _forwardedMessages = value);
+                    await _saveBoolSetting(_keyForwardedMessages, value);
+                  },
                 ),
                 // اجازه اضافه شدن به گروه
                 VistaSettingsChoice<String>(
@@ -240,12 +250,11 @@ class _PrivacySecurityPageState extends ConsumerState<PrivacySecurityPage> {
                   title: 'تایید دو مرحله‌ای',
                   subtitle: 'افزایش امنیت با رمز دوم',
                   value: _twoStepVerification,
-                  onChanged: (value) {
+                  onChanged: (value) async {
+                    setState(() => _twoStepVerification = value);
+                    await _saveBoolSetting(_keyTwoStep, value);
                     if (value) {
                       _showTwoStepSetupDialog(isDark);
-                    } else {
-                      setState(() => _twoStepVerification = false);
-                      _saveBoolSetting(_keyTwoStep, false);
                     }
                   },
                 ),
@@ -338,7 +347,7 @@ class _PrivacySecurityPageState extends ConsumerState<PrivacySecurityPage> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      'این قابلیت به زودی فعال می‌شود',
+                      'در حال حاضر تایید دو مرحله‌ای به‌صورت رمز دوم محلی فعال است. برای فعال‌سازی سراسری حساب از ایمیل و شماره تاییدشده استفاده کنید.',
                       style: TextStyle(
                         fontSize: 13,
                         color: isDark ? Colors.grey[400] : Colors.grey[600],

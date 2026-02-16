@@ -14,6 +14,7 @@
 
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
@@ -48,6 +49,7 @@ import '../widgets/swipe_to_reply_wrapper.dart';
 import '../../../provider/typing_provider.dart';
 import '../../../provider/presence_provider.dart';
 import '../../../provider/optimized_conversations_provider.dart';
+import '../../../provider/settings_providers.dart';
 import '../../../services/telegram_read_receipt_service.dart';
 
 // ✅ New Features
@@ -68,6 +70,7 @@ import '../services/message_tombstone_service.dart';
 import '../../../services/typing_service.dart'; // ✅ سرویس تایپینگ
 import '../../../services/current_chat_tracker.dart';
 import '../../../services/PushNotificationService.dart';
+import '../../../services/instant_message_deletion.dart';
 import '../widgets/block_report_bottom_sheet.dart';
 import '../services/user_moderation_service.dart';
 import '../services/voice_duration_service.dart';
@@ -91,6 +94,8 @@ import '../screens/message_info_screen.dart';
 // import '../services/complete_deletion_service.dart';
 import '../services/message_actions_service.dart';
 import '../widgets/molecular_delete_animation.dart';
+import '../performance/adaptive_effects_provider.dart';
+import '../performance/chat_performance_profile.dart';
 // So importing the file should expose it.
 
 /// پارامترهای صفحه چت
@@ -156,6 +161,10 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   // Floating date
   bool _isScrolling = false;
   DateTime? _currentVisibleDate;
+  DateTime? _lastVisibleDateUpdateAt;
+  DateTime? _lastScrollVelocitySampleAt;
+  DateTime? _lastReactionWindowUpdateAt;
+  double _lastScrollVelocitySampleOffset = 0;
 
   // Typing status
   bool _isOtherUserTyping = false;
@@ -192,9 +201,9 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   String? _reactionPickerMessageId;
   Offset? _reactionPickerPosition;
 
-  // Reactions cache - Map<messageId, List<reaction_models.MessageReaction>>
-  final Map<String, List<reaction_models.MessageReaction>> _messageReactions =
-      {};
+  // Reactions cache - isolated notifiers to avoid full-screen rebuilds.
+  final Map<String, ValueNotifier<List<reaction_models.MessageReaction>>>
+      _messageReactionNotifiers = {};
   final MessageReactionsService _reactionsService = MessageReactionsService();
   final Map<String, StreamSubscription> _reactionsSubscriptions = {};
 
@@ -218,6 +227,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   Timer? _floatingDateHideTimer;
   Timer? _activeConversationHeartbeatTimer;
   ProviderSubscription<AsyncValue<List<MessageModel>>>? _messagesListener;
+  ProviderSubscription<AsyncValue<Map<String, dynamic>>>?
+      _performanceSettingsListener;
 
   @override
   void initState() {
@@ -236,6 +247,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     // ✅ لیسنرهای وضعیت تایپ کردن
     _initTypingListeners();
     _setupMessageSideEffectsListener();
+    _setupAdaptiveEffects();
 
     // ✅ تنظیم چت فعال برای جلوگیری از دریافت بج پیام
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -302,6 +314,38 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     );
   }
 
+  void _setupAdaptiveEffects() {
+    // Ensure frame monitoring starts for this screen.
+    ref.read(frameBudgetServiceProvider);
+
+    _performanceSettingsListener =
+        ref.listenManual<AsyncValue<Map<String, dynamic>>>(
+      performanceSettingsProvider,
+      (previous, next) {
+        next.whenData((settings) {
+          final animationsRaw = settings['animations'];
+          final renderingRaw = settings['rendering'];
+          final featureFlagsRaw = settings['feature_flags'];
+          final animations = animationsRaw is Map
+              ? Map<String, dynamic>.from(animationsRaw)
+              : null;
+          final rendering = renderingRaw is Map
+              ? Map<String, dynamic>.from(renderingRaw)
+              : null;
+          final featureFlags = featureFlagsRaw is Map
+              ? Map<String, dynamic>.from(featureFlagsRaw)
+              : null;
+          ref.read(adaptiveEffectsProvider.notifier).applySettings(
+                animations: animations,
+                rendering: rendering,
+                featureFlags: featureFlags,
+              );
+        });
+      },
+      fireImmediately: true,
+    );
+  }
+
   void _handleMessagesChanged(List<MessageModel> allMessages) {
     if (!mounted) return;
 
@@ -328,8 +372,9 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     if (_lastFirstMessageId != firstId) {
       _lastFirstMessageId = firstId;
       _loadReactionsForMessages(visibleMessages);
-      _setupReactionsStream(visibleMessages);
     }
+    _updateReactionWindow(DateTime.now(),
+        force: true, messages: visibleMessages);
 
     if (_scrollController.hasClients && _scrollController.offset < 100) {
       final newDate = visibleMessages.first.createdAt;
@@ -590,6 +635,13 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     _activeConversationHeartbeatTimer?.cancel();
     _realtimeSubscription?.cancel();
     _messagesListener?.close();
+    _performanceSettingsListener?.close();
+
+    for (final notifier in _messageReactionNotifiers.values) {
+      notifier.dispose();
+    }
+    _messageReactionNotifiers.clear();
+    ref.read(adaptiveEffectsProvider.notifier).updateScrollVelocity(0);
 
     _scrollEndTimer?.cancel();
     _appBarAnimController.dispose();
@@ -704,15 +756,25 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   // ═══════════════════════════════════════════════════════════════════════════
 
   Timer? _scrollEndTimer;
+  static const Duration _scrollVelocitySampleInterval =
+      Duration(milliseconds: 120);
+  static const Duration _reactionWindowUpdateInterval =
+      Duration(milliseconds: 180);
+  static const double _reactionEstimateItemExtent = 88.0;
+  static const int _reactionWindowBuffer = 10;
 
   void _onScroll() {
     if (!mounted || !_scrollController.hasClients) return;
+
+    final now = DateTime.now();
+    final currentScroll = _scrollController.position.pixels;
+    _sampleScrollVelocity(now, currentScroll);
+    _updateReactionWindow(now);
 
     bool needsSetState = false;
 
     // 1. Pagination Logic
     final maxScroll = _scrollController.position.maxScrollExtent;
-    final currentScroll = _scrollController.position.pixels;
 
     // وقتی به ۲۰۰ پیکسلی انتهای لیست (بالا) رسیدیم
     final isNearTop = currentScroll >= maxScroll - 200;
@@ -747,7 +809,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
           if (currentScroll < 100) {
             _updateDateForBottom();
           } else {
-            _updateVisibleDate();
+            _updateVisibleDate(force: true);
           }
         });
       }
@@ -759,8 +821,36 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     }
   }
 
-  void _updateVisibleDate() {
+  void _sampleScrollVelocity(DateTime now, double currentScroll) {
+    final lastSampleAt = _lastScrollVelocitySampleAt;
+    if (lastSampleAt == null) {
+      _lastScrollVelocitySampleAt = now;
+      _lastScrollVelocitySampleOffset = currentScroll;
+      return;
+    }
+
+    final elapsed = now.difference(lastSampleAt);
+    if (elapsed < _scrollVelocitySampleInterval) return;
+
+    final delta = (currentScroll - _lastScrollVelocitySampleOffset).abs();
+    final velocity = elapsed.inMilliseconds == 0
+        ? 0.0
+        : (delta * 1000.0 / elapsed.inMilliseconds);
+
+    _lastScrollVelocitySampleAt = now;
+    _lastScrollVelocitySampleOffset = currentScroll;
+    ref.read(adaptiveEffectsProvider.notifier).updateScrollVelocity(velocity);
+  }
+
+  void _updateVisibleDate({bool force = false}) {
     if (!mounted || !_scrollController.hasClients) return;
+    final now = DateTime.now();
+    if (!force &&
+        _lastVisibleDateUpdateAt != null &&
+        now.difference(_lastVisibleDateUpdateAt!).inMilliseconds < 120) {
+      return;
+    }
+    _lastVisibleDateUpdateAt = now;
 
     try {
       final messagesAsync =
@@ -799,6 +889,56 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     } catch (e) {
       debugPrint('Error in _updateVisibleDate: $e');
     }
+  }
+
+  void _updateReactionWindow(
+    DateTime now, {
+    bool force = false,
+    List<MessageModel>? messages,
+  }) {
+    if (!mounted) return;
+    if (!force &&
+        _lastReactionWindowUpdateAt != null &&
+        now.difference(_lastReactionWindowUpdateAt!) <
+            _reactionWindowUpdateInterval) {
+      return;
+    }
+    _lastReactionWindowUpdateAt = now;
+
+    if (messages != null) {
+      _setupReactionsStream(messages);
+      return;
+    }
+
+    final messagesAsync =
+        ref.read(chatMessagesProvider(widget.args.conversationId));
+    messagesAsync.whenData(_setupReactionsStream);
+  }
+
+  List<MessageModel> _selectReactionWindow(List<MessageModel> messages) {
+    if (messages.isEmpty) return const <MessageModel>[];
+    if (!_scrollController.hasClients) {
+      final end = math.min(messages.length, 24);
+      return messages.sublist(0, end);
+    }
+
+    final position = _scrollController.position;
+    final currentOffset = position.pixels.clamp(0.0, double.infinity);
+    final viewport = position.viewportDimension;
+    final visibleCount = math.max(
+      8,
+      (viewport / _reactionEstimateItemExtent).ceil(),
+    );
+    final startIndex = (((currentOffset / _reactionEstimateItemExtent).floor() -
+                _reactionWindowBuffer)
+            .clamp(0, math.max(0, messages.length - 1)))
+        .toInt();
+    final endExclusive =
+        ((startIndex + visibleCount + (_reactionWindowBuffer * 2))
+                .clamp(1, messages.length))
+            .toInt();
+
+    return messages.sublist(startIndex, endExclusive);
   }
 
   bool _isSameDay(DateTime a, DateTime b) {
@@ -920,7 +1060,10 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   Widget build(BuildContext context) {
     final theme = context.chatTheme;
     final keyboardVisible = MediaQuery.of(context).viewInsets.bottom > 0;
-    final reduceEffects = keyboardVisible || _isScrolling;
+    final adaptiveEffects = ref.watch(adaptiveEffectsProvider);
+    final reduceEffects = keyboardVisible ||
+        _isScrolling ||
+        adaptiveEffects.effectsLevel == ChatEffectsLevel.low;
     final messagesAsync = ref.watch(
       chatMessagesProvider(widget.args.conversationId),
     );
@@ -937,7 +1080,10 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
           child: RepaintBoundary(
             child: EnhancedChatBackground(
               enablePattern: true,
-              forceEnableBlur: reduceEffects ? false : null,
+              forceEnableBlur:
+                  reduceEffects ? false : adaptiveEffects.allowHeavyBlur,
+              blurIntensity: adaptiveEffects.blurSigma,
+              allowHeavyEffects: adaptiveEffects.allowHeavyBlur,
               child: Container(color: Colors.transparent),
             ),
           ),
@@ -965,6 +1111,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                     messagesAsync,
                     paginationState,
                     theme,
+                    adaptiveEffects: adaptiveEffects,
                     // ✅ پدینگ پایین داینامیک بر اساس ارتفاع واقعی اینپوت بار
                     bottomPadding: _inputHeight,
                   ),
@@ -1018,7 +1165,10 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
               if (!_isCurrentUserBlocked && !_isOtherUserBlocked)
                 Align(
                   alignment: Alignment.bottomCenter,
-                  child: _buildInputArea(theme, reduceEffects),
+                  child: _buildInputArea(theme,
+                      reduceEffects: reduceEffects,
+                      allowHeavyEffects: adaptiveEffects.allowHeavyBlur,
+                      blurSigma: adaptiveEffects.blurSigma),
                 ),
 
               // لایه 5: Search Bar
@@ -1567,7 +1717,16 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
           TextButton(
             onPressed: () {
               Navigator.pop(context);
-              // TODO: پاک کردن چت
+              showDeleteConversationDialog(
+                context: this.context,
+                conversationId: widget.args.conversationId,
+                conversationTitle: widget.args.otherUserName,
+                isGroupChat: widget.args.isGroup,
+                preferredOption: DeleteConversationOption.clearHistory,
+                onDeleted: () {
+                  ref.invalidate(chatMessagesProvider(widget.args.conversationId));
+                },
+              );
             },
             child: Text(
               'پاک کردن',
@@ -1591,6 +1750,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     AsyncValue<List<MessageModel>> messagesAsync,
     PaginationState paginationState,
     ChatTheme theme, {
+    required AdaptiveEffectsState adaptiveEffects,
     required double bottomPadding, // پارامتر جدید
   }) {
     return messagesAsync.when(
@@ -1768,7 +1928,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                                                     index,
                                                     isFirstInGroup,
                                                     isLastInGroup,
-                                                    messages),
+                                                    adaptiveEffects),
                                               )
                                             : _buildBubbleContent(
                                                 message,
@@ -1776,7 +1936,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                                                 index,
                                                 isFirstInGroup,
                                                 isLastInGroup,
-                                                messages),
+                                                adaptiveEffects),
                                       ),
                                     ),
                                   ],
@@ -1880,15 +2040,18 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     if (messages.isEmpty) return;
 
     try {
-      final messageIds = messages.map((m) => m.id).toList();
+      final windowMessages = _selectReactionWindow(messages);
+      if (windowMessages.isEmpty) return;
+
+      final messageIds =
+          windowMessages.map((m) => m.id).toList(growable: false);
       final reactionsMap =
           await _reactionsService.getMultipleMessageReactions(messageIds);
 
-      if (mounted) {
-        setState(() {
-          _messageReactions.clear();
-          _messageReactions.addAll(reactionsMap);
-        });
+      if (!mounted) return;
+      for (final message in windowMessages) {
+        _reactionNotifierFor(message.id).value =
+            reactionsMap[message.id] ?? const [];
       }
     } catch (e) {
       debugPrint('❌ Error loading reactions: $e');
@@ -1900,8 +2063,9 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     if (messages.isEmpty) return;
 
     // فقط برای 20 پیام آخر stream ایجاد می‌کنیم (برای بهینه‌سازی)
-    final recentMessages = messages.take(20).toList();
-    final messageIds = recentMessages.map((m) => m.id).toSet();
+    final windowMessages = _selectReactionWindow(messages);
+    if (windowMessages.isEmpty) return;
+    final messageIds = windowMessages.map((m) => m.id).toSet();
 
     // 1. لغو subscriptionهای قدیمی که دیگر نیاز نیستند
     final idsToRemove = _reactionsSubscriptions.keys
@@ -1911,22 +2075,50 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     for (final id in idsToRemove) {
       _reactionsSubscriptions[id]?.cancel();
       _reactionsSubscriptions.remove(id);
+      final notifier = _messageReactionNotifiers.remove(id);
+      notifier?.dispose();
     }
 
     // 2. ایجاد subscription برای پیام‌های جدید
+    final idsToPrime = <String>[];
     for (final messageId in messageIds) {
       if (!_reactionsSubscriptions.containsKey(messageId)) {
+        idsToPrime.add(messageId);
         _reactionsSubscriptions[messageId] = _reactionsService
             .watchMessageReactions(messageId)
             .listen((reactions) {
-          if (mounted) {
-            setState(() {
-              _messageReactions[messageId] = reactions;
-            });
-          }
+          if (!mounted) return;
+          _reactionNotifierFor(messageId).value = reactions;
         });
       }
     }
+    if (idsToPrime.isNotEmpty) {
+      _primeReactionWindow(idsToPrime);
+    }
+  }
+
+  void _primeReactionWindow(List<String> messageIds) {
+    unawaited(() async {
+      try {
+        final reactionsMap =
+            await _reactionsService.getMultipleMessageReactions(messageIds);
+        if (!mounted) return;
+        for (final messageId in messageIds) {
+          _reactionNotifierFor(messageId).value =
+              reactionsMap[messageId] ?? const [];
+        }
+      } catch (e) {
+        debugPrint('❌ Error priming reaction window: $e');
+      }
+    }());
+  }
+
+  ValueNotifier<List<reaction_models.MessageReaction>> _reactionNotifierFor(
+      String messageId) {
+    return _messageReactionNotifiers.putIfAbsent(
+      messageId,
+      () => ValueNotifier<List<reaction_models.MessageReaction>>(const []),
+    );
   }
 
   /// تبدیل reaction_models.MessageReaction به فرمت قدیمی برای AnimatedMessageBubble
@@ -2077,7 +2269,12 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   // 🖊️ INPUT AREA
   // ═══════════════════════════════════════════════════════════════════════════
 
-  Widget _buildInputArea(ChatTheme theme, bool reduceEffects) {
+  Widget _buildInputArea(
+    ChatTheme theme, {
+    required bool reduceEffects,
+    required bool allowHeavyEffects,
+    required double blurSigma,
+  }) {
     return AnimatedChatInput(
       controller: _messageController,
       focusNode: _focusNode,
@@ -2095,6 +2292,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       onAutocomplete: _handleAutocomplete,
       onHeightChanged: _onInputHeightChanged,
       reduceEffects: reduceEffects,
+      allowHeavyEffects: allowHeavyEffects,
+      blurSigma: blurSigma,
     );
   }
 
@@ -2145,16 +2344,14 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     if (!mounted) return;
 
     if (!result.success || result.url == null || result.url!.isEmpty) {
-      final detailedError =
-          _detailedUploadError(result, fallback: 'Voice upload failed');
+      final shortError =
+          _shortUploadError(result.error, fallback: 'Voice upload failed');
       await chatRepository.markUploadFailed(
         localId,
-        errorMessage: detailedError,
+        errorMessage: shortError,
       );
       if (mounted) {
-        _showErrorSnackBar(
-          _shortUploadError(result.error, fallback: 'Voice upload failed'),
-        );
+        _showErrorSnackBar(shortError);
       }
       return;
     }
@@ -2208,7 +2405,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
           fallback: 'Voice message send failed');
       await chatRepository.markUploadFailed(
         localId,
-        errorMessage: '$shortError | technical: ${e.runtimeType}: $e',
+        errorMessage: shortError,
       );
       debugPrint('Error sending voice message: $e');
       if (mounted) {
@@ -2466,16 +2663,14 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       if (!uploadResult.success ||
           uploadResult.url == null ||
           uploadResult.url!.isEmpty) {
-        final detailedError =
-            _detailedUploadError(uploadResult, fallback: 'Upload failed');
+        final shortError =
+            _shortUploadError(uploadResult.error, fallback: 'Upload failed');
         await chatRepository.markUploadFailed(
           localId,
-          errorMessage: detailedError,
+          errorMessage: shortError,
         );
         if (mounted) {
-          _showErrorSnackBar(
-            _shortUploadError(uploadResult.error, fallback: 'Upload failed'),
-          );
+          _showErrorSnackBar(shortError);
         }
         continue;
       }
@@ -2590,7 +2785,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
   void _handleVoice() {
     HapticFeedback.mediumImpact();
-    // TODO: ضبط صدا
+    _showErrorSnackBar('برای ضبط صدا، دکمه میکروفون را نگه دارید');
   }
 
   Future<void> _retryFailedUpload(MessageModel message) async {
@@ -2675,16 +2870,14 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     if (!uploadResult.success ||
         uploadResult.url == null ||
         uploadResult.url!.isEmpty) {
-      final detailedError =
-          _detailedUploadError(uploadResult, fallback: 'Retry failed');
+      final shortError =
+          _shortUploadError(uploadResult.error, fallback: 'Retry failed');
       await chatRepository.markUploadFailed(
         message.id,
-        errorMessage: detailedError,
+        errorMessage: shortError,
       );
       if (mounted) {
-        _showErrorSnackBar(
-          _shortUploadError(uploadResult.error, fallback: 'Retry failed'),
-        );
+        _showErrorSnackBar(shortError);
       }
       return;
     }
@@ -2814,41 +3007,6 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     return text.isEmpty ? fallback : text;
   }
 
-  String _detailedUploadError(
-    AttachmentResult result, {
-    required String fallback,
-  }) {
-    final short = _shortUploadError(result.error, fallback: fallback);
-    final details = <String>[];
-    if (result.errorStage != null && result.errorStage!.trim().isNotEmpty) {
-      details.add('stage=${result.errorStage!.trim()}');
-    }
-    if (result.errorCode != null && result.errorCode!.trim().isNotEmpty) {
-      details.add('code=${result.errorCode!.trim()}');
-    }
-    final explicitTechnical = result.technicalError?.trim();
-    if (explicitTechnical != null && explicitTechnical.isNotEmpty) {
-      final prefix = details.isEmpty ? '' : '${details.join(' ')} ';
-      return '$short | technical: $prefix$explicitTechnical'.trim();
-    }
-
-    final raw = result.error ?? '';
-    const marker = '| technical:';
-    final markerIndex = raw.indexOf(marker);
-    if (markerIndex >= 0) {
-      final extracted = raw.substring(markerIndex + marker.length).trim();
-      if (extracted.isNotEmpty) {
-        final prefix = details.isEmpty ? '' : '${details.join(' ')} ';
-        return '$short | technical: $prefix$extracted'.trim();
-      }
-    }
-
-    if (details.isNotEmpty) {
-      return '$short | technical: ${details.join(' ')}';
-    }
-
-    return short;
-  }
   // ═══════════════════════════════════════════════════════════════════════════
   // 👆 MESSAGE INTERACTIONS
   // ═══════════════════════════════════════════════════════════════════════════
@@ -3157,13 +3315,14 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       status: _getMessageStatus(message),
       attachmentUrl: message.attachmentUrl,
       attachmentType: message.attachmentType,
+      attachmentFileName: message.attachmentFileName,
       duration: message.duration,
       replyToContent: message.replyToContent,
       replyToSenderName: message.replyToSenderName,
       replyToMessageId: message.replyToMessageId,
       onStoryReplyTap: (_) {},
       reactions:
-          _convertToOldReactionFormat(_messageReactions[message.id] ?? []),
+          _convertToOldReactionFormat(_reactionNotifierFor(message.id).value),
       // ✅ غیرفعال کردن تعاملات در Preview
       onTap: (context, message) {},
       onLongPress: (context, message) {},
@@ -3224,7 +3383,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       if (!storyResult.isSuccess || storyResult.data == null) {
         if (mounted) {
           Navigator.of(context, rootNavigator: true).pop();
-          _showErrorSnackBar('استوری پیدا نشد');
+          _showErrorSnackBar('این استوری در دسترس نیست');
         }
         return;
       }
@@ -3233,7 +3392,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       if (story.isExpired) {
         if (mounted) {
           Navigator.of(context, rootNavigator: true).pop();
-          _showErrorSnackBar('استوری منقضی شده');
+          _showErrorSnackBar('این استوری منقضی شده است');
         }
         return;
       }
@@ -3310,7 +3469,9 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     return StoryUser(
       id: data.storyOwnerId,
       username: username,
-      avatarUrl: profile?.avatarUrl ?? widget.args.otherUserAvatar,
+      avatarUrl: profile?.avatarUrl ??
+          data.storyOwnerAvatarUrl ??
+          widget.args.otherUserAvatar,
       isVerified: profile?.isVerified ?? false,
       isPremium: profile?.role == 'premium',
       verificationType: verificationType,
@@ -4128,60 +4289,86 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   }
 
   /// متد کمکی برای تمیز شدن کد بالا
-  Widget _buildBubbleContent(MessageModel message, bool isMe, int index,
-      bool isFirstInGroup, bool isLastInGroup, List<MessageModel> messages) {
+  Widget _buildBubbleContent(
+    MessageModel message,
+    bool isMe,
+    int index,
+    bool isFirstInGroup,
+    bool isLastInGroup,
+    AdaptiveEffectsState adaptiveEffects,
+  ) {
+    final isHighlighted = _highlightedMessageId == message.id;
+    final isSelected = _selectedMessageIds.contains(message.id);
+    final bubbleEffectsLevel = adaptiveEffects.motionTokensEnabled
+        ? adaptiveEffects.effectsLevel
+        : ChatEffectsLevel.high;
+
+    final shouldAnimateEntry = switch (adaptiveEffects.chatEntryMode) {
+      ChatEntryAnimationMode.off => false,
+      ChatEntryAnimationMode.minimal => index < 2 && !_isNearTop,
+      ChatEntryAnimationMode.full => index < 5 && !_isNearTop,
+    };
+
+    final bubbleContent = message.attachmentType == 'post'
+        ? Builder(
+            builder: (postContext) => _buildPostMessageBubble(message, isMe),
+          )
+        : ValueListenableBuilder<List<reaction_models.MessageReaction>>(
+            valueListenable: _reactionNotifierFor(message.id),
+            builder: (context, messageReactions, _) {
+              return ImprovedAnimatedMessageBubble(
+                key: _messageKeys[message.id] ??= GlobalKey(),
+                messageId: message.id,
+                content: message.content,
+                isMe: isMe,
+                time: message.createdAt,
+                status: _getMessageStatus(message),
+                attachmentUrl: message.attachmentUrl,
+                attachmentType: message.attachmentType,
+                attachmentFileName: message.attachmentFileName,
+                replyToContent: message.replyToContent,
+                replyToSenderName: message.replyToSenderName,
+                replyToMessageId: message.replyToMessageId,
+                onReplyTap: () => _scrollToMessage(message.replyToMessageId),
+                onStoryReplyTap: _openStoryReply,
+                duration: message.duration,
+                reactions: _convertToOldReactionFormat(messageReactions),
+                onTap: (ctx, msg) => _handleMessageTap(ctx, msg),
+                onLongPress: (ctx, msg) => _handleMessageLongPress(ctx, msg),
+                onDoubleTap: () => _onMessageDoubleTap(message),
+                onAddReaction: (emoji) => _onAddReaction(message, emoji),
+                animate: shouldAnimateEntry &&
+                    adaptiveEffects.enableMessageEntryAnimation,
+                effectsLevel: bubbleEffectsLevel,
+                index: index,
+                isFirstInGroup: isFirstInGroup,
+                isLastInGroup: isLastInGroup,
+                isForwarded: message.isForwarded,
+                forwardedFrom: message.forwardedFromSenderName,
+                onRetryUpload: (message.isFailed == true &&
+                        ((message.localFilePath?.isNotEmpty ?? false) ||
+                            (message.attachmentUrl?.isNotEmpty ?? false)))
+                    ? () => _retryFailedUpload(message)
+                    : null,
+                message: message,
+              );
+            },
+          );
+
+    if (!isHighlighted && !isSelected) {
+      return bubbleContent;
+    }
+
     return AnimatedContainer(
-      duration: const Duration(milliseconds: 500),
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
       decoration: BoxDecoration(
-        color: _highlightedMessageId == message.id
+        color: isHighlighted
             ? context.chatTheme.sendButtonColor.withOpacity(0.2)
-            : _selectedMessageIds.contains(message.id)
-                ? context.chatTheme.sendButtonColor.withOpacity(0.1)
-                : Colors.transparent,
+            : context.chatTheme.sendButtonColor.withOpacity(0.1),
         borderRadius: BorderRadius.circular(12),
       ),
-      child: message.attachmentType == 'post'
-          ? Builder(
-              builder: (postContext) => _buildPostMessageBubble(message, isMe),
-            )
-          : ImprovedAnimatedMessageBubble(
-              key: _messageKeys[message.id] ??=
-                  GlobalKey(), // ✅ استفاده از GlobalKey ذخیره شده
-              messageId: message.id,
-              content: message.content,
-              isMe: isMe,
-              time: message.createdAt,
-              status: _getMessageStatus(message),
-              attachmentUrl: message.attachmentUrl,
-              attachmentType: message.attachmentType,
-
-              // ✅ اضافه کردن هندلر تپ روی ریپلی
-              replyToContent: message.replyToContent,
-              replyToSenderName: message.replyToSenderName,
-              replyToMessageId: message.replyToMessageId,
-              onReplyTap: () => _scrollToMessage(message.replyToMessageId),
-              onStoryReplyTap: _openStoryReply,
-
-              duration: message.duration,
-              reactions: _convertToOldReactionFormat(
-                  _messageReactions[message.id] ?? []),
-              onTap: (ctx, msg) => _handleMessageTap(ctx, msg),
-              onLongPress: (ctx, msg) => _handleMessageLongPress(ctx, msg),
-              onDoubleTap: () => _onMessageDoubleTap(message),
-              onAddReaction: (emoji) => _onAddReaction(message, emoji),
-              animate: index < 5 && !_isNearTop,
-              index: index,
-              isFirstInGroup: isFirstInGroup,
-              isLastInGroup: isLastInGroup,
-              isForwarded: message.isForwarded,
-              forwardedFrom: message.forwardedFromSenderName,
-              onRetryUpload: (message.isFailed == true &&
-                      ((message.localFilePath?.isNotEmpty ?? false) ||
-                          (message.attachmentUrl?.isNotEmpty ?? false)))
-                  ? () => _retryFailedUpload(message)
-                  : null,
-              message: message,
-            ),
+      child: bubbleContent,
     );
   }
 

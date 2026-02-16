@@ -7,6 +7,7 @@ import 'package:gal/gal.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
+import '../../../utils/user_friendly_error_utils.dart';
 
 class GalleryItem {
   final String imageUrl;
@@ -197,7 +198,7 @@ class _FullScreenImageViewerState extends State<FullScreenImageViewer>
       }
     } catch (e) {
       if (mounted) {
-        _showErrorSnackBar('خطا در ذخیره تصویر: ${e.toString()}');
+        _showErrorSnackBar(UserFriendlyErrorUtils.getUserFriendlyMessage(e));
       }
     } finally {
       if (mounted) {
@@ -222,7 +223,7 @@ class _FullScreenImageViewerState extends State<FullScreenImageViewer>
       );
     } catch (e) {
       if (mounted) {
-        _showErrorSnackBar('خطا در اشتراک‌گذاری: ${e.toString()}');
+        _showErrorSnackBar(UserFriendlyErrorUtils.getUserFriendlyMessage(e));
       }
     } finally {
       if (mounted) {
@@ -236,7 +237,7 @@ class _FullScreenImageViewerState extends State<FullScreenImageViewer>
       Navigator.pop(context);
       widget.onForward!();
     } else {
-      _showInfoSnackBar('قابلیت فوروارد به زودی اضافه می‌شود');
+      _shareImage();
     }
   }
 
@@ -293,17 +294,6 @@ class _FullScreenImageViewerState extends State<FullScreenImageViewer>
         backgroundColor: Colors.red,
         behavior: SnackBarBehavior.floating,
         duration: const Duration(seconds: 3),
-      ),
-    );
-  }
-
-  void _showInfoSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.blue,
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 2),
       ),
     );
   }

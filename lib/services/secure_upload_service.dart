@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
@@ -107,8 +108,11 @@ class SignedUrlService {
     'SIGNED_UPLOADS_BASE_URL_FALLBACK',
     defaultValue: 'https://function-vista.chbk.app/api',
   );
-  static const Duration _timeout = Duration(seconds: 30);
-  static const int _maxRetries = 2;
+  static const Duration _timeout = Duration(seconds: 10);
+  static const int _maxRetries = 0;
+  static const Duration _unsupportedBaseTtl = Duration(minutes: 10);
+  static final Map<String, DateTime> _unsupportedBaseUntil =
+      <String, DateTime>{};
 
   static bool _isRetryable(DioException e) {
     if (_isTlsHandshakeIssue(e)) {
@@ -119,6 +123,34 @@ class SignedUrlService {
         e.type == DioExceptionType.receiveTimeout ||
         e.type == DioExceptionType.connectionError ||
         e.type == DioExceptionType.badCertificate;
+  }
+
+  static bool _isRouteMissingResponse(DioException e) {
+    final status = e.response?.statusCode;
+    if (status != 404 && status != 405) return false;
+    final body = (e.response?.data ?? '').toString().toLowerCase();
+    return body.contains('cannot post') || body.contains('not found');
+  }
+
+  static bool _isBaseTemporarilyUnsupported(String baseUrl) {
+    final until = _unsupportedBaseUntil[baseUrl];
+    if (until == null) return false;
+    if (DateTime.now().isAfter(until)) {
+      _unsupportedBaseUntil.remove(baseUrl);
+      return false;
+    }
+    return true;
+  }
+
+  static void _markBaseTemporarilyUnsupported(
+    String baseUrl,
+    DioException error,
+  ) {
+    if (!_isRouteMissingResponse(error)) return;
+    _unsupportedBaseUntil[baseUrl] = DateTime.now().add(_unsupportedBaseTtl);
+    logWarning(
+      'Signed URL base disabled temporarily due to missing route: $baseUrl',
+    );
   }
 
   static bool _shouldFallback(DioException e) {
@@ -176,6 +208,7 @@ class SignedUrlService {
         return await dio.post('$baseUrl$path', data: payload);
       } on DioException catch (e) {
         _logDioError(e, '$baseUrl$path');
+        _markBaseTemporarilyUnsupported(baseUrl, e);
         if (!_isRetryable(e) || attempt >= _maxRetries) rethrow;
         attempt++;
         final backoff = Duration(milliseconds: 500 * (1 << (attempt - 1)));
@@ -193,6 +226,7 @@ class SignedUrlService {
     final seen = <String>{};
     void addCandidate(String baseUrl) {
       if (baseUrl.isEmpty) return;
+      if (_isBaseTemporarilyUnsupported(baseUrl)) return;
       if (seen.add(baseUrl)) {
         baseCandidates.add(baseUrl);
       }
@@ -204,6 +238,14 @@ class SignedUrlService {
     }
     addCandidate(_primaryBaseUrl);
     addCandidate(_fallbackBaseUrl);
+
+    if (baseCandidates.isEmpty) {
+      throw const SecureUploadException(
+        userMessage: 'Signed upload service is temporarily unavailable.',
+        stage: SecureUploadStage.sign,
+        code: 'SIGNED_URL_BASES_UNAVAILABLE',
+      );
+    }
 
     DioException? lastDioError;
     for (var i = 0; i < baseCandidates.length; i++) {
@@ -354,6 +396,9 @@ class SecureUploadService {
   }) async {
     final bucketName = _tryResolveBucket(bucket);
     _logRuntimeModeOnce(bucketName: bucketName);
+    if (onProgress != null) {
+      onProgress(0.01);
+    }
     Object? signedFailure;
     StackTrace? signedFailureStack;
     final canUseLegacy = _canUseLegacyFallback();
@@ -440,6 +485,9 @@ class SecureUploadService {
   }) async {
     final bucketName = _tryResolveBucket(bucket);
     _logRuntimeModeOnce(bucketName: bucketName);
+    if (onProgress != null) {
+      onProgress(0.01);
+    }
     Object? signedFailure;
     StackTrace? signedFailureStack;
     final canUseLegacy = _canUseLegacyFallback();
@@ -551,6 +599,9 @@ class SecureUploadService {
     void Function(double progress)? onProgress,
   }) async {
     SignedUrlResponse signed;
+    if (onProgress != null) {
+      onProgress(0.05);
+    }
     try {
       signed = await SignedUrlService.createUploadUrl(
         objectKey: objectKey,
@@ -565,6 +616,10 @@ class SecureUploadService {
         code: 'SIGNED_URL_REQUEST_FAILED',
         cause: e,
       );
+    }
+
+    if (onProgress != null) {
+      onProgress(0.12);
     }
 
     try {
@@ -586,7 +641,8 @@ class SecureUploadService {
         ),
         onSendProgress: (sent, total) {
           if (onProgress != null && total > 0) {
-            onProgress(sent / total);
+            final normalized = (sent / total).clamp(0.0, 1.0).toDouble();
+            onProgress(0.12 + (normalized * 0.88));
           }
         },
       );
@@ -625,6 +681,9 @@ class SecureUploadService {
   }) async {
     SignedUrlResponse signed;
     final length = await file.length();
+    if (onProgress != null) {
+      onProgress(0.05);
+    }
 
     try {
       signed = await SignedUrlService.createUploadUrl(
@@ -640,6 +699,10 @@ class SecureUploadService {
         code: 'SIGNED_URL_REQUEST_FAILED',
         cause: e,
       );
+    }
+
+    if (onProgress != null) {
+      onProgress(0.12);
     }
 
     try {
@@ -662,7 +725,8 @@ class SecureUploadService {
         ),
         onSendProgress: (sent, total) {
           if (onProgress != null && total > 0) {
-            onProgress(sent / total);
+            final normalized = (sent / total).clamp(0.0, 1.0).toDouble();
+            onProgress(0.12 + (normalized * 0.88));
           }
         },
       );
@@ -805,17 +869,30 @@ class SecureUploadService {
 
     final s3 = _buildS3Client();
 
+    Timer? syntheticTimer;
+    var syntheticProgress = 0.12;
     if (onProgress != null) {
-      onProgress(0.0);
+      onProgress(syntheticProgress);
+      // The legacy client does not expose byte-level callbacks.
+      // Keep UI responsive with synthetic progress until request completes.
+      syntheticTimer = Timer.periodic(const Duration(milliseconds: 220), (_) {
+        syntheticProgress =
+            (syntheticProgress + 0.02).clamp(0.12, 0.94).toDouble();
+        onProgress(syntheticProgress);
+      });
     }
 
-    await s3.putObject(
-      bucket: bucket,
-      key: objectKey,
-      body: bytes,
-      contentType: contentType,
-      acl: aws.ObjectCannedACL.publicRead, // legacy compatibility
-    );
+    try {
+      await s3.putObject(
+        bucket: bucket,
+        key: objectKey,
+        body: bytes,
+        contentType: contentType,
+        acl: aws.ObjectCannedACL.publicRead, // legacy compatibility
+      );
+    } finally {
+      syntheticTimer?.cancel();
+    }
 
     if (onProgress != null) {
       onProgress(1.0);

@@ -11,6 +11,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:video_compress/video_compress.dart';
 import 'package:video_player/video_player.dart';
 import '../../../utils/const.dart';
+import '../../../utils/user_friendly_error_utils.dart';
 import '../../../model/UserModel.dart';
 
 import '../../../provider/provider.dart';
@@ -129,15 +130,9 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
     }
   }
 
-  void _showError(String message) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(message),
-          backgroundColor: Colors.redAccent,
-        ),
-      );
-    }
+  void _showError(dynamic error) {
+    if (!mounted) return;
+    UserFriendlyErrorUtils.showErrorSnackBar(context, error);
   }
 
   void _showUserBadgeInfo(UserModel user) {
@@ -356,7 +351,7 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
             }
           } catch (e) {
             logDebug('Error initializing video player: $e');
-            _showError('خطا در بارگذاری ویدیو: $e');
+            _showError('خطا در بارگذاری ویدیو');
           }
 
           _showUserBadgeInfo(currentUser);
@@ -410,7 +405,7 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
                   }
                 } catch (e) {
                   logDebug('Error initializing video player: $e');
-                  _showError('خطا در بارگذاری ویدیو: $e');
+                  _showError('خطا در بارگذاری ویدیو');
                 }
 
                 debugPrint(
@@ -518,7 +513,9 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = ref.watch(themeProvider);
-    final isDarkMode = theme.brightness == Brightness.dark;
+    // Use Theme.of(context).brightness to ensure consistency with the current context (Scaffold, etc.)
+    // avoiding discrepancies if provider and context update at different times or ways.
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
 
     // رنگ‌های اصلی برنامه - بروزرسانی شده
     final primaryColor = isDarkMode ? Colors.white : Colors.black;
@@ -1214,6 +1211,4 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
       ),
     );
   }
-
-
 }

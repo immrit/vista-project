@@ -20,6 +20,7 @@ import '../../../services/network_status_service.dart';
 import '../../../provider/settings_providers.dart';
 import '../services/chat_transfer_manager.dart';
 import 'telegram_message_status.dart';
+import '../performance/chat_performance_profile.dart';
 
 enum MediaType { image, video, gif }
 
@@ -36,6 +37,8 @@ class MediaMessageBubble extends ConsumerStatefulWidget {
   final VoidCallback? onTap;
   final bool isUploading;
   final int? videoDuration;
+  final ChatEffectsLevel effectsLevel;
+  final bool allowHeavyEffects;
 
   const MediaMessageBubble({
     super.key,
@@ -51,6 +54,8 @@ class MediaMessageBubble extends ConsumerStatefulWidget {
     this.onTap,
     this.isUploading = false,
     this.videoDuration,
+    this.effectsLevel = ChatEffectsLevel.high,
+    this.allowHeavyEffects = true,
   });
 
   @override
@@ -304,6 +309,11 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
     final double aspectRatio = (widget.width != null && widget.height != null)
         ? widget.width! / widget.height!
         : 1.0;
+    final decodeSize = _computeDecodeSize(
+      context: context,
+      maxWidth: maxWidth,
+      aspectRatio: aspectRatio,
+    );
 
     // ✅ ساخت تگ یکتا برای جلوگیری از خطای Multiple Heroes
     final String uniqueHeroTag = widget.message != null
@@ -338,7 +348,12 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
                     aspectRatio: aspectRatio,
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(8),
-                      child: _buildContent(theme, shouldDownload),
+                      child: _buildContent(
+                        theme,
+                        shouldDownload,
+                        decodeWidth: decodeSize.width,
+                        decodeHeight: decodeSize.height,
+                      ),
                     ),
                   ),
                 ),
@@ -374,7 +389,24 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
     );
   }
 
-  Widget _buildContent(ChatTheme theme, bool shouldDownload) {
+  Size _computeDecodeSize({
+    required BuildContext context,
+    required double maxWidth,
+    required double aspectRatio,
+  }) {
+    final dpr = MediaQuery.of(context).devicePixelRatio.clamp(1.0, 2.5);
+    final targetWidth = (maxWidth * dpr).round().clamp(120, 1600);
+    final targetHeight =
+        ((maxWidth / aspectRatio) * dpr).round().clamp(120, 1600);
+    return Size(targetWidth.toDouble(), targetHeight.toDouble());
+  }
+
+  Widget _buildContent(
+    ChatTheme theme,
+    bool shouldDownload, {
+    required double decodeWidth,
+    required double decodeHeight,
+  }) {
     if (_offlineFile != null && _offlineFile!.existsSync()) {
       return Image.file(
         _offlineFile!,
@@ -404,30 +436,44 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
         _transferTask?.status == TransferTaskStatus.downloading;
 
     if (shouldDownload || _isManuallyDownloading || transferDownloading) {
-      return _buildNetworkImage(theme);
+      return _buildNetworkImage(
+        theme,
+        memCacheWidth: decodeWidth.toInt(),
+        memCacheHeight: decodeHeight.toInt(),
+      );
     }
 
     return _buildBlurPreview(theme);
   }
 
-  Widget _buildNetworkImage(ChatTheme theme) {
+  Widget _buildNetworkImage(
+    ChatTheme theme, {
+    int? memCacheWidth,
+    int? memCacheHeight,
+  }) {
     return CachedNetworkImage(
       imageUrl: widget.mediaUrl,
       fit: BoxFit.cover,
+      memCacheWidth: memCacheWidth,
+      memCacheHeight: memCacheHeight,
       placeholder: (context, url) => _buildBlurPreview(theme),
       errorWidget: (context, url, error) => const Icon(Icons.broken_image),
-      imageBuilder: (context, imageProvider) {
-        if (!_isFileCached) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) _checkCacheStatus();
-          });
-        }
-        return Image(image: imageProvider, fit: BoxFit.cover);
-      },
+      imageBuilder: (context, imageProvider) =>
+          Image(image: imageProvider, fit: BoxFit.cover),
     );
   }
 
   Widget _buildBlurPreview(ChatTheme theme) {
+    final thumbSize = switch (widget.effectsLevel) {
+      ChatEffectsLevel.low => 40,
+      ChatEffectsLevel.medium => 64,
+      ChatEffectsLevel.high => 96,
+    };
+    final useHeavyBlur = widget.allowHeavyEffects &&
+        widget.effectsLevel == ChatEffectsLevel.high &&
+        !widget.isUploading &&
+        !_isManuallyDownloading;
+
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -435,19 +481,22 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
           CachedNetworkImage(
             imageUrl: widget.thumbnailUrl!,
             fit: BoxFit.cover,
-            memCacheHeight: 50,
-            memCacheWidth: 50,
+            memCacheHeight: thumbSize,
+            memCacheWidth: thumbSize,
             errorWidget: (_, __, ___) =>
                 Container(color: theme.otherBubbleColor.withOpacity(0.3)),
           )
         else
           Container(color: theme.otherBubbleColor.withOpacity(0.3)),
-        BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-          child: Container(
-            color: Colors.black.withOpacity(0.1),
-          ),
-        ),
+        if (useHeavyBlur)
+          BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+            child: Container(
+              color: Colors.black.withOpacity(0.1),
+            ),
+          )
+        else
+          Container(color: Colors.black.withOpacity(0.18)),
       ],
     );
   }

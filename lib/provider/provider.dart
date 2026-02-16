@@ -30,6 +30,7 @@ import 'package:Vista/utils/themes.dart';
 import '../services/user_friendly_error_handler.dart';
 import '../services/auth_navigation_service.dart';
 import '../services/vista_node_service.dart';
+import '../services/voice_cache_service.dart';
 import 'session_provider.dart';
 // Import security provider
 
@@ -1294,14 +1295,17 @@ class CommentService {
     try {
       final currentUserId = _supabase.auth.currentUser!.id;
 
-      // Optional: You might want to add a check to ensure only the comment owner can delete
-      final response = await _supabase
+      final deleted = await _supabase
           .from('comments')
           .delete()
           .eq('id', commentId)
-          .eq('user_id', currentUserId);
+          .eq('owner_id', currentUserId)
+          .select('id')
+          .maybeSingle();
 
-      return response;
+      if (deleted == null) {
+        throw Exception('comment_delete_not_allowed_or_not_found');
+      }
     } catch (e) {
       print('Error deleting comment: $e');
       rethrow;
@@ -1466,7 +1470,8 @@ class CommentNotifier extends StateNotifier<AsyncValue<void>> {
     return response['user_id'] as String;
   }
 
-  Future<void> deleteComment(String commentId, WidgetRef ref) async {
+  Future<void> deleteComment(
+      String commentId, String postId, WidgetRef ref) async {
     state = const AsyncValue.loading();
 
     try {
@@ -1474,9 +1479,10 @@ class CommentNotifier extends StateNotifier<AsyncValue<void>> {
       state = const AsyncValue.data(null);
 
       // بروزرسانی استیت کامنت‌ها برای پست مشخص
-      ref.read(commentsProvider(commentId));
+      ref.invalidate(commentsProvider(postId));
     } catch (error) {
       state = AsyncValue.error(error, StackTrace.current);
+      rethrow;
     }
   }
 }
@@ -3082,7 +3088,8 @@ class AutoDownloadNotifier extends StateNotifier<AutoDownloadSettings> {
 
   Future<void> _clearVoiceCache() async {
     try {
-      // TODO: Import VoiceCacheService and clear cache
+      final voiceCacheService = VoiceCacheService();
+      await voiceCacheService.clearAllCache();
       print('🧹 Voice cache cleared');
     } catch (e) {
       debugPrint('خطا در پاکسازی کش وویس‌ها: $e');

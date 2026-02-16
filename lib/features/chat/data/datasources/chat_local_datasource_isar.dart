@@ -11,8 +11,8 @@ class ChatLocalDataSourceIsar {
   // ── Throttle state for upload progress ──
   static final Map<String, int> _lastProgressWriteMs = {};
   static final Map<String, double> _lastProgressValue = {};
-  static const int _progressThrottleMs = 500; // حداقل فاصله بین write‌ها
-  static const double _progressMinDelta = 0.05; // حداقل تغییر ۵٪
+  static const int _progressThrottleMs = 120; // حداقل فاصله بین write‌ها
+  static const double _progressMinDelta = 0.01; // حداقل تغییر ۱٪
 
   ChatLocalDataSourceIsar({IsarDatabaseManager? dbManager})
       : _dbManager = dbManager ?? IsarDatabaseManager();
@@ -179,6 +179,11 @@ class ChatLocalDataSourceIsar {
       final elapsed = now - lastMs;
       final delta = (clamped - lastVal).abs();
 
+      // Never move backward while upload is in progress.
+      if (lastVal >= 0 && clamped < lastVal) {
+        return;
+      }
+
       if (elapsed < _progressThrottleMs && delta < _progressMinDelta) {
         return; // skip write
       }
@@ -293,6 +298,13 @@ class ChatLocalDataSourceIsar {
         .map((entities) => entities.map((e) => e.toModel()).toList());
   }
 
+  Future<List<ConversationModel>> getConversations() async {
+    final isar = await _dbManager.instance;
+    final entities =
+        await isar.conversationEntitys.where().sortByUpdatedAtDesc().findAll();
+    return entities.map((e) => e.toModel()).toList();
+  }
+
   Future<void> saveConversations(List<ConversationModel> conversations) async {
     if (conversations.isEmpty) return;
     final isar = await _dbManager.instance;
@@ -328,6 +340,14 @@ class ChatLocalDataSourceIsar {
           .filter()
           .idEqualTo(conversationId)
           .deleteAll();
+    });
+  }
+
+  Future<void> clearAllData() async {
+    final isar = await _dbManager.instance;
+    await isar.writeTxn(() async {
+      await isar.messageEntitys.clear();
+      await isar.conversationEntitys.clear();
     });
   }
 }

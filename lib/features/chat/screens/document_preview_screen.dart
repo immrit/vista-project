@@ -19,6 +19,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:http/http.dart' as http;
 import 'package:cached_network_image/cached_network_image.dart';
+import '../../../utils/user_friendly_error_utils.dart';
 
 /// صفحه پیش‌نمایش سند
 class DocumentPreviewScreen extends StatefulWidget {
@@ -581,12 +582,7 @@ class _DocumentPreviewScreenState extends State<DocumentPreviewScreen>
       setState(() => _isDownloading = false);
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('خطا در دانلود فایل: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        UserFriendlyErrorUtils.showErrorSnackBar(context, e);
       }
     }
   }

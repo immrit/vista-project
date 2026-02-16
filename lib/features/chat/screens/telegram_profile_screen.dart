@@ -18,7 +18,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:photo_view/photo_view.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 import 'package:shimmer/shimmer.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../model/message_model.dart';
 import '../../../provider/chat_provider.dart' as legacy_chat;
 import '../../../provider/chat_screen_provider.dart';
@@ -26,9 +28,11 @@ import 'package:photo_view/photo_view_gallery.dart';
 import '../../../services/voice_player_service.dart';
 import '../../../widgets/CustomVideoPlayer.dart';
 import 'ChatMessageSearchScreen.dart';
+import '../widgets/block_report_bottom_sheet.dart';
 
 import '../../../features/chat/providers/chat_providers.dart';
 import '../../../provider/provider.dart';
+import '../../../utils/user_friendly_error_utils.dart';
 import '../../posts/screens/profileScreen.dart';
 
 /// صفحه جزئیات چت - Vista
@@ -556,7 +560,7 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
                     size: 22,
                   ),
                   onPressed: () {
-                    // TODO: نمایش QR Code
+                    _showQrDialog(username);
                   },
                 ),
               ),
@@ -881,7 +885,7 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
         icon: Icon(Icons.download_outlined,
             color: isDark ? Colors.white60 : Colors.grey[600]),
         onPressed: () {
-          // TODO: دانلود فایل
+          _downloadFile(file);
         },
       ),
     );
@@ -1522,6 +1526,66 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
     }
   }
 
+  void _showQrDialog(String username) {
+    final normalized = username.trim();
+    if (normalized.isEmpty) {
+      _showSnackBar('نام کاربری معتبر نیست', isError: true);
+      return;
+    }
+
+    final qrData = 'vista://user/$normalized';
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('کد کاربری'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            QrImageView(
+              data: qrData,
+              size: 190,
+              backgroundColor: Colors.white,
+            ),
+            const SizedBox(height: 12),
+            Text('@$normalized', textDirection: TextDirection.ltr),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('بستن'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _downloadFile(MessageModel file) async {
+    final url = file.attachmentUrl?.trim();
+    if (url == null || url.isEmpty) {
+      _showSnackBar('لینک فایل یافت نشد', isError: true);
+      return;
+    }
+
+    final uri = Uri.tryParse(url);
+    if (uri == null) {
+      _showSnackBar('لینک فایل معتبر نیست', isError: true);
+      return;
+    }
+
+    try {
+      final launched =
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!launched && mounted) {
+        _showSnackBar('امکان باز کردن فایل وجود ندارد', isError: true);
+      }
+    } catch (e) {
+      if (mounted) {
+        UserFriendlyErrorUtils.showErrorSnackBar(context, e);
+      }
+    }
+  }
+
   void _showOptionsMenu(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final isBlockedAsync =
@@ -1658,8 +1722,17 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
   }
 
   void _showReportDialog() {
-    // TODO: دیالوگ گزارش
-    _showSnackBar('قابلیت گزارش در حال توسعه است');
+    BlockReportBottomSheet.show(
+      context: context,
+      userId: widget.otherUserId,
+      userName: widget.otherUserName,
+      isCurrentlyBlocked: false,
+      type: ModerationType.report,
+    ).then((submitted) {
+      if (submitted == true && mounted) {
+        _showSnackBar('گزارش شما ثبت شد');
+      }
+    });
   }
 
   void _showDeleteDialog() {

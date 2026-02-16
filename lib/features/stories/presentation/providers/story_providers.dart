@@ -172,7 +172,7 @@ class StoryUploadNotifier extends StateNotifier<StoryUploadState> {
     } catch (e) {
       state = state.copyWith(
         status: StoryUploadStatus.error,
-        error: e.toString(),
+        error: 'خطا در آپلود استوری',
       );
       return false;
     }

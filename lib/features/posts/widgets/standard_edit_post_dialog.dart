@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:Vista/utils/const.dart';
 import 'package:Vista/model/publicPostModel.dart';
+import '../../../utils/user_friendly_error_utils.dart';
 
 void showStandardEditDialog({
   required BuildContext context,
@@ -156,12 +157,8 @@ void showStandardEditDialog({
                             setState(() {
                               isLoading = false;
                             });
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('خطا در ویرایش پست: $e'),
-                                backgroundColor: Colors.red,
-                              ),
-                            );
+                            UserFriendlyErrorUtils.showErrorSnackBar(
+                                context, e);
                           }
                         }
                       },

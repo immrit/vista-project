@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:confetti/confetti.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../../../utils/user_friendly_error_utils.dart';
 import '../../../../provider/provider.dart';
 
 class VerificationBadgeStore extends ConsumerStatefulWidget {
@@ -78,12 +79,7 @@ class _VerificationBadgeStoreState
         ),
       );
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('خطا در اتصال به درگاه پرداخت: ${e.toString()}'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      UserFriendlyErrorUtils.showErrorSnackBar(context, e);
     }
   }
 
@@ -107,12 +103,7 @@ class _VerificationBadgeStoreState
         );
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('خطا در باز کردن لینک: ${e.toString()}'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      UserFriendlyErrorUtils.showErrorSnackBar(context, e);
     }
   }
 

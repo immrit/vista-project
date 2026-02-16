@@ -47,6 +47,8 @@ class AnimatedChatInput extends StatefulWidget {
   final bool isRecording;
   final String? hint;
   final bool reduceEffects;
+  final bool allowHeavyEffects;
+  final double blurSigma;
 
   const AnimatedChatInput({
     super.key,
@@ -68,6 +70,8 @@ class AnimatedChatInput extends StatefulWidget {
     this.isRecording = false,
     this.hint,
     this.reduceEffects = false,
+    this.allowHeavyEffects = true,
+    this.blurSigma = 8.0,
   });
 
   @override
@@ -79,7 +83,6 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
   late AnimationController _sendButtonController;
   late Animation<double> _sendButtonScale;
   late Animation<double> _sendButtonRotation;
-
   late AnimationController _replyController;
   late Animation<Offset> _replySlide;
   late Animation<double> _replyFade;
@@ -392,9 +395,13 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
     final theme = context.chatTheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final shouldReduceEffects = widget.reduceEffects ||
+        !widget.allowHeavyEffects ||
+        widget.blurSigma <= 0.1 ||
         _isKeyboardAnimating ||
         MediaQuery.of(context).disableAnimations ||
         MediaQuery.of(context).accessibleNavigation;
+    final effectiveBlurSigma =
+        shouldReduceEffects ? 0.0 : widget.blurSigma.clamp(0.0, 12.0);
     _reportHeightIfNeeded();
 
     // دریافت safe area برای پدینگ داخلی خود جزیره
@@ -455,7 +462,10 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
                         ),
                       )
                     : BackdropFilter(
-                        filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                        filter: ImageFilter.blur(
+                          sigmaX: effectiveBlurSigma,
+                          sigmaY: effectiveBlurSigma,
+                        ),
                         child: Container(
                           decoration: BoxDecoration(
                             color: theme.inputBackgroundColor.withOpacity(0.75),

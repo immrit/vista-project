@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../provider/chat_provider.dart'; // برای دسترسی به deleteOldMessagesProvider
 import '../../../provider/voice_settings_provider.dart';
 import '../../../services/voice_cache_service.dart';
+import '../../../utils/user_friendly_error_utils.dart';
 
 class ChatSettingsScreen extends ConsumerWidget {
   const ChatSettingsScreen({super.key});
@@ -353,17 +354,7 @@ class ChatSettingsScreen extends ConsumerWidget {
           ),
         );
       } catch (e) {
-        ScaffoldMessenger.of(context).hideCurrentSnackBar();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Directionality(
-              // راست‌چین کردن متن SnackBar
-              textDirection: TextDirection.rtl,
-              child: Text('خطا در پاکسازی حافظه پنهان: $e'),
-            ),
-            backgroundColor: Colors.red.shade600,
-          ),
-        );
+        UserFriendlyErrorUtils.showErrorSnackBar(context, e);
       } finally {
         // پس از اتمام عملیات (موفق یا ناموفق)، حجم کش را رفرش کن
         if (context.mounted) {
@@ -561,12 +552,7 @@ class _VoiceSettingsDialogContent extends ConsumerWidget {
       }
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('خطا در پاک کردن کش: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        UserFriendlyErrorUtils.showErrorSnackBar(context, e);
       }
     }
   }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
+import '../../../../utils/user_friendly_error_utils.dart';
 
 /// صفحه انتخاب لوکیشن با GPS (مشابه تلگرام)
 class LocationPickerSheet extends StatefulWidget {
@@ -75,7 +76,7 @@ class _LocationPickerSheetState extends State<LocationPickerSheet> {
       await _getAddressFromCoordinates(position.latitude, position.longitude);
     } catch (e) {
       setState(() {
-        _error = 'خطا در دریافت موقعیت: $e';
+        _error = UserFriendlyErrorUtils.getUserFriendlyMessage(e);
         _isLoading = false;
       });
     }
@@ -371,10 +372,12 @@ class _LocationPickerSheetState extends State<LocationPickerSheet> {
           ElevatedButton(
             onPressed: () {
               if (controller.text.isNotEmpty) {
+                final latitude = _currentPosition?.latitude ?? double.nan;
+                final longitude = _currentPosition?.longitude ?? double.nan;
                 widget.onLocationSelected(
                   controller.text,
-                  _currentPosition?.latitude ?? 0,
-                  _currentPosition?.longitude ?? 0,
+                  latitude,
+                  longitude,
                 );
                 Navigator.pop(ctx);
                 Navigator.pop(context);

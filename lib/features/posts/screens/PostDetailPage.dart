@@ -16,8 +16,11 @@ import 'publicPosts.dart' as public_posts;
 import '../../../model/CommentModel.dart';
 import '../../../model/UserModel.dart';
 import '../../../provider/provider.dart';
+import '../../../utils/user_friendly_error_utils.dart';
 import 'package:Vista/features/posts/widgets/post_music_bubble.dart';
 import '../../../utils/premium_features_helper.dart';
+import '../../../services/smart_share_service.dart';
+import '../providers/saved_posts_provider.dart';
 
 class PostDetailsPage extends ConsumerStatefulWidget {
   const PostDetailsPage({super.key, required this.postId});
@@ -614,6 +617,12 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
   }
 
   Widget _buildLikeRow(PublicPostModel post) {
+    final savedPostIdsAsync = ref.watch(savedPostIdsProvider);
+    final isSaved = savedPostIdsAsync.maybeWhen(
+      data: (ids) => ids.contains(post.id),
+      orElse: () => false,
+    );
+
     return Row(
       mainAxisAlignment: MainAxisAlignment.start,
       children: [
@@ -658,6 +667,28 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
           ),
         ),
         Text('${post.commentCount}'),
+        const SizedBox(width: 8),
+        IconButton(
+          icon: Icon(
+            isSaved ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
+            color: isSaved ? Theme.of(context).colorScheme.primary : null,
+          ),
+          onPressed: () async {
+            final ok = await ref
+                .read(savedPostIdsProvider.notifier)
+                .toggle(post.id, post: post);
+            if (!ok && context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('خطا در ذخیره پست')),
+              );
+            }
+          },
+        ),
+        const SizedBox(width: 8),
+        IconButton(
+          icon: const Icon(Icons.share_outlined),
+          onPressed: () => SmartShareService().showShareOptions(post, context),
+        ),
       ],
     );
   }
@@ -1016,24 +1047,29 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
     final content = commentController.text.trim();
     final mentionedUserIds = mentionedUsers.map((user) => user.id).toList();
 
-    if (content.isNotEmpty) {
-      try {
-        await ref.read(commentNotifierProvider.notifier).addComment(
-            postId: widget.postId,
-            content: content,
-            postOwnerId: supabase.auth.currentUser!.id,
-            mentionedUserIds: mentionedUserIds,
-            parentCommentId: replyToCommentId,
-            ref: ref);
-        commentController.clear();
-        replyToCommentId = null;
-        mentionedUsers.clear();
-        ref.invalidate(commentsProvider(widget.postId));
-      } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('خطا در ارسال کامنت: $e')),
-        );
-      }
+    if (content.isEmpty) return;
+
+    try {
+      final notifier = ref.read(commentNotifierProvider.notifier);
+      final postOwnerId = await notifier.getPostOwnerId(widget.postId);
+
+      await notifier.addComment(
+        postId: widget.postId,
+        content: content,
+        postOwnerId: postOwnerId,
+        mentionedUserIds: mentionedUserIds,
+        parentCommentId: replyToCommentId,
+        ref: ref,
+      );
+
+      commentController.clear();
+      replyToCommentId = null;
+      mentionedUsers.clear();
+      ref.invalidate(commentsProvider(widget.postId));
+      UserFriendlyErrorUtils.showSuccessSnackBar(
+          context, 'نظر با موفقیت ثبت شد');
+    } catch (e) {
+      UserFriendlyErrorUtils.showErrorSnackBar(context, e);
     }
   }
 
@@ -1157,20 +1193,16 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
     try {
       await ref
           .read(commentNotifierProvider.notifier)
-          .deleteComment(commentId, ref);
+          .deleteComment(commentId, postId, ref);
       ref.invalidate(commentsProvider(postId));
 
-      // به دلیل زمان‌بری احتمالی async، از `mounted` برای چک وضعیت ویجت استفاده کنید
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('کامنت با موفقیت حذف شد')),
-        );
+        UserFriendlyErrorUtils.showSuccessSnackBar(
+            context, 'کامنت با موفقیت حذف شد');
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('خطا در حذف کامنت: $e')),
-        );
+        UserFriendlyErrorUtils.showErrorSnackBar(context, e);
       }
     }
   }

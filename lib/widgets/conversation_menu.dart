@@ -184,6 +184,7 @@ class ConversationMenu extends StatelessWidget {
                 conversationTitle: conversationTitle,
                 isGroupChat: isGroupChat,
                 onDeleted: onDeleted,
+                preferredOption: DeleteConversationOption.clearHistory,
               );
             },
             child: const Text('فقط برای من'),
@@ -197,6 +198,7 @@ class ConversationMenu extends StatelessWidget {
                 conversationTitle: conversationTitle,
                 isGroupChat: isGroupChat,
                 onDeleted: onDeleted,
+                preferredOption: DeleteConversationOption.deleteForEveryone,
               );
             },
             style: TextButton.styleFrom(foregroundColor: Colors.red),

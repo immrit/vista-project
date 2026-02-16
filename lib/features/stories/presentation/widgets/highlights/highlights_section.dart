@@ -7,6 +7,8 @@ import '../../../domain/repositories/i_story_repository.dart';
 import '../../providers/story_providers.dart';
 import '../../../core/story_enums.dart';
 import '../../../../../utils/premium_features_helper.dart';
+import '../../../../../utils/user_friendly_error_utils.dart';
+import '../../../../../provider/provider.dart';
 
 /// نمایش Highlights در پروفایل
 class HighlightsSection extends ConsumerWidget {
@@ -134,12 +136,20 @@ class HighlightsSection extends ConsumerWidget {
     );
   }
 
-  void _onAddHighlight(BuildContext context, WidgetRef ref, int currentCount) {
+  Future<void> _onAddHighlight(
+      BuildContext context, WidgetRef ref, int currentCount) async {
     // بررسی محدودیت
     if (currentCount >= StoryConstants.freeHighlightsLimit) {
       // بررسی پریمیوم بودن
-      // TODO: چک کردن از پروفایل
-      final isPremium = false;
+      dynamic currentProfile;
+      try {
+        currentProfile = await ref.read(currentUserProfileProvider.future);
+      } catch (_) {
+        currentProfile = ref.read(currentUserProfileProvider).valueOrNull;
+      }
+      if (!context.mounted) return;
+      final isPremium = (currentProfile?.hasGoldBadge ?? false) ||
+          (currentProfile?.hasBlueBadge ?? false);
 
       if (!isPremium) {
         PremiumFeaturesHelper.showPremiumPromptDialog(
@@ -150,7 +160,7 @@ class HighlightsSection extends ConsumerWidget {
       }
     }
 
-    // نمایش دیالوگ ایجاد هایلایت
+    if (!context.mounted) return;
     _showCreateHighlightDialog(context);
   }
 
@@ -366,7 +376,12 @@ class _CreateHighlightSheetState extends ConsumerState<_CreateHighlightSheet> {
 
     return storiesAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, _) => Center(child: Text('خطا: $error')),
+      error: (error, _) => Center(
+        child: Text(
+          UserFriendlyErrorUtils.getUserFriendlyMessage(error),
+          textDirection: TextDirection.rtl,
+        ),
+      ),
       data: (stories) {
         if (stories.isEmpty) {
           return const Center(
@@ -448,9 +463,7 @@ class _CreateHighlightSheetState extends ConsumerState<_CreateHighlightSheet> {
 
       result.fold(
         (error) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(error)),
-          );
+          UserFriendlyErrorUtils.showErrorSnackBar(context, error);
         },
         (highlight) {
           ref.invalidate(userHighlightsProvider(widget.userId));

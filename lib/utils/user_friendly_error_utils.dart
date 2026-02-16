@@ -1,60 +1,246 @@
 import 'dart:async';
 import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../security/logging_utility.dart';
+
 class UserFriendlyErrorUtils {
-  /// تبدیل خطای فنی به پیام فارسی قابل فهم برای کاربر
+  static const String _defaultMessage = 'مشکلی رخ داد. لطفاً دوباره تلاش کنید.';
+
   static String getUserFriendlyMessage(dynamic error) {
-    // 1. خطاهای شبکه و اینترنت
-    if (error is SocketException) {
-      return 'اتصال اینترنت برقرار نیست. لطفاً اتصال خود را بررسی کنید.';
-    }
-    if (error is TimeoutException) {
-      return 'پاسخ از سرور دریافت نشد. لطفاً سرعت اینترنت خود را بررسی کنید.';
-    }
-    if (error is HttpException) {
-      return 'خطا در برقراری ارتباط با سرور.';
-    }
-
-    // 2. خطاهای مربوط به Supabase
-    if (error is PostgrestException) {
-      if (error.code == '23505') {
-        return 'این مورد قبلاً ثبت شده است (تکراری).';
+    try {
+      if (error is SocketException) {
+        return 'اتصال اینترنت برقرار نیست. اتصال خود را بررسی کنید.';
       }
-      return 'خطا در ارتباط با پایگاه داده. لطفاً دوباره تلاش کنید.';
-    }
-    if (error is AuthException) {
-      if (error.message.contains('Invalid login credentials')) {
-        return 'نام کاربری یا رمز عبور اشتباه است.';
+      if (error is TimeoutException) {
+        return 'پاسخ از سرور دیر رسید. لطفاً دوباره تلاش کنید.';
       }
-      return 'مشکلی در احراز هویت پیش آمد. لطفاً دوباره وارد شوید.';
-    }
+      if (error is HttpException) {
+        return 'ارتباط با سرور برقرار نشد.';
+      }
 
-    // 3. خطاهای فرمت داده
-    if (error is FormatException) {
-      return 'فرمت داده دریافتی صحیح نیست.';
-    }
+      if (error is AuthException) {
+        return _mapAuthMessage(error.message);
+      }
 
-    // 4. خطاهای رشته ای (اگر ارور خودش استرینگ باشد)
-    if (error is String) {
-      return error;
-    }
+      if (error is PostgrestException) {
+        final mapped = _mapPostgrestError(error);
+        if (mapped != null) {
+          return mapped;
+        }
+        return 'مشکلی در ارتباط با سرور رخ داد. لطفاً دوباره تلاش کنید.';
+      }
 
-    // 5. خطای پیش‌فرض
-    return 'یک خطای غیرمنتظره رخ داد. لطفاً بعداً تلاش کنید.';
+      if (error is FormatException) {
+        return 'داده دریافتی معتبر نیست.';
+      }
+
+      final raw = _extractRawError(error);
+      final sanitized = _sanitizeRawMessage(raw);
+      final mapped = _mapByKeywords(sanitized);
+      if (mapped != null) {
+        return mapped;
+      }
+
+      if (sanitized.isEmpty || _looksTechnicalMessage(sanitized)) {
+        return _defaultMessage;
+      }
+
+      return sanitized;
+    } catch (_) {
+      return _defaultMessage;
+    }
   }
 
-  /// نمایش اسنک‌بار با استایل استاندارد برای خطاها
-  static void showErrorSnackBar(BuildContext context, dynamic error) {
-    final message = getUserFriendlyMessage(error);
+  static String _extractRawError(dynamic error) {
+    if (error == null) return '';
+    if (error is String) return error;
+    if (error is Exception || error is Error) {
+      return error.toString();
+    }
+    return '$error';
+  }
 
-    // اگر کانتکست وجود نداشت یا بسته شده بود کاری نکن
+  static String _sanitizeRawMessage(String raw) {
+    var message = raw.trim();
+    if (message.isEmpty) return '';
+
+    message = message
+        .replaceAll(
+            RegExp(
+                r'^(Exception|AuthException|PostgrestException|MessagingException):\s*'),
+            '')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+
+    final technicalMarkers = [
+      'stack trace',
+      'stacktrace',
+      '#0',
+      ' at ',
+      'hint:',
+      'details:',
+      'where:',
+      'context:',
+      'schema',
+      'table',
+      'column',
+      'sql',
+      'select ',
+      'insert ',
+      'update ',
+      'delete ',
+      'from ',
+      'postgrest',
+    ];
+
+    final lower = message.toLowerCase();
+    for (final marker in technicalMarkers) {
+      final idx = lower.indexOf(marker);
+      if (idx > 0) {
+        message = message.substring(0, idx).trim();
+        break;
+      }
+    }
+
+    // Remove quoted internal identifiers or SQL fragments.
+    message = message
+        .replaceAll(RegExp(r'"[A-Za-z0-9_\.]+"'), '')
+        .replaceAll(
+            RegExp(r'\b(PGRST|SQLSTATE)\w*\b', caseSensitive: false), '')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+
+    return message;
+  }
+
+  static bool _looksTechnicalMessage(String message) {
+    final lower = message.toLowerCase();
+    const markers = <String>[
+      'exception',
+      'error code',
+      'status code',
+      'pgrst',
+      'sqlstate',
+      'constraint',
+      'relation',
+      'column',
+      'table',
+      'postgrest',
+      'supabase',
+      'rpc',
+      'jwt',
+      'trace',
+      'stack',
+      'invalid input syntax',
+      'null value',
+      'violates',
+      'failed to',
+      'timeout',
+      'socket',
+      'http',
+    ];
+
+    if (markers.any(lower.contains)) return true;
+
+    if (RegExp(r'https?://', caseSensitive: false).hasMatch(message)) {
+      return true;
+    }
+
+    if (RegExp(r'\b(select|insert|update|delete|from|where|join)\b',
+            caseSensitive: false)
+        .hasMatch(message)) {
+      return true;
+    }
+
+    if (RegExp(r'[{}\[\]<>]').hasMatch(message)) return true;
+
+    return false;
+  }
+
+  static String? _mapPostgrestError(PostgrestException error) {
+    final code = (error.code ?? '').trim();
+    if (code == '23505') return 'این مورد قبلاً ثبت شده است.';
+    if (code == '23503') return 'اطلاعات مرتبط پیدا نشد یا معتبر نیست.';
+    if (code == '23514') return 'مقدار وارد شده معتبر نیست.';
+    if (code == '42501') return 'شما مجوز انجام این عملیات را ندارید.';
+
+    final message = _sanitizeRawMessage(error.message);
+    final mapped = _mapByKeywords(message);
+    return mapped;
+  }
+
+  static String _mapAuthMessage(String raw) {
+    final message = raw.toLowerCase();
+    if (message.contains('invalid login credentials')) {
+      return 'نام کاربری یا رمز عبور اشتباه است.';
+    }
+    if (message.contains('email not confirmed')) {
+      return 'ایمیل شما هنوز تایید نشده است.';
+    }
+    if (message.contains('token has expired') ||
+        message.contains('jwt expired')) {
+      return 'جلسه شما منقضی شده است. لطفاً دوباره وارد شوید.';
+    }
+    if (message.contains('user already registered')) {
+      return 'این حساب قبلاً ثبت شده است.';
+    }
+    return 'مشکلی در احراز هویت رخ داد. لطفاً دوباره وارد شوید.';
+  }
+
+  static String? _mapByKeywords(String message) {
+    final lower = message.toLowerCase();
+
+    if (lower.contains('network') ||
+        lower.contains('connection') ||
+        lower.contains('socket')) {
+      return 'مشکل ارتباط اینترنتی وجود دارد.';
+    }
+    if (lower.contains('timeout')) {
+      return 'زمان پاسخ‌دهی سرور به پایان رسید. دوباره تلاش کنید.';
+    }
+    if (lower.contains('permission') ||
+        lower.contains('not allowed') ||
+        lower.contains('forbidden')) {
+      return 'شما اجازه انجام این عملیات را ندارید.';
+    }
+    if (lower.contains('not found') || lower.contains('does not exist')) {
+      return 'مورد موردنظر پیدا نشد.';
+    }
+    if (lower.contains('duplicate') || lower.contains('already exists')) {
+      return 'این مورد قبلاً ثبت شده است.';
+    }
+    if (lower.contains('rate limit') || lower.contains('too many requests')) {
+      return 'درخواست‌های شما بیش از حد مجاز است. کمی بعد تلاش کنید.';
+    }
+    if (lower.contains('story_reply_not_allowed')) {
+      return 'ارسال پاسخ به این استوری مجاز نیست.';
+    }
+    if (lower.contains('authentication_required')) {
+      return 'برای انجام این عملیات باید وارد حساب کاربری شوید.';
+    }
+    if (lower.contains('invalid_reply_permission')) {
+      return 'تنظیم انتخاب‌شده برای پاسخ به استوری معتبر نیست.';
+    }
+    if (lower.contains('empty_story_reply_message')) {
+      return 'متن پاسخ به استوری نمی‌تواند خالی باشد.';
+    }
+    if (lower.contains('story_not_found')) {
+      return 'این استوری پیدا نشد یا در دسترس نیست.';
+    }
+
+    return null;
+  }
+
+  static void showErrorSnackBar(BuildContext context, dynamic error) {
+    logError('UI error surfaced', error: error);
     if (!context.mounted) return;
 
-    // بستن اسنک‌بارهای قبلی
-    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    final message = getUserFriendlyMessage(error);
 
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Row(
@@ -65,7 +251,7 @@ class UserFriendlyErrorUtils {
               child: Text(
                 message,
                 style: const TextStyle(
-                  fontFamily: 'Vazir', // یا فونت پیش فرض برنامه
+                  fontFamily: 'Vazir',
                   color: Colors.white,
                 ),
                 textDirection: TextDirection.rtl,
@@ -81,20 +267,16 @@ class UserFriendlyErrorUtils {
         action: SnackBarAction(
           label: 'باشه',
           textColor: Colors.white,
-          onPressed: () {
-            ScaffoldMessenger.of(context).hideCurrentSnackBar();
-          },
+          onPressed: () => ScaffoldMessenger.of(context).hideCurrentSnackBar(),
         ),
       ),
     );
   }
 
-  /// نمایش اسنک‌بار موفقیت (جهت تکمیل ابزار)
   static void showSuccessSnackBar(BuildContext context, String message) {
     if (!context.mounted) return;
 
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
-
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Row(

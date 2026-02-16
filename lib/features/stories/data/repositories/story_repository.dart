@@ -39,8 +39,10 @@ class StoryRepository implements IStoryRepository {
         user_id,
         media_url,
         media_type,
+        thumbnail_url,
         caption,
         created_at,
+        expires_at,
         profiles!inner(username, avatar_url, is_verified, role, verification_type)
       ''').order('created_at', ascending: true);
 
@@ -50,7 +52,7 @@ class StoryRepository implements IStoryRepository {
         final viewsResponse = await _client
             .from('story_views')
             .select('story_id')
-            .eq('user_id', currentUserId);
+            .eq('viewer_id', currentUserId);
         viewedStoryIds = Set<String>.from(
           viewsResponse.map((row) => row['story_id'] as String),
         );
@@ -113,7 +115,7 @@ class StoryRepository implements IStoryRepository {
       return StoryResult.success(sortedUsers);
     } catch (e) {
       logInfo('خطا در دریافت استوری‌ها: $e');
-      return StoryResult.failure('خطا در دریافت استوری‌ها: $e');
+      return StoryResult.failure('خطا در دریافت استوری‌ها');
     }
   }
 
@@ -218,7 +220,7 @@ class StoryRepository implements IStoryRepository {
       return StoryResult.success(Story.fromMap(response));
     } catch (e) {
       logInfo('خطا در ایجاد استوری: $e');
-      return StoryResult.failure('خطا در ایجاد استوری: $e');
+      return StoryResult.failure('خطا در ایجاد استوری');
     }
   }
 
@@ -247,11 +249,18 @@ class StoryRepository implements IStoryRepository {
       }
 
       // حذف از دیتابیس
-      await _client
+      final deletedStory = await _client
           .from('stories')
           .delete()
           .eq('id', storyId)
-          .eq('user_id', currentUserId);
+          .eq('user_id', currentUserId)
+          .select('id')
+          .maybeSingle();
+
+      if (deletedStory == null) {
+        return StoryResult.failure(
+            'حذف استوری انجام نشد. ممکن است استوری وجود نداشته باشد.');
+      }
 
       logInfo('استوری حذف شد: $storyId');
       return StoryResult.success(null);
@@ -420,11 +429,19 @@ class StoryRepository implements IStoryRepository {
         return StoryResult.failure('کاربر احراز هویت نشده است');
       }
 
-      // استفاده از RPC برای ارسال پاسخ به استوری به صورت پیام DM
-      await _client.rpc('send_story_reply', params: {
+      final trimmedMessage = message.trim();
+      if (trimmedMessage.isEmpty) {
+        return StoryResult.failure('متن پاسخ نمی‌تواند خالی باشد');
+      }
+
+      final rpcResult = await _client.rpc('send_story_reply', params: {
         'p_story_id': storyId,
-        'p_message': message,
+        'p_message': trimmedMessage,
       });
+
+      if (rpcResult == null) {
+        return StoryResult.failure('ارسال پاسخ انجام نشد');
+      }
 
       return StoryResult.success(null);
     } catch (e) {
@@ -441,17 +458,25 @@ class StoryRepository implements IStoryRepository {
         return StoryResult.failure('کاربر احراز هویت نشده است');
       }
 
-      await _client.from('story_poll_votes').upsert({
-        'story_id': storyId,
-        'user_id': currentUserId,
-        'option_id': optionId,
-        'created_at': DateTime.now().toIso8601String(),
-      }, onConflict: 'story_id, user_id');
+      final voteResult = await _client
+          .from('story_poll_votes')
+          .upsert({
+            'story_id': storyId,
+            'user_id': currentUserId,
+            'option_id': optionId,
+            'created_at': DateTime.now().toIso8601String(),
+          }, onConflict: 'story_id, user_id')
+          .select('story_id')
+          .maybeSingle();
+
+      if (voteResult == null) {
+        return StoryResult.failure('ثبت رای انجام نشد');
+      }
 
       return StoryResult.success(null);
     } catch (e) {
-      logInfo('خطا در ثبت رأی: $e');
-      return StoryResult.failure('خطا در ثبت رأی');
+      logInfo('خطا در ثبت رای: $e');
+      return StoryResult.failure('خطا در ثبت رای');
     }
   }
 
@@ -463,12 +488,20 @@ class StoryRepository implements IStoryRepository {
         return StoryResult.failure('کاربر احراز هویت نشده است');
       }
 
-      await _client.from('story_reports').insert({
-        'story_id': storyId,
-        'reporter_id': currentUserId,
-        'reason': reason,
-        'reported_at': DateTime.now().toIso8601String(),
-      });
+      final reportResult = await _client
+          .from('story_reports')
+          .insert({
+            'story_id': storyId,
+            'reporter_id': currentUserId,
+            'reason': reason,
+            'reported_at': DateTime.now().toIso8601String(),
+          })
+          .select('story_id')
+          .maybeSingle();
+
+      if (reportResult == null) {
+        return StoryResult.failure('ثبت گزارش انجام نشد');
+      }
 
       return StoryResult.success(null);
     } catch (e) {
@@ -723,6 +756,125 @@ class StoryRepository implements IStoryRepository {
     } catch (e) {
       logInfo('خطا در به‌روزرسانی دوستان نزدیک: $e');
       return StoryResult.failure('خطا در به‌روزرسانی دوستان نزدیک');
+    }
+  }
+
+  @override
+  Future<StoryResult<StoryReplyPermission>> getStoryReplyPermission({
+    String? userId,
+  }) async {
+    try {
+      final currentUserId = _client.auth.currentUser?.id;
+      if (currentUserId == null) {
+        return StoryResult.failure('کاربر احراز هویت نشده است');
+      }
+
+      final targetUserId = userId ?? currentUserId;
+      final rpcResult = await _client.rpc(
+        'get_story_reply_permission',
+        params: {'p_user_id': targetUserId},
+      );
+
+      final rawPermission = rpcResult is String ? rpcResult : null;
+      final permission = StoryReplyPermission.values.firstWhere(
+        (item) => item.name == rawPermission,
+        orElse: () => StoryReplyPermission.everyone,
+      );
+
+      return StoryResult.success(permission);
+    } catch (e) {
+      logInfo('خطا در دریافت تنظیمات پاسخ استوری: $e');
+      return StoryResult.failure('خطا در دریافت تنظیمات پاسخ استوری');
+    }
+  }
+
+  @override
+  Future<StoryResult<void>> updateStoryReplyPermission(
+      StoryReplyPermission permission) async {
+    try {
+      final currentUserId = _client.auth.currentUser?.id;
+      if (currentUserId == null) {
+        return StoryResult.failure('کاربر احراز هویت نشده است');
+      }
+
+      final rpcResult =
+          await _client.rpc('set_story_reply_permission', params: {
+        'p_permission': permission.name,
+      });
+
+      if (rpcResult == false) {
+        return StoryResult.failure('به‌روزرسانی تنظیمات پاسخ استوری انجام نشد');
+      }
+
+      return StoryResult.success(null);
+    } catch (e) {
+      logInfo('خطا در به‌روزرسانی تنظیمات پاسخ استوری: $e');
+      return StoryResult.failure('خطا در به‌روزرسانی تنظیمات پاسخ استوری');
+    }
+  }
+
+  @override
+  Future<StoryResult<bool>> canReplyToStory({
+    required String storyId,
+    required String ownerId,
+  }) async {
+    try {
+      final currentUserId = _client.auth.currentUser?.id;
+      if (currentUserId == null) {
+        return StoryResult.failure('کاربر احراز هویت نشده است');
+      }
+
+      if (currentUserId == ownerId) {
+        return StoryResult.success(false);
+      }
+
+      final rpcResult = await _client.rpc('can_reply_to_story', params: {
+        'p_story_id': storyId,
+        'p_owner_id': ownerId,
+      });
+
+      if (rpcResult is bool) {
+        return StoryResult.success(rpcResult);
+      }
+
+      if (rpcResult is num) {
+        return StoryResult.success(rpcResult != 0);
+      }
+
+      if (rpcResult is String) {
+        final normalized = rpcResult.toLowerCase().trim();
+        if (normalized == 'true' || normalized == 't' || normalized == '1') {
+          return StoryResult.success(true);
+        }
+        if (normalized == 'false' || normalized == 'f' || normalized == '0') {
+          return StoryResult.success(false);
+        }
+      }
+
+      final permissionResult = await getStoryReplyPermission(userId: ownerId);
+      if (!permissionResult.isSuccess || permissionResult.data == null) {
+        return StoryResult.success(false);
+      }
+
+      final permission = permissionResult.data!;
+      if (permission == StoryReplyPermission.off) {
+        return StoryResult.success(false);
+      }
+
+      if (permission == StoryReplyPermission.everyone) {
+        return StoryResult.success(true);
+      }
+
+      final followRelation = await _client
+          .from('follows')
+          .select('follower_id')
+          .eq('follower_id', ownerId)
+          .eq('following_id', currentUserId)
+          .maybeSingle();
+      return StoryResult.success(followRelation != null);
+    } catch (e) {
+      logInfo('خطا در بررسی اجازه پاسخ به استوری: $e');
+      return StoryResult.failure('خطا در بررسی اجازه پاسخ به استوری');
     }
   }
 }

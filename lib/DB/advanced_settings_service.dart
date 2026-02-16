@@ -7,7 +7,8 @@ import 'package:path_provider/path_provider.dart';
 
 /// سرویس پیشرفته مدیریت تنظیمات
 class AdvancedSettingsService {
-  static final AdvancedSettingsService _instance = AdvancedSettingsService._internal();
+  static final AdvancedSettingsService _instance =
+      AdvancedSettingsService._internal();
   factory AdvancedSettingsService() => _instance;
   AdvancedSettingsService._internal();
 
@@ -58,21 +59,30 @@ class AdvancedSettingsService {
           'enabled': true,
           'speed': 'normal', // slow, normal, fast
           'reduce_motion': false, // برای کاربران حساس به حرکت
+          'chat_entry_mode': 'adaptive', // off, minimal, full, adaptive
           'page_transitions': true,
           'list_animations': true,
           'button_feedback': true,
           'loading_animations': true,
         },
-        
+
         // 🎨 تنظیمات رندرینگ
         'rendering': {
           'enable_gpu_acceleration': true,
           'frame_rate_limit': 60, // 30, 60, 120
           'reduce_transparency': false,
           'reduce_blur': false,
+          'dynamic_effects': true,
+          'max_blur_sigma': 10.0,
           'high_contrast': false,
         },
-        
+
+        'feature_flags': {
+          'chat_perf_v1': true,
+          'adaptive_effects_v1': true,
+          'motion_tokens_v1': true,
+        },
+
         // 📊 تنظیمات داده
         'data_optimization': {
           'aggressive_caching': false,
@@ -82,7 +92,7 @@ class AdvancedSettingsService {
           'batch_requests': true,
           'request_priority': 'balanced', // low, balanced, high
         },
-        
+
         // 🔋 تنظیمات باتری
         'battery': {
           'power_save_mode': false,
@@ -90,7 +100,7 @@ class AdvancedSettingsService {
           'reduce_background_activity': false,
           'optimize_for_battery': false,
         },
-        
+
         // 🌐 تنظیمات شبکه
         'network': {
           'auto_retry_failed_requests': true,
@@ -118,14 +128,14 @@ class AdvancedSettingsService {
           'cache_audio': true,
           'cache_documents': true,
         },
-        
+
         // 📱 مدیریت حافظه
         'memory': {
           'max_memory_usage_mb': 200,
           'clear_memory_on_background': false,
           'aggressive_memory_management': false,
         },
-        
+
         // 📥 دانلود خودکار
         'auto_download': {
           'enabled': false,
@@ -136,7 +146,7 @@ class AdvancedSettingsService {
           'max_file_size_mb': 10,
           'only_on_wifi': true,
         },
-        
+
         // 🗂 مدیریت فایل‌ها
         'file_management': {
           'auto_delete_old_files': false,
@@ -161,7 +171,7 @@ class AdvancedSettingsService {
           'font_size': 'medium', // small, medium, large, xlarge
           'compact_mode': false,
         },
-        
+
         // 🔊 صدا و لمسی
         'feedback': {
           'enable_sound_effects': true,
@@ -171,7 +181,7 @@ class AdvancedSettingsService {
           'message_sound': 'default',
           'sound_volume': 0.7, // 0.0 - 1.0
         },
-        
+
         // 🌙 حالت شب
         'night_mode': {
           'auto_night_mode': true,
@@ -180,7 +190,7 @@ class AdvancedSettingsService {
           'follow_system': true,
           'dim_brightness': false,
         },
-        
+
         // 🔐 امنیت
         'security': {
           'require_biometric': false,
@@ -190,13 +200,14 @@ class AdvancedSettingsService {
           'screenshot_security': false,
           'incognito_keyboard': false,
         },
-        
+
         // ♿️ دسترسی‌پذیری
         'accessibility': {
           'large_text': false,
           'bold_text': false,
           'high_contrast': false,
-          'color_blind_mode': 'none', // none, protanopia, deuteranopia, tritanopia
+          'color_blind_mode':
+              'none', // none, protanopia, deuteranopia, tritanopia
           'screen_reader_support': false,
           'simplified_ui': false,
         },
@@ -264,10 +275,14 @@ class AdvancedSettingsService {
 
       await prefs.setString(_userSettingsKey, jsonEncode(_userSettingsCache));
       await prefs.setString(_appSettingsKey, jsonEncode(_appSettingsCache));
-      await prefs.setString(_privacySettingsKey, jsonEncode(_privacySettingsCache));
-      await prefs.setString(_notificationSettingsKey, jsonEncode(_notificationSettingsCache));
-      await prefs.setString(_performanceSettingsKey, jsonEncode(_performanceSettingsCache));
-      await prefs.setString(_storageSettingsKey, jsonEncode(_storageSettingsCache));
+      await prefs.setString(
+          _privacySettingsKey, jsonEncode(_privacySettingsCache));
+      await prefs.setString(
+          _notificationSettingsKey, jsonEncode(_notificationSettingsCache));
+      await prefs.setString(
+          _performanceSettingsKey, jsonEncode(_performanceSettingsCache));
+      await prefs.setString(
+          _storageSettingsKey, jsonEncode(_storageSettingsCache));
 
       // ذخیره زمان آخرین به‌روزرسانی
       final lastUpdateMap = <String, String>{};
@@ -293,12 +308,13 @@ class AdvancedSettingsService {
   /// بررسی و پاکسازی خودکار Storage
   Future<void> _checkAndCleanStorage() async {
     try {
-      final cacheConfig = _storageSettingsCache['cache'] as Map<String, dynamic>?;
+      final cacheConfig =
+          _storageSettingsCache['cache'] as Map<String, dynamic>?;
       if (cacheConfig == null) return;
 
       final maxCacheSizeMB = cacheConfig['max_cache_size_mb'] as int? ?? 500;
       final autoClearCache = cacheConfig['auto_clear_cache'] as bool? ?? true;
-      
+
       if (!autoClearCache) return;
 
       // محاسبه حجم فعلی cache
@@ -306,7 +322,8 @@ class AdvancedSettingsService {
       _currentCacheSize = currentSize;
 
       if (currentSize > maxCacheSizeMB) {
-        logInfo('⚠️ Cache size ($currentSize MB) exceeds limit ($maxCacheSizeMB MB)');
+        logInfo(
+            '⚠️ Cache size ($currentSize MB) exceeds limit ($maxCacheSizeMB MB)');
         await _performSmartCacheCleanup();
       }
     } catch (e) {
@@ -321,7 +338,8 @@ class AdvancedSettingsService {
       int totalSize = 0;
 
       if (await directory.exists()) {
-        await for (final entity in directory.list(recursive: true, followLinks: false)) {
+        await for (final entity
+            in directory.list(recursive: true, followLinks: false)) {
           if (entity is File) {
             totalSize += await entity.length();
           }
@@ -339,17 +357,20 @@ class AdvancedSettingsService {
   Future<void> _performSmartCacheCleanup() async {
     try {
       logInfo('🧹 Starting smart cache cleanup...');
-      
-      final cacheConfig = _storageSettingsCache['cache'] as Map<String, dynamic>?;
+
+      final cacheConfig =
+          _storageSettingsCache['cache'] as Map<String, dynamic>?;
       final keepRecentDays = cacheConfig?['keep_recent_days'] as int? ?? 30;
-      final cutoffDate = DateTime.now().subtract(Duration(days: keepRecentDays));
+      final cutoffDate =
+          DateTime.now().subtract(Duration(days: keepRecentDays));
 
       final directory = await getApplicationCacheDirectory();
       int cleanedSize = 0;
       int cleanedFiles = 0;
 
       if (await directory.exists()) {
-        await for (final entity in directory.list(recursive: true, followLinks: false)) {
+        await for (final entity
+            in directory.list(recursive: true, followLinks: false)) {
           if (entity is File) {
             final stat = await entity.stat();
             if (stat.modified.isBefore(cutoffDate)) {
@@ -388,13 +409,15 @@ class AdvancedSettingsService {
 
   /// آیا انیمیشن‌ها فعال هستند؟
   bool areAnimationsEnabled() {
-    final animations = _performanceSettingsCache['animations'] as Map<String, dynamic>?;
+    final animations =
+        _performanceSettingsCache['animations'] as Map<String, dynamic>?;
     return animations?['enabled'] as bool? ?? true;
   }
 
   /// آیا GPU Acceleration فعال است؟
   bool isGPUAccelerationEnabled() {
-    final rendering = _performanceSettingsCache['rendering'] as Map<String, dynamic>?;
+    final rendering =
+        _performanceSettingsCache['rendering'] as Map<String, dynamic>?;
     return rendering?['enable_gpu_acceleration'] as bool? ?? true;
   }
 
@@ -424,12 +447,12 @@ class AdvancedSettingsService {
     _storageSettingsCache.addAll(settings);
     _lastFetch['storage_settings'] = DateTime.now();
     await _saveToDisk();
-    
+
     // اگر max_cache_size تغییر کرد، بررسی فوری کن
     if (settings.containsKey('cache')) {
       await _checkAndCleanStorage();
     }
-    
+
     logInfo('✅ Updated storage settings');
   }
 
@@ -446,7 +469,7 @@ class AdvancedSettingsService {
     final sizeBefore = await _calculateTotalCacheSize();
     await _performSmartCacheCleanup();
     final sizeAfter = await _calculateTotalCacheSize();
-    
+
     return {
       'size_before_mb': sizeBefore,
       'size_after_mb': sizeAfter,
@@ -458,7 +481,8 @@ class AdvancedSettingsService {
   Future<Map<String, dynamic>> getCompleteStats() async {
     final cacheSize = await _calculateTotalCacheSize();
     final maxSize = getMaxCacheSize();
-    final usagePercent = maxSize > 0 ? (cacheSize / maxSize * 100).toStringAsFixed(1) : '0';
+    final usagePercent =
+        maxSize > 0 ? (cacheSize / maxSize * 100).toStringAsFixed(1) : '0';
 
     return {
       'cache_size_mb': cacheSize,
@@ -482,4 +506,3 @@ class AdvancedSettingsService {
     logInfo('🧹 Advanced Settings Service disposed');
   }
 }
-

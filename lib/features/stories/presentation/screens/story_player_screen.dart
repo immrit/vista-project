@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:video_player/video_player.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../domain/entities/entities.dart';
+import '../../domain/repositories/i_story_repository.dart';
 import '../../core/story_enums.dart';
 import '../providers/story_providers.dart';
 import '../widgets/sticker_factory.dart';
@@ -13,6 +16,8 @@ import 'story_header.dart';
 import 'story_actions.dart';
 import 'story_viewers_sheet.dart';
 import '../../../../utils/const.dart';
+import '../../../../utils/navigation_helper.dart';
+import '../../../../utils/user_friendly_error_utils.dart';
 
 /// صفحه پخش استوری
 class StoryPlayerScreen extends ConsumerStatefulWidget {
@@ -42,6 +47,8 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
   bool _isPaused = false;
   bool _isLoading = true;
   bool _showingViewers = false;
+  StoryReplyPermission _replyPermission = StoryReplyPermission.everyone;
+  bool _canReplyToStory = true;
 
   @override
   void initState() {
@@ -87,9 +94,10 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
 
     _progressController.reset();
 
-    // Track view
+    // Track view + resolve reply permission state for current story.
     final repository = ref.read(storyRepositoryProvider);
     await repository.trackView(_currentStory.id);
+    await _loadReplyState(repository);
 
     if (_currentStory.media.isVideo) {
       await _initVideo();
@@ -101,6 +109,31 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
       setState(() => _isLoading = false);
       _progressController.forward();
     }
+  }
+
+  Future<void> _loadReplyState(IStoryRepository repository) async {
+    if (_isOwnStory) {
+      if (!mounted) return;
+      setState(() {
+        _replyPermission = StoryReplyPermission.everyone;
+        _canReplyToStory = false;
+      });
+      return;
+    }
+
+    final permissionResult = await repository.getStoryReplyPermission(
+      userId: _currentStory.userId,
+    );
+    final canReplyResult = await repository.canReplyToStory(
+      storyId: _currentStory.id,
+      ownerId: _currentStory.userId,
+    );
+
+    if (!mounted) return;
+    setState(() {
+      _replyPermission = permissionResult.data ?? StoryReplyPermission.everyone;
+      _canReplyToStory = canReplyResult.data ?? false;
+    });
   }
 
   Future<void> _initVideo() async {
@@ -217,6 +250,8 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
   }
 
   void _showViewers() {
+    final wasPausedBeforeSheet = _isPaused;
+
     setState(() {
       _showingViewers = true;
       _isPaused = true;
@@ -232,14 +267,19 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
         storyId: _currentStory.id,
         onClose: () {
           Navigator.pop(context);
-          setState(() => _showingViewers = false);
-          if (!_isPaused) {
-            _progressController.forward();
-            _videoController?.play();
-          }
         },
       ),
-    );
+    ).whenComplete(() {
+      if (!mounted) return;
+      setState(() {
+        _showingViewers = false;
+        _isPaused = wasPausedBeforeSheet;
+      });
+      if (!wasPausedBeforeSheet) {
+        _progressController.forward();
+        _videoController?.play();
+      }
+    });
   }
 
   double _dragOffsetY = 0.0;
@@ -329,6 +369,9 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
                     child: StoryActions(
                       story: _currentStory,
                       isOwnStory: _isOwnStory,
+                      storyOwnerUsername: _currentUser.username,
+                      replyPermission: _replyPermission,
+                      canReply: _canReplyToStory,
                       onReply: (message) => _replyToStory(message),
                       onReact: (reaction) => _reactToStory(reaction),
                       onViewers: _isOwnStory ? _showViewers : null,
@@ -502,40 +545,105 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
   Future<void> _votePoll(int optionIndex, BuildContext ctx) async {
     Navigator.pop(ctx);
     final repository = ref.read(storyRepositoryProvider);
-    await repository.voteOnPoll(_currentStory.id, optionIndex.toString());
+    final result =
+        await repository.voteOnPoll(_currentStory.id, optionIndex.toString());
 
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('رأی شما ثبت شد')),
+    if (!mounted) return;
+    if (result.isSuccess) {
+      UserFriendlyErrorUtils.showSuccessSnackBar(context, 'رای شما ثبت شد');
+    } else {
+      UserFriendlyErrorUtils.showErrorSnackBar(
+        context,
+        result.error ?? 'خطا در ثبت رای',
       );
     }
   }
 
   Future<void> _openLink(String? url) async {
-    if (url == null) return;
-    debugPrint('Opening link: $url');
-    // TODO: Use url_launcher to open link
-    // await launchUrl(Uri.parse(url));
+    if (url == null || url.trim().isEmpty) {
+      UserFriendlyErrorUtils.showErrorSnackBar(context, 'لینک معتبر نیست');
+      return;
+    }
+
+    final uri = Uri.tryParse(url.trim());
+    if (uri == null) {
+      UserFriendlyErrorUtils.showErrorSnackBar(context, 'لینک معتبر نیست');
+      return;
+    }
+
+    try {
+      final launched =
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!launched && mounted) {
+        UserFriendlyErrorUtils.showErrorSnackBar(
+          context,
+          'امکان باز کردن لینک وجود ندارد',
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        UserFriendlyErrorUtils.showErrorSnackBar(context, error);
+      }
+    }
   }
 
-  void _openLocation(Map<String, dynamic>? data) {
-    if (data == null) return;
-    final lat = data['latitude'];
-    final lng = data['longitude'];
-    debugPrint('Opening location: $lat, $lng');
-    // TODO: Open map with lat/lng
+  Future<void> _openLocation(Map<String, dynamic>? data) async {
+    if (data == null) {
+      UserFriendlyErrorUtils.showErrorSnackBar(
+          context, 'موقعیت مکانی معتبر نیست');
+      return;
+    }
+
+    final lat = (data['latitude'] as num?)?.toDouble();
+    final lng = (data['longitude'] as num?)?.toDouble();
+    final label = data['name']?.toString() ?? '';
+
+    Uri? mapUri;
+    if (lat != null && lng != null) {
+      mapUri = Uri.parse('https://maps.google.com/?q=$lat,$lng');
+    } else if (label.trim().isNotEmpty) {
+      mapUri = Uri.parse(
+        'https://maps.google.com/?q=${Uri.encodeComponent(label.trim())}',
+      );
+    }
+
+    if (mapUri == null) {
+      UserFriendlyErrorUtils.showErrorSnackBar(
+          context, 'موقعیت مکانی معتبر نیست');
+      return;
+    }
+
+    try {
+      final launched =
+          await launchUrl(mapUri, mode: LaunchMode.externalApplication);
+      if (!launched && mounted) {
+        UserFriendlyErrorUtils.showErrorSnackBar(
+          context,
+          'امکان باز کردن نقشه وجود ندارد',
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        UserFriendlyErrorUtils.showErrorSnackBar(context, error);
+      }
+    }
   }
 
   void _openProfile(String? username) {
-    if (username == null) return;
-    debugPrint('Opening profile: @$username');
-    // TODO: Navigate to profile screen
+    if (username == null || username.trim().isEmpty) {
+      UserFriendlyErrorUtils.showErrorSnackBar(
+          context, 'نام کاربری معتبر نیست');
+      return;
+    }
+    NavigationHelper.navigateToUserProfile(context, username);
   }
 
   void _openHashtag(String? hashtag) {
-    if (hashtag == null) return;
-    debugPrint('Opening hashtag: #$hashtag');
-    // TODO: Navigate to hashtag search
+    if (hashtag == null || hashtag.trim().isEmpty) {
+      UserFriendlyErrorUtils.showErrorSnackBar(context, 'هشتگ معتبر نیست');
+      return;
+    }
+    NavigationHelper.navigateToHashtagPosts(context, hashtag);
   }
 
   void _showOptions() {
@@ -601,7 +709,7 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
   }
 
   Future<void> _deleteStory() async {
-    Navigator.pop(context); // Close bottom sheet
+    Navigator.pop(context);
 
     final confirmed = await showDialog<bool>(
       context: context,
@@ -624,13 +732,17 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
 
     if (confirmed == true) {
       final repository = ref.read(storyRepositoryProvider);
-      await repository.deleteStory(_currentStory.id);
-      ref.invalidate(activeStoriesProvider);
+      final result = await repository.deleteStory(_currentStory.id);
 
-      if (mounted) {
+      if (!mounted) return;
+      if (result.isSuccess) {
+        ref.invalidate(activeStoriesProvider);
         Navigator.of(context).pop();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('استوری حذف شد')),
+        UserFriendlyErrorUtils.showSuccessSnackBar(context, 'استوری حذف شد');
+      } else {
+        UserFriendlyErrorUtils.showErrorSnackBar(
+          context,
+          result.error ?? 'خطا در حذف استوری',
         );
       }
     }
@@ -665,28 +777,69 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
 
     if (selectedReason != null) {
       final repository = ref.read(storyRepositoryProvider);
-      await repository.reportStory(_currentStory.id, selectedReason);
+      final result =
+          await repository.reportStory(_currentStory.id, selectedReason);
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('گزارش شما ثبت شد')),
+      if (!mounted) return;
+      if (result.isSuccess) {
+        UserFriendlyErrorUtils.showSuccessSnackBar(context, 'گزارش شما ثبت شد');
+      } else {
+        UserFriendlyErrorUtils.showErrorSnackBar(
+          context,
+          result.error ?? 'خطا در ثبت گزارش',
         );
       }
     }
   }
 
-  void _shareStory() {
+  Future<void> _shareStory() async {
     Navigator.pop(context);
-    // TODO: Implement share
+
+    final owner = _currentUser.username.trim().isNotEmpty
+        ? _currentUser.username.trim()
+        : 'کاربر';
+    final caption = _currentStory.caption?.trim() ?? '';
+    final mediaUrl = _currentStory.media.url.trim();
+
+    final payload = StringBuffer('استوری $owner در Vista');
+    if (caption.isNotEmpty) {
+      payload.write('\n$caption');
+    }
+    if (mediaUrl.isNotEmpty) {
+      payload.write('\n$mediaUrl');
+    }
+
+    try {
+      await Share.share(payload.toString());
+    } catch (error) {
+      if (mounted) {
+        UserFriendlyErrorUtils.showErrorSnackBar(context, error);
+      }
+    }
   }
 
   Future<void> _replyToStory(String message) async {
-    final repository = ref.read(storyRepositoryProvider);
-    await repository.replyToStory(_currentStory.id, message);
+    if (!_canReplyToStory) {
+      final blockedMessage = switch (_replyPermission) {
+        StoryReplyPermission.off => 'پاسخ به این استوری غیرفعال است',
+        StoryReplyPermission.following =>
+          'فقط دنبال‌شده‌های صاحب استوری می‌توانند پاسخ دهند',
+        StoryReplyPermission.everyone => 'ارسال پاسخ ممکن نیست',
+      };
+      UserFriendlyErrorUtils.showErrorSnackBar(context, blockedMessage);
+      return;
+    }
 
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('پاسخ ارسال شد')),
+    final repository = ref.read(storyRepositoryProvider);
+    final result = await repository.replyToStory(_currentStory.id, message);
+
+    if (!mounted) return;
+    if (result.isSuccess) {
+      UserFriendlyErrorUtils.showSuccessSnackBar(context, 'پاسخ ارسال شد');
+    } else {
+      UserFriendlyErrorUtils.showErrorSnackBar(
+        context,
+        result.error ?? 'خطا در ارسال پاسخ',
       );
     }
   }

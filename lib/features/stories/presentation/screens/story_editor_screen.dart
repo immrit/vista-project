@@ -16,6 +16,7 @@ import '../widgets/editable_story_item.dart';
 import '../../../../provider/provider.dart';
 import '../../../../model/UserModel.dart';
 import '../../../../utils/premium_features_helper.dart';
+import '../../../../utils/user_friendly_error_utils.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// ویرایشگر استوری - نسخه بازنویسی شده بدون باگ هلیکوپتری
@@ -34,6 +35,9 @@ class StoryEditorScreen extends ConsumerStatefulWidget {
 }
 
 class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
+  static const double _minTextFontSize = 16;
+  static const double _maxTextFontSize = 96;
+
   final GlobalKey _canvasKey = GlobalKey();
 
   // آیتم‌های جدید (استفاده از مدل بهبود یافته)
@@ -428,7 +432,6 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
             _textController.text = item.text;
             _textColor = item.color;
             _fontSize = item.fontSize;
-            _fontSize = item.fontSize;
             _textStyleIndex = item.styleIndex;
             _textAnimationType = item.animationType;
             _showTextInput = true;
@@ -622,9 +625,9 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
   }
 
   Widget _buildToolbar() {
+    final selectedTextItem = _selectedTextItem;
     return Column(
       children: [
-        // متن
         _buildToolButton(
           icon: Icons.text_fields,
           isActive: _showTextInput,
@@ -638,16 +641,26 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
           },
         ),
         const SizedBox(height: 12),
-
-        // استیکر
+        if (!_showTextInput && selectedTextItem != null) ...[
+          _buildToolButton(
+            icon: Icons.text_decrease,
+            isActive: false,
+            onTap: () => _changeSelectedTextSize(-4),
+          ),
+          const SizedBox(height: 12),
+          _buildToolButton(
+            icon: Icons.text_increase,
+            isActive: false,
+            onTap: () => _changeSelectedTextSize(4),
+          ),
+          const SizedBox(height: 12),
+        ],
         _buildToolButton(
           icon: Icons.emoji_emotions,
           isActive: false,
           onTap: _showStickerSheet,
         ),
         const SizedBox(height: 12),
-
-        // نقاشی
         _buildToolButton(
           icon: Icons.brush,
           isActive: _isDrawing,
@@ -660,8 +673,6 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
           },
         ),
         const SizedBox(height: 12),
-
-        // رنگ
         if (_isDrawing)
           GestureDetector(
             onTap: _showColorPicker,
@@ -676,8 +687,6 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
             ),
           ),
         const SizedBox(height: 12),
-
-        // مدت زمان استوری
         _buildToolButton(
           icon: _storyDuration == StoryDuration.hours48
               ? Icons.timelapse
@@ -935,19 +944,7 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
       _hideLoadingOverlay();
       debugPrint('Story Save Error: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.error, color: Colors.white),
-                const SizedBox(width: 12),
-                Expanded(child: Text('خطا: $e')),
-              ],
-            ),
-            backgroundColor: Colors.red,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
+        UserFriendlyErrorUtils.showErrorSnackBar(context, e);
       }
     } finally {
       if (mounted) {
@@ -992,6 +989,28 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
     _loadingOverlay = null;
   }
 
+  TextStoryItem? get _selectedTextItem {
+    if (_selectedItemId == null) return null;
+    for (final item in _items) {
+      if (item.id == _selectedItemId && item is TextStoryItem) {
+        return item;
+      }
+    }
+    return null;
+  }
+
+  void _changeSelectedTextSize(double delta) {
+    final selected = _selectedTextItem;
+    if (selected == null) return;
+
+    final updatedFontSize =
+        (selected.fontSize + delta).clamp(_minTextFontSize, _maxTextFontSize);
+
+    _updateItem(
+      selected.copyWith(fontSize: updatedFontSize.toDouble()),
+    );
+  }
+
   Widget _buildTextInputOverlay() {
     return Container(
       color: Colors.black87,
@@ -1017,7 +1036,7 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
                   GestureDetector(
                     onTap: () {
                       setState(
-                          () => _textStyleIndex = (_textStyleIndex + 1) % 4);
+                          () => _textStyleIndex = (_textStyleIndex + 1) % 6);
                     },
                     child: Container(
                       padding: const EdgeInsets.symmetric(
@@ -1130,8 +1149,8 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
                   Expanded(
                     child: Slider(
                       value: _fontSize,
-                      min: 16,
-                      max: 64,
+                      min: _minTextFontSize,
+                      max: _maxTextFontSize,
                       activeColor: Colors.white,
                       inactiveColor: Colors.white24,
                       onChanged: (value) {
@@ -1196,15 +1215,14 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
   }
 
   void _showStickerSheet() {
+    final parentContext = context;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => StoryStickerSheet(
         onStickerSelected: (emojiContent) {
-          Navigator.pop(context);
-
-          final screenSize = MediaQuery.of(context).size;
+          final screenSize = MediaQuery.of(parentContext).size;
 
           // ایموجی ساده → تبدیل به TextStoryItem
           final newItem = TextStoryItem(
@@ -1221,9 +1239,7 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
           });
         },
         onInteractiveStickerSelected: (type, data) {
-          Navigator.pop(context);
-
-          final screenSize = MediaQuery.of(context).size;
+          final screenSize = MediaQuery.of(parentContext).size;
 
           // استیکر تعاملی → تبدیل به StickerStoryItem
           final newItem = StickerStoryItem(

@@ -233,10 +233,11 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
     for (final asset in _selectedAssets) {
       final file = await asset.file;
       if (file != null) {
+        final displayName = await _resolveAssetDisplayFileName(asset, file);
         files.add(
           SelectedAttachmentFile(
             file: file,
-            displayFileName: p.basename(file.path),
+            displayFileName: displayName,
           ),
         );
       }
@@ -271,11 +272,38 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
         files: [
           SelectedAttachmentFile(
             file: File(image.path),
-            displayFileName: p.basename(image.path),
+            displayFileName: image.name.trim().isNotEmpty
+                ? image.name
+                : p.basename(image.path),
           ),
         ],
       ),
     );
+  }
+
+  Future<String> _resolveAssetDisplayFileName(
+    AssetEntity asset,
+    File file,
+  ) async {
+    final fallback = p.basename(file.path);
+    String? title = asset.title?.trim();
+    if (title == null || title.isEmpty) {
+      try {
+        title = (await asset.titleAsync).trim();
+      } catch (_) {
+        title = null;
+      }
+    }
+
+    final normalized = title?.trim() ?? '';
+    if (normalized.isEmpty) return fallback;
+    if (p.extension(normalized).isNotEmpty) return normalized;
+
+    final fallbackExt = p.extension(fallback);
+    if (fallbackExt.isNotEmpty) {
+      return '$normalized$fallbackExt';
+    }
+    return normalized;
   }
 
   Future<void> _pickFile() async {

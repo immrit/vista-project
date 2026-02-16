@@ -185,9 +185,7 @@ class _ForwardMessageSheetState extends ConsumerState<ForwardMessageSheet>
     final filteredConversations = state.conversations.where((conversation) {
       if (_searchQuery.isEmpty) return true;
       final searchLower = _searchQuery.toLowerCase();
-      return conversation.otherUserName
-              ?.toLowerCase()
-              .contains(searchLower) ==
+      return conversation.otherUserName?.toLowerCase().contains(searchLower) ==
           true;
     }).toList();
 
@@ -536,13 +534,17 @@ class _ForwardMessageSheetState extends ConsumerState<ForwardMessageSheet>
   }
 
   void _showErrorMessage(String error) {
+    final friendlyMessage = UserFriendlyErrorHandler.getFriendlyMessage(
+      error,
+      context: 'forward_message',
+    );
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Row(
           children: [
             const Icon(Icons.error, color: Colors.white, size: 20),
             const SizedBox(width: 12),
-            Expanded(child: Text('خطا: $error')),
+            Expanded(child: Text(friendlyMessage)),
           ],
         ),
         backgroundColor: Colors.red,

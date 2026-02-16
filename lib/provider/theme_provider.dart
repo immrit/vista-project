@@ -24,24 +24,76 @@ final dynamicThemeProvider = Provider<ThemeData>((ref) {
 
   final largeText = accessibility['large_text'] as bool? ?? false;
   final boldText = accessibility['bold_text'] as bool? ?? false;
-  // final highContrast = accessibility['high_contrast'] as bool? ?? false; // Not implemented yet in VistaThemes but placeholder for future
+  final highContrast = accessibility['high_contrast'] as bool? ?? false;
 
   // Basic Theme
   ThemeData theme = brightness == Brightness.dark
       ? VistaThemes.darkTheme
       : VistaThemes.lightTheme;
 
-  // Apply Accessibility Overrides
-  // We can use copyWith to adjust text themes if needed
-  if (largeText || boldText) {
-    // This is a simplified way to apply text scaling/bolding.
-    // Ideally VistaThemes should support these parameters or we construct a new text theme.
-    // For now, let's just return the base theme as the critical fix is solving build errors.
-    // Real implementation would modify textTheme here.
+  final fontScale = largeText ? 1.12 : 1.0;
+  var textTheme = theme.textTheme.apply(fontSizeFactor: fontScale);
+  if (boldText) {
+    textTheme = _withBoldText(textTheme);
   }
 
-  return theme;
+  final colorScheme = highContrast
+      ? _withHighContrastColors(theme.colorScheme, brightness)
+      : theme.colorScheme;
+
+  return theme.copyWith(
+    colorScheme: colorScheme,
+    textTheme: textTheme,
+    primaryTextTheme: textTheme,
+    dividerColor: highContrast
+        ? (brightness == Brightness.dark ? Colors.white70 : Colors.black87)
+        : theme.dividerColor,
+  );
 });
+
+TextTheme _withBoldText(TextTheme textTheme) {
+  TextStyle? bold(TextStyle? style) => style?.copyWith(fontWeight: FontWeight.w700);
+
+  return textTheme.copyWith(
+    displayLarge: bold(textTheme.displayLarge),
+    displayMedium: bold(textTheme.displayMedium),
+    displaySmall: bold(textTheme.displaySmall),
+    headlineLarge: bold(textTheme.headlineLarge),
+    headlineMedium: bold(textTheme.headlineMedium),
+    headlineSmall: bold(textTheme.headlineSmall),
+    titleLarge: bold(textTheme.titleLarge),
+    titleMedium: bold(textTheme.titleMedium),
+    titleSmall: bold(textTheme.titleSmall),
+    bodyLarge: bold(textTheme.bodyLarge),
+    bodyMedium: bold(textTheme.bodyMedium),
+    bodySmall: bold(textTheme.bodySmall),
+    labelLarge: bold(textTheme.labelLarge),
+    labelMedium: bold(textTheme.labelMedium),
+    labelSmall: bold(textTheme.labelSmall),
+  );
+}
+
+ColorScheme _withHighContrastColors(ColorScheme scheme, Brightness brightness) {
+  if (brightness == Brightness.dark) {
+    return scheme.copyWith(
+      primary: Colors.white,
+      onPrimary: Colors.black,
+      secondary: Colors.white,
+      onSecondary: Colors.black,
+      surface: Colors.black,
+      onSurface: Colors.white,
+    );
+  }
+
+  return scheme.copyWith(
+    primary: Colors.black,
+    onPrimary: Colors.white,
+    secondary: Colors.black,
+    onSecondary: Colors.white,
+    surface: Colors.white,
+    onSurface: Colors.black,
+  );
+}
 
 class BrightnessNotifier extends StateNotifier<Brightness> {
   Isar? _isar;

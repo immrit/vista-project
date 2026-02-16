@@ -154,3 +154,38 @@ class PostCommentButton extends StatelessWidget {
     );
   }
 }
+
+class PostSaveButton extends StatelessWidget {
+  final bool isSaved;
+  final VoidCallback onTap;
+  final double iconSize;
+  final Color? activeColor;
+
+  const PostSaveButton({
+    super.key,
+    required this.isSaved,
+    required this.onTap,
+    this.iconSize = 22,
+    this.activeColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final baseColor = isDark ? Colors.white70 : Colors.black54;
+    final savedColor = activeColor ?? Theme.of(context).colorScheme.primary;
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+        child: Icon(
+          isSaved ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
+          size: iconSize,
+          color: isSaved ? savedColor : baseColor,
+        ),
+      ),
+    );
+  }
+}

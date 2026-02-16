@@ -33,10 +33,12 @@ import '../../../services/smart_share_service.dart';
 import 'package:Vista/features/posts/widgets/standard_edit_post_dialog.dart';
 import 'package:Vista/features/posts/widgets/post_music_bubble.dart';
 import '../../../../features/posts/providers/post_upload_provider.dart';
+import '../providers/saved_posts_provider.dart';
 import 'notificationScreen.dart';
 import 'profileScreen.dart';
 import 'dart:async';
 import '../../../utils/premium_features_helper.dart';
+import '../../../utils/user_friendly_error_utils.dart';
 
 class PublicPostsScreen extends ConsumerStatefulWidget {
   const PublicPostsScreen({super.key});
@@ -988,27 +990,58 @@ Widget _buildPostItem(
                     ),
                   ],
                 ),
-                // دکمه اشتراک‌گذاری
-                GestureDetector(
-                  onTap: () {
-                    VistaNodeService.trackFeedEvent(
-                      postId: post.id,
-                      eventType: 'share',
-                    );
-                    SmartShareService().showShareOptions(post, context);
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.all(8),
-                    color: Colors.transparent,
-                    child: Image.asset(
-                      'lib/utils/images/component/send.png',
-                      width: 24,
-                      height: 24,
-                      color: Theme.of(context).brightness == Brightness.dark
-                          ? Colors.white
-                          : Colors.black87,
+                Row(
+                  children: [
+                    Consumer(
+                      builder: (context, ref, child) {
+                        final savedPostIdsAsync =
+                            ref.watch(savedPostIdsProvider);
+                        final isSaved = savedPostIdsAsync.maybeWhen(
+                          data: (ids) => ids.contains(post.id),
+                          orElse: () => false,
+                        );
+
+                        return SaveButton(
+                          isSaved: isSaved,
+                          onTap: () async {
+                            final ok = await ref
+                                .read(savedPostIdsProvider.notifier)
+                                .toggle(post.id, post: post);
+                            if (!ok && context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('خطا در ذخیره پست'),
+                                ),
+                              );
+                            }
+                          },
+                        );
+                      },
                     ),
-                  ),
+                    const SizedBox(width: 12),
+                    // دکمه اشتراک‌گذاری
+                    GestureDetector(
+                      onTap: () {
+                        VistaNodeService.trackFeedEvent(
+                          postId: post.id,
+                          eventType: 'share',
+                        );
+                        SmartShareService().showShareOptions(post, context);
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        color: Colors.transparent,
+                        child: Image.asset(
+                          'lib/utils/images/component/send.png',
+                          width: 24,
+                          height: 24,
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? Colors.white
+                              : Colors.black87,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -1801,22 +1834,8 @@ void showEditPostDialog(
                             setState(() {
                               isLoading = false;
                             });
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Row(
-                                  children: [
-                                    Icon(Icons.error, color: Colors.white),
-                                    const SizedBox(width: 8),
-                                    Text('خطا در ویرایش پست: $e'),
-                                  ],
-                                ),
-                                backgroundColor: Colors.red,
-                                behavior: SnackBarBehavior.floating,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                              ),
-                            );
+                            UserFriendlyErrorUtils.showErrorSnackBar(
+                                context, e);
                           }
                         }
                       },
@@ -2134,9 +2153,7 @@ void _showDeleteConfirmation(
               } catch (e) {
                 if (context.mounted) {
                   Navigator.of(context).pop();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('خطا در حذف پست: $e')),
-                  );
+                  UserFriendlyErrorUtils.showErrorSnackBar(context, e);
                 }
               }
             },
@@ -2303,6 +2320,35 @@ class CommentButton extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class SaveButton extends StatelessWidget {
+  final bool isSaved;
+  final VoidCallback onTap;
+
+  const SaveButton({
+    super.key,
+    required this.isSaved,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final savedColor = Theme.of(context).colorScheme.primary;
+    final baseColor = Theme.of(context).brightness == Brightness.dark
+        ? Colors.white70
+        : Colors.black54;
+
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Icon(
+        isSaved ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
+        size: 28,
+        color: isSaved ? savedColor : baseColor,
       ),
     );
   }

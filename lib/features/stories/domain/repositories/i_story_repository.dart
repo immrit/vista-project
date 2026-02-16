@@ -158,6 +158,21 @@ abstract class IStoryRepository {
 
   /// به‌روزرسانی لیست دوستان نزدیک
   Future<StoryResult<void>> updateCloseFriends(List<String> userIds);
+
+  /// دریافت تنظیمات اجازه پاسخ به استوری
+  /// اگر `userId` ارسال نشود، تنظیمات کاربر فعلی برگردانده می‌شود.
+  Future<StoryResult<StoryReplyPermission>> getStoryReplyPermission(
+      {String? userId});
+
+  /// به‌روزرسانی تنظیمات اجازه پاسخ به استوری کاربر فعلی
+  Future<StoryResult<void>> updateStoryReplyPermission(
+      StoryReplyPermission permission);
+
+  /// بررسی اینکه کاربر فعلی اجازه پاسخ به این استوری را دارد یا نه
+  Future<StoryResult<bool>> canReplyToStory({
+    required String storyId,
+    required String ownerId,
+  });
 }
 
 /// مدل بازدیدکننده استوری

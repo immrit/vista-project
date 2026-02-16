@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../model/publicPostModel.dart';
 import '../../../services/vista_story_template_generator.dart';
+import '../../../utils/user_friendly_error_utils.dart';
 import 'package:Vista/widgets/vista_story_template_widget.dart';
 
 /// صفحه ویرایش و سفارشی‌سازی قالب استوری Vista
@@ -143,12 +144,7 @@ class _VistaStoryTemplateScreenState extends State<VistaStoryTemplateScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('خطا در تولید تصویر: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        UserFriendlyErrorUtils.showErrorSnackBar(context, e);
       }
     } finally {
       if (mounted) {
@@ -189,12 +185,7 @@ class _VistaStoryTemplateScreenState extends State<VistaStoryTemplateScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('خطا در اشتراک‌گذاری: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        UserFriendlyErrorUtils.showErrorSnackBar(context, e);
       }
     } finally {
       if (mounted) {

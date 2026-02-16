@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../../provider/MusicProvider.dart';
+import '../../../utils/user_friendly_error_utils.dart';
 import 'package:Vista/features/music/screens/MusicDownloadManager.dart';
 
 class MusicWaveform extends ConsumerStatefulWidget {
@@ -192,12 +193,7 @@ class _MusicWaveformState extends ConsumerState<MusicWaveform>
       logDebug('خطا در دانلود: $e');
       logDebug('جزئیات خطا: $stackTrace');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('خطا در دانلود: $e'),
-            duration: const Duration(seconds: 3),
-          ),
-        );
+        UserFriendlyErrorUtils.showErrorSnackBar(context, e);
       }
     } finally {
       if (mounted) {

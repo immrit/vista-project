@@ -40,8 +40,7 @@ class StickerFactory {
         return WeatherStickerWidget(element: element, isEditable: isEditable);
 
       case StoryInteractionType.question:
-        // Question stickers - for now using text rendering
-        // TODO: Create dedicated QuestionStickerWidget
+        // Question stickers use the dedicated card style below.
         return _buildQuestionSticker(element);
 
       case StoryInteractionType.none:

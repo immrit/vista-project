@@ -18,15 +18,12 @@ class WeatherStickerWidget extends StatelessWidget {
     }
 
     final data = element.interactionData ?? {};
-    final String city = data['city'] ?? 'Tehran';
-    final int temp = data['temperature'] is int
-        ? data['temperature']
-        : int.tryParse(data['temperature'].toString()) ?? 24;
-    final int weatherCode = data['weathercode'] as int? ?? 0;
+    final String city = data['city']?.toString() ?? 'Location';
+    final int? temp = data.containsKey('temperature')
+        ? int.tryParse(data['temperature'].toString())
+        : null;
+    final int weatherCode = int.tryParse('${data['weathercode'] ?? ''}') ?? 0;
 
-    // 0: Classic (Big Temp + Icon)
-    // 1: Minimal Row
-    // 2: Card with Detail
     final int style = element.styleIndex % 3;
 
     return AnimatedSwitcher(
@@ -39,7 +36,7 @@ class WeatherStickerWidget extends StatelessWidget {
   }
 
   Widget _buildStyle(
-      BuildContext context, int style, String city, int temp, int code) {
+      BuildContext context, int style, String city, int? temp, int code) {
     final iconData = _getWeatherIcon(code);
     final weatherDesc = _getWeatherDescription(code);
 
@@ -54,7 +51,7 @@ class WeatherStickerWidget extends StatelessWidget {
     }
   }
 
-  Widget _buildClassicStyle(String city, int temp, IconData icon) {
+  Widget _buildClassicStyle(String city, int? temp, IconData icon) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
@@ -77,7 +74,7 @@ class WeatherStickerWidget extends StatelessWidget {
               Icon(icon, color: Colors.orange, size: 32),
               const SizedBox(width: 8),
               Text(
-                '$temp°',
+                '${_formatTemp(temp)}°',
                 style: const TextStyle(
                   color: Colors.black87,
                   fontSize: 32,
@@ -100,7 +97,7 @@ class WeatherStickerWidget extends StatelessWidget {
     );
   }
 
-  Widget _buildMinimalRowStyle(String city, int temp, IconData icon) {
+  Widget _buildMinimalRowStyle(String city, int? temp, IconData icon) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
@@ -114,7 +111,7 @@ class WeatherStickerWidget extends StatelessWidget {
           Icon(icon, color: Colors.yellow, size: 18),
           const SizedBox(width: 6),
           Text(
-            '$temp°C',
+            '${_formatTemp(temp)}°C',
             style: const TextStyle(
               color: Colors.white,
               fontSize: 16,
@@ -139,7 +136,7 @@ class WeatherStickerWidget extends StatelessWidget {
     );
   }
 
-  Widget _buildCardStyle(String city, int temp, IconData icon, String desc) {
+  Widget _buildCardStyle(String city, int? temp, IconData icon, String desc) {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -167,7 +164,7 @@ class WeatherStickerWidget extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                '$temp°',
+                '${_formatTemp(temp)}°',
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 24,
@@ -190,7 +187,6 @@ class WeatherStickerWidget extends StatelessWidget {
   }
 
   IconData _getWeatherIcon(int code) {
-    // Simply map codes to material icons
     if (code == 0) return Icons.wb_sunny;
     if (code <= 3) return Icons.wb_cloudy;
     if (code <= 48) return Icons.foggy;
@@ -208,5 +204,10 @@ class WeatherStickerWidget extends StatelessWidget {
     if (code <= 77) return 'Snowy';
     if (code <= 99) return 'Stormy';
     return 'Normal';
+  }
+
+  String _formatTemp(int? temp) {
+    if (temp == null) return '--';
+    return temp.toString();
   }
 }

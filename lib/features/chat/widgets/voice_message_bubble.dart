@@ -609,12 +609,18 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble>
     }
 
     final sender = widget.senderName?.trim();
-    if (sender != null && sender.isNotEmpty) {
+    if (sender != null &&
+        sender.isNotEmpty &&
+        sender != 'کاربر ناشناس' &&
+        sender != 'کاربر') {
       return sender;
     }
 
     final conversation = widget.conversationTitle?.trim();
-    if (conversation != null && conversation.isNotEmpty) {
+    if (conversation != null &&
+        conversation.isNotEmpty &&
+        conversation != 'کاربر ناشناس' &&
+        conversation != 'کاربر') {
       return conversation;
     }
 

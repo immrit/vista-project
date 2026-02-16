@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 class WeatherService {
@@ -10,32 +12,33 @@ class WeatherService {
       double lat, double lng) async {
     try {
       final uri = Uri.parse(
-          '$_baseUrl?latitude=$lat&longitude=$lng&current_weather=true');
+          '$_baseUrl?latitude=$lat&longitude=$lng&current_weather=true&current=temperature_2m,weather_code&timezone=auto&forecast_days=1');
 
-      final response = await http.get(uri);
+      final response = await http.get(uri).timeout(const Duration(seconds: 8));
 
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        final current = data['current_weather'];
-        if (current != null) {
-          return {
-            'temperature': (current['temperature'] as num).round(),
-            'weathercode': (current['weathercode'] as num).toInt(),
-          };
-          // Weather Codes:
-          // 0: Clear sky
-          // 1, 2, 3: Mainly clear, partly cloudy, and overcast
-          // 45, 48: Fog
-          // 51, 53, 55: Drizzle
-          // 61, 63, 65: Rain
-          // 71, 73, 75: Snow fall
-          // 95, 96, 99: Thunderstorm
-        }
+      if (response.statusCode != 200) {
+        return null;
       }
+
+      final data = json.decode(response.body) as Map<String, dynamic>;
+      final currentWeather = data['current_weather'] as Map<String, dynamic>?;
+      final current = data['current'] as Map<String, dynamic>?;
+
+      final tempRaw =
+          currentWeather?['temperature'] ?? current?['temperature_2m'];
+      final codeRaw =
+          currentWeather?['weathercode'] ?? current?['weather_code'];
+
+      if (tempRaw is num && codeRaw is num) {
+        return {
+          'temperature': tempRaw.round(),
+          'weathercode': codeRaw.toInt(),
+        };
+      }
+
       return null;
     } catch (e) {
-      // In a real app, log error to reporting service
-      print('Error fetching weather: $e');
+      debugPrint('WeatherService error: $e');
       return null;
     }
   }

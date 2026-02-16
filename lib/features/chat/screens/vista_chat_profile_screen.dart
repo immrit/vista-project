@@ -18,14 +18,19 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:photo_view/photo_view.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 import 'package:shimmer/shimmer.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../model/message_model.dart';
 import '../../../provider/chat_provider.dart' as legacy_chat;
 import '../../../provider/chat_screen_provider.dart';
 import 'ChatMessageSearchScreen.dart';
+import '../widgets/block_report_bottom_sheet.dart';
+import '../widgets/full_screen_image_viewer.dart';
 
 import '../../../features/chat/providers/chat_providers.dart';
 import '../../../provider/provider.dart';
+import '../../../utils/user_friendly_error_utils.dart';
 import '../../posts/screens/profileScreen.dart';
 
 /// صفحه جزئیات چت - Vista
@@ -553,7 +558,7 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
                     size: 22,
                   ),
                   onPressed: () {
-                    // TODO: نمایش QR Code
+                    _showQrDialog(username);
                   },
                 ),
               ),
@@ -878,7 +883,7 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
         icon: Icon(Icons.download_outlined,
             color: isDark ? Colors.white60 : Colors.grey[600]),
         onPressed: () {
-          // TODO: دانلود فایل
+          _downloadFile(file);
         },
       ),
     );
@@ -1353,7 +1358,124 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
 
   void _showMediaViewer(
       MessageModel message, int index, List<MessageModel> mediaMessages) {
-    // TODO: نمایش‌دهنده گالری
+    final url = message.attachmentUrl?.trim();
+    if (url == null || url.isEmpty) {
+      _showSnackBar('لینک رسانه معتبر نیست', isError: true);
+      return;
+    }
+
+    if (message.attachmentType == 'video') {
+      final uri = Uri.tryParse(url);
+      if (uri == null) {
+        _showSnackBar('لینک ویدیو معتبر نیست', isError: true);
+        return;
+      }
+      launchUrl(uri, mode: LaunchMode.externalApplication).then((launched) {
+        if (!launched && mounted) {
+          _showSnackBar('امکان باز کردن ویدیو وجود ندارد', isError: true);
+        }
+      }).catchError((e) {
+        if (mounted) {
+          UserFriendlyErrorUtils.showErrorSnackBar(context, e);
+        }
+      });
+      return;
+    }
+
+    final imageMessages = mediaMessages
+        .where((m) =>
+            m.attachmentType == 'image' &&
+            (m.attachmentUrl?.isNotEmpty ?? false))
+        .toList();
+    if (imageMessages.isEmpty) {
+      _showSnackBar('رسانه‌ای برای نمایش وجود ندارد', isError: true);
+      return;
+    }
+
+    var initialIndex = imageMessages.indexWhere((m) => m.id == message.id);
+    if (initialIndex < 0) {
+      initialIndex = 0;
+    }
+
+    final items = imageMessages
+        .map(
+          (m) => GalleryItem(
+            imageUrl: m.attachmentUrl!,
+            caption: m.content.isEmpty ? null : m.content,
+            heroTag: 'media_${m.id}',
+          ),
+        )
+        .toList();
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => FullScreenImageViewer(
+          galleryItems: items,
+          initialIndex: initialIndex,
+        ),
+      ),
+    );
+  }
+
+  void _showQrDialog(String username) {
+    final normalized = username.trim();
+    if (normalized.isEmpty) {
+      _showSnackBar('نام کاربری معتبر نیست', isError: true);
+      return;
+    }
+
+    final qrData = 'vista://user/$normalized';
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('کد کاربری'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            QrImageView(
+              data: qrData,
+              size: 190,
+              backgroundColor: Colors.white,
+            ),
+            const SizedBox(height: 12),
+            Text('@$normalized', textDirection: TextDirection.ltr),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('بستن'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _downloadFile(MessageModel file) async {
+    final url = file.attachmentUrl?.trim();
+    if (url == null || url.isEmpty) {
+      _showSnackBar('لینک فایل یافت نشد', isError: true);
+      return;
+    }
+
+    final uri = Uri.tryParse(url);
+    if (uri == null) {
+      _showSnackBar('لینک فایل معتبر نیست', isError: true);
+      return;
+    }
+
+    try {
+      final launched =
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!launched && mounted) {
+        _showSnackBar('امکان باز کردن فایل وجود ندارد', isError: true);
+      }
+    } catch (e) {
+      if (mounted) {
+        UserFriendlyErrorUtils.showErrorSnackBar(context, e);
+      }
+    }
   }
 
   void _showOptionsMenu(BuildContext context) {
@@ -1492,8 +1614,17 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
   }
 
   void _showReportDialog() {
-    // TODO: دیالوگ گزارش
-    _showSnackBar('قابلیت گزارش در حال توسعه است');
+    BlockReportBottomSheet.show(
+      context: context,
+      userId: widget.otherUserId,
+      userName: widget.otherUserName,
+      isCurrentlyBlocked: false,
+      type: ModerationType.report,
+    ).then((submitted) {
+      if (submitted == true && mounted) {
+        _showSnackBar('گزارش شما ثبت شد');
+      }
+    });
   }
 
   void _showDeleteDialog() {

@@ -1,11 +1,10 @@
 // lib/features/chat/widgets/improved_animated_message_bubble.dart
-//
-// حباب پ�Oا�. با �?�.ا�Oش ز�.ا�? ثابت �^ ش�?ا�^ر ب�?ب�^د �Oافت�?
-//
 
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/services.dart';
+import 'package:path/path.dart' as p;
+import 'dart:io';
 import '../theme/chat_theme.dart';
 import '../../../utils/compat_extensions.dart';
 import 'voice_message_bubble.dart';
@@ -17,8 +16,11 @@ import '../../../services/telegram_read_receipt_service.dart';
 import '../../../model/message_model.dart';
 import '../../../utils/rich_text_parser.dart';
 import '../../../utils/navigation_helper.dart';
+import '../../../utils/user_friendly_error_utils.dart';
+import '../performance/chat_performance_profile.dart';
+import '../performance/motion_tokens.dart';
 
-/// �^ضع�Oت پ�Oا�.
+/// Message delivery state for the bubble widget.
 enum MessageStatus {
   pending,
   sent,
@@ -27,7 +29,7 @@ enum MessageStatus {
   failed,
 }
 
-/// �^اک�?ش پ�Oا�.
+/// Aggregated reaction model used by bubble UI.
 class MessageReaction {
   final String emoji;
   final int count;
@@ -83,14 +85,15 @@ class ImprovedAnimatedMessageBubble extends StatefulWidget {
   final String? attachmentUrl;
   final String? attachmentType;
   final String? attachmentFileName;
-  final int? duration; // برا�O voice messages
+  final int? duration; // For voice messages
 
   // Forwarding
   final bool isForwarded;
   final String? forwardedFrom;
   final VoidCallback? onRetryUpload;
+  final ChatEffectsLevel effectsLevel;
 
-  // �o. MessageModel برا�O دسترس�O ب�? statusNotifier
+  // Optional full message model to use status notifier and richer metadata.
   final MessageModel? message;
 
   const ImprovedAnimatedMessageBubble({
@@ -125,6 +128,7 @@ class ImprovedAnimatedMessageBubble extends StatefulWidget {
     this.isForwarded = false,
     this.forwardedFrom,
     this.onRetryUpload,
+    this.effectsLevel = ChatEffectsLevel.high,
     this.message,
   });
 
@@ -143,17 +147,9 @@ class _ImprovedAnimatedMessageBubbleState
   late Animation<Offset> _slideAnimation;
   late Animation<double> _scaleAnimation;
 
-  // �Y'^ اضاف�? کرد�? �.�?ط�, KeepAlive
   @override
   bool get wantKeepAlive {
-    // ف�,ط در ا�O�? شرا�Oط �^�Oجت را در حافظ�? �?گ�? دار:
-    // ۱. اگر �^�Oس در حا�" پخش است (با�Oد از سر�^�Oس پ�"�Oر �?ک ش�^د - در �.راح�" بعد اضاف�? �.�O�?Oک�?�O�.)
-    // ۲. اگر �^�Oد�O�^ در حا�" پخش است
-    // ۳. �Oا اگر در حا�" آپ�"�^د است
-
-    // فع�"ا برا�O آپ�"�^د �^ �.د�Oا�?ا�O در حا�" پخش true بر�.�O�?Oگردا�?�O�.
     final isUploading = widget.message?.isUploading ?? false;
-    // ا�O�?جا بعدا شرط isPlayingAudio را اضاف�? �.�O�?Oک�?�O�.
     return isUploading;
   }
 
@@ -197,9 +193,12 @@ class _ImprovedAnimatedMessageBubbleState
   }
 
   void _setupAnimations() {
-    // Faster animation for snappier optimistic message insertion
+    final entryDuration = MotionTokens.messageEntry(
+      effectsLevel: widget.effectsLevel,
+      profile: MotionProfile.balanced,
+    );
     _controller = AnimationController(
-      duration: const Duration(milliseconds: 200),
+      duration: entryDuration,
       vsync: this,
     );
 
@@ -208,8 +207,13 @@ class _ImprovedAnimatedMessageBubbleState
       end: 1.0,
     ).animate(CurvedAnimation(
       parent: _controller,
-      // Fade completes earlier to make the bubble visible quickly
-      curve: const Interval(0.0, 0.4, curve: Curves.easeOut),
+      curve: switch (widget.effectsLevel) {
+        ChatEffectsLevel.low => const Interval(0.0, 0.3, curve: Curves.linear),
+        ChatEffectsLevel.medium =>
+          const Interval(0.0, 0.4, curve: Curves.easeOut),
+        ChatEffectsLevel.high =>
+          const Interval(0.0, 0.45, curve: Curves.easeOut),
+      },
     ));
 
     _slideAnimation = Tween<Offset>(
@@ -217,8 +221,13 @@ class _ImprovedAnimatedMessageBubbleState
       end: Offset.zero,
     ).animate(CurvedAnimation(
       parent: _controller,
-      // Slightly shorter slide interval to speed entry
-      curve: const Interval(0.0, 0.7, curve: Curves.easeOutCubic),
+      curve: switch (widget.effectsLevel) {
+        ChatEffectsLevel.low => const Interval(0.0, 0.5, curve: Curves.linear),
+        ChatEffectsLevel.medium =>
+          const Interval(0.0, 0.65, curve: Curves.easeOutCubic),
+        ChatEffectsLevel.high =>
+          const Interval(0.0, 0.75, curve: Curves.easeOutCubic),
+      },
     ));
 
     _scaleAnimation = Tween<double>(
@@ -226,8 +235,13 @@ class _ImprovedAnimatedMessageBubbleState
       end: 1.0,
     ).animate(CurvedAnimation(
       parent: _controller,
-      // Use easeOutBack for a quick, pleasant pop
-      curve: const Interval(0.0, 0.7, curve: Curves.easeOutBack),
+      curve: switch (widget.effectsLevel) {
+        ChatEffectsLevel.low => const Interval(0.0, 0.4, curve: Curves.linear),
+        ChatEffectsLevel.medium =>
+          const Interval(0.0, 0.65, curve: Curves.easeOut),
+        ChatEffectsLevel.high =>
+          const Interval(0.0, 0.7, curve: Curves.easeOutBack),
+      },
     ));
   }
 
@@ -239,8 +253,7 @@ class _ImprovedAnimatedMessageBubbleState
 
   @override
   Widget build(BuildContext context) {
-    super.build(
-        context); // �Y'^ حت�.ا ا�O�? را صدا بز�? برا�O AutomaticKeepAliveClientMixin
+    super.build(context);
     final theme = context.chatTheme;
     const edgeInset = 1.0;
     const oppositeInset = 30.0;
@@ -303,17 +316,14 @@ class _ImprovedAnimatedMessageBubbleState
 
   Widget _buildMessageBubble(ChatTheme theme) {
     final canonicalType = _canonicalAttachmentType();
-    // تشخ�Oص �.�Oد�O�. ک�? آ�Oا پ�Oا�. �.د�Oا (عکس/�^�Oد�O�^) �?ست �Oا �?�?
     final isMedia = (canonicalType == 'image' || canonicalType == 'video') &&
         widget.attachmentUrl != null;
 
     return Container(
-      // برا�O �.د�Oا�O ClipRRect ر�^ اع�.ا�" �.�Oک�?�O�. تا گ�^ش�?�?O�?ا گرد بش�?
       clipBehavior: isMedia ? Clip.antiAlias : Clip.none,
       decoration: BoxDecoration(
         color: widget.isMe ? theme.myBubbleColor : theme.otherBubbleColor,
         borderRadius: _getBorderRadius(theme),
-        // �o. سا�O�? حذف شد برا�O پرف�^ر�.�?س
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -324,11 +334,7 @@ class _ImprovedAnimatedMessageBubbleState
           if (widget.message?.storyReplyData != null)
             _buildStoryReplySection(theme),
           if (widget.replyToContent != null) _buildReplySection(theme),
-
-          // �.حت�^ا�O اص�"�O
           _buildContent(theme),
-
-          // برا�O �.د�Oا�O ر�O�?Oاکش�?�?O�?ا ر�^ ر�^�O عکس �?�?د�" �.�Oک�?�O�. �Oا پا�O�O�?ش (ت�"گرا�. پا�O�O�?ش �.�Oذار�?)
           if (widget.reactions.isNotEmpty) _buildReactionsSection(theme),
         ],
       ),
@@ -419,7 +425,7 @@ class _ImprovedAnimatedMessageBubbleState
           ),
         ),
         child: Column(
-          mainAxisSize: MainAxisSize.min, // �o. رفع خطا�O Overflow
+          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
@@ -452,13 +458,15 @@ class _ImprovedAnimatedMessageBubbleState
     final storyData = widget.message?.storyReplyData;
     if (storyData == null) return const SizedBox.shrink();
 
+    final ownerUsername = storyData.storyOwnerUsername.trim().isNotEmpty
+        ? storyData.storyOwnerUsername
+        : 'کاربر';
     final isExpired = _isStoryReplyExpired(storyData);
-    final headerText = widget.isMe
-        ? 'پاسخ ب�? است�^ر�O ${storyData.storyOwnerUsername}'
-        : 'پاسخ ب�? است�^ر�O ش�.ا';
+    final headerText =
+        widget.isMe ? 'پاسخ به استوری $ownerUsername' : 'پاسخ به استوری شما';
     final secondaryText = isExpired
-        ? 'است�^ر�O �.�?�,ض�O شد�?'
-        : (storyData.storyMediaType == 'video' ? '�^�Oد�O�^' : 'تص�^�Oر');
+        ? 'استوری در دسترس نیست'
+        : (storyData.storyMediaType == 'video' ? 'ویدیو' : 'تصویر');
 
     return GestureDetector(
       onTap: widget.onStoryReplyTap != null
@@ -606,7 +614,10 @@ class _ImprovedAnimatedMessageBubbleState
   }
 
   bool _isStoryReplyExpired(StoryReplyData data) {
-    final expiresAt = data.storyCreatedAt.add(const Duration(hours: 24));
+    final expiresAt = data.storyExpiresAt ??
+        data.storyCreatedAt.add(
+          Duration(hours: data.storyDurationHours ?? 24),
+        );
     return DateTime.now().isAfter(expiresAt);
   }
 
@@ -630,12 +641,10 @@ class _ImprovedAnimatedMessageBubbleState
       return _buildFailedLocalAttachment(theme);
     }
 
-    // 1. �?�.ا�Oش GIF �o. اضاف�? شد�?
     if ((widget.attachmentType == 'gif' ||
             widget.message?.messageType == 'gif') &&
         widget.attachmentUrl != null &&
         widget.attachmentUrl!.isNotEmpty) {
-      // ا�O�?جا �.ط�.ئ�? �.�O�?Oش�^�O�. ک�? آبجکت �.س�Oج دار�O�.
       if (widget.message != null) {
         return Padding(
           padding: const EdgeInsets.all(8),
@@ -668,7 +677,6 @@ class _ImprovedAnimatedMessageBubbleState
             audioAlbum: widget.message?.audioAlbum,
             caption: widget.content,
           ),
-          // ز�.ا�? �^ ت�Oک داخ�" حباب - ف�,ط ا�O�? �,س�.ت با ValueListenableBuilder rebuild �.�Oش�?
           Padding(
             padding: const EdgeInsets.only(left: 12, right: 12, bottom: 6),
             child: _buildTimeAndStatus(theme),
@@ -683,19 +691,18 @@ class _ImprovedAnimatedMessageBubbleState
         widget.attachmentUrl!.isNotEmpty) {
       final isVideo = canonicalType == 'video';
 
-      // �o. تغ�O�Oر �.�?�.: �.د�Oا باب�" ر�^ �.ست�,�O�. بر�.�O�?Oگرد�^�?�O�. بد�^�? پد�O�?گ اضاف�?
       return MediaMessageBubble(
-        message: widget
-            .message, // پاس داد�? ک�" �.د�" پ�Oا�. برا�O دسترس�O ب�? �^ضع�Oت�?O�?ا
+        message: widget.message,
         mediaUrl: widget.attachmentUrl!,
         mediaType: isVideo ? MediaType.video : MediaType.image,
         isMe: widget.isMe,
         time: widget.time,
         caption: widget.content.isNotEmpty ? widget.content : null,
         videoDuration: isVideo ? widget.duration : null,
-        // پاس داد�? �^ضع�Oت آپ�"�^د
         isUploading: widget.status == MessageStatus.pending ||
             (widget.message?.isUploading ?? false),
+        effectsLevel: widget.effectsLevel,
+        allowHeavyEffects: widget.effectsLevel == ChatEffectsLevel.high,
       );
     }
 
@@ -703,10 +710,16 @@ class _ImprovedAnimatedMessageBubbleState
     if (widget.attachmentUrl != null &&
         widget.attachmentUrl!.isNotEmpty &&
         (canonicalType == 'document' || canonicalType == 'unknown')) {
+      final resolvedFileName = (widget.attachmentFileName?.trim().isNotEmpty ??
+              false)
+          ? widget.attachmentFileName!.trim()
+          : ((widget.message?.attachmentFileName?.trim().isNotEmpty ?? false)
+              ? widget.message!.attachmentFileName!.trim()
+              : 'File');
       return FileMessageBubble(
         messageId: widget.messageId,
         fileUrl: widget.attachmentUrl!,
-        fileName: widget.attachmentFileName ?? 'File',
+        fileName: resolvedFileName,
         fileSizeBytes: widget.message?.attachmentSizeBytes,
         localFilePath: widget.message?.localFilePath,
         isMe: widget.isMe,
@@ -714,14 +727,12 @@ class _ImprovedAnimatedMessageBubbleState
       );
     }
 
-    // Text message - با ساعت inline در پا�O�O�? س�.ت �?پ
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          // �.حت�^ا�O �.ت�?�O
           Flexible(
             child: widget.content.isNotEmpty
                 ? RichText(
@@ -758,7 +769,6 @@ class _ImprovedAnimatedMessageBubbleState
                 : const SizedBox.shrink(),
           ),
           const SizedBox(width: 8),
-          // �o. ز�.ا�? �^ ت�Oک - ف�,ط ا�O�? �,س�.ت rebuild �.�Oش�?
           _buildTimeAndStatus(theme),
         ],
       ),
@@ -769,18 +779,47 @@ class _ImprovedAnimatedMessageBubbleState
     final raw = (widget.message?.attachmentType ?? widget.attachmentType ?? '')
         .trim()
         .toLowerCase();
-    if (raw.isEmpty) return 'unknown';
-
-    if (raw == 'image') return 'image';
-    if (raw == 'video') return 'video';
-    if (raw == 'voice') return 'voice';
-    if (raw == 'audio') return 'audio';
-    if (raw == 'document' || raw == 'pdf' || raw == 'file') {
-      return 'document';
+    if (raw.isNotEmpty) {
+      if (raw == 'image') return 'image';
+      if (raw == 'video') return 'video';
+      if (raw == 'voice') return 'voice';
+      if (raw == 'audio') return 'audio';
+      if (raw == 'document' || raw == 'pdf' || raw == 'file') {
+        return 'document';
+      }
+      if (raw.startsWith('image/')) return 'image';
+      if (raw.startsWith('audio/')) return 'audio';
+      if (raw.startsWith('video/')) return 'video';
     }
-    if (raw.startsWith('image/')) return 'image';
-    if (raw.startsWith('audio/')) return 'audio';
-    if (raw.startsWith('video/')) return 'video';
+
+    final mime =
+        (widget.message?.attachmentMimeType ?? '').trim().toLowerCase();
+    if (mime.startsWith('image/')) return 'image';
+    if (mime.startsWith('audio/')) return 'audio';
+    if (mime.startsWith('video/')) return 'video';
+
+    final fileName = widget.message?.attachmentFileName ?? '';
+    final url = widget.message?.attachmentUrl ?? widget.attachmentUrl ?? '';
+    final ext = p
+        .extension(fileName.isNotEmpty ? fileName : url)
+        .replaceFirst('.', '')
+        .toLowerCase();
+    const imageExts = {
+      'jpg',
+      'jpeg',
+      'png',
+      'gif',
+      'webp',
+      'bmp',
+      'heic',
+      'heif',
+    };
+    const audioExts = {'mp3', 'm4a', 'aac', 'wav', 'ogg', 'flac'};
+    const videoExts = {'mp4', 'mov', 'm4v', 'webm', 'mkv', 'avi'};
+
+    if (imageExts.contains(ext)) return 'image';
+    if (audioExts.contains(ext)) return 'audio';
+    if (videoExts.contains(ext)) return 'video';
 
     return 'unknown';
   }
@@ -797,8 +836,74 @@ class _ImprovedAnimatedMessageBubbleState
     if (canonicalType == 'audio' || canonicalType == 'voice') {
       return _buildUploadingAudioAttachment(theme, progress, pct, fileName);
     }
+    if (canonicalType == 'image') {
+      return _buildUploadingImageAttachment(theme, progress, pct);
+    }
 
     return _buildUploadingDocumentAttachment(theme, progress, pct, fileName);
+  }
+
+  Widget _buildUploadingImageAttachment(
+    ChatTheme theme,
+    double progress,
+    String pct,
+  ) {
+    final localPath =
+        widget.message?.localFilePath ?? widget.message?.localImagePath;
+    final localFile =
+        (localPath != null && localPath.isNotEmpty) ? File(localPath) : null;
+    final hasLocalImage = localFile != null && localFile.existsSync();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        AspectRatio(
+          aspectRatio: 1,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                if (hasLocalImage)
+                  Image.file(localFile, fit: BoxFit.cover)
+                else
+                  Container(color: theme.otherBubbleColor.withOpacity(0.3)),
+                Container(color: Colors.black.withOpacity(0.22)),
+                Center(
+                  child: _buildUploadProgressCircle(
+                    theme: theme,
+                    progress: progress,
+                    size: 54,
+                    strokeWidth: 3,
+                    centerLabel: '$pct%',
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (widget.content.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(10, 8, 10, 2),
+            child: Text(
+              widget.content,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: widget.isMe
+                    ? theme.myBubbleTextColor
+                    : theme.otherBubbleTextColor,
+                fontSize: 13,
+              ),
+            ),
+          ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(10, 4, 10, 6),
+          child: _buildTimeAndStatus(theme),
+        ),
+      ],
+    );
   }
 
   Widget _buildUploadingDocumentAttachment(
@@ -842,7 +947,7 @@ class _ImprovedAnimatedMessageBubbleState
           ),
           const SizedBox(height: 6),
           Text(
-            'Uploading • $pct%',
+            'در حال آپلود - $pct%',
             style: TextStyle(
               color: widget.isMe
                   ? theme.myBubbleTextColor.withOpacity(0.8)
@@ -967,7 +1072,7 @@ class _ImprovedAnimatedMessageBubbleState
           ),
           const SizedBox(height: 6),
           Text(
-            'Uploading audio • $pct%',
+            'در حال آپلود صدا - $pct%',
             style: TextStyle(
               color: widget.isMe
                   ? theme.myBubbleTextColor.withOpacity(0.8)
@@ -1074,7 +1179,9 @@ class _ImprovedAnimatedMessageBubbleState
           ),
           const SizedBox(height: 8),
           Text(
-            widget.message?.errorMessage ?? 'آپ�"�^د ا�?جا�. �?شد',
+            UserFriendlyErrorUtils.getUserFriendlyMessage(
+              widget.message?.errorMessage ?? 'آپلود انجام نشد',
+            ),
             style: TextStyle(
               color: theme.errorColor,
               fontSize: 12,
@@ -1092,7 +1199,7 @@ class _ImprovedAnimatedMessageBubbleState
                 minimumSize: Size.zero,
               ),
               icon: const Icon(Icons.refresh_rounded, size: 16),
-              label: const Text('ت�"اش �.جدد'),
+              label: const Text('تلاش مجدد'),
             ),
           ],
           const SizedBox(height: 6),
@@ -1102,9 +1209,7 @@ class _ImprovedAnimatedMessageBubbleState
     );
   }
 
-  // �o. Build time and status - ف�,ط ا�O�? �,س�.ت rebuild �.�Oش�?
   Widget _buildTimeAndStatus(ChatTheme theme) {
-    // �o. اگر message �.�^ج�^د باش�?�O از ValueListenableBuilder استفاد�? ک�?
     if (widget.message != null) {
       return ValueListenableBuilder<MessageDeliveryStatus>(
         valueListenable: widget.message!.statusNotifier,
@@ -1132,7 +1237,6 @@ class _ImprovedAnimatedMessageBubbleState
       );
     }
 
-    // Fallback ب�? ر�^ش �,د�O�.�O
     final deliveryStatus = _convertToDeliveryStatus(widget.status);
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -1179,7 +1283,7 @@ class _ImprovedAnimatedMessageBubbleState
     );
   }
 
-  /// تبد�O�" MessageStatus ب�? MessageDeliveryStatus
+  /// Convert old local status enum to delivery status used by Telegram ticks.
   MessageDeliveryStatus _convertToDeliveryStatus(MessageStatus status) {
     switch (status) {
       case MessageStatus.pending:

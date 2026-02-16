@@ -23,8 +23,10 @@ import '../../../services/smart_share_service.dart';
 import '../../../services/vista_node_service.dart';
 import 'package:Vista/utils/premium_features_helper.dart';
 import 'package:Vista/utils/comments_bottom_sheet.dart';
+import '../../../utils/user_friendly_error_utils.dart';
 import '../widgets/post_action_buttons.dart';
 import '../widgets/hashtag_rich_text.dart';
+import '../providers/saved_posts_provider.dart';
 import 'package:Vista/features/search/screens/searchPage.dart';
 
 // -----------------------------------------------------------------------------
@@ -301,6 +303,11 @@ class _ThreadPostItem extends ConsumerWidget {
 
     final followLoading = ref.watch(_feedFollowLoadingProvider);
     final isFollowBusy = followLoading.contains(post.userId);
+    final savedPostIdsAsync = ref.watch(savedPostIdsProvider);
+    final isSaved = savedPostIdsAsync.maybeWhen(
+      data: (ids) => ids.contains(post.id),
+      orElse: () => false,
+    );
 
     // استفاده از GestureDetector به جای InkWell برای حذف افکت ریپل از کل پست
     return GestureDetector(
@@ -459,13 +466,10 @@ class _ThreadPostItem extends ConsumerWidget {
                                                           targetId, status);
                                                 } catch (e) {
                                                   if (context.mounted) {
-                                                    ScaffoldMessenger.of(
-                                                            context)
-                                                        .showSnackBar(
-                                                      SnackBar(
-                                                        content: Text(
-                                                            'خطا در دنبال کردن: $e'),
-                                                      ),
+                                                    UserFriendlyErrorUtils
+                                                        .showErrorSnackBar(
+                                                      context,
+                                                      e,
                                                     );
                                                   }
                                                 } finally {
@@ -645,6 +649,22 @@ class _ThreadPostItem extends ConsumerWidget {
                                             : post.content.length)
                                     : 'پست',
                               );
+                            },
+                          ),
+                          const SizedBox(width: 16),
+                          PostSaveButton(
+                            isSaved: isSaved,
+                            onTap: () async {
+                              final ok = await ref
+                                  .read(savedPostIdsProvider.notifier)
+                                  .toggle(post.id, post: post);
+                              if (!ok && context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('خطا در ذخیره پست'),
+                                  ),
+                                );
+                              }
                             },
                           ),
                           const SizedBox(width: 16),
@@ -927,9 +947,7 @@ class _ThreadPostItem extends ConsumerWidget {
                 }
               } catch (e) {
                 if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('خطا در حذف: $e')),
-                  );
+                  UserFriendlyErrorUtils.showErrorSnackBar(context, e);
                 }
               }
             },

@@ -6,6 +6,7 @@ import '../../../features/chat/providers/chat_providers.dart';
 // import '../../../provider/chat_provider.dart'; // Unused
 import '../../../provider/optimized_conversations_provider.dart';
 import '../../../features/chat/screens/modern_chat_screen.dart';
+import '../../../utils/user_friendly_error_utils.dart';
 
 /// صفحه نمایش گفتگوهای بایگانی شده
 class ArchivedConversationsScreen extends ConsumerWidget {
@@ -181,12 +182,14 @@ class ArchivedConversationsScreen extends ConsumerWidget {
 
     if (context.mounted) {
       if (result.isSuccess) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('گفتگو از بایگانی خارج شد')),
+        UserFriendlyErrorUtils.showSuccessSnackBar(
+          context,
+          'گفتگو از بایگانی خارج شد',
         );
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('خطا: ${result.error}')),
+        UserFriendlyErrorUtils.showErrorSnackBar(
+          context,
+          result.error ?? 'خروج از بایگانی انجام نشد',
         );
       }
     }
@@ -247,20 +250,20 @@ class ArchivedConversationsScreen extends ConsumerWidget {
 
       if (context.mounted) {
         if (result.isSuccess) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('گفتگو با موفقیت حذف شد')),
+          UserFriendlyErrorUtils.showSuccessSnackBar(
+            context,
+            'گفتگو با موفقیت حذف شد',
           );
         } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('خطا در حذف گفتگو: ${result.error}')),
+          UserFriendlyErrorUtils.showErrorSnackBar(
+            context,
+            result.error ?? 'حذف گفتگو انجام نشد',
           );
         }
       }
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('خطا در حذف گفتگو: $e')),
-        );
+        UserFriendlyErrorUtils.showErrorSnackBar(context, e);
       }
     }
   }

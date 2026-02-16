@@ -727,8 +727,8 @@ class ChatRepositoryImpl implements ChatRepository {
           .select(_messageSelectWithProfiles)
           .single();
     } on PostgrestException catch (e) {
-      final details = '${e.message} ${e.details ?? ''} ${e.hint ?? ''}'
-          .toLowerCase();
+      final details =
+          '${e.message} ${e.details ?? ''} ${e.hint ?? ''}'.toLowerCase();
       final missingMetadataColumn = details.contains('attachment_mime_type') ||
           details.contains('attachment_size_bytes') ||
           details.contains('audio_title') ||
@@ -1309,7 +1309,15 @@ class ChatRepositoryImpl implements ChatRepository {
 
   @override
   Future<void> syncPendingMessages() async {
-    // TODO: implement retrying pending messages
+    try {
+      await _syncConversations();
+      final conversations = await _localDataSource.getConversations();
+      for (final conversation in conversations) {
+        await _syncMessages(conversation.id);
+      }
+    } catch (e) {
+      logError('Failed to sync pending messages', error: e);
+    }
   }
 
   @override
@@ -1319,12 +1327,21 @@ class ChatRepositoryImpl implements ChatRepository {
 
   @override
   Future<void> clearConversationCache(String conversationId) async {
-    // not implemented
+    try {
+      await _localDataSource.clearMessages(conversationId);
+      await _localDataSource.deleteConversation(conversationId);
+    } catch (e) {
+      logError('Failed to clear conversation cache', error: e);
+    }
   }
 
   @override
   Future<void> clearAllCache() async {
-    // not implemented
+    try {
+      await _localDataSource.clearAllData();
+    } catch (e) {
+      logError('Failed to clear all chat cache', error: e);
+    }
   }
 
   @override

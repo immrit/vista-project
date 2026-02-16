@@ -204,6 +204,8 @@ class _ThemeSettingsPageState extends ConsumerState<ThemeSettingsPage> {
                   settings['animations'] as Map<String, dynamic>? ?? {};
               final rendering =
                   settings['rendering'] as Map<String, dynamic>? ?? {};
+              final featureFlags =
+                  settings['feature_flags'] as Map<String, dynamic>? ?? {};
 
               return Column(
                 children: [
@@ -272,6 +274,106 @@ class _ThemeSettingsPageState extends ConsumerState<ThemeSettingsPage> {
                           'rendering': {
                             ...rendering,
                             'enable_gpu_acceleration': value
+                          }
+                        });
+                        ref.invalidate(performanceSettingsProvider);
+                      },
+                    ),
+                  ),
+                  _buildDivider(),
+                  SettingsListItem(
+                    icon: Icons.auto_awesome_rounded,
+                    iconColor: isDark ? Colors.white : Colors.black,
+                    title: 'Dynamic Effects',
+                    subtitle: 'Auto-adjust blur and motion by frame budget',
+                    trailing: Switch(
+                      value: rendering['dynamic_effects'] as bool? ?? true,
+                      activeThumbColor: isDark ? Colors.white : Colors.black,
+                      onChanged: (value) async {
+                        final service = AdvancedSettingsService();
+                        await service.updatePerformanceSettings({
+                          'rendering': {...rendering, 'dynamic_effects': value}
+                        });
+                        ref.invalidate(performanceSettingsProvider);
+                      },
+                    ),
+                  ),
+                  _buildDivider(),
+                  SettingsListItem(
+                    icon: Icons.blur_on_rounded,
+                    iconColor: isDark ? Colors.white : Colors.black,
+                    title: 'Max Blur Sigma',
+                    subtitle:
+                        (rendering['max_blur_sigma'] as num? ?? 10).toString(),
+                    onTap: () => _showMaxBlurSigmaDialog(context, rendering),
+                  ),
+                  _buildDivider(),
+                  SettingsListItem(
+                    icon: Icons.chat_bubble_outline_rounded,
+                    iconColor: isDark ? Colors.white : Colors.black,
+                    title: 'Chat Entry Motion',
+                    subtitle: (animations['chat_entry_mode'] as String?) ??
+                        'adaptive',
+                    onTap: () => _showChatEntryModeDialog(context, animations),
+                  ),
+                  _buildDivider(),
+                  SettingsListItem(
+                    icon: Icons.flag_rounded,
+                    iconColor: isDark ? Colors.white : Colors.black,
+                    title: 'chat_perf_v1',
+                    subtitle: 'Master performance rollout',
+                    trailing: Switch(
+                      value: featureFlags['chat_perf_v1'] as bool? ?? true,
+                      activeThumbColor: isDark ? Colors.white : Colors.black,
+                      onChanged: (value) async {
+                        final service = AdvancedSettingsService();
+                        await service.updatePerformanceSettings({
+                          'feature_flags': {
+                            ...featureFlags,
+                            'chat_perf_v1': value,
+                          }
+                        });
+                        ref.invalidate(performanceSettingsProvider);
+                      },
+                    ),
+                  ),
+                  _buildDivider(),
+                  SettingsListItem(
+                    icon: Icons.flag_circle_rounded,
+                    iconColor: isDark ? Colors.white : Colors.black,
+                    title: 'adaptive_effects_v1',
+                    subtitle: 'Enable adaptive blur and motion policy',
+                    trailing: Switch(
+                      value:
+                          featureFlags['adaptive_effects_v1'] as bool? ?? true,
+                      activeThumbColor: isDark ? Colors.white : Colors.black,
+                      onChanged: (value) async {
+                        final service = AdvancedSettingsService();
+                        await service.updatePerformanceSettings({
+                          'feature_flags': {
+                            ...featureFlags,
+                            'adaptive_effects_v1': value,
+                          }
+                        });
+                        ref.invalidate(performanceSettingsProvider);
+                      },
+                    ),
+                  ),
+                  _buildDivider(),
+                  SettingsListItem(
+                    icon: Icons.flag_outlined,
+                    iconColor: isDark ? Colors.white : Colors.black,
+                    title: 'motion_tokens_v1',
+                    subtitle: 'Enable new chat motion token pack',
+                    trailing: Switch(
+                      value: featureFlags['motion_tokens_v1'] as bool? ?? true,
+                      activeThumbColor: isDark ? Colors.white : Colors.black,
+                      onChanged: (value) async {
+                        final service = AdvancedSettingsService();
+                        await service.updatePerformanceSettings({
+                          'feature_flags': {
+                            ...featureFlags,
+                            'motion_tokens_v1': value,
                           }
                         });
                         ref.invalidate(performanceSettingsProvider);
@@ -500,6 +602,129 @@ class _ThemeSettingsPageState extends ConsumerState<ThemeSettingsPage> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  void _showChatEntryModeDialog(
+      BuildContext context, Map<String, dynamic> animations) {
+    final currentMode =
+        (animations['chat_entry_mode'] as String?) ?? 'adaptive';
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Chat entry motion'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            RadioListTile<String>(
+              title: const Text('Adaptive'),
+              value: 'adaptive',
+              groupValue: currentMode,
+              onChanged: (value) async {
+                Navigator.pop(context);
+                final service = AdvancedSettingsService();
+                await service.updatePerformanceSettings({
+                  'animations': {...animations, 'chat_entry_mode': value}
+                });
+                ref.invalidate(performanceSettingsProvider);
+              },
+            ),
+            RadioListTile<String>(
+              title: const Text('Full'),
+              value: 'full',
+              groupValue: currentMode,
+              onChanged: (value) async {
+                Navigator.pop(context);
+                final service = AdvancedSettingsService();
+                await service.updatePerformanceSettings({
+                  'animations': {...animations, 'chat_entry_mode': value}
+                });
+                ref.invalidate(performanceSettingsProvider);
+              },
+            ),
+            RadioListTile<String>(
+              title: const Text('Minimal'),
+              value: 'minimal',
+              groupValue: currentMode,
+              onChanged: (value) async {
+                Navigator.pop(context);
+                final service = AdvancedSettingsService();
+                await service.updatePerformanceSettings({
+                  'animations': {...animations, 'chat_entry_mode': value}
+                });
+                ref.invalidate(performanceSettingsProvider);
+              },
+            ),
+            RadioListTile<String>(
+              title: const Text('Off'),
+              value: 'off',
+              groupValue: currentMode,
+              onChanged: (value) async {
+                Navigator.pop(context);
+                final service = AdvancedSettingsService();
+                await service.updatePerformanceSettings({
+                  'animations': {...animations, 'chat_entry_mode': value}
+                });
+                ref.invalidate(performanceSettingsProvider);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showMaxBlurSigmaDialog(
+      BuildContext context, Map<String, dynamic> rendering) {
+    final initialSigma =
+        ((rendering['max_blur_sigma'] as num?) ?? 10.0).toDouble();
+    double selectedSigma = initialSigma.clamp(0.0, 16.0);
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Max blur sigma'),
+        content: StatefulBuilder(
+          builder: (context, setLocalState) {
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Slider(
+                  value: selectedSigma,
+                  min: 0,
+                  max: 16,
+                  divisions: 16,
+                  label: selectedSigma.toStringAsFixed(1),
+                  onChanged: (value) {
+                    setLocalState(() => selectedSigma = value);
+                  },
+                ),
+                Text(selectedSigma.toStringAsFixed(1)),
+              ],
+            );
+          },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              final service = AdvancedSettingsService();
+              await service.updatePerformanceSettings({
+                'rendering': {
+                  ...rendering,
+                  'max_blur_sigma': selectedSigma,
+                }
+              });
+              ref.invalidate(performanceSettingsProvider);
+            },
+            child: const Text('Save'),
+          ),
+        ],
       ),
     );
   }

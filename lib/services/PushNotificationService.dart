@@ -13,6 +13,8 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:device_info_plus/device_info_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uuid/uuid.dart';
 import '../provider/notification_provider.dart';
 import '../utils/const.dart';
 import 'notification_navigation_service.dart';
@@ -23,13 +25,9 @@ import '../model/message_model.dart';
 
 @pragma('vm:entry-point')
 void notificationTapBackground(NotificationResponse notificationResponse) {
-  // handle action
-  print(
-      'notification(${notificationResponse.id}) action tapped: ${notificationResponse.actionId} with payload: ${notificationResponse.payload}');
-  if (notificationResponse.input?.isNotEmpty ?? false) {
-    print(
-        'notification action tapped with input: ${notificationResponse.input}');
-  }
+  PushNotificationService.enqueueBackgroundNotificationAction(
+    notificationResponse,
+  );
 }
 
 final pushNotificationServiceProvider = Provider<PushNotificationService>(
@@ -39,6 +37,11 @@ final pushNotificationServiceProvider = Provider<PushNotificationService>(
 class PushNotificationService {
   final Ref? ref;
   PushNotificationService(this.ref);
+
+  static const String _pendingActionsPrefsKey =
+      'pending_notification_actions_v1';
+  static const int _maxPendingActions = 30;
+  static const Uuid _uuid = Uuid();
 
   static FlutterLocalNotificationsPlugin get notificationsPlugin =>
       LocalNotificationCenter.plugin;
@@ -117,13 +120,134 @@ class PushNotificationService {
     await _flutterLocalNotifications.cancel(conversationId.hashCode);
   }
 
+  static bool _isActionPersistable(NotificationResponse details) {
+    final action = details.actionId?.trim();
+    if (action == null || action.isEmpty) return false;
+    return action == 'reply' || action == 'mark_read';
+  }
+
+  static Future<void> enqueueBackgroundNotificationAction(
+    NotificationResponse details,
+  ) async {
+    try {
+      if (!_isActionPersistable(details)) return;
+      final payload = details.payload?.trim();
+      if (payload == null || payload.isEmpty) return;
+
+      final pendingItem = <String, dynamic>{
+        'action_id': details.actionId,
+        'payload': payload,
+        'input': details.input?.trim(),
+        'created_at': DateTime.now().toIso8601String(),
+      };
+
+      final prefs = await SharedPreferences.getInstance();
+      final existing =
+          prefs.getStringList(_pendingActionsPrefsKey) ?? <String>[];
+      existing.add(jsonEncode(pendingItem));
+      while (existing.length > _maxPendingActions) {
+        existing.removeAt(0);
+      }
+      await prefs.setStringList(_pendingActionsPrefsKey, existing);
+    } catch (e) {
+      logInfo('⚠️ Failed to persist background notification action: $e');
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _readPendingActions() async {
+    final prefs = await SharedPreferences.getInstance();
+    final rawItems = prefs.getStringList(_pendingActionsPrefsKey) ?? <String>[];
+    final pending = <Map<String, dynamic>>[];
+    for (final raw in rawItems) {
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is Map) {
+          pending.add(Map<String, dynamic>.from(decoded));
+        }
+      } catch (_) {}
+    }
+    return pending;
+  }
+
+  Future<void> _writePendingActions(List<Map<String, dynamic>> actions) async {
+    final prefs = await SharedPreferences.getInstance();
+    final encoded = actions.map(jsonEncode).toList(growable: false);
+    await prefs.setStringList(_pendingActionsPrefsKey, encoded);
+  }
+
+  Future<void> _processPendingNotificationActions() async {
+    final supabase = _supabase;
+    if (supabase == null || supabase.auth.currentUser == null) {
+      return;
+    }
+
+    final pending = await _readPendingActions();
+    if (pending.isEmpty) return;
+
+    final remaining = <Map<String, dynamic>>[];
+    for (final item in pending) {
+      final actionId = item['action_id']?.toString() ?? '';
+      final payloadRaw = item['payload']?.toString() ?? '';
+      if (payloadRaw.isEmpty) {
+        continue;
+      }
+
+      Map<String, dynamic> payload;
+      try {
+        final decoded = jsonDecode(payloadRaw);
+        if (decoded is! Map) {
+          continue;
+        }
+        payload = Map<String, dynamic>.from(decoded);
+      } catch (_) {
+        continue;
+      }
+
+      final conversationId = payload['conversation_id']?.toString() ?? '';
+      if (conversationId.isEmpty) {
+        continue;
+      }
+
+      bool success = false;
+      if (actionId == 'reply') {
+        final input = item['input']?.toString().trim() ?? '';
+        if (input.isNotEmpty) {
+          success = await handleQuickReply(conversationId, input);
+        }
+      } else if (actionId == 'mark_read') {
+        success = await _markConversationAsRead(conversationId);
+      }
+
+      if (!success) {
+        remaining.add(item);
+      }
+    }
+
+    await _writePendingActions(remaining);
+  }
+
   /// ✅ تابع Initialize که هم در Foreground و هم Background استفاده می‌شود
   Future<void> _ensureInitialized() async {
     if (_isInitialized) return; // جلوگیری از initialize چندگانه
 
     const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
-    const iOSInit = DarwinInitializationSettings();
-    const initSettings =
+    final iOSInit = DarwinInitializationSettings(
+      notificationCategories: <DarwinNotificationCategory>[
+        DarwinNotificationCategory(
+          'CHAT_MESSAGE',
+          actions: <DarwinNotificationAction>[
+            DarwinNotificationAction.text(
+              'reply',
+              'پاسخ',
+              buttonTitle: 'ارسال',
+              placeholder: 'پیام خود را بنویسید...',
+            ),
+            DarwinNotificationAction.plain('mark_read', 'خواندم'),
+          ],
+        ),
+      ],
+    );
+    final initSettings =
         InitializationSettings(android: androidInit, iOS: iOSInit);
 
     await _flutterLocalNotifications.initialize(
@@ -146,42 +270,40 @@ class PushNotificationService {
 
   /// هندلر مرکزی کلیک روی اعلان (برای Foreground)
   void _onNotificationTap(NotificationResponse details) {
-    if (details.payload != null) {
-      try {
-        final data = jsonDecode(details.payload!) as Map<String, dynamic>;
-        final conversationId = data['conversation_id'];
+    final payload = details.payload;
+    if (payload == null || payload.isEmpty) return;
 
-        // ۱. هندل پاسخ سریع (Reply) در فورگراند
-        if (details.actionId == 'reply' && details.input != null) {
-          if (conversationId != null && _supabase != null) {
-            handleQuickReply(conversationId.toString(), details.input!);
-          }
+    try {
+      final data = jsonDecode(payload) as Map<String, dynamic>;
+      final conversationId = data['conversation_id']?.toString() ?? '';
+
+      if (details.actionId == 'reply') {
+        final input = details.input?.trim() ?? '';
+        if (conversationId.isNotEmpty && input.isNotEmpty) {
+          handleQuickReply(conversationId, input);
         }
-        // ۲. هندل دکمه "خواندم"
-        else if (details.actionId == 'mark_read') {
-          if (conversationId != null && _supabase != null) {
-            _supabase!.rpc('mark_conversation_as_read', params: {
-              'p_conversation_id': conversationId.toString(),
-            });
-            _flutterLocalNotifications.cancel(conversationId.hashCode);
-          }
-        }
-        // ۳. کلیک عادی (باز کردن چت)
-        else {
-          if (conversationId != null) {
-            cancelConversationNotification(conversationId.toString());
-          }
-          final navContext = navigatorKey.currentContext;
-          if (navContext != null) {
-            NotificationNavigationService.handleFCMPayload(
-              context: navContext,
-              data: data,
-            );
-          }
-        }
-      } catch (e) {
-        logInfo('❌ Error handling notification tap: $e');
+        return;
       }
+
+      if (details.actionId == 'mark_read') {
+        if (conversationId.isNotEmpty) {
+          _markConversationAsRead(conversationId);
+        }
+        return;
+      }
+
+      if (conversationId.isNotEmpty) {
+        cancelConversationNotification(conversationId);
+      }
+      final navContext = navigatorKey.currentContext;
+      if (navContext != null) {
+        NotificationNavigationService.handleFCMPayload(
+          context: navContext,
+          data: data,
+        );
+      }
+    } catch (e) {
+      logInfo('Error handling notification tap: $e');
     }
   }
 
@@ -245,6 +367,7 @@ class PushNotificationService {
       await _ensureInitialized();
 
       await saveToken();
+      await _processPendingNotificationActions();
 
       if (_listenersBound) {
         logInfo('✅ Push listeners already bound, skipping re-bind');
@@ -259,6 +382,7 @@ class PushNotificationService {
               event == AuthChangeEvent.tokenRefreshed) {
             logInfo('👤 User Signed In/Refreshed. Updating Token...');
             saveToken();
+            _processPendingNotificationActions();
           }
         });
       }
@@ -474,7 +598,7 @@ class PushNotificationService {
           AndroidNotificationActionInput(label: 'پیام خود را بنویسید...')
         ],
         icon: const DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
-        showsUserInterface: true,
+        showsUserInterface: false,
         allowGeneratedReplies: true,
       ),
       AndroidNotificationAction(
@@ -512,7 +636,12 @@ class PushNotificationService {
       senderName,
       messageContent,
       NotificationDetails(
-          android: androidDetails, iOS: const DarwinNotificationDetails()),
+        android: androidDetails,
+        iOS: DarwinNotificationDetails(
+          categoryIdentifier: 'CHAT_MESSAGE',
+          threadIdentifier: conversationId,
+        ),
+      ),
       payload: payloadJson,
     );
   }
@@ -742,27 +871,115 @@ class PushNotificationService {
     );
   }
 
-  Future<void> handleQuickReply(String conversationId, String replyText) async {
-    try {
-      logInfo('📱 در حال ارسال پاسخ سریع به چت: $conversationId');
-      logInfo('   متن پاسخ: $replyText');
+  Future<bool> _markConversationAsRead(String conversationId) async {
+    final trimmedConversationId = conversationId.trim();
+    if (trimmedConversationId.isEmpty) return false;
+    if (_supabase == null) return false;
 
-      // اطمینان از اینکه کلاینت سوپابیس وجود دارد
+    try {
+      await _supabase!.rpc('mark_conversation_as_read', params: {
+        'p_conversation_id': trimmedConversationId,
+      });
+      await _flutterLocalNotifications.cancel(trimmedConversationId.hashCode);
+      return true;
+    } catch (rpcError) {
+      logInfo(
+          'mark_conversation_as_read RPC failed, trying fallback: $rpcError');
+    }
+
+    try {
+      final currentUserId = _supabase!.auth.currentUser?.id;
+      if (currentUserId == null || currentUserId.isEmpty) {
+        return false;
+      }
+      await _supabase!
+          .from('messages')
+          .update({'is_seen': true})
+          .eq('conversation_id', trimmedConversationId)
+          .neq('sender_id', currentUserId)
+          .eq('is_seen', false);
+      await _supabase!
+          .from('conversation_participants')
+          .update({'unread_count': 0})
+          .eq('conversation_id', trimmedConversationId)
+          .eq('user_id', currentUserId);
+      await _flutterLocalNotifications.cancel(trimmedConversationId.hashCode);
+      return true;
+    } catch (fallbackError) {
+      logInfo('mark read fallback failed: $fallbackError');
+      return false;
+    }
+  }
+
+  Future<bool> _sendQuickReplyFallbackInsert(
+    String conversationId,
+    String replyText,
+  ) async {
+    final currentUserId = _supabase?.auth.currentUser?.id;
+    if (currentUserId == null || currentUserId.isEmpty) {
+      return false;
+    }
+
+    final nowIso = DateTime.now().toUtc().toIso8601String();
+    final payload = <String, dynamic>{
+      'id': _uuid.v4(),
+      'conversation_id': conversationId,
+      'sender_id': currentUserId,
+      'content': replyText,
+      'message_type': 'text',
+      'is_sent': true,
+      'is_pending': false,
+      'created_at': nowIso,
+    };
+
+    try {
+      await _supabase!.from('messages').insert(payload);
+      return true;
+    } on PostgrestException catch (_) {
+      final legacyPayload = Map<String, dynamic>.from(payload)
+        ..remove('message_type')
+        ..remove('is_pending');
+      await _supabase!.from('messages').insert(legacyPayload);
+      return true;
+    } catch (e) {
+      logInfo('quick reply fallback insert failed: $e');
+      return false;
+    }
+  }
+
+  Future<bool> handleQuickReply(String conversationId, String replyText) async {
+    final trimmedConversationId = conversationId.trim();
+    final trimmedReply = replyText.trim();
+    if (trimmedConversationId.isEmpty || trimmedReply.isEmpty) {
+      return false;
+    }
+
+    try {
+      logInfo('sending quick reply to conversation: $trimmedConversationId');
+      logInfo('reply text: $trimmedReply');
+
       if (_supabase == null) {
-        logInfo('⚠️ Supabase client not initialized in isolate');
-        // اینجا در حالت واقعی باید دوباره Supabase.initialize کنید اگر نال بود
-        return;
+        logInfo('Supabase client not initialized in isolate');
+        return false;
       }
 
       await _supabase!.rpc('send_reply_message', params: {
-        'p_conversation_id':
-            conversationId, // ✅ مطمئن شوید این ID درست پاس داده می‌شود
-        'p_content': replyText,
+        'p_conversation_id': trimmedConversationId,
+        'p_content': trimmedReply,
       });
 
-      logInfo('✅ پاسخ سریع با موفقیت ارسال شد');
+      logInfo('quick reply sent successfully');
+      return true;
     } catch (e) {
-      logInfo('❌ خطا در ارسال پاسخ سریع: $e');
+      logInfo('send_reply_message RPC failed, trying fallback insert: $e');
+      final fallbackSent = await _sendQuickReplyFallbackInsert(
+        trimmedConversationId,
+        trimmedReply,
+      );
+      if (!fallbackSent) {
+        logInfo('quick reply failed after fallback: $e');
+      }
+      return fallbackSent;
     }
   }
 

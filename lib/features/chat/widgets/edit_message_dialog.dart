@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/message_actions_service.dart';
 import '../theme/chat_theme.dart';
+import '../../../utils/user_friendly_error_utils.dart';
 
 class EditMessageDialog extends ConsumerStatefulWidget {
   final String messageId;
@@ -95,7 +96,7 @@ class _EditMessageDialogState extends ConsumerState<EditMessageDialog> {
       if (mounted) {
         setState(() {
           _isLoading = false;
-          _error = e.toString();
+          _error = UserFriendlyErrorUtils.getUserFriendlyMessage(e);
         });
       }
     }

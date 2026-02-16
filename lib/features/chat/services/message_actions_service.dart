@@ -102,7 +102,7 @@ class MessageActionsService {
       return const ActionResult.success();
     } catch (e) {
       print('❌ Error editing message: $e');
-      return ActionResult.failure('خطا در ویرایش پیام: $e');
+      return const ActionResult.failure('خطا در ویرایش پیام');
     }
   }
 
@@ -166,7 +166,7 @@ class MessageActionsService {
       return ActionResult.success(successCount);
     } catch (e) {
       print('❌ Error forwarding message: $e');
-      return ActionResult.failure('خطا در فوروارد پیام: $e');
+      return const ActionResult.failure('خطا در فوروارد پیام');
     }
   }
 
@@ -198,7 +198,7 @@ class MessageActionsService {
 
       return ActionResult.success(totalSuccess);
     } catch (e) {
-      return ActionResult.failure('خطا در فوروارد پیام‌ها: $e');
+      return const ActionResult.failure('خطا در فوروارد پیام‌ها');
     }
   }
 
@@ -234,7 +234,7 @@ class MessageActionsService {
       }
     } catch (e) {
       print('❌ Error deleting message: $e');
-      return ActionResult.failure('خطا در حذف پیام: $e');
+      return const ActionResult.failure('خطا در حذف پیام');
     }
   }
 
@@ -271,7 +271,7 @@ class MessageActionsService {
       return const ActionResult.success();
     } catch (e) {
       print('❌ Error deleting for everyone: $e');
-      return ActionResult.failure('خطا در حذف پیام برای همه: $e');
+      return const ActionResult.failure('خطا در حذف پیام برای همه');
     }
   }
 
@@ -293,7 +293,7 @@ class MessageActionsService {
       return const ActionResult.success();
     } catch (e) {
       print('❌ Error hiding message: $e');
-      return ActionResult.failure('خطا در مخفی کردن پیام: $e');
+      return const ActionResult.failure('خطا در مخفی کردن پیام');
     }
   }
 
@@ -344,7 +344,7 @@ class MessageActionsService {
 
       return ActionResult.success(successCount);
     } catch (e) {
-      return ActionResult.failure('خطا در حذف پیام‌ها: $e');
+      return const ActionResult.failure('خطا در حذف پیام‌ها');
     }
   }
 

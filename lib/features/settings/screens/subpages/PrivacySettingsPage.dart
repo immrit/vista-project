@@ -1,6 +1,11 @@
+import 'dart:convert';
+import 'dart:io';
+
 import '../../../../security/logging_utility.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -8,6 +13,7 @@ import '../../../../provider/provider.dart';
 import '../../../../provider/settings_providers.dart';
 import '../../../../DB/advanced_settings_service.dart';
 import '../../../../services/auto_lock_service.dart';
+import '../../../../utils/user_friendly_error_utils.dart';
 import '../../../../model/messagePrivacyModel.dart';
 import 'BlockedUsersPage.dart';
 
@@ -99,7 +105,9 @@ class _PrivacySettingsPageState extends ConsumerState<PrivacySettingsPage> {
         ),
         error: (error, stack) => Padding(
           padding: const EdgeInsets.all(16.0),
-          child: Text('خطا: $error'),
+          child: Text(
+            UserFriendlyErrorUtils.getUserFriendlyMessage(error),
+          ),
         ),
       ),
     );
@@ -258,10 +266,7 @@ class _PrivacySettingsPageState extends ConsumerState<PrivacySettingsPage> {
             iconColor: Colors.indigo,
             title: 'دانلود اطلاعات من',
             subtitle: 'دریافت کپی از اطلاعات حساب شما',
-            onTap: () {
-              _showComingSoon(
-                  context, 'قابلیت دانلود اطلاعات به زودی اضافه خواهد شد!');
-            },
+            onTap: () => _exportMyData(context),
           ),
           _buildDivider(),
           PrivacySettingsItem(
@@ -317,21 +322,14 @@ class _PrivacySettingsPageState extends ConsumerState<PrivacySettingsPage> {
       final _ = ref.refresh(currentUserSettingsProvider);
 
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('تنظیمات با موفقیت به‌روزرسانی شد'),
-            backgroundColor: Colors.green,
-          ),
+        UserFriendlyErrorUtils.showSuccessSnackBar(
+          context,
+          'تنظیمات با موفقیت به‌روزرسانی شد',
         );
       }
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('خطا در به‌روزرسانی: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        UserFriendlyErrorUtils.showErrorSnackBar(context, e);
       }
     }
   }
@@ -607,13 +605,89 @@ class _PrivacySettingsPageState extends ConsumerState<PrivacySettingsPage> {
     });
   }
 
-  void _showComingSoon(BuildContext context, String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.blue,
-      ),
-    );
+  Future<void> _exportMyData(BuildContext context) async {
+    try {
+      final client = Supabase.instance.client;
+      final currentUser = client.auth.currentUser;
+      if (currentUser == null) {
+        throw Exception('authentication_required');
+      }
+
+      Future<Map<String, dynamic>?> safeLoad(
+          Future<Map<String, dynamic>?> Function() loader) async {
+        try {
+          return await loader();
+        } catch (_) {
+          return null;
+        }
+      }
+
+      final profile = await safeLoad(() async {
+        return await client
+            .from('profiles')
+            .select(
+                'id, username, full_name, bio, avatar_url, created_at, updated_at')
+            .eq('id', currentUser.id)
+            .maybeSingle();
+      });
+
+      final userSettings = await safeLoad(() async {
+        return await client
+            .from('user_settings')
+            .select()
+            .eq('user_id', currentUser.id)
+            .maybeSingle();
+      });
+
+      final privacySettings = await safeLoad(() async {
+        return await client
+            .from('privacy_settings')
+            .select()
+            .eq('user_id', currentUser.id)
+            .maybeSingle();
+      });
+
+      final storySettings = await safeLoad(() async {
+        return await client
+            .from('story_user_settings')
+            .select('reply_permission, updated_at')
+            .eq('user_id', currentUser.id)
+            .maybeSingle();
+      });
+
+      final payload = {
+        'exported_at': DateTime.now().toIso8601String(),
+        'user_id': currentUser.id,
+        'email': currentUser.email,
+        'profile': profile,
+        'user_settings': userSettings,
+        'privacy_settings': privacySettings,
+        'story_settings': storySettings,
+      };
+
+      final tempDir = await getTemporaryDirectory();
+      final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-');
+      final file = File('${tempDir.path}/vista_user_data_$timestamp.json');
+      await file.writeAsString(
+        const JsonEncoder.withIndent('  ').convert(payload),
+      );
+
+      await Share.shareXFiles(
+        [XFile(file.path)],
+        text: 'خروجی اطلاعات حساب ویستا',
+      );
+
+      if (context.mounted) {
+        UserFriendlyErrorUtils.showSuccessSnackBar(
+          context,
+          'فایل خروجی اطلاعات آماده شد',
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        UserFriendlyErrorUtils.showErrorSnackBar(context, e);
+      }
+    }
   }
 
   void _showDeleteAccountDialog(BuildContext context) {

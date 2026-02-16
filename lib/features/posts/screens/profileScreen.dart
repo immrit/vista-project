@@ -34,6 +34,7 @@ import '../../profile/providers/profile_note_provider.dart';
 import 'package:Vista/utils/comments_bottom_sheet.dart';
 import 'package:flutter/services.dart';
 import 'package:Vista/utils/premium_features_helper.dart';
+import '../../../utils/user_friendly_error_utils.dart';
 import 'package:Vista/features/posts/widgets/standard_edit_post_dialog.dart';
 import 'package:Vista/features/posts/screens/PostDetailPage.dart';
 import 'package:Vista/features/search/screens/searchPage.dart';
@@ -378,12 +379,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
       ref.invalidate(userProfileProvider(userId));
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('خطا: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        UserFriendlyErrorUtils.showErrorSnackBar(context, e);
       }
     }
   }
@@ -431,12 +427,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('خطا: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        UserFriendlyErrorUtils.showErrorSnackBar(context, e);
       }
     } finally {
       if (mounted) setState(() => _isStartingConversation = false);
@@ -1620,24 +1611,15 @@ class _PostListItem extends ConsumerWidget {
                         ),
                       ),
                       const SizedBox(width: 24),
-                      // دکمه اشتراک‌گذاری
-                      GestureDetector(
-                        onTap: () =>
-                            SmartShareService().showShareOptions(post, context),
-                        child: Image.asset(
-                          'lib/utils/images/component/send.png',
-                          width: 20,
-                          height: 20,
-                          color: isDark ? Colors.grey[400] : Colors.grey[600],
-                        ),
-                      ),
-                      const SizedBox(width: 24),
                       // دکمه ذخیره
                       _buildAction(
                         icon: isSaved
                             ? Icons.bookmark_rounded
                             : Icons.bookmark_border,
                         count: null,
+                        iconColor: isSaved
+                            ? Theme.of(context).colorScheme.primary
+                            : null,
                         onTap: () async {
                           final ok = await ref
                               .read(savedPostIdsProvider.notifier)
@@ -1648,6 +1630,18 @@ class _PostListItem extends ConsumerWidget {
                             );
                           }
                         },
+                      ),
+                      const SizedBox(width: 24),
+                      // دکمه اشتراک‌گذاری
+                      GestureDetector(
+                        onTap: () =>
+                            SmartShareService().showShareOptions(post, context),
+                        child: Image.asset(
+                          'lib/utils/images/component/send.png',
+                          width: 20,
+                          height: 20,
+                          color: isDark ? Colors.grey[400] : Colors.grey[600],
+                        ),
                       ),
                       const Spacer(),
                       // دکمه منو (۳ نقطه)
@@ -1667,6 +1661,7 @@ class _PostListItem extends ConsumerWidget {
     required IconData icon,
     required int? count,
     required VoidCallback onTap,
+    Color? iconColor,
   }) {
     return GestureDetector(
       onTap: onTap,
@@ -1675,7 +1670,7 @@ class _PostListItem extends ConsumerWidget {
           Icon(
             icon,
             size: 20,
-            color: isDark ? Colors.grey[400] : Colors.grey[600],
+            color: iconColor ?? (isDark ? Colors.grey[400] : Colors.grey[600]),
           ),
           if (count != null && count > 0) ...[
             const SizedBox(width: 4),
@@ -1962,9 +1957,7 @@ class _PostListItem extends ConsumerWidget {
                   const SnackBar(content: Text('پست حذف شد')),
                 );
               } catch (e) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('خطا در حذف: $e')),
-                );
+                UserFriendlyErrorUtils.showErrorSnackBar(context, e);
               }
             },
             child: const Text('حذف', style: TextStyle(color: Colors.red)),

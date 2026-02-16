@@ -21,6 +21,7 @@ import 'package:Vista/DB/high_performance_cache_system.dart';
 import 'package:Vista/services/memory_leak_detector.dart';
 import 'package:Vista/utils/performance_monitor.dart';
 import 'package:Vista/security/logging_utility.dart';
+import 'package:Vista/features/chat/performance/frame_budget_service.dart';
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -38,8 +39,9 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 
 @pragma('vm:entry-point')
 void notificationTapBackground(NotificationResponse notificationResponse) {
-  debugPrint('notificationTapBackground called');
-  // Logic to handle background reply can be added here
+  PushNotificationService.enqueueBackgroundNotificationAction(
+    notificationResponse,
+  );
 }
 
 class AppInitialization {
@@ -69,6 +71,7 @@ class AppInitialization {
     await initializeDateFormatting('fa', null);
     _setupPerformanceOptimizations();
     PerformanceMonitor().startMonitoring();
+    FrameBudgetService.instance.startMonitoring();
 
     // PHASE 1: Core Platform Services (Parallel)
     // These are independent and can run together.

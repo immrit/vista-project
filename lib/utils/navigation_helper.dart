@@ -1,29 +1,20 @@
-// lib/utils/navigation_helper.dart
-//
-// Helper utility for navigating to user profiles and hashtag posts
-// from anywhere in the app.
-//
+﻿import 'package:flutter/material.dart';
 
-import 'package:flutter/material.dart';
-import '../features/posts/screens/profileScreen.dart';
 import '../features/posts/screens/hashtag_posts_screen.dart';
+import '../features/posts/screens/profileScreen.dart';
 import '../utils/const.dart';
+import 'user_friendly_error_utils.dart';
 
-/// Navigation helper for mentions and hashtags
 class NavigationHelper {
   NavigationHelper._();
 
-  /// Navigate to user profile by username
-  /// Looks up user ID from username and navigates to ProfileScreen
   static Future<void> navigateToUserProfile(
     BuildContext context,
     String username,
   ) async {
-    // Remove @ if present
     final cleanUsername =
         username.startsWith('@') ? username.substring(1) : username;
 
-    // Show loading indicator
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -31,7 +22,6 @@ class NavigationHelper {
     );
 
     try {
-      // Fetch user by username
       final response = await supabase
           .from('profiles')
           .select('id, username')
@@ -39,11 +29,12 @@ class NavigationHelper {
           .maybeSingle();
 
       if (!context.mounted) return;
-      Navigator.of(context).pop(); // Close loading
+      Navigator.of(context).pop();
 
       if (response == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('کاربر @$cleanUsername یافت نشد')),
+        UserFriendlyErrorUtils.showErrorSnackBar(
+          context,
+          'کاربر @$cleanUsername پیدا نشد',
         );
         return;
       }
@@ -57,18 +48,17 @@ class NavigationHelper {
           ),
         ),
       );
-    } catch (e) {
+    } catch (error) {
       if (!context.mounted) return;
-      Navigator.of(context).pop(); // Close loading
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('خطا در یافتن کاربر: $e')),
+      Navigator.of(context).pop();
+      UserFriendlyErrorUtils.showErrorSnackBar(
+        context,
+        error,
       );
     }
   }
 
-  /// Navigate to hashtag posts screen
   static void navigateToHashtagPosts(BuildContext context, String hashtag) {
-    // Remove # if present for consistency (screen handles it)
     final cleanHashtag =
         hashtag.startsWith('#') ? hashtag.substring(1) : hashtag;
 

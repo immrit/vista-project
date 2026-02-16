@@ -4,6 +4,7 @@ import 'package:shamsi_date/shamsi_date.dart';
 import 'package:rxdart/rxdart.dart';
 import '../../../model/message_model.dart';
 import '../../../features/chat/providers/chat_providers.dart';
+import '../../../utils/user_friendly_error_utils.dart';
 
 // Provider for searching messages
 final searchMessagesProvider = FutureProvider.autoDispose
@@ -157,7 +158,12 @@ class _ChatMessageSearchScreenState
             )
           : searchResults.when(
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (err, stack) => Center(child: Text('خطا در جستجو: $err')),
+              error: (err, stack) => Center(
+                child: Text(
+                  UserFriendlyErrorUtils.getUserFriendlyMessage(err),
+                  textDirection: TextDirection.rtl,
+                ),
+              ),
               data: (messages) {
                 if (messages.isEmpty) {
                   return Center(

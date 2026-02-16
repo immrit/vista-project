@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../model/publicPostModel.dart';
 import '../../provider/provider.dart';
 import '../../services/cache_manager.dart';
+import '../../features/posts/providers/saved_posts_provider.dart';
 
 class ReelsVideoPlayer extends ConsumerStatefulWidget {
   final PublicPostModel post;
@@ -236,6 +237,12 @@ class _ReelsVideoPlayerState extends ConsumerState<ReelsVideoPlayer> {
 
   @override
   Widget build(BuildContext context) {
+    final savedPostIdsAsync = ref.watch(savedPostIdsProvider);
+    final isSaved = savedPostIdsAsync.maybeWhen(
+      data: (ids) => ids.contains(widget.post.id),
+      orElse: () => false,
+    );
+
     return VisibilityDetector(
       key: Key('video-${widget.post.id}'),
       onVisibilityChanged: (visibilityInfo) {
@@ -368,6 +375,35 @@ class _ReelsVideoPlayerState extends ConsumerState<ReelsVideoPlayer> {
                       Text(
                         widget.post.commentCount.toString(),
                         style: TextStyle(color: Colors.white),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 16),
+                  Column(
+                    children: [
+                      IconButton(
+                        onPressed: () async {
+                          final ok = await ref
+                              .read(savedPostIdsProvider.notifier)
+                              .toggle(widget.post.id, post: widget.post);
+                          if (!ok && context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('خطا در ذخیره پست')),
+                            );
+                          }
+                        },
+                        icon: Icon(
+                          isSaved
+                              ? Icons.bookmark_rounded
+                              : Icons.bookmark_border_rounded,
+                          color:
+                              isSaved ? Colors.lightBlueAccent : Colors.white,
+                          size: 32,
+                        ),
+                      ),
+                      Text(
+                        isSaved ? 'ذخیره شد' : 'ذخیره',
+                        style: const TextStyle(color: Colors.white),
                       ),
                     ],
                   ),

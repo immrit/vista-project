@@ -529,7 +529,7 @@ class _ReportDialogState extends ConsumerState<ReportDialog> {
     } catch (e) {
       // نمایش خطا
       if (mounted) {
-        _showSnackBar('خطا در ثبت گزارش: $e', isError: true);
+        UserFriendlyErrorUtils.showErrorSnackBar(context, e);
       }
     }
   }
@@ -797,7 +797,10 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet> {
                 children: [
                   const Icon(Icons.error_outline, size: 48, color: Colors.red),
                   const SizedBox(height: 8),
-                  Text('خطا در بارگذاری نظرات: $error'),
+                  Text(
+                    UserFriendlyErrorUtils.getUserFriendlyMessage(error),
+                    textDirection: TextDirection.rtl,
+                  ),
                   const SizedBox(height: 8),
                   ElevatedButton(
                     onPressed: () =>
@@ -1132,14 +1135,17 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet> {
         logInfo('ParentCommentID: $replyToCommentId');
         logInfo('MentionedUsers: $mentionedUserIds');
 
-        await ref.read(commentNotifierProvider.notifier).addComment(
-              postId: widget.postId,
-              content: content,
-              postOwnerId: supabase.auth.currentUser!.id,
-              mentionedUserIds: mentionedUserIds,
-              parentCommentId: replyToCommentId,
-              ref: ref,
-            );
+        final notifier = ref.read(commentNotifierProvider.notifier);
+        final postOwnerId = await notifier.getPostOwnerId(widget.postId);
+
+        await notifier.addComment(
+          postId: widget.postId,
+          content: content,
+          postOwnerId: postOwnerId,
+          mentionedUserIds: mentionedUserIds,
+          parentCommentId: replyToCommentId,
+          ref: ref,
+        );
 
         // Clear input and states
         commentController.clear();
@@ -1164,8 +1170,7 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet> {
           setState(() {
             _isSubmittingComment = false;
           });
-          UserFriendlyErrorUtils.showErrorSnackBar(
-              context, 'خطا در ارسال نظر: $e');
+          UserFriendlyErrorUtils.showErrorSnackBar(context, e);
         }
       }
     }
@@ -1377,13 +1382,13 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet> {
     try {
       await ref
           .read(commentNotifierProvider.notifier)
-          .deleteComment(commentId, ref);
+          .deleteComment(commentId, postId, ref);
       ref.invalidate(commentsProvider(postId));
 
       UserFriendlyErrorUtils.showSuccessSnackBar(
           context, 'کامنت با موفقیت حذف شد');
     } catch (e) {
-      UserFriendlyErrorUtils.showErrorSnackBar(context, 'خطا در حذف کامنت: $e');
+      UserFriendlyErrorUtils.showErrorSnackBar(context, e);
     }
   }
 

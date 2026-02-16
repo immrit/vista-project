@@ -39,8 +39,7 @@ class StoryBar extends ConsumerWidget {
         .map((user) {
           // فیلتر استوری‌های منقضی
           final validStories = user.stories.where((story) {
-            final storyAge = now.difference(story.createdAt);
-            return storyAge.inHours < 24;
+            return story.expiresAt.isAfter(now);
           }).toList();
 
           return user.copyWith(stories: validStories);

@@ -28,8 +28,7 @@ final conversationsStreamProvider =
 
 // Used by any remaining legacy code
 final chatServiceProvider = Provider((ref) {
-  throw UnimplementedError(
-      'ChatService is removed. Use chatRepositoryProvider.');
+  return ref.watch(chatRepositoryProvider);
 });
 
 final profileServiceProvider = Provider<UserProfileService>((ref) {
@@ -158,8 +157,8 @@ final messagesProvider = FutureProvider.family
 });
 
 final lazyMessagesProvider = Provider((ref) {
-  throw UnimplementedError(
-      'lazyMessagesProvider is removed/refactored. Use chatScreenProvider.');
+  // Legacy compatibility placeholder: old lazy message flow was removed.
+  return null;
 });
 
 final cachedConversationsProvider = conversationsProvider;

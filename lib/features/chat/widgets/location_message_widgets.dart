@@ -14,6 +14,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../../utils/user_friendly_error_utils.dart';
 
 /// داده مکان
 class LocationData {
@@ -280,12 +281,7 @@ class LocationMessageBubble extends StatelessWidget {
       }
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('خطا در باز کردن نقشه: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        UserFriendlyErrorUtils.showErrorSnackBar(context, e);
       }
     }
   }
@@ -360,14 +356,9 @@ class _LocationPickerSheetState extends State<LocationPickerSheet> {
       });
     } catch (e) {
       setState(() => _isLoadingLocation = false);
-      
+
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('خطا در دریافت موقعیت: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        UserFriendlyErrorUtils.showErrorSnackBar(context, e);
       }
     }
   }

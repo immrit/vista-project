@@ -8,6 +8,7 @@ import 'mention_input_sheet.dart';
 import 'countdown_input_sheet.dart';
 import 'questions_input_sheet.dart';
 import '../../domain/entities/story_editor_models.dart';
+import '../../../../utils/user_friendly_error_utils.dart';
 
 /// Bottom Sheet استیکرهای تعاملی با طراحی Glassmorphism و تب‌بندی
 class StoryStickerSheet extends StatefulWidget {
@@ -404,22 +405,18 @@ class _StoryStickerSheetState extends State<StoryStickerSheet>
     );
   }
 
+  void _closeStickerSheet() {
+    if (!mounted) return;
+    Navigator.of(context).maybePop();
+  }
+
+  int? _toIntOrNull(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '');
+  }
+
   void _onInteractiveStickerTap(_InteractiveSticker sticker) {
-    final sheetsWithOwnNavigation = [
-      'location',
-      'mention',
-      'hashtag',
-      'link',
-      'poll',
-      'questions',
-      'countdown',
-      'weather'
-    ];
-
-    if (!sheetsWithOwnNavigation.contains(sticker.type)) {
-      Navigator.pop(context);
-    }
-
     switch (sticker.type) {
       case 'location':
         _showLocationPicker();
@@ -444,60 +441,84 @@ class _StoryStickerSheetState extends State<StoryStickerSheet>
         break;
       case 'date':
         _addDateSticker();
+        _closeStickerSheet();
         break;
       case 'weather':
         _addWeatherSticker();
         break;
       default:
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${sticker.label} - به زودی...')),
+          SnackBar(
+            content: Text(
+              '${sticker.label} \u062F\u0631 \u0627\u06CC\u0646 \u0646\u0633\u062E\u0647 \u0641\u0639\u0627\u0644 \u0646\u06CC\u0633\u062A.',
+            ),
+          ),
         );
     }
   }
 
-  // Wrapper methods for dialogs (kept from original logic)
   void _showLocationPicker(
       {StoryInteractionType targetType = StoryInteractionType.location}) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => LocationPickerSheet(
+      builder: (_) => LocationPickerSheet(
         onLocationSelected: (locationName, lat, lng) async {
           int? temperature;
           int? weatherCode;
 
           if (targetType == StoryInteractionType.weather) {
             try {
-              final weatherData =
-                  await WeatherService().getCurrentTemperature(lat, lng);
-              if (weatherData != null) {
-                temperature = weatherData['temperature'] as int?;
-                weatherCode = weatherData['weathercode'] as int?;
+              if (lat.isFinite && lng.isFinite) {
+                final weatherData =
+                    await WeatherService().getCurrentTemperature(lat, lng);
+                temperature = _toIntOrNull(weatherData?['temperature']);
+                weatherCode = _toIntOrNull(weatherData?['weathercode']);
+
+                if (weatherData == null && mounted) {
+                  UserFriendlyErrorUtils.showErrorSnackBar(
+                    context,
+                    '\u062F\u0631\u06CC\u0627\u0641\u062A \u0627\u0637\u0644\u0627\u0639\u0627\u062A \u0622\u0628\u200C\u0648\u0647\u0648\u0627 \u0645\u0645\u06A9\u0646 \u0646\u0634\u062F.',
+                  );
+                }
+              } else if (mounted) {
+                UserFriendlyErrorUtils.showErrorSnackBar(
+                  context,
+                  '\u0628\u0631\u0627\u06CC \u062F\u0631\u06CC\u0627\u0641\u062A \u0622\u0628\u200C\u0648\u0647\u0648\u0627 \u0646\u06CC\u0627\u0632 \u0628\u0647 \u062F\u0633\u062A\u0631\u0633\u06CC \u0645\u06A9\u0627\u0646 \u062F\u0627\u0631\u06CC\u062F.',
+                );
               }
             } catch (e) {
-              debugPrint('Error fetching weather: $e');
+              if (mounted) {
+                UserFriendlyErrorUtils.showErrorSnackBar(context, e);
+              }
             }
           }
 
           if (!mounted) return;
 
-          if (widget.onInteractiveStickerSelected != null) {
-            widget.onInteractiveStickerSelected!(
-              targetType,
-              {
-                'city': locationName,
-                'latitude': lat,
-                'longitude': lng,
-                'temperature': temperature ?? 24,
-                'weathercode': weatherCode,
-              },
-            );
-          } else {
-            widget.onStickerSelected(
-                '📍 $locationName ${temperature != null ? "$temperature°" : ""}');
+          final payload = <String, dynamic>{
+            'city': locationName,
+            'latitude': lat,
+            'longitude': lng,
+          };
+          if (temperature != null) {
+            payload['temperature'] = temperature;
           }
-          if (mounted) Navigator.of(context).pop();
+          if (weatherCode != null) {
+            payload['weathercode'] = weatherCode;
+          }
+
+          final fallbackText = targetType == StoryInteractionType.weather
+              ? '\u0622\u0628\u200C\u0648\u0647\u0648\u0627: $locationName'
+              : locationName;
+
+          _handleStickerData(
+            targetType,
+            payload,
+            fallbackText: fallbackText,
+            closeStickerSheet: true,
+          );
         },
       ),
     );
@@ -509,15 +530,13 @@ class _StoryStickerSheetState extends State<StoryStickerSheet>
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) => MentionInputSheet(
-        onMentionCreated: (type, data) =>
-            _handleStickerData(type, data, '@${data['username']}'),
+        onMentionCreated: (type, data) => _handleStickerData(type, data,
+            fallbackText: '@${data['username']}'),
       ),
     );
   }
 
   void _showHashtagDialog() {
-    // Re-implementing visually improved hashtag dialog inline or reusing component if extracted
-    // For brevity, reusing the logic from previous implementation but cleaned up
     final TextEditingController hashtagController = TextEditingController();
     showModalBottomSheet(
       context: context,
@@ -534,7 +553,7 @@ class _StoryStickerSheetState extends State<StoryStickerSheet>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text('هشتگ',
+              const Text('\u0647\u0634\u062A\u06AF',
                   style: TextStyle(
                       color: Colors.white,
                       fontSize: 18,
@@ -549,7 +568,7 @@ class _StoryStickerSheetState extends State<StoryStickerSheet>
                   prefixText: '# ',
                   prefixStyle: const TextStyle(
                       color: Colors.blue, fontWeight: FontWeight.bold),
-                  hintText: 'متن هشتگ...',
+                  hintText: '\u0645\u062A\u0646 \u0647\u0634\u062A\u06AF...',
                   hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
                   filled: true,
                   fillColor: Colors.white.withOpacity(0.05),
@@ -569,9 +588,13 @@ class _StoryStickerSheetState extends State<StoryStickerSheet>
   void _submitHashtag(String value, BuildContext ctx) {
     if (value.trim().isEmpty) return;
     final tag = value.trim().replaceAll('#', '');
-    _handleStickerData(StoryInteractionType.hashtag, {'hashtag': tag}, '#$tag');
+    _handleStickerData(
+      StoryInteractionType.hashtag,
+      {'hashtag': tag},
+      fallbackText: '#$tag',
+    );
     Navigator.pop(ctx);
-    Navigator.pop(context);
+    _closeStickerSheet();
   }
 
   void _showLinkDialog() {
@@ -580,8 +603,11 @@ class _StoryStickerSheetState extends State<StoryStickerSheet>
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) => LinkInputSheet(
-        onLinkCreated: (type, data) =>
-            _handleStickerData(type, data, '🔗 ${data['url']}'),
+        onLinkCreated: (type, data) => _handleStickerData(
+          type,
+          data,
+          fallbackText: '\u0644\u06CC\u0646\u06A9: ${data['url']}',
+        ),
       ),
     );
   }
@@ -592,8 +618,12 @@ class _StoryStickerSheetState extends State<StoryStickerSheet>
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) => PollInputSheet(
-        onPollCreated: (type, data) =>
-            _handleStickerData(type, data, '📊 ${data['question']}'),
+        onPollCreated: (type, data) => _handleStickerData(
+          type,
+          data,
+          fallbackText:
+              '\u0646\u0638\u0631\u0633\u0646\u062C\u06CC: ${data['question']}',
+        ),
       ),
     );
   }
@@ -604,8 +634,11 @@ class _StoryStickerSheetState extends State<StoryStickerSheet>
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) => QuestionsInputSheet(
-        onQuestionCreated: (type, data) =>
-            _handleStickerData(type, data, '❓ ${data['question']}'),
+        onQuestionCreated: (type, data) => _handleStickerData(
+          type,
+          data,
+          fallbackText: '\u0633\u0648\u0627\u0644: ${data['question']}',
+        ),
       ),
     );
   }
@@ -616,27 +649,39 @@ class _StoryStickerSheetState extends State<StoryStickerSheet>
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) => CountdownInputSheet(
-        onCountdownCreated: (type, data) =>
-            _handleStickerData(type, data, '⏱️ ${data['title']}'),
+        onCountdownCreated: (type, data) => _handleStickerData(
+          type,
+          data,
+          fallbackText:
+              '\u0634\u0645\u0627\u0631\u0634\u06AF\u0631: ${data['title']}',
+        ),
       ),
     );
   }
 
   void _addDateSticker() {
     final now = DateTime.now();
-    widget.onStickerSelected('📅 ${now.year}/${now.month}/${now.day}');
+    widget.onStickerSelected('${now.year}/${now.month}/${now.day}');
   }
 
   void _addWeatherSticker() {
     _showLocationPicker(targetType: StoryInteractionType.weather);
   }
 
-  void _handleStickerData(StoryInteractionType type, Map<String, dynamic> data,
-      String fallbackText) {
+  void _handleStickerData(
+    StoryInteractionType type,
+    Map<String, dynamic> data, {
+    required String fallbackText,
+    bool closeStickerSheet = false,
+  }) {
     if (widget.onInteractiveStickerSelected != null) {
       widget.onInteractiveStickerSelected!(type, data);
     } else {
       widget.onStickerSelected(fallbackText);
+    }
+
+    if (closeStickerSheet) {
+      _closeStickerSheet();
     }
   }
 }

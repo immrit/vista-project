@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:permission_handler/permission_handler.dart';
+import '../../../utils/user_friendly_error_utils.dart';
 // TODO: Add contacts_service package to pubspec.yaml
 // import 'package:contacts_service/contacts_service.dart';
 
@@ -280,12 +281,7 @@ class ContactCardBubble extends StatelessWidget {
       }
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('خطا در ذخیره: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        UserFriendlyErrorUtils.showErrorSnackBar(context, e);
       }
     }
   }
@@ -400,14 +396,9 @@ class _ContactPickerSheetState extends State<ContactPickerSheet> {
       }
     } catch (e) {
       setState(() => _isLoading = false);
-      
+
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('خطا در بارگذاری مخاطبین: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        UserFriendlyErrorUtils.showErrorSnackBar(context, e);
       }
     }
   }

@@ -22,6 +22,7 @@ import '../../../provider/settings_providers.dart';
 class EnhancedChatBackground extends ConsumerStatefulWidget {
   final Widget child;
   final bool enablePattern;
+  final bool allowHeavyEffects;
 
   /// اگر null باشد، از تنظیمات کاربر استفاده می‌شود
   /// اگر مقدار مشخص شود، آن مقدار استفاده می‌شود (برای override)
@@ -32,6 +33,7 @@ class EnhancedChatBackground extends ConsumerStatefulWidget {
     super.key,
     required this.child,
     this.enablePattern = true,
+    this.allowHeavyEffects = true,
     this.forceEnableBlur,
     this.blurIntensity = 3.0,
   });
@@ -61,8 +63,12 @@ class _EnhancedChatBackgroundState
     // 1. اگر forceEnableBlur داده شده، از آن استفاده کن، وگرنه از تنظیمات کاربر
     // 2. حتماً نباید تم مشکی مطلق باشد (برای حفظ سیاهی مطلق در AMOLED)
     // ✅ حذف شرط isDark - بلور در هر دو تم روشن و تاریک اعمال می‌شود
-    final shouldApplyBlur =
-        (widget.forceEnableBlur ?? userSettingEnabled) && !isPitchBlack;
+    final shouldApplyBlur = (widget.forceEnableBlur ?? userSettingEnabled) &&
+        !isPitchBlack &&
+        widget.allowHeavyEffects;
+    final effectiveBlur = widget.allowHeavyEffects
+        ? widget.blurIntensity
+        : widget.blurIntensity.clamp(0.0, 2.0);
 
     return Stack(
       fit: StackFit.expand,
@@ -96,8 +102,8 @@ class _EnhancedChatBackgroundState
           ClipRect(
             child: BackdropFilter(
               filter: ImageFilter.blur(
-                sigmaX: widget.blurIntensity,
-                sigmaY: widget.blurIntensity,
+                sigmaX: effectiveBlur,
+                sigmaY: effectiveBlur,
               ),
               child: Container(
                 // رنگ لایه رویی بلور - متناسب با تم
@@ -234,4 +240,3 @@ class _MessagePatternPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
-

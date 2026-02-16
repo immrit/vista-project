@@ -465,14 +465,16 @@ Future<void> showDeleteConversationDialog({
   required String conversationTitle,
   required bool isGroupChat,
   required VoidCallback onDeleted,
+  DeleteConversationOption? preferredOption,
 }) async {
-  final result = await showDialog<DeleteConversationOption>(
-    context: context,
-    builder: (context) => _DeleteConversationDialog(
-      conversationTitle: conversationTitle,
-      isGroupChat: isGroupChat,
-    ),
-  );
+  final result = preferredOption ??
+      await showDialog<DeleteConversationOption>(
+        context: context,
+        builder: (context) => _DeleteConversationDialog(
+          conversationTitle: conversationTitle,
+          isGroupChat: isGroupChat,
+        ),
+      );
 
   if (result != null && context.mounted) {
     await _handleConversationDeletion(
@@ -531,27 +533,54 @@ Future<void> _handleConversationDeletion({
   required DeleteConversationOption option,
   required VoidCallback onDeleted,
 }) async {
+  final rootNavigator = Navigator.of(context, rootNavigator: true);
+  void closeLoadingDialogIfOpen() {
+    if (rootNavigator.canPop()) {
+      rootNavigator.pop();
+    }
+  }
+
   try {
-    // نمایش loading
     _showLoadingDialog(context, 'در حال حذف گفتگو...');
+    final container = ProviderScope.containerOf(context, listen: false);
+    final repository = container.read(chatRepositoryProvider);
 
-    // We cannot access ref here easily if it is not passed.
-    // Assuming ref was passed or we use ProviderScope?
-    // The original code used ChatService() directly which is legacy.
-    // We should use ref.read(chatRepositoryProvider).
-    // BUT we don't have ref.
-    // We need to change signature to accept ref.
-    // Or keep using legacy ChatService if it wraps repository?
-    // ChatService is removed (trow UnimplementedError).
-    // So we MUST use repository.
-    // We rely on caller to pass ref.
+    late final dynamic result;
+    switch (option) {
+      case DeleteConversationOption.deleteForMe:
+        result = await repository.deleteConversation(conversationId);
+        break;
+      case DeleteConversationOption.clearHistory:
+        result =
+            await repository.clearConversation(conversationId, forEveryone: false);
+        break;
+      case DeleteConversationOption.deleteForEveryone:
+        result =
+            await repository.clearConversation(conversationId, forEveryone: true);
+        break;
+    }
 
-    // But this function doesn't take ref.
-    // I will just throw for now or assume ref is available via context (not possible).
-    // I need to update signature.
-    throw UnimplementedError("Requires ref refactor");
+    closeLoadingDialogIfOpen();
+    if (!context.mounted) return;
+
+    if (result.isSuccess != true) {
+      _showErrorSnackbar(context, result.error ?? 'حذف گفتگو انجام نشد');
+      return;
+    }
+
+    final successMessage = option == DeleteConversationOption.deleteForEveryone
+        ? 'گفتگو برای همه حذف شد'
+        : option == DeleteConversationOption.clearHistory
+            ? 'تاریخچه گفتگو پاک شد'
+            : 'گفتگو حذف شد';
+    _showSuccessSnackbar(context, successMessage);
+    onDeleted();
   } catch (e) {
-    // ...
+    closeLoadingDialogIfOpen();
+    if (context.mounted) {
+      _showErrorSnackbar(context, 'خطا در حذف گفتگو');
+    }
+    logDebug('❌ خطا در حذف گفتگو: $e');
   }
 }
 
@@ -710,7 +739,7 @@ class _DeleteConversationDialog extends StatelessWidget {
                   child: Text(
                     isGroupChat
                         ? 'این عمل قابل بازگشت نیست.'
-                        : '⚠️ حذف گفتگو: ابتدا نوع حذف را انتخاب کنید (یک طرفه یا دو طرفه)',
+                        : 'می‌توانید گفتگو را فقط برای خودتان یا برای هر دو طرف حذف کنید.',
                     style: const TextStyle(fontSize: 13),
                   ),
                 ),
@@ -724,94 +753,20 @@ class _DeleteConversationDialog extends StatelessWidget {
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('لغو'),
         ),
-        // 🔥 برای مکالمات خصوصی، ابتدا از نوع حذف بپرس
-        if (!isGroupChat) ...[
-          TextButton(
-            onPressed: () =>
-                _showDeletionTypeDialog(context, conversationTitle),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('حذف گفتگو'),
-          ),
-        ] else ...[
-          // برای گروه‌ها، گزینه‌های عادی
-          TextButton(
-            onPressed: () =>
-                Navigator.of(context).pop(DeleteConversationOption.deleteForMe),
-            child: const Text('ترک گروه'),
-          ),
-          TextButton(
-            onPressed: () =>
-                _showDeletionTypeDialog(context, conversationTitle),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('حذف گروه'),
-          ),
-        ],
+        TextButton(
+          onPressed: () =>
+              Navigator.of(context).pop(DeleteConversationOption.deleteForMe),
+          child: Text(isGroupChat ? 'ترک گروه' : 'حذف برای من'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.of(context)
+              .pop(DeleteConversationOption.deleteForEveryone),
+          style: TextButton.styleFrom(foregroundColor: Colors.red),
+          child: Text(isGroupChat ? 'حذف برای همه اعضا' : 'حذف برای همه'),
+        ),
       ],
     );
   }
-}
-
-/// نمایش دیالوگ انتخاب نوع حذف
-void _showDeletionTypeDialog(BuildContext context, String conversationTitle) {
-  Navigator.of(context).pop(); // بستن دیالوگ قبلی
-
-  showDialog(
-    context: context,
-    builder: (context) => AlertDialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      title: const Text('نوع حذف'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('چگونه می‌خواهید "$conversationTitle" را حذف کنید؟'),
-          const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.blue.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.blue.withValues(alpha: 0.3)),
-            ),
-            child: const Row(
-              children: [
-                Icon(Icons.info_outline, color: Colors.blue, size: 20),
-                SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    '🔥 حذف دو طرفه: مکالمه و پیام‌ها از دیتابیس پاک می‌شوند (مثل تلگرام)\n\nحذف یک طرفه: فقط برای شما حذف می‌شود',
-                    style: TextStyle(fontSize: 13),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('لغو'),
-        ),
-        TextButton(
-          onPressed: () {
-            Navigator.of(context).pop();
-            Navigator.of(context).pop(DeleteConversationOption.deleteForMe);
-          },
-          child: const Text('حذف یک طرفه'),
-        ),
-        TextButton(
-          onPressed: () {
-            Navigator.of(context).pop();
-            Navigator.of(context)
-                .pop(DeleteConversationOption.deleteForEveryone);
-          },
-          style: TextButton.styleFrom(foregroundColor: Colors.red),
-          child: const Text('حذف دو طرفه'),
-        ),
-      ],
-    ),
-  );
 }
 
 /// Widget برای نمایش گزینه‌های حذف در context menu

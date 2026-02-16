@@ -77,29 +77,50 @@ class StoryReplyData {
   final String storyId;
   final String storyOwnerId;
   final String storyOwnerUsername;
+  final String? storyOwnerAvatarUrl;
   final String storyThumbnailUrl;
   final String storyMediaType;
   final DateTime storyCreatedAt;
+  final DateTime? storyExpiresAt;
+  final int? storyDurationHours;
 
   const StoryReplyData({
     required this.storyId,
     required this.storyOwnerId,
     required this.storyOwnerUsername,
+    this.storyOwnerAvatarUrl,
     required this.storyThumbnailUrl,
     required this.storyMediaType,
     required this.storyCreatedAt,
+    this.storyExpiresAt,
+    this.storyDurationHours,
   });
 
   factory StoryReplyData.fromJson(Map<String, dynamic> json) {
+    final createdAt = json['story_created_at'] != null
+        ? DateTime.parse(json['story_created_at'])
+        : DateTime.now();
+
+    final durationHours = (json['story_duration_hours'] as num?)?.toInt() ??
+        (json['duration_hours'] as num?)?.toInt();
+
+    DateTime? expiresAt;
+    if (json['story_expires_at'] != null) {
+      expiresAt = DateTime.parse(json['story_expires_at']);
+    } else if (durationHours != null && durationHours > 0) {
+      expiresAt = createdAt.add(Duration(hours: durationHours));
+    }
+
     return StoryReplyData(
       storyId: json['story_id'] ?? '',
       storyOwnerId: json['story_owner_id'] ?? '',
       storyOwnerUsername: json['story_owner_username'] ?? '',
+      storyOwnerAvatarUrl: json['story_owner_avatar_url'] as String?,
       storyThumbnailUrl: json['story_thumbnail_url'] ?? '',
       storyMediaType: json['story_media_type'] ?? 'image',
-      storyCreatedAt: json['story_created_at'] != null
-          ? DateTime.parse(json['story_created_at'])
-          : DateTime.now(),
+      storyCreatedAt: createdAt,
+      storyExpiresAt: expiresAt,
+      storyDurationHours: durationHours,
     );
   }
 
@@ -107,9 +128,12 @@ class StoryReplyData {
         'story_id': storyId,
         'story_owner_id': storyOwnerId,
         'story_owner_username': storyOwnerUsername,
+        'story_owner_avatar_url': storyOwnerAvatarUrl,
         'story_thumbnail_url': storyThumbnailUrl,
         'story_media_type': storyMediaType,
         'story_created_at': storyCreatedAt.toIso8601String(),
+        'story_expires_at': storyExpiresAt?.toIso8601String(),
+        'story_duration_hours': storyDurationHours,
       };
 }
 

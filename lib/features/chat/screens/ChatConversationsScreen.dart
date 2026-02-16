@@ -14,6 +14,7 @@ import 'ArchivedConversationsScreen.dart';
 import '../../../features/chat/screens/modern_chat_screen.dart';
 import '../../../features/chat/screens/new_message_screen.dart';
 import '../../../DB/database_file_utils.dart';
+import '../../../utils/user_friendly_error_utils.dart';
 // ✅ ویجت Swipeable برای آیتم مکالمه
 import 'package:Vista/widgets/swipeable_conversation_item.dart';
 // ✅ نشانگر وضعیت شبکه
@@ -576,20 +577,20 @@ class _ChatConversationsScreenState
       final result = await repo.deleteConversation(conversation.id);
       if (mounted) {
         if (result.isSuccess) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("گفتگو با موفقیت حذف شد!")),
+          UserFriendlyErrorUtils.showSuccessSnackBar(
+            context,
+            'گفتگو با موفقیت حذف شد',
           );
         } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text("خطا در حذف گفتگو: ${result.error}")),
+          UserFriendlyErrorUtils.showErrorSnackBar(
+            context,
+            result.error ?? 'حذف گفتگو انجام نشد',
           );
         }
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("خطا در حذف گفتگو: $e")),
-        );
+        UserFriendlyErrorUtils.showErrorSnackBar(context, e);
       }
     }
   }
