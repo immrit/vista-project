@@ -1,6 +1,7 @@
 import 'dart:convert';
 // Equatable removed: model is mutable in this codebase
 import 'ProfileModel.dart'; // واردکردن ProfileModel برای استفاده از VerificationType
+import '../utils/verification_badge_utils.dart';
 
 class PublicPostModel {
   final String id;
@@ -160,17 +161,28 @@ class PublicPostModel {
   }
 
   static VerificationType _parseVerificationType(Map<String, dynamic> map) {
+    final profile = map['profiles'] as Map<String, dynamic>? ?? const {};
+    final isVerified = (map['is_verified'] as bool?) ??
+        (profile['is_verified'] as bool?) ??
+        false;
+    final role = (map['role'] ?? profile['role'])?.toString();
     final dynamic raw =
-        map['verification_type'] ?? map['profiles']?['verification_type'];
-    if (raw == null) return VerificationType.none;
-    final String value = raw.toString();
-    try {
-      return VerificationType.values.firstWhere(
-        (type) => type.name == value,
-        orElse: () => VerificationType.none,
-      );
-    } catch (_) {
-      return VerificationType.none;
+        map['verification_type'] ?? profile['verification_type'];
+
+    final resolved = resolveVerificationBadgeType(
+      isVerified: isVerified,
+      verificationType: raw,
+      role: role,
+    );
+    switch (resolved) {
+      case ResolvedVerificationBadgeType.blueTick:
+        return VerificationType.blueTick;
+      case ResolvedVerificationBadgeType.goldTick:
+        return VerificationType.goldTick;
+      case ResolvedVerificationBadgeType.blackTick:
+        return VerificationType.blackTick;
+      case ResolvedVerificationBadgeType.none:
+        return VerificationType.none;
     }
   }
 

@@ -16,6 +16,7 @@ import '../../../model/UserModel.dart';
 
 import '../../../provider/provider.dart';
 import 'package:Vista/widgets/YourVideoTrimmerPage.dart';
+import 'package:Vista/widgets/verification_badge_icon.dart';
 import '../../../../features/posts/providers/post_upload_provider.dart';
 import '../widgets/hashtag_autocomplete_field.dart';
 
@@ -678,61 +679,17 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
   }
 
   Widget _buildVerificationBadge(Map<String, dynamic>? userData) {
-    // بررسی وضعیت تأیید حساب کاربری
-    final bool isVerified = userData?['is_verified'] ?? false;
-    if (!isVerified) {
-      return const SizedBox.shrink();
-    }
-
-    // بررسی نوع نشان تأیید
-    final String verificationType = userData?['verification_type'] ?? 'none';
-    IconData iconData = Icons.verified;
-    Color iconColor = Colors.blue;
-
-    // تعیین نوع و رنگ آیکون بر اساس نوع نشان
-    switch (verificationType) {
-      case 'blueTick':
-        iconData = Icons.verified;
-        iconColor = Colors.blue;
-        break;
-      case 'goldTick':
-        iconData = Icons.verified;
-        iconColor = Colors.amber;
-        break;
-      case 'blackTick':
-        iconData = Icons.verified;
-        iconColor = Colors.black;
-        break;
-      default:
-        // حالت پیش‌فرض برای پروفایل‌های تأیید شده بدون نوع مشخص
-        iconData = Icons.verified;
-        iconColor = Colors.blue;
-    }
-
-    // ایجاد ویجت نشان بر اساس نوع
-    if (verificationType == 'blackTick') {
-      // اضافه کردن پس‌زمینه باریک برای تیک مشکی
-      return Padding(
-        padding: const EdgeInsets.only(right: 4.0),
-        child: Container(
-          padding: const EdgeInsets.all(.3), // فاصله باریک برای پس‌زمینه
-          decoration: BoxDecoration(
-            color: Colors.white, // پس‌زمینه سفید
-            shape: BoxShape.circle, // پس‌زمینه دایره‌ای
-          ),
-          child: Icon(iconData, color: iconColor, size: 16),
-        ),
-      );
-    } else {
-      // بازگشت آیکون ساده برای تیک‌های آبی و طلایی
-      return Padding(
-        padding: const EdgeInsets.only(right: 4.0),
-        child: Icon(iconData, color: iconColor, size: 16),
-      );
-    }
+    return Padding(
+      padding: const EdgeInsets.only(right: 4.0),
+      child: VerificationBadgeIcon(
+        isVerified: userData?['is_verified'] as bool? ?? false,
+        verificationType: userData?['verification_type'],
+        role: userData?['role']?.toString(),
+        size: 16,
+      ),
+    );
   }
 
-// نمایش اطلاعات کاربر در بالای صفحه افزودن پست
   Widget _buildUserInfo(BuildContext context, Map<String, dynamic> userData) {
     return Row(
       children: [

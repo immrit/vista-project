@@ -28,6 +28,7 @@ import '../widgets/post_action_buttons.dart';
 import '../widgets/hashtag_rich_text.dart';
 import '../providers/saved_posts_provider.dart';
 import 'package:Vista/features/search/screens/searchPage.dart';
+import '../../../widgets/verification_badge_icon.dart';
 
 // -----------------------------------------------------------------------------
 // SCREEN
@@ -381,8 +382,12 @@ class _ThreadPostItem extends ConsumerWidget {
                                 ),
                                 if (post.isVerified) ...[
                                   const SizedBox(width: 4),
-                                  const Icon(Icons.verified,
-                                      size: 14, color: Colors.blue),
+                                  VerificationBadgeIcon(
+                                    isVerified: post.isVerified,
+                                    verificationType: post.verificationType,
+                                    role: post.profiles?['role']?.toString(),
+                                    size: 14,
+                                  ),
                                 ],
                                 const SizedBox(width: 6),
                                 Text(

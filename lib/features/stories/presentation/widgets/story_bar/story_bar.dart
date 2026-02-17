@@ -5,6 +5,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../../../domain/entities/entities.dart';
 import '../../providers/story_providers.dart';
 import '../../../../../utils/const.dart';
+import '../../../../../widgets/verification_badge_icon.dart';
 
 /// نوار استوری‌ها با مرتب‌سازی هوشمند
 /// - استوری‌های دیده‌نشده اول
@@ -315,30 +316,18 @@ class _AnimatedStoryRingState extends State<_AnimatedStoryRing>
               textAlign: TextAlign.center,
             ),
           ),
-          if (widget.user.isVerified) ...[
+          if (widget.user.isVerified || widget.user.isPremium) ...[
             const SizedBox(width: 2),
-            Icon(
-              Icons.verified,
-              color: _getVerificationColor(widget.user),
+            VerificationBadgeIcon(
+              isVerified: widget.user.isVerified,
+              verificationType: widget.user.verificationType,
+              role: widget.user.isPremium ? 'premium' : null,
               size: 12,
             ),
           ],
         ],
       ),
     );
-  }
-
-  Color _getVerificationColor(StoryUser user) {
-    switch (user.verificationType) {
-      case StoryVerificationType.gold:
-        return Colors.amber;
-      case StoryVerificationType.blue:
-        return Colors.blue;
-      case StoryVerificationType.black:
-        return Colors.white;
-      case StoryVerificationType.none:
-        return user.isPremium ? Colors.amber : Colors.blue;
-    }
   }
 
   Widget _buildAvatar() {

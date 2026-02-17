@@ -1,4 +1,5 @@
 import 'dart:convert';
+import '../utils/verification_badge_utils.dart';
 
 class CommentModel {
   final String id;
@@ -8,6 +9,7 @@ class CommentModel {
   final DateTime createdAt;
   final String username;
   final String avatarUrl;
+  final String? role;
   bool isVerified;
   final String postOwnerId;
   final String? parentCommentId;
@@ -22,6 +24,7 @@ class CommentModel {
     required this.createdAt,
     required this.username,
     this.avatarUrl = '',
+    this.role,
     this.isVerified = false,
     this.verificationType = VerificationType.none, // مقدار پیش‌فرض
 
@@ -38,6 +41,7 @@ class CommentModel {
     DateTime? createdAt,
     String? username,
     String? avatarUrl,
+    String? role,
     bool? isVerified,
     VerificationType? verificationType, // اضافه کردن به copyWith
 
@@ -53,6 +57,7 @@ class CommentModel {
       createdAt: createdAt ?? this.createdAt,
       username: username ?? this.username,
       avatarUrl: avatarUrl ?? this.avatarUrl,
+      role: role ?? this.role,
       isVerified: isVerified ?? this.isVerified,
       verificationType:
           verificationType ?? this.verificationType, // اضافه کردن به سازنده
@@ -64,6 +69,15 @@ class CommentModel {
   }
 
   factory CommentModel.fromMap(Map<String, dynamic> map) {
+    final profiles = map['profiles'] as Map<String, dynamic>? ?? const {};
+    final isVerified = profiles['is_verified'] as bool? ?? false;
+    final role = profiles['role']?.toString();
+    final parsedType = resolveVerificationBadgeType(
+      isVerified: isVerified,
+      verificationType: profiles['verification_type'],
+      role: role,
+    );
+
     return CommentModel(
       id: map['id'] as String? ?? '',
       postId: map['post_id'] as String? ?? '',
@@ -71,11 +85,11 @@ class CommentModel {
       content: map['content'] as String? ?? 'متن خالی',
       createdAt: DateTime.tryParse(map['created_at'] as String? ?? '') ??
           DateTime.now(),
-      username: map['profiles']?['username'] as String? ?? 'کاربر',
-      avatarUrl: map['profiles']?['avatar_url'] as String? ?? '',
-      isVerified: map['profiles']?['is_verified'] as bool? ?? false,
-      verificationType: _mapVerificationType(
-          map['profiles']?['verification_type']), // اضافه کردن دریافت نوع تیک
+      username: profiles['username'] as String? ?? 'کاربر',
+      avatarUrl: profiles['avatar_url'] as String? ?? '',
+      role: profiles['role']?.toString(),
+      isVerified: isVerified,
+      verificationType: _mapResolvedType(parsedType),
       postOwnerId:
           map['owner_id'] as String? ?? '', // Updated from 'post_owner_id'
       parentCommentId: map['parent_comment_id'] as String?, // Ensure nullable
@@ -86,21 +100,17 @@ class CommentModel {
     );
   }
 
-  static VerificationType _mapVerificationType(dynamic value) {
-    if (value == null) return VerificationType.none;
-    if (value is String) {
-      switch (value) {
-        case 'blueTick':
-          return VerificationType.blueTick;
-        case 'goldTick':
-          return VerificationType.goldTick;
-        case 'blackTick':
-          return VerificationType.blackTick;
-        default:
-          return VerificationType.none;
-      }
+  static VerificationType _mapResolvedType(ResolvedVerificationBadgeType type) {
+    switch (type) {
+      case ResolvedVerificationBadgeType.blueTick:
+        return VerificationType.blueTick;
+      case ResolvedVerificationBadgeType.goldTick:
+        return VerificationType.goldTick;
+      case ResolvedVerificationBadgeType.blackTick:
+        return VerificationType.blackTick;
+      case ResolvedVerificationBadgeType.none:
+        return VerificationType.none;
     }
-    return VerificationType.none;
   }
 
   Map<String, dynamic> toMap() {
@@ -113,6 +123,7 @@ class CommentModel {
       'profiles': {
         'username': username,
         'avatar_url': avatarUrl,
+        'role': role,
         'is_verified': isVerified,
         'verification_type':
             verificationType.name, // اضافه کردن نوع تیک به خروجی

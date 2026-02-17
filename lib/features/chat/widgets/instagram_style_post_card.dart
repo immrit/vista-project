@@ -13,6 +13,8 @@ import '../../../utils/compat_extensions.dart';
 import 'telegram_message_status.dart';
 import '../../../services/telegram_read_receipt_service.dart';
 import 'improved_animated_message_bubble.dart' show MessageStatus;
+import '../../../widgets/verification_badge_icon.dart';
+import '../../../utils/verification_badge_utils.dart';
 
 class InstagramStylePostCard extends StatefulWidget {
   final String postId;
@@ -29,7 +31,9 @@ class InstagramStylePostCard extends StatefulWidget {
   final VoidCallback? onLongPress;
   final bool isMine;
   final DateTime sentAt;
+  final bool isVerified;
   final String? verificationType;
+  final String? role;
   final List<String>? hashtags;
   final MessageStatus? status; // وضعیت پیام
 
@@ -49,7 +53,9 @@ class InstagramStylePostCard extends StatefulWidget {
     this.onLongPress,
     required this.isMine,
     required this.sentAt,
+    this.isVerified = false,
     this.verificationType,
+    this.role,
     this.hashtags,
     this.status,
   });
@@ -145,9 +151,7 @@ class _InstagramStylePostCardState extends State<InstagramStylePostCard>
               Container(
                 constraints: const BoxConstraints(maxWidth: 300),
                 decoration: BoxDecoration(
-                  color: theme.isDark
-                      ? const Color(0xFF1E1E1E)
-                      : Colors.white,
+                  color: theme.isDark ? const Color(0xFF1E1E1E) : Colors.white,
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
                     color: theme.isDark
@@ -157,7 +161,8 @@ class _InstagramStylePostCardState extends State<InstagramStylePostCard>
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(theme.isDark ? 0.3 : 0.08),
+                      color:
+                          Colors.black.withOpacity(theme.isDark ? 0.3 : 0.08),
                       blurRadius: 16,
                       offset: const Offset(0, 4),
                     ),
@@ -173,8 +178,7 @@ class _InstagramStylePostCardState extends State<InstagramStylePostCard>
                       _buildPostHeader(theme),
 
                       // محتوای متنی
-                      if (_cleanContent.isNotEmpty)
-                        _buildPostContent(theme),
+                      if (_cleanContent.isNotEmpty) _buildPostContent(theme),
 
                       // هشتگ‌ها
                       if (hashtags.isNotEmpty) _buildHashtags(theme, hashtags),
@@ -224,9 +228,8 @@ class _InstagramStylePostCardState extends State<InstagramStylePostCard>
               ),
               child: CircleAvatar(
                 radius: 18,
-                backgroundColor: theme.isDark
-                    ? Colors.grey.shade800
-                    : Colors.grey.shade200,
+                backgroundColor:
+                    theme.isDark ? Colors.grey.shade800 : Colors.grey.shade200,
                 backgroundImage: widget.authorAvatar != null &&
                         widget.authorAvatar!.isNotEmpty
                     ? CachedNetworkImageProvider(widget.authorAvatar!)
@@ -269,8 +272,8 @@ class _InstagramStylePostCardState extends State<InstagramStylePostCard>
                       ),
                     ),
                     // تیک تأیید
-                    if (widget.verificationType != null &&
-                        widget.verificationType != 'none')
+                    if (_resolvedBadgeType !=
+                        ResolvedVerificationBadgeType.none)
                       Padding(
                         padding: const EdgeInsets.only(right: 4),
                         child: _buildVerificationBadge(),
@@ -310,27 +313,20 @@ class _InstagramStylePostCardState extends State<InstagramStylePostCard>
     );
   }
 
+  ResolvedVerificationBadgeType get _resolvedBadgeType =>
+      resolveVerificationBadgeType(
+        isVerified: widget.isVerified,
+        verificationType: widget.verificationType,
+        role: widget.role,
+      );
+
   /// نشان تأیید
   Widget _buildVerificationBadge() {
-    Color badgeColor;
-    switch (widget.verificationType) {
-      case 'blueTick':
-        badgeColor = Colors.blue;
-        break;
-      case 'goldTick':
-        badgeColor = Colors.amber;
-        break;
-      case 'blackTick':
-        badgeColor = Colors.black;
-        break;
-      default:
-        return const SizedBox.shrink();
-    }
-
-    return Icon(
-      Icons.verified,
+    return VerificationBadgeIcon(
+      isVerified: widget.isVerified,
+      verificationType: widget.verificationType,
+      role: widget.role,
       size: 16,
-      color: badgeColor,
     );
   }
 
@@ -426,7 +422,7 @@ class _InstagramStylePostCardState extends State<InstagramStylePostCard>
               _buildViewPostButton(theme),
             ],
           ),
-          
+
           // زمان ارسال پیام و وضعیت (داخل حباب)
           const SizedBox(height: 8),
           Row(
@@ -517,10 +513,10 @@ class _InstagramStylePostCardState extends State<InstagramStylePostCard>
 
   Widget _buildStatusIcon(ChatTheme theme) {
     if (widget.status == null) return const SizedBox.shrink();
-    
+
     // تبدیل MessageStatus به MessageDeliveryStatus
     final deliveryStatus = _convertToDeliveryStatus(widget.status!);
-    
+
     return TelegramMessageStatus(
       status: deliveryStatus,
       size: 12, // کوچک‌تر و ظریف‌تر
@@ -790,4 +786,3 @@ class _MediaTile extends StatelessWidget {
     );
   }
 }
-

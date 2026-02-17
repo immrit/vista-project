@@ -4,6 +4,7 @@ import 'package:timeago/timeago.dart' as timeago;
 
 import '../../domain/entities/entities.dart';
 import '../../core/story_enums.dart';
+import '../../../../widgets/verification_badge_icon.dart';
 
 /// هدر استوری
 class StoryHeader extends StatelessWidget {
@@ -78,11 +79,12 @@ class StoryHeader extends StatelessWidget {
                             fontSize: 14,
                           ),
                         ),
-                        if (user.isVerified) ...[
+                        if (user.isVerified || user.isPremium) ...[
                           const SizedBox(width: 4),
-                          Icon(
-                            Icons.verified,
-                            color: _getVerificationColor(user),
+                          VerificationBadgeIcon(
+                            isVerified: user.isVerified,
+                            verificationType: user.verificationType,
+                            role: user.isPremium ? 'premium' : null,
                             size: 14,
                           ),
                         ],
@@ -158,19 +160,6 @@ class StoryHeader extends StatelessWidget {
     // تنظیم زبان فارسی برای timeago
     timeago.setLocaleMessages('fa', timeago.FaMessages());
     return timeago.format(dateTime, locale: 'fa');
-  }
-
-  Color _getVerificationColor(StoryUser user) {
-    switch (user.verificationType) {
-      case StoryVerificationType.gold:
-        return Colors.amber;
-      case StoryVerificationType.blue:
-        return Colors.blue;
-      case StoryVerificationType.black:
-        return Colors.white; // Or Colors.grey[300] for dark theme
-      case StoryVerificationType.none:
-        return user.isPremium ? Colors.amber : Colors.blue;
-    }
   }
 
   void _openProfile(BuildContext context) {

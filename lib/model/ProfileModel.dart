@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:equatable/equatable.dart';
 import 'package:flutter/foundation.dart';
+import '../utils/verification_badge_utils.dart';
 
 import 'publicPostModel.dart';
 
@@ -55,6 +56,14 @@ class ProfileModel extends Equatable {
       throw ArgumentError('Missing required fields: id or username');
     }
 
+    final isVerified = map['is_verified'] as bool? ?? false;
+    final role = map['role']?.toString();
+    final parsedType = resolveVerificationBadgeType(
+      isVerified: isVerified,
+      verificationType: map['verification_type'],
+      role: role,
+    );
+
     return ProfileModel(
       id: map['id'].toString(),
       username: map['username'].toString(),
@@ -67,19 +76,29 @@ class ProfileModel extends Equatable {
       createdAt: map['created_at'] != null
           ? DateTime.tryParse(map['created_at'].toString())
           : null,
-      isVerified: map['is_verified'] ?? false,
-      verificationType: VerificationType.values.firstWhere(
-        (type) => type.name == map['verification_type'],
-        orElse: () => VerificationType.none,
-      ),
+      isVerified: isVerified,
+      verificationType: _mapResolvedType(parsedType),
       isFollowed: map['is_followed'] ?? false,
       isPrivate: map['is_private'] ?? false,
       posts: (map['posts'] as List<dynamic>? ?? [])
           .map((post) => PublicPostModel.fromMap(post))
           .toList(),
-      role: map['role']?.toString(), // واکشی نقش کاربر
+      role: role, // واکشی نقش کاربر
       postsCount: map['posts_count'] ?? 0,
     );
+  }
+
+  static VerificationType _mapResolvedType(ResolvedVerificationBadgeType type) {
+    switch (type) {
+      case ResolvedVerificationBadgeType.blueTick:
+        return VerificationType.blueTick;
+      case ResolvedVerificationBadgeType.goldTick:
+        return VerificationType.goldTick;
+      case ResolvedVerificationBadgeType.blackTick:
+        return VerificationType.blackTick;
+      case ResolvedVerificationBadgeType.none:
+        return VerificationType.none;
+    }
   }
 
   Map<String, dynamic> toMap() {

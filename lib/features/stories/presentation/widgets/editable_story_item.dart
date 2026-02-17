@@ -1,8 +1,8 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'dart:math' as math;
-import 'package:vector_math/vector_math_64.dart' as vm;
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../domain/entities/story_editor_models.dart';
 
@@ -39,8 +39,14 @@ class EditableStoryItem extends StatefulWidget {
 }
 
 class _EditableStoryItemState extends State<EditableStoryItem> {
-  late Matrix4 _initialMatrix;
   Offset? _initialFocalPoint;
+  double _startItemX = 0.0;
+  double _startItemY = 0.0;
+  double _startItemScale = 1.0;
+  double _startItemRotation = 0.0;
+
+  static const double _minScale = 0.35;
+  static const double _maxScale = 6.0;
 
   @override
   Widget build(BuildContext context) {
@@ -134,33 +140,35 @@ class _EditableStoryItemState extends State<EditableStoryItem> {
     );
 
     // Wrap content with border when selected
-    Widget framedContent = Stack(
-      clipBehavior: Clip.none,
-      alignment: Alignment.center,
-      children: [
-        // The main content with an optional border when selected
-        Container(
-          decoration: widget.isSelected
-              ? BoxDecoration(
-                  border: Border.all(
-                      color: widget.isDraggingOverTrash
-                          ? Colors
-                              .transparent // Hide border when over trash for cleaner look
-                          : Colors.white,
-                      width: 1.5),
-                  borderRadius: BorderRadius.circular(14),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.3),
-                      blurRadius: 8,
-                      spreadRadius: 1,
-                    )
-                  ],
-                )
-              : null,
-          child: content,
-        ),
-      ],
+    Widget framedContent = RepaintBoundary(
+      child: Stack(
+        clipBehavior: Clip.none,
+        alignment: Alignment.center,
+        children: [
+          // The main content with an optional border when selected
+          Container(
+            decoration: widget.isSelected
+                ? BoxDecoration(
+                    border: Border.all(
+                        color: widget.isDraggingOverTrash
+                            ? Colors
+                                .transparent // Hide border when over trash for cleaner look
+                            : Colors.white,
+                        width: 1.5),
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.3),
+                        blurRadius: 8,
+                        spreadRadius: 1,
+                      )
+                    ],
+                  )
+                : null,
+            child: content,
+          ),
+        ],
+      ),
     );
 
     // Apply Drag-to-Delete visual feedback (Shrink & Fade)
@@ -179,6 +187,8 @@ class _EditableStoryItemState extends State<EditableStoryItem> {
       transform: widget.item.transformMatrix,
       alignment: Alignment.center,
       child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        dragStartBehavior: DragStartBehavior.down,
         onTap: () {
           widget.onSelect();
           HapticFeedback.selectionClick();
@@ -187,9 +197,12 @@ class _EditableStoryItemState extends State<EditableStoryItem> {
         onScaleStart: _onScaleStart,
         onScaleUpdate: _onScaleUpdate,
         onScaleEnd: _onScaleEnd,
-        child: Container(
-          color: Colors.transparent,
-          child: framedContent,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Container(
+            color: Colors.transparent,
+            child: framedContent,
+          ),
         ),
       ),
     );
@@ -199,53 +212,72 @@ class _EditableStoryItemState extends State<EditableStoryItem> {
     widget.onSelect();
     widget.onDragStart();
 
-    _initialMatrix = widget.item.transformMatrix;
+    final item = widget.item;
     _initialFocalPoint = details.focalPoint;
+    _startItemX = item.x;
+    _startItemY = item.y;
+    _startItemScale = item.scale;
+    _startItemRotation = item.rotation;
   }
 
   void _onScaleUpdate(ScaleUpdateDetails details) {
     if (_initialFocalPoint == null) return;
+    final item = widget.item;
+    final totalDelta = details.focalPoint - _initialFocalPoint!;
 
-    final translationDelta = details.focalPoint - _initialFocalPoint!;
-    final scaleDelta = details.scale;
-    final rotationDelta = details.rotation;
+    var nextX = _startItemX + totalDelta.dx;
+    var nextY = _startItemY + totalDelta.dy;
+    var nextScale = _startItemScale;
+    var nextRotation = _startItemRotation;
 
-    final translationMatrix = Matrix4.identity()
-      ..translate(translationDelta.dx, translationDelta.dy);
+    // Two-finger gesture: absolute scale/rotation from gesture start.
+    if (details.pointerCount > 1) {
+      if (details.scale.isFinite && details.scale > 0) {
+        nextScale =
+            (_startItemScale * details.scale).clamp(_minScale, _maxScale);
+      }
 
-    final rotationMatrix = Matrix4.identity()..rotateZ(rotationDelta);
+      if (details.rotation.isFinite) {
+        nextRotation = _normalizeAngle(_startItemRotation + details.rotation);
+      }
+    }
 
-    final scaleMatrix = Matrix4.identity()..scale(scaleDelta);
+    if (!nextX.isFinite) nextX = _startItemX;
+    if (!nextY.isFinite) nextY = _startItemY;
+    if (!nextScale.isFinite) nextScale = item.scale;
+    if (!nextRotation.isFinite) nextRotation = item.rotation;
 
-    Matrix4 newMatrix = Matrix4.identity();
-    newMatrix.multiply(translationMatrix);
-    newMatrix.multiply(_initialMatrix);
-    newMatrix.multiply(rotationMatrix);
-    newMatrix.multiply(scaleMatrix);
-
-    final vm.Vector3 translation = newMatrix.getTranslation();
-
-    // Extract rotation
-    final double rotation =
-        math.atan2(newMatrix.storage[1], newMatrix.storage[0]);
-
-    // Extract scale
-    final double scale = math.sqrt(newMatrix.storage[0] * newMatrix.storage[0] +
-        newMatrix.storage[1] * newMatrix.storage[1]);
-
-    final updatedItem = widget.item.copyWith(
-      x: translation.x,
-      y: translation.y,
-      scale: scale,
-      rotation: rotation,
+    widget.onUpdate(
+      item.copyWith(
+        x: nextX,
+        y: nextY,
+        scale: nextScale,
+        rotation: nextRotation,
+      ),
     );
-
-    widget.onUpdate(updatedItem);
   }
 
   void _onScaleEnd(ScaleEndDetails details) {
     widget.onDragEnd();
     _initialFocalPoint = null;
+  }
+
+  double _normalizeAngle(double angle) {
+    const twoPi = math.pi * 2;
+    var normalized = angle;
+
+    while (normalized > math.pi) {
+      normalized -= twoPi;
+    }
+    while (normalized < -math.pi) {
+      normalized += twoPi;
+    }
+
+    // Snap softly to zero for easier straight alignment.
+    if (normalized.abs() < 0.015) {
+      return 0;
+    }
+    return normalized;
   }
 }
 

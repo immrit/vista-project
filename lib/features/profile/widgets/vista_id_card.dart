@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../../../model/UserModel.dart';
+import '../../../utils/verification_badge_utils.dart';
 
 /// Vista ID Card - Premium 3D Interactive Digital Business Card
 class VistaIDCard extends StatefulWidget {
@@ -428,25 +429,15 @@ class _VistaIDCardState extends State<VistaIDCard>
   }
 
   Widget _buildBadge() {
-    Color color;
-    IconData icon;
-
-    switch (widget.user.verificationType) {
-      case VerificationType.goldTick:
-        color = Colors.amber;
-        icon = Icons.workspace_premium;
-        break;
-      case VerificationType.blueTick:
-        color = Colors.blue;
-        icon = Icons.verified;
-        break;
-      case VerificationType.blackTick:
-        color = Colors.grey[300]!;
-        icon = Icons.diamond_outlined;
-        break;
-      default:
-        return const SizedBox.shrink();
+    final resolvedType = resolveVerificationBadgeType(
+      isVerified: widget.user.isVerified,
+      verificationType: widget.user.verificationType,
+      role: widget.user.role,
+    );
+    if (resolvedType == ResolvedVerificationBadgeType.none) {
+      return const SizedBox.shrink();
     }
+    final color = verificationBadgeColor(context, resolvedType);
 
     return Container(
       padding: const EdgeInsets.all(6),
@@ -454,7 +445,7 @@ class _VistaIDCardState extends State<VistaIDCard>
         color: color.withValues(alpha: 0.15),
         shape: BoxShape.circle,
       ),
-      child: Icon(icon, color: color, size: 18),
+      child: Icon(Icons.verified, color: color, size: 18),
     );
   }
 
@@ -490,7 +481,7 @@ class _VistaIDCardState extends State<VistaIDCard>
   }
 
   List<Color> _getGradientColors() {
-    switch (widget.user.verificationType) {
+    switch (_effectiveVerificationType) {
       case VerificationType.goldTick:
         return [Colors.amber, Colors.orange];
       case VerificationType.blueTick:
@@ -503,7 +494,7 @@ class _VistaIDCardState extends State<VistaIDCard>
   }
 
   Color _getGlowColor() {
-    switch (widget.user.verificationType) {
+    switch (_effectiveVerificationType) {
       case VerificationType.goldTick:
         return Colors.amber;
       case VerificationType.blueTick:
@@ -516,7 +507,7 @@ class _VistaIDCardState extends State<VistaIDCard>
   }
 
   String _getUserTitle() {
-    switch (widget.user.verificationType) {
+    switch (_effectiveVerificationType) {
       case VerificationType.goldTick:
         return 'PREMIUM';
       case VerificationType.blueTick:
@@ -526,6 +517,10 @@ class _VistaIDCardState extends State<VistaIDCard>
       default:
         return 'MEMBER';
     }
+  }
+
+  VerificationType get _effectiveVerificationType {
+    return widget.user.verificationType;
   }
 }
 

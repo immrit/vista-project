@@ -182,7 +182,10 @@ class _MentionInputSheetState extends State<MentionInputSheet> {
 
     widget.onMentionCreated(
       StoryInteractionType.mention,
-      {'username': username},
+      {
+        'username': username,
+        'style': 0,
+      },
     );
     // Pop this sheet
     Navigator.pop(context);

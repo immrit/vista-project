@@ -26,6 +26,7 @@ import '/model/publicPostModel.dart';
 import '../utils/const.dart';
 import '../model/CommentModel.dart';
 import '../model/UserModel.dart';
+import '../widgets/verification_badge_icon.dart';
 import 'package:Vista/utils/themes.dart';
 import '../services/user_friendly_error_handler.dart';
 import '../services/auth_navigation_service.dart';
@@ -1157,7 +1158,12 @@ class ProfileWidget extends ConsumerWidget {
           children: [
             Text(profile.username),
             if (profile.isVerified)
-              const Icon(Icons.verified, color: Colors.blue)
+              VerificationBadgeIcon(
+                isVerified: profile.isVerified,
+                verificationType: profile.verificationType,
+                role: profile.role,
+                size: 18,
+              ),
           ],
         );
       },
@@ -1186,7 +1192,12 @@ class OtherProfileWidget extends ConsumerWidget {
           children: [
             Text(profile.username),
             if (profile.isVerified)
-              const Icon(Icons.verified, color: Colors.blue)
+              VerificationBadgeIcon(
+                isVerified: profile.isVerified,
+                verificationType: profile.verificationType,
+                role: profile.role,
+                size: 18,
+              ),
           ],
         );
       },
@@ -2531,7 +2542,7 @@ class SearchNotifier extends StateNotifier<SearchState> {
       newUsers.sort((a, b) {
         int getScore(ProfileModel p) {
           if (p.hasBlueBadge) return 3;
-          if (p.hasGoldBadge || p.role == 'premium') return 2;
+          if (p.hasGoldBadge) return 2;
           return 1;
         }
 

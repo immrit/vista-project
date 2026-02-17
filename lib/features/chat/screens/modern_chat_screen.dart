@@ -1724,7 +1724,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                 isGroupChat: widget.args.isGroup,
                 preferredOption: DeleteConversationOption.clearHistory,
                 onDeleted: () {
-                  ref.invalidate(chatMessagesProvider(widget.args.conversationId));
+                  ref.invalidate(
+                      chatMessagesProvider(widget.args.conversationId));
                 },
               );
             },
@@ -4145,6 +4146,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       final commentsCount = postData.commentCount;
       final postCreatedAt = postData.postCreatedAt;
       final verificationType = postData.verificationType;
+      final isVerified = postData.isVerified;
+      final role = postData.role;
       final hashtags = null; // SharedPostData فعلاً hashtags ندارد
 
       // ✅ ساختار جدید برای کنترل کامل کلیک‌ها
@@ -4184,7 +4187,9 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                 createdAt: postCreatedAt,
                 sentAt: message.createdAt,
                 isMine: isMe,
+                isVerified: isVerified,
                 verificationType: verificationType,
+                role: role,
                 hashtags: hashtags,
                 status: _getMessageStatus(message),
                 // callbacks داخلی ویجت را خالی می‌گذاریم چون GestureDetector والد هندل می‌کند

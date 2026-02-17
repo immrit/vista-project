@@ -30,9 +30,15 @@ class LinkStickerWidget extends StatelessWidget {
     final String label = data['label'] ??
         url.replaceFirst('https://', '').replaceFirst('http://', '');
 
-    // Read style from data if present, else use styleIndex for toggle
-    final int style = (data['style'] as int?) ?? (element.styleIndex % 3);
-    final int colorIndex = (data['colorIndex'] as int?) ?? 0;
+    final styleRaw = data['style'];
+    final style = styleRaw is num
+        ? styleRaw.toInt()
+        : int.tryParse(styleRaw?.toString() ?? '') ??
+            (element.resolvedStyleIndex % 3);
+    final colorIndexRaw = data['colorIndex'];
+    final int colorIndex = colorIndexRaw is num
+        ? colorIndexRaw.toInt()
+        : int.tryParse(colorIndexRaw?.toString() ?? '') ?? 0;
     final Color color = _colors[colorIndex % _colors.length];
 
     return AnimatedSwitcher(

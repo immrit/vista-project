@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:math' as math;
 import '../../model/publicPostModel.dart';
-import '../../model/ProfileModel.dart';
+import 'verification_badge_icon.dart';
 
 /// ویجت قالب استوری Vista
 class VistaStoryTemplateWidget extends StatelessWidget {
@@ -160,17 +160,11 @@ class VistaStoryTemplateWidget extends StatelessWidget {
                     ),
                     if (post.isVerified) ...[
                       const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.all(3),
-                        decoration: BoxDecoration(
-                          color: _getVerificationColor(post.verificationType),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          Icons.verified,
-                          size: 30, // اندازه خیلی بزرگ‌تر
-                          color: Colors.white,
-                        ),
+                      VerificationBadgeIcon(
+                        isVerified: post.isVerified,
+                        verificationType: post.verificationType,
+                        role: post.profiles?['role']?.toString(),
+                        size: 30,
                       ),
                     ],
                   ],
@@ -392,20 +386,6 @@ class VistaStoryTemplateWidget extends StatelessWidget {
   }
 
   /// دریافت رنگ تیک تأیید بر اساس نوع
-  Color _getVerificationColor(VerificationType type) {
-    switch (type) {
-      case VerificationType.blueTick:
-        return Colors.blue;
-      case VerificationType.goldTick:
-        return Colors.amber;
-      case VerificationType.blackTick:
-        return Colors.black;
-      case VerificationType.none:
-        return Colors.grey;
-    }
-  }
-
-  /// تشخیص زبان متن (فارسی یا انگلیسی)
   bool _isPersianText(String text) {
     final persianRegex = RegExp(
       r'[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]',

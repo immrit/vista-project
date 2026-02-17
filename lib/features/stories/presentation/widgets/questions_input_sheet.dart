@@ -13,6 +13,7 @@ class QuestionsInputSheet extends StatefulWidget {
 
 class _QuestionsInputSheetState extends State<QuestionsInputSheet> {
   final _questionController = TextEditingController(text: 'سوالی داری؟');
+  int _selectedStyle = 0;
 
   @override
   void dispose() {
@@ -121,6 +122,16 @@ class _QuestionsInputSheetState extends State<QuestionsInputSheet> {
           ),
           const SizedBox(height: 12),
 
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _styleButton(0, 'گرادیانت'),
+              const SizedBox(width: 8),
+              _styleButton(1, 'ساده'),
+            ],
+          ),
+          const SizedBox(height: 12),
+
           // Hint
           Text(
             'دنبال‌کنندگان می‌توانند به سوال شما پاسخ دهند',
@@ -136,6 +147,48 @@ class _QuestionsInputSheetState extends State<QuestionsInputSheet> {
     final question = _questionController.text.isEmpty
         ? 'سوالی داری؟'
         : _questionController.text;
+
+    if (_selectedStyle == 1) {
+      return Container(
+        width: 280,
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Column(
+          children: [
+            Text(
+              question,
+              style: const TextStyle(
+                color: Colors.black87,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                fontFamily: 'Vazir',
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+              decoration: BoxDecoration(
+                color: Colors.black12,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Text(
+                'متن پاسخ...',
+                style: TextStyle(
+                  color: Colors.black54,
+                  fontSize: 14,
+                  fontFamily: 'Vazir',
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
 
     return Container(
       width: 280,
@@ -190,12 +243,37 @@ class _QuestionsInputSheetState extends State<QuestionsInputSheet> {
     );
   }
 
+  Widget _styleButton(int index, String label) {
+    final selected = _selectedStyle == index;
+    return GestureDetector(
+      onTap: () => setState(() => _selectedStyle = index),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected ? Colors.pink : Colors.grey[800],
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Text(
+          label,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 12,
+            fontFamily: 'Vazir',
+          ),
+        ),
+      ),
+    );
+  }
+
   void _submit() {
     if (_questionController.text.isEmpty) return;
 
     widget.onQuestionCreated(
       StoryInteractionType.question,
-      {'question': _questionController.text},
+      {
+        'question': _questionController.text,
+        'style': _selectedStyle,
+      },
     );
     // Pop this sheet
     Navigator.pop(context);

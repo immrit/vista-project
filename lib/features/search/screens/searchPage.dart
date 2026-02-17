@@ -11,6 +11,7 @@ import 'package:Vista/provider/provider.dart';
 import 'package:Vista/features/posts/screens/profileScreen.dart';
 import 'package:Vista/features/posts/screens/PostDetailPage.dart';
 import 'package:Vista/features/search/screens/VistaQRScanner.dart';
+import 'package:Vista/widgets/verification_badge_icon.dart';
 import 'dart:async';
 
 /// صفحه جستجو مدرن - الهام گرفته از اینستاگرام
@@ -525,12 +526,14 @@ class _UserTile extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
             ),
           ),
-          if (user.hasGoldBadge || user.role == 'premium') ...[
+          if (user.isVerified) ...[
             const SizedBox(width: 4),
-            const Icon(Icons.verified, color: Color(0xFFFFD700), size: 16),
-          ] else if (user.hasBlueBadge) ...[
-            const SizedBox(width: 4),
-            const Icon(Icons.verified, color: Colors.blue, size: 16),
+            VerificationBadgeIcon(
+              isVerified: user.isVerified,
+              verificationType: user.verificationType,
+              role: user.role,
+              size: 16,
+            ),
           ],
         ],
       ),

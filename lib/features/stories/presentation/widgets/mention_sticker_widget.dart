@@ -25,7 +25,7 @@ class MentionStickerWidget extends StatelessWidget {
     if (isHashtag && !label.startsWith('#')) label = '#$label';
     if (!isHashtag && !label.startsWith('@')) label = '@$label';
 
-    final int style = element.styleIndex % 3;
+    final int style = element.resolvedStyleIndex % 3;
 
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 300),

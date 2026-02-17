@@ -5,10 +5,13 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:video_player/video_player.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:just_audio/just_audio.dart';
+import 'dart:async';
 
 import '../../domain/entities/entities.dart';
+import '../../domain/entities/story_editor_models.dart' as editor_models;
 import '../../domain/repositories/i_story_repository.dart';
-import '../../core/story_enums.dart';
+import '../../core/story_enums.dart' hide StoryInteractionType;
 import '../providers/story_providers.dart';
 import '../widgets/sticker_factory.dart';
 import 'story_progress_bar.dart';
@@ -49,6 +52,12 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
   bool _showingViewers = false;
   StoryReplyPermission _replyPermission = StoryReplyPermission.everyone;
   bool _canReplyToStory = true;
+  final Map<String, StoryPollResult> _pollResultsCache = {};
+  final Set<String> _submittingPollVotes = {};
+  final AudioPlayer _musicPreviewPlayer = AudioPlayer();
+  StreamSubscription<PlayerState>? _musicPlayerStateSub;
+  Timer? _musicPreviewStopTimer;
+  String? _playingMusicElementId;
 
   @override
   void initState() {
@@ -67,6 +76,17 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
     // Full screen immersive mode
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
 
+    _musicPlayerStateSub =
+        _musicPreviewPlayer.playerStateStream.listen((state) {
+      if (!mounted) return;
+      if (state.processingState == ProcessingState.completed ||
+          !state.playing) {
+        setState(() {
+          _playingMusicElementId = null;
+        });
+      }
+    });
+
     _initializeStory();
   }
 
@@ -75,6 +95,9 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
     _progressController.dispose();
     _pageController.dispose();
     _videoController?.dispose();
+    _musicPreviewStopTimer?.cancel();
+    _musicPlayerStateSub?.cancel();
+    _musicPreviewPlayer.dispose();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
   }
@@ -90,6 +113,7 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
   }
 
   Future<void> _initializeStory() async {
+    await _stopMusicPreview();
     setState(() => _isLoading = true);
 
     _progressController.reset();
@@ -265,6 +289,7 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
       backgroundColor: Colors.transparent,
       builder: (context) => StoryViewersSheet(
         storyId: _currentStory.id,
+        story: _currentStory,
         onClose: () {
           Navigator.pop(context);
         },
@@ -436,16 +461,30 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
     final elements = _currentStory.interactiveElements;
     if (elements == null || elements.isEmpty) return [];
 
-    return elements.map((element) {
+    final storySize = MediaQuery.of(context).size;
+    return List<Widget>.generate(elements.length, (index) {
+      final element = elements[index];
+      final left = _resolveElementCoordinate(
+        absolute: element.x,
+        normalized: element.xNorm,
+        maxSize: storySize.width,
+      );
+      final top = _resolveElementCoordinate(
+        absolute: element.y,
+        normalized: element.yNorm,
+        maxSize: storySize.height,
+      );
+
       return Positioned(
-        left: element.x,
-        top: element.y,
+        left: left,
+        top: top,
         child: Transform.rotate(
           angle: element.rotation,
           child: Transform.scale(
             scale: element.scale,
             child: GestureDetector(
-              onTap: () => _handleElementTap(element),
+              behavior: HitTestBehavior.opaque,
+              onTap: () => _handleElementTap(element, index),
               child: StickerFactory.buildSticker(
                 element,
                 isEditable: false, // Viewer mode - tap triggers interaction
@@ -457,37 +496,224 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
     }).toList();
   }
 
-  void _handleElementTap(dynamic element) {
-    // Handle different sticker types in viewer mode
+  double _resolveElementCoordinate({
+    required double absolute,
+    required double? normalized,
+    required double maxSize,
+  }) {
+    if (normalized != null && normalized.isFinite && maxSize > 0) {
+      return normalized.clamp(0.0, 1.0) * maxSize;
+    }
+    if (!absolute.isFinite) return 0;
+    return absolute;
+  }
+
+  String? _resolveElementId(StoryElement element, int index) {
+    final fromElement = element.elementId?.trim();
+    if (fromElement != null && fromElement.isNotEmpty) return fromElement;
+
+    final fromData = element.interactionData?['elementId']?.toString().trim() ??
+        element.interactionData?['element_id']?.toString().trim() ??
+        element.interactionData?['id']?.toString().trim();
+
+    if (fromData != null && fromData.isNotEmpty) return fromData;
+    return null;
+  }
+
+  int? _toInt(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '');
+  }
+
+  double? _toDouble(dynamic value) {
+    if (value is num) return value.toDouble();
+    return double.tryParse(value?.toString() ?? '');
+  }
+
+  List<String> _extractPollOptions(Map<String, dynamic> data) {
+    final rawOptions = data['options'];
+    if (rawOptions is List) {
+      final list = rawOptions
+          .map((item) => item?.toString().trim() ?? '')
+          .where((item) => item.isNotEmpty)
+          .toList();
+      if (list.length >= 2) {
+        return [list[0], list[1]];
+      }
+    }
+
+    final option1 = data['option1']?.toString().trim();
+    final option2 = data['option2']?.toString().trim();
+    return [
+      (option1 != null && option1.isNotEmpty) ? option1 : 'گزینه ۱',
+      (option2 != null && option2.isNotEmpty) ? option2 : 'گزینه ۲',
+    ];
+  }
+
+  void _handleElementTap(StoryElement element, int index) {
     switch (element.interactionType) {
-      case StoryInteractionType.poll:
-        _showPollVoteDialog(element);
+      case editor_models.StoryInteractionType.poll:
+        _handlePollTap(element, index);
         break;
-      case StoryInteractionType.link:
-        _openLink(element.interactionData?['url']);
+      case editor_models.StoryInteractionType.question:
+        _showQuestionAnswerSheet(element, index);
         break;
-      case StoryInteractionType.location:
+      case editor_models.StoryInteractionType.link:
+        _openLink(element.interactionData?['url']?.toString());
+        break;
+      case editor_models.StoryInteractionType.location:
+      case editor_models.StoryInteractionType.weather:
         _openLocation(element.interactionData);
         break;
-      case StoryInteractionType.mention:
-        _openProfile(element.interactionData?['username']);
+      case editor_models.StoryInteractionType.mention:
+        _openProfile(element.interactionData?['username']?.toString());
         break;
-      case StoryInteractionType.hashtag:
-        _openHashtag(element.interactionData?['hashtag']);
+      case editor_models.StoryInteractionType.hashtag:
+        _openHashtag(element.interactionData?['hashtag']?.toString());
         break;
-      default:
-        debugPrint('Tapped element: ${element.interactionType}');
+      case editor_models.StoryInteractionType.music:
+        _toggleMusicPreview(element, index);
+        break;
+      case editor_models.StoryInteractionType.countdown:
+        _showCountdownInfo(element);
+        break;
+      case editor_models.StoryInteractionType.gif:
+      case editor_models.StoryInteractionType.date:
+      case editor_models.StoryInteractionType.photo:
+      case editor_models.StoryInteractionType.none:
+        break;
     }
   }
 
-  void _showPollVoteDialog(dynamic element) {
-    final data = element.interactionData ?? {};
-    final question = data['question'] ?? 'سوال';
-    final option1 = data['option1'] ?? 'گزینه ۱';
-    final option2 = data['option2'] ?? 'گزینه ۲';
+  Future<void> _handlePollTap(StoryElement element, int index) async {
+    final elementId = _resolveElementId(element, index);
+    if (elementId == null || elementId.isEmpty) {
+      if (mounted) {
+        UserFriendlyErrorUtils.showErrorSnackBar(
+          context,
+          'این نظرسنجی نسخه قدیمی است و قابل رأی دادن نیست',
+        );
+      }
+      return;
+    }
+
+    StoryPollResult? cached = _pollResultsCache[elementId];
+    if (cached == null) {
+      final repository = ref.read(storyRepositoryProvider);
+      final result = await repository.getPollResults(
+        storyId: _currentStory.id,
+        elementId: elementId,
+      );
+
+      if (result.isSuccess && result.data != null) {
+        cached = result.data!;
+        _pollResultsCache[elementId] = cached;
+      }
+    }
+
+    if (cached?.hasVoted == true) {
+      _showPollResultsBottomSheet(element, cached!);
+      return;
+    }
+
+    _showPollVoteBottomSheet(
+      element: element,
+      elementId: elementId,
+      existingResult: cached,
+    );
+  }
+
+  void _showPollVoteBottomSheet({
+    required StoryElement element,
+    required String elementId,
+    StoryPollResult? existingResult,
+  }) {
+    final data = element.interactionData ?? const {};
+    final question = (existingResult?.question.trim().isNotEmpty ?? false)
+        ? existingResult!.question
+        : (data['question']?.toString().trim().isNotEmpty ?? false)
+            ? data['question'].toString()
+            : 'نظرسنجی';
+    final options = (existingResult?.options.isNotEmpty ?? false)
+        ? existingResult!.options
+            .map((option) => option.text)
+            .toList(growable: false)
+        : _extractPollOptions(data);
 
     _progressController.stop();
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            final isSubmitting = _submittingPollVotes.contains(elementId);
+            return Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.grey[900],
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(20)),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    question,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      fontFamily: 'Vazir',
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  for (int i = 0; i < options.length; i++) ...[
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: isSubmitting
+                            ? null
+                            : () async {
+                                setModalState(() {});
+                                await _votePoll(
+                                  element: element,
+                                  elementId: elementId,
+                                  optionIndex: i,
+                                  sheetContext: ctx,
+                                );
+                                if (mounted) {
+                                  setModalState(() {});
+                                }
+                              },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: i.isEven ? Colors.blue : Colors.pink,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                        ),
+                        child: Text(
+                          options[i],
+                          style: const TextStyle(fontFamily: 'Vazir'),
+                        ),
+                      ),
+                    ),
+                    if (i != options.length - 1) const SizedBox(height: 10),
+                  ],
+                ],
+              ),
+            );
+          },
+        );
+      },
+    ).then((_) {
+      if (!_isPaused) _progressController.forward();
+    });
+  }
 
+  void _showPollResultsBottomSheet(
+      StoryElement element, StoryPollResult result) {
+    _progressController.stop();
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -499,41 +725,34 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              question,
+              result.question.trim().isNotEmpty
+                  ? result.question
+                  : (element.interactionData?['question']?.toString() ??
+                      'نتایج نظرسنجی'),
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
+                fontFamily: 'Vazir',
               ),
             ),
-            const SizedBox(height: 20),
-            Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: () => _votePoll(0, ctx),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                    ),
-                    child: Text(option1),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: () => _votePoll(1, ctx),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.pink,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                    ),
-                    child: Text(option2),
-                  ),
-                ),
-              ],
+            const SizedBox(height: 12),
+            Text(
+              '${result.totalVotes} رای',
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 13,
+                fontFamily: 'Vazir',
+              ),
             ),
+            const SizedBox(height: 16),
+            ...result.options.map((option) => Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: _buildPollResultRow(option, result.userOptionIndex),
+                )),
           ],
         ),
       ),
@@ -542,20 +761,344 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
     });
   }
 
-  Future<void> _votePoll(int optionIndex, BuildContext ctx) async {
-    Navigator.pop(ctx);
+  Widget _buildPollResultRow(
+    StoryPollOptionResult option,
+    int? userOptionIndex,
+  ) {
+    final isSelected = userOptionIndex == option.optionIndex;
+    final ratio = (option.percentage / 100).clamp(0.0, 1.0);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                option.text,
+                style: TextStyle(
+                  color: isSelected ? Colors.white : Colors.white70,
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                  fontFamily: 'Vazir',
+                ),
+              ),
+            ),
+            Text(
+              '${option.percentage.toStringAsFixed(0)}%',
+              style: TextStyle(
+                color: isSelected ? Colors.white : Colors.white70,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: LinearProgressIndicator(
+            value: ratio,
+            minHeight: 10,
+            backgroundColor: Colors.white12,
+            valueColor: AlwaysStoppedAnimation<Color>(
+              isSelected ? Colors.greenAccent : Colors.blueAccent,
+            ),
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          '${option.votes} رای',
+          style: const TextStyle(
+            color: Colors.white54,
+            fontSize: 11,
+            fontFamily: 'Vazir',
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _votePoll({
+    required StoryElement element,
+    required String elementId,
+    required int optionIndex,
+    required BuildContext sheetContext,
+  }) async {
+    if (_submittingPollVotes.contains(elementId)) return;
+    setState(() {
+      _submittingPollVotes.add(elementId);
+    });
+
     final repository = ref.read(storyRepositoryProvider);
-    final result =
-        await repository.voteOnPoll(_currentStory.id, optionIndex.toString());
+    final voteResult = await repository.voteOnPoll(
+      storyId: _currentStory.id,
+      elementId: elementId,
+      optionIndex: optionIndex,
+    );
 
     if (!mounted) return;
-    if (result.isSuccess) {
+
+    if (voteResult.isSuccess) {
+      ref.invalidate(
+        storyPollResultsProvider(
+          (storyId: _currentStory.id, elementId: elementId),
+        ),
+      );
+
+      final result = await repository.getPollResults(
+        storyId: _currentStory.id,
+        elementId: elementId,
+      );
+
+      if (!mounted) return;
+
+      if (result.isSuccess && result.data != null) {
+        _pollResultsCache[elementId] = result.data!;
+        if (sheetContext.mounted) {
+          Navigator.of(sheetContext).pop();
+        }
+        _showPollResultsBottomSheet(element, result.data!);
+      } else {
+        if (sheetContext.mounted) {
+          Navigator.of(sheetContext).pop();
+        }
+      }
+
       UserFriendlyErrorUtils.showSuccessSnackBar(context, 'رای شما ثبت شد');
     } else {
       UserFriendlyErrorUtils.showErrorSnackBar(
         context,
-        result.error ?? 'خطا در ثبت رای',
+        voteResult.error ?? 'خطا در ثبت رای',
       );
+    }
+
+    if (mounted) {
+      setState(() {
+        _submittingPollVotes.remove(elementId);
+      });
+    }
+  }
+
+  void _showQuestionAnswerSheet(StoryElement element, int index) {
+    final elementId = _resolveElementId(element, index);
+    if (elementId == null || elementId.isEmpty) {
+      UserFriendlyErrorUtils.showErrorSnackBar(
+        context,
+        'این سوال نسخه قدیمی است و قابل پاسخ نیست',
+      );
+      return;
+    }
+
+    final question = element.interactionData?['question']?.toString().trim();
+    final answerController = TextEditingController();
+    bool isSubmitting = false;
+
+    _progressController.stop();
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setModalState) {
+          return Padding(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(ctx).viewInsets.bottom,
+            ),
+            child: Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.grey[900],
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(20)),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    question?.isNotEmpty == true ? question! : 'پاسخ به سوال',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 17,
+                      fontWeight: FontWeight.bold,
+                      fontFamily: 'Vazir',
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: answerController,
+                    autofocus: true,
+                    maxLength: 500,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: InputDecoration(
+                      hintText: 'پاسخ خود را بنویسید...',
+                      hintStyle: const TextStyle(color: Colors.white54),
+                      filled: true,
+                      fillColor: Colors.white10,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  ElevatedButton(
+                    onPressed: isSubmitting
+                        ? null
+                        : () async {
+                            final answer = answerController.text.trim();
+                            if (answer.isEmpty) {
+                              UserFriendlyErrorUtils.showErrorSnackBar(
+                                context,
+                                'پاسخ نمی‌تواند خالی باشد',
+                              );
+                              return;
+                            }
+
+                            setModalState(() => isSubmitting = true);
+                            final success = await _submitQuestionAnswer(
+                              elementId: elementId,
+                              answer: answer,
+                            );
+                            if (!mounted) return;
+                            setModalState(() => isSubmitting = false);
+                            if (success && ctx.mounted) {
+                              Navigator.of(ctx).pop();
+                            }
+                          },
+                    child: Text(
+                      isSubmitting ? 'در حال ارسال...' : 'ارسال پاسخ',
+                      style: const TextStyle(fontFamily: 'Vazir'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    ).whenComplete(() {
+      answerController.dispose();
+      if (!_isPaused) {
+        _progressController.forward();
+      }
+    });
+  }
+
+  Future<bool> _submitQuestionAnswer({
+    required String elementId,
+    required String answer,
+  }) async {
+    final repository = ref.read(storyRepositoryProvider);
+    final result = await repository.submitQuestionAnswer(
+      storyId: _currentStory.id,
+      elementId: elementId,
+      answer: answer,
+    );
+
+    if (!mounted) return false;
+
+    if (result.isSuccess) {
+      ref.invalidate(storyQuestionAnswersProvider(_currentStory.id));
+      UserFriendlyErrorUtils.showSuccessSnackBar(context, 'پاسخ شما ثبت شد');
+      return true;
+    }
+
+    UserFriendlyErrorUtils.showErrorSnackBar(
+      context,
+      result.error ?? 'خطا در ثبت پاسخ',
+    );
+    return false;
+  }
+
+  Future<void> _toggleMusicPreview(StoryElement element, int index) async {
+    final elementId = _resolveElementId(element, index) ?? 'music_$index';
+    final data = element.interactionData ?? const {};
+    final musicUrl =
+        data['musicUrl']?.toString() ?? data['music_url']?.toString() ?? '';
+
+    if (musicUrl.trim().isEmpty) {
+      UserFriendlyErrorUtils.showErrorSnackBar(
+          context, 'لینک موزیک معتبر نیست');
+      return;
+    }
+
+    try {
+      if (_playingMusicElementId == elementId && _musicPreviewPlayer.playing) {
+        await _stopMusicPreview();
+        return;
+      }
+
+      final startSec =
+          _toInt(data['startSec']) ?? _toInt(data['start_sec']) ?? 0;
+      final durationSec =
+          _toInt(data['durationSec']) ?? _toInt(data['duration_sec']) ?? 30;
+
+      await _musicPreviewPlayer.stop();
+      _musicPreviewStopTimer?.cancel();
+
+      await _musicPreviewPlayer.setUrl(musicUrl.trim());
+      if (startSec > 0) {
+        await _musicPreviewPlayer.seek(Duration(seconds: startSec));
+      }
+      await _musicPreviewPlayer.play();
+
+      if (mounted) {
+        setState(() {
+          _playingMusicElementId = elementId;
+        });
+      }
+
+      if (durationSec > 0) {
+        _musicPreviewStopTimer =
+            Timer(Duration(seconds: durationSec), () async {
+          await _stopMusicPreview();
+        });
+      }
+    } catch (e) {
+      if (!mounted) return;
+      UserFriendlyErrorUtils.showErrorSnackBar(context, e);
+    }
+  }
+
+  void _showCountdownInfo(StoryElement element) {
+    final data = element.interactionData ?? const {};
+    final title = data['title']?.toString().trim().isNotEmpty == true
+        ? data['title'].toString().trim()
+        : 'شمارش معکوس';
+    final targetDateRaw =
+        data['targetDate']?.toString() ?? data['endDate']?.toString() ?? '';
+    final targetDate = DateTime.tryParse(targetDateRaw);
+
+    String message;
+    if (targetDate == null) {
+      message = '$title: زمان نامعتبر';
+    } else {
+      final remaining = targetDate.difference(DateTime.now());
+      if (remaining.isNegative) {
+        message = '$title: زمان به پایان رسیده';
+      } else {
+        final days = remaining.inDays;
+        final hours = remaining.inHours % 24;
+        final mins = remaining.inMinutes % 60;
+        message = '$title: $days روز و $hours ساعت و $mins دقیقه باقی مانده';
+      }
+    }
+
+    UserFriendlyErrorUtils.showSuccessSnackBar(context, message);
+  }
+
+  Future<void> _stopMusicPreview() async {
+    _musicPreviewStopTimer?.cancel();
+    _musicPreviewStopTimer = null;
+    try {
+      await _musicPreviewPlayer.pause();
+    } catch (_) {}
+    if (mounted) {
+      setState(() {
+        _playingMusicElementId = null;
+      });
     }
   }
 
@@ -565,8 +1108,19 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
       return;
     }
 
-    final uri = Uri.tryParse(url.trim());
+    Uri? uri = Uri.tryParse(url.trim());
     if (uri == null) {
+      UserFriendlyErrorUtils.showErrorSnackBar(context, 'لینک معتبر نیست');
+      return;
+    }
+
+    if (!uri.hasScheme) {
+      uri = Uri.tryParse('https://${url.trim()}');
+    }
+
+    if (uri == null ||
+        (uri.scheme.toLowerCase() != 'http' &&
+            uri.scheme.toLowerCase() != 'https')) {
       UserFriendlyErrorUtils.showErrorSnackBar(context, 'لینک معتبر نیست');
       return;
     }
@@ -594,9 +1148,9 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
       return;
     }
 
-    final lat = (data['latitude'] as num?)?.toDouble();
-    final lng = (data['longitude'] as num?)?.toDouble();
-    final label = data['name']?.toString() ?? '';
+    final lat = _toDouble(data['latitude'] ?? data['lat']);
+    final lng = _toDouble(data['longitude'] ?? data['lng']);
+    final label = data['name']?.toString() ?? data['city']?.toString() ?? '';
 
     Uri? mapUri;
     if (lat != null && lng != null) {

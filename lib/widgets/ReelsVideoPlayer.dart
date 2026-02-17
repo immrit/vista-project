@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:Vista/utils/widgets.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:video_player/video_player.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,6 +10,7 @@ import '../../model/publicPostModel.dart';
 import '../../provider/provider.dart';
 import '../../services/cache_manager.dart';
 import '../../features/posts/providers/saved_posts_provider.dart';
+import 'verification_badge_icon.dart';
 
 class ReelsVideoPlayer extends ConsumerStatefulWidget {
   final PublicPostModel post;
@@ -71,27 +71,6 @@ class _ReelsVideoPlayerState extends ConsumerState<ReelsVideoPlayer> {
         }
       }
     });
-    _fetchVerificationType(); // فراخوانی تابع برای دریافت نوع تأیید
-  }
-
-  String? _directVerificationType;
-
-  Future<void> _fetchVerificationType() async {
-    try {
-      final response = await Supabase.instance.client
-          .from('profiles')
-          .select('verification_type')
-          .eq('username', widget.post.username)
-          .single();
-
-      setState(() {
-        _directVerificationType = response['verification_type'];
-      });
-
-      logInfo('Direct verification type from API: $_directVerificationType');
-    } catch (e) {
-      logInfo('Error fetching verification type: $e');
-    }
   }
 
   @override
@@ -593,27 +572,11 @@ class _ReelsVideoPlayerState extends ConsumerState<ReelsVideoPlayer> {
   }
 
   Widget _buildVerificationBadge() {
-    if (!widget.post.isVerified) return const SizedBox.shrink();
-
-    final verificationType =
-        _directVerificationType ?? widget.post.verificationType;
-
-    switch (verificationType) {
-      case 'goldTick':
-        return const Icon(Icons.verified, color: Colors.amber, size: 14);
-      case 'blueTick':
-        return const Icon(Icons.verified, color: Colors.blue, size: 14);
-      case 'blackTick':
-        return Container(
-          padding: const EdgeInsets.all(.1),
-          decoration: const BoxDecoration(
-            color: Colors.white60,
-            shape: BoxShape.circle,
-          ),
-          child: const Icon(Icons.verified, color: Colors.black, size: 12),
-        );
-      default:
-        return const Icon(Icons.verified, color: Colors.blue, size: 14);
-    }
+    return VerificationBadgeIcon(
+      isVerified: widget.post.isVerified,
+      verificationType: widget.post.verificationType,
+      role: widget.post.profiles?['role']?.toString(),
+      size: 14,
+    );
   }
 }

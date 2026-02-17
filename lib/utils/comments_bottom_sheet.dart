@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../model/CommentModel.dart';
 import 'package:Vista/features/posts/screens/profileScreen.dart';
+import 'package:Vista/widgets/verification_badge_icon.dart';
 
 class CommentsBottomSheet extends ConsumerStatefulWidget {
   final String postId;
@@ -661,31 +662,12 @@ class _CommentItemState extends ConsumerState<CommentItem>
     }
   }
 
-  Widget _buildVerificationBadge(VerificationType type) {
-    IconData icon;
-    Color color;
-
-    switch (type) {
-      case VerificationType.goldTick:
-        icon = Icons.verified;
-        color = Colors.amber;
-        break;
-      case VerificationType.blueTick: // Added case for blueTick
-        icon = Icons.verified;
-        color = Colors.blue;
-        break;
-      case VerificationType.blackTick:
-        icon = Icons.verified;
-        color = Colors.black87;
-        break;
-      default:
-        return const SizedBox.shrink();
-    }
-
-    return Icon(
-      icon,
+  Widget _buildVerificationBadge(CommentModel comment) {
+    return VerificationBadgeIcon(
+      isVerified: comment.isVerified,
+      verificationType: comment.verificationType,
+      role: comment.role,
       size: 16,
-      color: color,
     );
   }
 
@@ -940,8 +922,7 @@ class _CommentItemState extends ConsumerState<CommentItem>
                               ),
                             ),
                             const SizedBox(width: 4),
-                            _buildVerificationBadge(
-                                widget.comment.verificationType),
+                            _buildVerificationBadge(widget.comment),
                             const SizedBox(width: 8),
                             Text(
                               _getTimeAgo(widget.comment.createdAt),

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import '../../core/story_enums.dart';
 import 'story_media.dart';
@@ -131,6 +132,57 @@ class Story {
   }
 
   factory Story.fromMap(Map<String, dynamic> map, {bool isViewed = false}) {
+    StoryElement? parseElement(dynamic element) {
+      try {
+        if (element is Map<String, dynamic>) {
+          return StoryElement.fromJson(element);
+        }
+        if (element is Map) {
+          return StoryElement.fromJson(
+            element.map((key, value) => MapEntry(key.toString(), value)),
+          );
+        }
+        if (element is String && element.trim().isNotEmpty) {
+          final decoded = jsonDecode(element);
+          if (decoded is Map<String, dynamic>) {
+            return StoryElement.fromJson(decoded);
+          }
+          if (decoded is Map) {
+            return StoryElement.fromJson(
+              decoded.map((key, value) => MapEntry(key.toString(), value)),
+            );
+          }
+        }
+      } catch (_) {
+        return null;
+      }
+      return null;
+    }
+
+    List<StoryElement>? parseElements(dynamic raw) {
+      if (raw is List) {
+        return raw.map(parseElement).whereType<StoryElement>().toList();
+      }
+      if (raw is String && raw.trim().isNotEmpty) {
+        try {
+          final decoded = jsonDecode(raw);
+          if (decoded is List) {
+            return decoded.map(parseElement).whereType<StoryElement>().toList();
+          }
+          final single = parseElement(decoded);
+          if (single != null) {
+            return [single];
+          }
+        } catch (_) {
+          return const [];
+        }
+      }
+      return null;
+    }
+
+    final parsedInteractiveElements =
+        parseElements(map['interactive_elements']);
+
     return Story(
       id: map['id'] ?? '',
       userId: map['user_id'] ?? '',
@@ -166,9 +218,7 @@ class Story {
           .toList(),
       musicUrl: map['music_url'],
       musicTitle: map['music_title'],
-      interactiveElements: (map['interactive_elements'] as List?)
-          ?.map((e) => StoryElement.fromJson(e))
-          .toList(),
+      interactiveElements: parsedInteractiveElements,
     );
   }
 
@@ -180,6 +230,113 @@ class Story {
 
   @override
   int get hashCode => id.hashCode;
+}
+
+@immutable
+class StoryPollOptionResult {
+  final int optionIndex;
+  final String text;
+  final int votes;
+  final double percentage;
+
+  const StoryPollOptionResult({
+    required this.optionIndex,
+    required this.text,
+    required this.votes,
+    required this.percentage,
+  });
+
+  factory StoryPollOptionResult.fromMap(Map<String, dynamic> map) {
+    return StoryPollOptionResult(
+      optionIndex: (map['option_index'] as num?)?.toInt() ?? 0,
+      text: (map['text'] ?? '').toString(),
+      votes: (map['votes'] as num?)?.toInt() ?? 0,
+      percentage: (map['percentage'] as num?)?.toDouble() ?? 0.0,
+    );
+  }
+}
+
+@immutable
+class StoryPollResult {
+  final String storyId;
+  final String elementId;
+  final String question;
+  final int totalVotes;
+  final int? userOptionIndex;
+  final List<StoryPollOptionResult> options;
+
+  const StoryPollResult({
+    required this.storyId,
+    required this.elementId,
+    required this.question,
+    required this.totalVotes,
+    required this.userOptionIndex,
+    required this.options,
+  });
+
+  bool get hasVoted => userOptionIndex != null;
+
+  factory StoryPollResult.fromMap(Map<String, dynamic> map) {
+    final rawOptions = (map['options'] as List?) ?? const [];
+    return StoryPollResult(
+      storyId: (map['story_id'] ?? '').toString(),
+      elementId: (map['element_id'] ?? '').toString(),
+      question: (map['question'] ?? '').toString(),
+      totalVotes: (map['total_votes'] as num?)?.toInt() ?? 0,
+      userOptionIndex: (map['user_option_index'] as num?)?.toInt(),
+      options: rawOptions
+          .map((item) {
+            if (item is Map<String, dynamic>) {
+              return StoryPollOptionResult.fromMap(item);
+            }
+            if (item is Map) {
+              return StoryPollOptionResult.fromMap(
+                item.map((key, value) => MapEntry(key.toString(), value)),
+              );
+            }
+            return null;
+          })
+          .whereType<StoryPollOptionResult>()
+          .toList(),
+    );
+  }
+}
+
+@immutable
+class StoryQuestionAnswer {
+  final String id;
+  final String storyId;
+  final String elementId;
+  final String respondentId;
+  final String respondentUsername;
+  final String? respondentAvatarUrl;
+  final String answer;
+  final DateTime createdAt;
+
+  const StoryQuestionAnswer({
+    required this.id,
+    required this.storyId,
+    required this.elementId,
+    required this.respondentId,
+    required this.respondentUsername,
+    required this.respondentAvatarUrl,
+    required this.answer,
+    required this.createdAt,
+  });
+
+  factory StoryQuestionAnswer.fromMap(Map<String, dynamic> map) {
+    return StoryQuestionAnswer(
+      id: (map['id'] ?? '').toString(),
+      storyId: (map['story_id'] ?? '').toString(),
+      elementId: (map['element_id'] ?? '').toString(),
+      respondentId: (map['respondent_id'] ?? '').toString(),
+      respondentUsername: (map['respondent_username'] ?? '').toString(),
+      respondentAvatarUrl: map['respondent_avatar_url']?.toString(),
+      answer: (map['answer'] ?? '').toString(),
+      createdAt: DateTime.tryParse((map['created_at'] ?? '').toString()) ??
+          DateTime.now(),
+    );
+  }
 }
 
 /// نظرسنجی استوری

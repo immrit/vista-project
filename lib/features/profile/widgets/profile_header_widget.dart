@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../../model/ProfileModel.dart';
 import '../../../utils/const.dart';
+import '../../../widgets/verification_badge_icon.dart';
 import '../../stories/presentation/providers/story_providers.dart';
 import '../../stories/domain/entities/entities.dart';
 
@@ -347,20 +348,11 @@ class _ProfileBioSectionState extends State<_ProfileBioSection> {
   }
 
   Widget _buildVerificationBadge() {
-    if (widget.profile.hasBlueBadge) {
-      return const Icon(Icons.verified, color: Colors.blue, size: 16);
-    } else if (widget.profile.hasGoldBadge) {
-      return const Icon(Icons.verified, color: Colors.amber, size: 16);
-    } else if (widget.profile.hasBlackBadge) {
-      return Container(
-        padding: const EdgeInsets.all(0.5),
-        decoration: const BoxDecoration(
-          color: Colors.white60,
-          shape: BoxShape.circle,
-        ),
-        child: const Icon(Icons.verified, color: Colors.black, size: 14),
-      );
-    }
-    return const Icon(Icons.verified, color: Colors.blue, size: 16);
+    return VerificationBadgeIcon(
+      isVerified: widget.profile.isVerified,
+      verificationType: widget.profile.verificationType,
+      role: widget.profile.role,
+      size: 16,
+    );
   }
 }

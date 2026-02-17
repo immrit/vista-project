@@ -20,6 +20,7 @@ import '../../model/publicPostModel.dart';
 import '../../provider/provider.dart';
 import '../../provider/theme_provider.dart';
 import 'package:Vista/features/posts/screens/profileScreen.dart';
+import 'package:Vista/widgets/verification_badge_icon.dart';
 
 class topText extends StatelessWidget {
   const topText({
@@ -306,7 +307,7 @@ Drawer CustomDrawer(AsyncValue<Map<String, dynamic>?> getprofile,
                                   maxLines: 1,
                                 ),
                               ),
-                              if (getprofile['is_verified'])
+                              if (getprofile['is_verified'] == true)
                                 Padding(
                                   padding: const EdgeInsets.only(right: 4),
                                   child: _buildVerificationBadge(
@@ -423,41 +424,10 @@ Drawer CustomDrawer(AsyncValue<Map<String, dynamic>?> getprofile,
 
 Widget _buildVerificationBadge(
     BuildContext context, Map<String, dynamic>? profile) {
-  // بررسی وضعیت تأیید حساب کاربری
-  final bool isVerified = profile?['is_verified'] ?? false;
-  if (!isVerified) {
-    return const SizedBox.shrink();
-  }
-
-  // بررسی نوع نشان تأیید
-  final String verificationType = profile?['verification_type'] ?? 'none';
-  IconData iconData = Icons.verified;
-  Color iconColor = Colors.blue;
-
-  // تعیین نوع و رنگ آیکون بر اساس نوع نشان
-  switch (verificationType) {
-    case 'blueTick':
-      iconData = Icons.verified;
-      iconColor = Colors.blue;
-      break;
-    case 'goldTick':
-      iconData = Icons.verified;
-      iconColor = Colors.amber;
-      break;
-    case 'blackTick':
-      iconData = Icons.verified;
-      iconColor = const Color(0xFF303030); // رنگ مشکی متمایل به خاکستری تیره
-      break;
-    default:
-      // حالت پیش‌فرض برای پروفایل‌های تأیید شده بدون نوع مشخص
-      iconData = Icons.verified;
-      iconColor = Colors.blue;
-  }
-
-  // نمایش نشان بدون container اضافی
-  return Icon(
-    iconData,
-    color: iconColor,
+  return VerificationBadgeIcon(
+    isVerified: profile?['is_verified'] as bool? ?? false,
+    verificationType: profile?['verification_type'],
+    role: profile?['role']?.toString(),
     size: 16,
   );
 }
@@ -1100,23 +1070,12 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet> {
   Widget _buildVerificationBadge(CommentModel comment, bool isReply) {
     final double size = isReply ? 12 : 14;
 
-    if (comment.hasBlueBadge) {
-      return Icon(Icons.verified, color: Colors.blue, size: size);
-    } else if (comment.hasGoldBadge) {
-      return Icon(Icons.verified, color: Colors.amber, size: size);
-    } else if (comment.hasBlackBadge) {
-      return Container(
-        padding: const EdgeInsets.all(.1), // فاصله باریک برای پس‌زمینه
-        decoration: BoxDecoration(
-          color: Colors.white60, // پس‌زمینه سفید
-          shape: BoxShape.circle, // پس‌زمینه دایره‌ای
-        ),
-        child: const Icon(Icons.verified, color: Colors.black, size: 12),
-      );
-    } else {
-      // حالت پیش‌فرض برای تیک‌های قدیمی که فقط isVerified دارند
-      return Icon(Icons.verified, color: Colors.blue, size: size);
-    }
+    return VerificationBadgeIcon(
+      isVerified: comment.isVerified,
+      verificationType: comment.verificationType,
+      role: comment.role,
+      size: size,
+    );
   }
 
   void _sendComment() async {

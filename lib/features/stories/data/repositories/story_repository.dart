@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../../utils/const.dart';
@@ -23,6 +25,13 @@ class StoryRepository implements IStoryRepository {
         return StoryResult.failure('کاربر احراز هویت نشده است');
       }
 
+      final rpcUsers = await _tryGetActiveStoriesViaRpc(
+        currentUserId: currentUserId,
+      );
+      if (rpcUsers != null) {
+        return StoryResult.success(rpcUsers);
+      }
+
       // دریافت لیست فالو شده‌ها (جدول follows)
       final followingResponse = await _client
           .from('follows')
@@ -43,6 +52,7 @@ class StoryRepository implements IStoryRepository {
         caption,
         created_at,
         expires_at,
+        interactive_elements,
         profiles!inner(username, avatar_url, is_verified, role, verification_type)
       ''').order('created_at', ascending: true);
 
@@ -191,7 +201,7 @@ class StoryRepository implements IStoryRepository {
           DateTime.now().add(Duration(hours: params.duration.hours));
 
       // ذخیره در دیتابیس
-      final storyData = {
+      final storyData = <String, dynamic>{
         'user_id': currentUserId,
         'media_url': uploadResult.url,
         'media_type': params.mediaType.name,
@@ -208,9 +218,11 @@ class StoryRepository implements IStoryRepository {
         // 'location': params.location?.toMap(), // Column missing/Legacy
         // 'mentions': params.mentions?.map((m) => m.toMap()).toList(), // Column missing/Legacy
         // 'music_url': params.musicUrl, // Column likely missing/Legacy
-        'interactive_elements':
-            params.interactiveElements?.map((e) => e.toJson()).toList(),
       };
+      storyData['interactive_elements'] =
+          (params.interactiveElements ?? const [])
+              .map((e) => e.toJson())
+              .toList(growable: false);
 
       final response =
           await _client.from('stories').insert(storyData).select().single();
@@ -315,6 +327,15 @@ class StoryRepository implements IStoryRepository {
         return StoryResult.failure('کاربر احراز هویت نشده است');
       }
 
+      try {
+        await _client.rpc('track_story_view', params: {
+          'p_story_id': storyId,
+        });
+        return StoryResult.success(null);
+      } catch (e) {
+        logInfo('RPC track_story_view fallback to legacy: $e');
+      }
+
       // بررسی بازدید قبلی
       final existingView = await _client
           .from('story_views')
@@ -339,7 +360,6 @@ class StoryRepository implements IStoryRepository {
             .rpc('increment_story_views', params: {'story_id': storyId});
       } catch (e) {
         // تابع ممکن است در دیتابیس وجود نداشته باشد، نادیده می‌گیریم
-        // چون رکورد بازدید در جدول story_views ثبت شده است
         logInfo('RPC increment_story_views skipped: $e');
       }
 
@@ -353,10 +373,46 @@ class StoryRepository implements IStoryRepository {
   @override
   Future<StoryResult<List<StoryView>>> getStoryViews(String storyId) async {
     try {
+      try {
+        final rpcResult = await _client.rpc(
+          'get_story_views_with_reactions',
+          params: {'p_story_id': storyId},
+        );
+
+        final list = _asList(rpcResult);
+        if (list != null) {
+          final views = list
+              .map((item) {
+                final map = _asMap(item);
+                if (map == null) return null;
+
+                return StoryView(
+                  viewerId: map['viewer_id']?.toString() ?? '',
+                  viewerUsername: map['username']?.toString(),
+                  viewerAvatarUrl: map['avatar_url']?.toString(),
+                  isVerified: _asBool(map['is_verified']),
+                  verificationType: map['verification_type']?.toString(),
+                  role: map['role']?.toString(),
+                  viewedAt: DateTime.tryParse(
+                        map['viewed_at']?.toString() ?? '',
+                      ) ??
+                      DateTime.now(),
+                  reaction: _parseStoryReaction(map['reaction']?.toString()),
+                );
+              })
+              .whereType<StoryView>()
+              .toList();
+
+          return StoryResult.success(views);
+        }
+      } catch (e) {
+        logInfo('RPC get_story_views_with_reactions fallback to legacy: $e');
+      }
+
       final response = await _client.from('story_views').select('''
             viewer_id,
             viewed_at,
-            profiles!inner(username, avatar_url, is_verified)
+            profiles!inner(username, avatar_url, is_verified, verification_type, role)
           ''').eq('story_id', storyId).order('viewed_at', ascending: false);
 
       final views = response.map((item) => StoryView.fromMap(item)).toList();
@@ -377,12 +433,15 @@ class StoryRepository implements IStoryRepository {
         return StoryResult.failure('کاربر احراز هویت نشده است');
       }
 
-      /* await _client.from('story_views').upsert({
-        'story_id': storyId,
-        'viewer_id': currentUserId,
-        // 'reaction': reaction.name, // Column missing
-        'viewed_at': DateTime.now().toIso8601String(),
-      }, onConflict: 'story_id, viewer_id'); */
+      try {
+        await _client.rpc('set_story_reaction', params: {
+          'p_story_id': storyId,
+          'p_reaction': reaction.name,
+        });
+        return StoryResult.success(null);
+      } catch (e) {
+        logInfo('RPC set_story_reaction fallback to legacy: $e');
+      }
 
       // Fallback: Just ensure view is recorded without reaction
       await _client.from('story_views').upsert({
@@ -406,11 +465,14 @@ class StoryRepository implements IStoryRepository {
         return StoryResult.failure('کاربر احراز هویت نشده است');
       }
 
-      /* await _client
-          .from('story_views')
-          .update({'reaction': null})
-          .eq('story_id', storyId)
-          .eq('viewer_id', currentUserId); */
+      try {
+        await _client.rpc('remove_story_reaction', params: {
+          'p_story_id': storyId,
+        });
+        return StoryResult.success(null);
+      } catch (e) {
+        logInfo('RPC remove_story_reaction fallback to legacy: $e');
+      }
 
       logInfo('Reaction removal skipped: Column missing');
 
@@ -422,7 +484,11 @@ class StoryRepository implements IStoryRepository {
   }
 
   @override
-  Future<StoryResult<void>> replyToStory(String storyId, String message) async {
+  Future<StoryResult<void>> replyToStory(
+    String storyId,
+    String message, {
+    Map<String, dynamic>? replyMeta,
+  }) async {
     try {
       final currentUserId = _client.auth.currentUser?.id;
       if (currentUserId == null) {
@@ -434,10 +500,15 @@ class StoryRepository implements IStoryRepository {
         return StoryResult.failure('متن پاسخ نمی‌تواند خالی باشد');
       }
 
-      final rpcResult = await _client.rpc('send_story_reply', params: {
+      final params = <String, dynamic>{
         'p_story_id': storyId,
         'p_message': trimmedMessage,
-      });
+      };
+      if (replyMeta != null && replyMeta.isNotEmpty) {
+        params['p_reply_meta'] = replyMeta;
+      }
+
+      final rpcResult = await _client.rpc('send_story_reply', params: params);
 
       if (rpcResult == null) {
         return StoryResult.failure('ارسال پاسخ انجام نشد');
@@ -446,28 +517,32 @@ class StoryRepository implements IStoryRepository {
       return StoryResult.success(null);
     } catch (e) {
       logInfo('خطا در ارسال پاسخ: $e');
-      return StoryResult.failure('خطا در ارسال پاسخ');
+      return StoryResult.failure(
+        _mapStoryRpcError(
+          e,
+          fallback: 'خطا در ارسال پاسخ',
+        ),
+      );
     }
   }
 
   @override
-  Future<StoryResult<void>> voteOnPoll(String storyId, String optionId) async {
+  Future<StoryResult<void>> voteOnPoll({
+    required String storyId,
+    required String elementId,
+    required int optionIndex,
+  }) async {
     try {
       final currentUserId = _client.auth.currentUser?.id;
       if (currentUserId == null) {
         return StoryResult.failure('کاربر احراز هویت نشده است');
       }
 
-      final voteResult = await _client
-          .from('story_poll_votes')
-          .upsert({
-            'story_id': storyId,
-            'user_id': currentUserId,
-            'option_id': optionId,
-            'created_at': DateTime.now().toIso8601String(),
-          }, onConflict: 'story_id, user_id')
-          .select('story_id')
-          .maybeSingle();
+      final voteResult = await _client.rpc('vote_story_poll', params: {
+        'p_story_id': storyId,
+        'p_element_id': elementId,
+        'p_option_index': optionIndex,
+      });
 
       if (voteResult == null) {
         return StoryResult.failure('ثبت رای انجام نشد');
@@ -476,7 +551,127 @@ class StoryRepository implements IStoryRepository {
       return StoryResult.success(null);
     } catch (e) {
       logInfo('خطا در ثبت رای: $e');
-      return StoryResult.failure('خطا در ثبت رای');
+      return StoryResult.failure(
+        _mapStoryRpcError(
+          e,
+          fallback: 'خطا در ثبت رای',
+        ),
+      );
+    }
+  }
+
+  @override
+  Future<StoryResult<StoryPollResult>> getPollResults({
+    required String storyId,
+    required String elementId,
+  }) async {
+    try {
+      final currentUserId = _client.auth.currentUser?.id;
+      if (currentUserId == null) {
+        return StoryResult.failure('کاربر احراز هویت نشده است');
+      }
+
+      final rpcResult = await _client.rpc('get_story_poll_results', params: {
+        'p_story_id': storyId,
+        'p_element_id': elementId,
+      });
+
+      if (rpcResult == null) {
+        return StoryResult.failure('دریافت نتایج نظرسنجی انجام نشد');
+      }
+
+      final payload = _asMap(rpcResult);
+      if (payload == null) {
+        return StoryResult.failure('فرمت نتایج نظرسنجی نامعتبر است');
+      }
+
+      return StoryResult.success(StoryPollResult.fromMap(payload));
+    } catch (e) {
+      logInfo('خطا در دریافت نتایج نظرسنجی: $e');
+      return StoryResult.failure(
+        _mapStoryRpcError(
+          e,
+          fallback: 'خطا در دریافت نتایج نظرسنجی',
+        ),
+      );
+    }
+  }
+
+  @override
+  Future<StoryResult<void>> submitQuestionAnswer({
+    required String storyId,
+    required String elementId,
+    required String answer,
+  }) async {
+    try {
+      final currentUserId = _client.auth.currentUser?.id;
+      if (currentUserId == null) {
+        return StoryResult.failure('کاربر احراز هویت نشده است');
+      }
+
+      final trimmedAnswer = answer.trim();
+      if (trimmedAnswer.isEmpty) {
+        return StoryResult.failure('پاسخ نمی‌تواند خالی باشد');
+      }
+
+      final rpcResult =
+          await _client.rpc('submit_story_question_answer', params: {
+        'p_story_id': storyId,
+        'p_element_id': elementId,
+        'p_answer': trimmedAnswer,
+      });
+
+      if (rpcResult == null) {
+        return StoryResult.failure('ثبت پاسخ انجام نشد');
+      }
+
+      return StoryResult.success(null);
+    } catch (e) {
+      logInfo('خطا در ثبت پاسخ سوال: $e');
+      return StoryResult.failure(
+        _mapStoryRpcError(
+          e,
+          fallback: 'خطا در ثبت پاسخ سوال',
+        ),
+      );
+    }
+  }
+
+  @override
+  Future<StoryResult<List<StoryQuestionAnswer>>> getStoryQuestionAnswers(
+      String storyId) async {
+    try {
+      final currentUserId = _client.auth.currentUser?.id;
+      if (currentUserId == null) {
+        return StoryResult.failure('کاربر احراز هویت نشده است');
+      }
+
+      final rpcResult = await _client
+          .rpc('get_story_question_answers', params: {'p_story_id': storyId});
+
+      final list = _asList(rpcResult);
+      if (list == null) {
+        return StoryResult.success(const []);
+      }
+
+      final answers = list
+          .map((item) {
+            final map = _asMap(item);
+            if (map == null) return null;
+            return StoryQuestionAnswer.fromMap(map);
+          })
+          .whereType<StoryQuestionAnswer>()
+          .toList();
+
+      return StoryResult.success(answers);
+    } catch (e) {
+      logInfo('خطا در دریافت پاسخ‌های سوال: $e');
+      return StoryResult.failure(
+        _mapStoryRpcError(
+          e,
+          fallback: 'خطا در دریافت پاسخ‌های سوال',
+        ),
+      );
     }
   }
 
@@ -876,5 +1071,179 @@ class StoryRepository implements IStoryRepository {
       logInfo('خطا در بررسی اجازه پاسخ به استوری: $e');
       return StoryResult.failure('خطا در بررسی اجازه پاسخ به استوری');
     }
+  }
+
+  Future<List<StoryUser>?> _tryGetActiveStoriesViaRpc({
+    required String currentUserId,
+  }) async {
+    try {
+      final rpcResult = await _client.rpc(
+        'get_active_stories_feed',
+        params: {'p_limit': 500},
+      );
+
+      final rows = _asList(rpcResult);
+      if (rows == null) return null;
+
+      final usersMap = <String, StoryUser>{};
+
+      for (final rawRow in rows) {
+        final row = _asMap(rawRow);
+        if (row == null) continue;
+
+        final storyUserId = row['user_id']?.toString() ?? '';
+        if (storyUserId.isEmpty) continue;
+
+        final storyMap = <String, dynamic>{
+          'id': row['id'],
+          'user_id': storyUserId,
+          'media_url': row['media_url'],
+          'media_type': row['media_type'],
+          'thumbnail_url': row['thumbnail_url'],
+          'caption': row['caption'],
+          'created_at': row['created_at'],
+          'expires_at': row['expires_at'],
+          'interactive_elements': row['interactive_elements'],
+          'views_count': row['views_count'] ?? 0,
+          'reactions_count': row['reactions_count'] ?? 0,
+        };
+
+        final story = Story.fromMap(
+          storyMap,
+          isViewed: _asBool(row['is_viewed']),
+        );
+        if (story.isExpired) continue;
+
+        final profileMap = <String, dynamic>{
+          'user_id': storyUserId,
+          'username': row['username']?.toString() ?? '',
+          'avatar_url': row['avatar_url'],
+          'is_verified': _asBool(row['is_verified']),
+          'role': row['role'],
+          'verification_type': row['verification_type'],
+          'last_story_at': story.createdAt.toIso8601String(),
+        };
+
+        usersMap.update(
+          storyUserId,
+          (existing) => existing.copyWith(
+            stories: [...existing.stories, story],
+          ),
+          ifAbsent: () => StoryUser.fromMap(profileMap, stories: [story]),
+        );
+      }
+
+      final sortedUsers = usersMap.values.toList()
+        ..sort((a, b) {
+          if (a.id == currentUserId) return -1;
+          if (b.id == currentUserId) return 1;
+          if (a.hasUnseenStories && !b.hasUnseenStories) return -1;
+          if (!a.hasUnseenStories && b.hasUnseenStories) return 1;
+          return (b.lastStoryAt ?? DateTime(0))
+              .compareTo(a.lastStoryAt ?? DateTime(0));
+        });
+
+      return sortedUsers;
+    } catch (e) {
+      logInfo('RPC get_active_stories_feed fallback to legacy: $e');
+      return null;
+    }
+  }
+
+  StoryReactionType? _parseStoryReaction(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return null;
+    final normalized = raw.trim().toLowerCase();
+    for (final reaction in StoryReactionType.values) {
+      if (reaction.name.toLowerCase() == normalized) {
+        return reaction;
+      }
+    }
+    return null;
+  }
+
+  bool _asBool(dynamic value) {
+    if (value is bool) return value;
+    if (value is num) return value != 0;
+    if (value is String) {
+      final normalized = value.trim().toLowerCase();
+      return normalized == 'true' || normalized == 't' || normalized == '1';
+    }
+    return false;
+  }
+
+  Map<String, dynamic>? _asMap(dynamic value) {
+    if (value is Map<String, dynamic>) return value;
+    if (value is Map) {
+      return value.map((key, value) => MapEntry(key.toString(), value));
+    }
+    if (value is String && value.trim().isNotEmpty) {
+      try {
+        final decoded = jsonDecode(value);
+        if (decoded is Map<String, dynamic>) return decoded;
+        if (decoded is Map) {
+          return decoded.map((key, value) => MapEntry(key.toString(), value));
+        }
+      } catch (_) {
+        return null;
+      }
+    }
+    return null;
+  }
+
+  List<dynamic>? _asList(dynamic value) {
+    if (value is List) return value;
+    if (value is String && value.trim().isNotEmpty) {
+      try {
+        final decoded = jsonDecode(value);
+        if (decoded is List) return decoded;
+      } catch (_) {
+        return null;
+      }
+    }
+    return null;
+  }
+
+  String _mapStoryRpcError(
+    Object error, {
+    required String fallback,
+  }) {
+    final raw = error.toString().toLowerCase();
+    if (raw.contains('story_not_found')) {
+      return 'استوری مورد نظر یافت نشد';
+    }
+    if (raw.contains('question_answer_already_submitted')) {
+      return 'پاسخ شما قبلا ثبت شده است';
+    }
+    if (raw.contains('not_story_owner')) {
+      return 'فقط صاحب استوری به این بخش دسترسی دارد';
+    }
+    if (raw.contains('question_sticker_not_found')) {
+      return 'سوال مورد نظر یافت نشد';
+    }
+    if (raw.contains('poll_sticker_not_found')) {
+      return 'نظرسنجی مورد نظر یافت نشد';
+    }
+    if (raw.contains('poll_vote_locked')) {
+      return 'رای شما قبلا ثبت شده و قابل تغییر نیست';
+    }
+    if (raw.contains('invalid_poll_option')) {
+      return 'گزینه انتخابی معتبر نیست';
+    }
+    if (raw.contains('question_answer_empty')) {
+      return 'پاسخ نمی‌تواند خالی باشد';
+    }
+    if (raw.contains('empty_story_reply_message')) {
+      return 'متن پاسخ نمی‌تواند خالی باشد';
+    }
+    if (raw.contains('story_expired')) {
+      return 'این استوری منقضی شده است';
+    }
+    if (raw.contains('story_reply_not_allowed')) {
+      return 'ارسال پاسخ برای این استوری مجاز نیست';
+    }
+    if (raw.contains('authentication_required')) {
+      return 'برای انجام این عملیات باید وارد شوید';
+    }
+    return fallback;
   }
 }

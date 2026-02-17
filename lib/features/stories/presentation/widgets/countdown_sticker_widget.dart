@@ -26,9 +26,11 @@ class _CountdownStickerWidgetState extends State<CountdownStickerWidget> {
   void initState() {
     super.initState();
     final data = widget.element.interactionData ?? {};
+    final targetRaw =
+        data['targetDate']?.toString() ?? data['endDate']?.toString() ?? '';
     // Default to 24 hours from now if not set
-    _targetDate = DateTime.tryParse(data['endDate'] ?? '') ??
-        DateTime.now().add(const Duration(hours: 24));
+    _targetDate =
+        DateTime.tryParse(targetRaw) ?? DateTime.now().add(const Duration(hours: 24));
 
     _remaining = _targetDate.difference(DateTime.now());
 
@@ -55,7 +57,7 @@ class _CountdownStickerWidgetState extends State<CountdownStickerWidget> {
   Widget build(BuildContext context) {
     final data = widget.element.interactionData ?? {};
     final String title = data['title'] ?? 'شمارش معکوس';
-    final int style = widget.element.styleIndex % 3;
+    final int style = widget.element.resolvedStyleIndex % 3;
 
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 300),

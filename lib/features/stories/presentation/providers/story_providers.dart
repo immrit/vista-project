@@ -326,3 +326,30 @@ final storyPlayerProvider = StateNotifierProvider.autoDispose.family<
   return StoryPlayerNotifier(
       repository, params.users, params.initialIndex, params.initialStoryIndex);
 });
+
+typedef StoryPollResultsArgs = ({String storyId, String elementId});
+
+final storyPollResultsProvider = FutureProvider.autoDispose
+    .family<StoryPollResult, StoryPollResultsArgs>((ref, args) async {
+  final repository = ref.watch(storyRepositoryProvider);
+  final result = await repository.getPollResults(
+    storyId: args.storyId,
+    elementId: args.elementId,
+  );
+
+  return result.fold(
+    (error) => throw Exception(error),
+    (data) => data,
+  );
+});
+
+final storyQuestionAnswersProvider = FutureProvider.autoDispose
+    .family<List<StoryQuestionAnswer>, String>((ref, storyId) async {
+  final repository = ref.watch(storyRepositoryProvider);
+  final result = await repository.getStoryQuestionAnswers(storyId);
+
+  return result.fold(
+    (error) => throw Exception(error),
+    (data) => data,
+  );
+});

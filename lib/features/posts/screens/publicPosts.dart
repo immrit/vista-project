@@ -24,6 +24,7 @@ import 'package:Vista/utils/widgets.dart';
 import 'package:Vista/widgets/profile_avatar_widget.dart'; // Add this import
 import 'package:Vista/widgets/CustomVideoPlayer.dart';
 import 'package:Vista/widgets/ReelsScreen.dart';
+import 'package:Vista/widgets/verification_badge_icon.dart';
 import 'package:Vista/features/music/screens/MiniMusicPlayer.dart';
 import 'package:Vista/features/stories/stories.dart';
 import 'package:Vista/features/search/screens/searchPage.dart';
@@ -1054,23 +1055,12 @@ Widget _buildPostItem(
 }
 
 Widget _buildVerificationBadge(PublicPostModel profile) {
-  // نمایش تیک مناسب براساس نوع تأیید
-  if (profile.hasBlueBadge) {
-    return const Icon(Icons.verified, color: Colors.blue, size: 16);
-  } else if (profile.hasGoldBadge) {
-    return const Icon(Icons.verified, color: Colors.amber, size: 16);
-  } else if (profile.hasBlackBadge) {
-    return Container(
-      padding: const EdgeInsets.all(.1), // فاصله باریک برای پس‌زمینه
-      decoration: BoxDecoration(
-        color: Colors.white60, // پس‌زمینه سفید
-        shape: BoxShape.circle, // پس‌زمینه دایره‌ای
-      ),
-      child: const Icon(Icons.verified, color: Colors.black, size: 14),
-    );
-  } else {
-    return const SizedBox.shrink(); // در صورت نداشتن تیک، چیزی نمایش نمی‌دهیم
-  }
+  return VerificationBadgeIcon(
+    isVerified: profile.isVerified,
+    verificationType: profile.verificationType,
+    role: profile.profiles?['role']?.toString(),
+    size: 16,
+  );
 }
 
 Widget _buildHashtags(List<String> hashtags, BuildContext context) {

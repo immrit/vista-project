@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:equatable/equatable.dart';
 import 'package:flutter/foundation.dart';
+import '../utils/verification_badge_utils.dart';
 
 // Enum برای نوع تایید
 enum VerificationType {
@@ -16,6 +17,7 @@ class UserModel extends Equatable {
   final String username;
   final String? avatarUrl;
   final String? email;
+  final String? role;
   final DateTime? createdAt;
   final bool isVerified;
   final VerificationType verificationType; // اضافه کردن verificationType
@@ -25,6 +27,7 @@ class UserModel extends Equatable {
     required this.username,
     this.avatarUrl,
     this.email,
+    this.role,
     this.createdAt,
     this.isVerified = false,
     this.verificationType = VerificationType.none, // مقدار پیش‌فرض none
@@ -36,24 +39,38 @@ class UserModel extends Equatable {
 
   // سازنده از Map با هندلینگ پیشرفته
   factory UserModel.fromMap(Map<String, dynamic> map) {
+    final isVerified = map['is_verified'] as bool? ?? false;
+    final resolvedType = resolveVerificationBadgeType(
+      isVerified: isVerified,
+      verificationType: map['verification_type'],
+      role: map['role']?.toString(),
+    );
+
     return UserModel(
       id: (map['user_id'] ?? map['id'] ?? '').toString(),
       username: (map['username'] ?? '').toString(),
       avatarUrl: map['avatar_url']?.toString(),
       email: map['email']?.toString(),
+      role: map['role']?.toString(),
       createdAt: map['created_at'] != null
           ? DateTime.tryParse(map['created_at'] as String)
           : null,
-      isVerified: map['is_verified'] ?? false,
-      verificationType: map['verification_type'] != null
-          ? VerificationType.values.firstWhere(
-              (type) =>
-                  type.name.toLowerCase() ==
-                  map['verification_type'].toString().toLowerCase(),
-              orElse: () => VerificationType.none,
-            )
-          : VerificationType.none,
+      isVerified: isVerified,
+      verificationType: _mapResolvedType(resolvedType),
     );
+  }
+
+  static VerificationType _mapResolvedType(ResolvedVerificationBadgeType type) {
+    switch (type) {
+      case ResolvedVerificationBadgeType.blueTick:
+        return VerificationType.blueTick;
+      case ResolvedVerificationBadgeType.goldTick:
+        return VerificationType.goldTick;
+      case ResolvedVerificationBadgeType.blackTick:
+        return VerificationType.blackTick;
+      case ResolvedVerificationBadgeType.none:
+        return VerificationType.none;
+    }
   }
 
   // تبدیل به Map
@@ -62,6 +79,7 @@ class UserModel extends Equatable {
         'username': username,
         'avatar_url': avatarUrl,
         'email': email,
+        'role': role,
         'created_at': createdAt?.toIso8601String(),
         'is_verified': isVerified,
         'verification_type':
@@ -77,6 +95,7 @@ class UserModel extends Equatable {
     String? username,
     String? avatarUrl,
     String? email,
+    String? role,
     DateTime? createdAt,
     bool? isVerified,
     VerificationType? verificationType, // اضافه کردن verificationType
@@ -86,6 +105,7 @@ class UserModel extends Equatable {
       username: username ?? this.username,
       avatarUrl: avatarUrl ?? this.avatarUrl,
       email: email ?? this.email,
+      role: role ?? this.role,
       createdAt: createdAt ?? this.createdAt,
       isVerified: isVerified ?? this.isVerified,
       verificationType: verificationType ??
@@ -100,6 +120,7 @@ class UserModel extends Equatable {
       id: $id, 
       username: $username, 
       email: $email,
+      role: $role,
       isVerified: $isVerified,
       verificationType: $verificationType
     )''';
@@ -107,7 +128,7 @@ class UserModel extends Equatable {
   // Equatable برای مقایسه‌های دقیق
   @override
   List<Object?> get props =>
-      [id, username, avatarUrl, email, isVerified, verificationType];
+      [id, username, avatarUrl, email, role, isVerified, verificationType];
 
   // متدهای اضافی برای بررسی وضعیت
   bool get hasAvatar => avatarUrl != null && avatarUrl!.isNotEmpty;
@@ -120,4 +141,5 @@ class UserModel extends Equatable {
       isVerified && verificationType == VerificationType.blackTick;
   bool get hasAnyBadge =>
       isVerified && verificationType != VerificationType.none;
+  bool get isPremiumUser => role == 'premium';
 }

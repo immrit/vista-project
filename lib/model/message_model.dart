@@ -19,6 +19,7 @@ class SharedPostData {
   final int commentCount;
   final bool isVerified;
   final String verificationType;
+  final String? role;
 
   const SharedPostData({
     required this.postId,
@@ -33,6 +34,7 @@ class SharedPostData {
     this.commentCount = 0,
     this.isVerified = false,
     this.verificationType = 'none',
+    this.role,
   });
 
   factory SharedPostData.fromJson(Map<String, dynamic> json) {
@@ -51,6 +53,7 @@ class SharedPostData {
       commentCount: json['comment_count'] ?? 0,
       isVerified: json['is_verified'] ?? false,
       verificationType: json['verification_type'] ?? 'none',
+      role: json['role']?.toString(),
     );
   }
 
@@ -68,6 +71,7 @@ class SharedPostData {
       'comment_count': commentCount,
       'is_verified': isVerified,
       'verification_type': verificationType,
+      'role': role,
     };
   }
 }
@@ -83,6 +87,12 @@ class StoryReplyData {
   final DateTime storyCreatedAt;
   final DateTime? storyExpiresAt;
   final int? storyDurationHours;
+  final String replyKind;
+  final String? elementId;
+  final String? questionText;
+  final String? answerText;
+  final String? respondentId;
+  final String? respondentUsername;
 
   const StoryReplyData({
     required this.storyId,
@@ -94,6 +104,12 @@ class StoryReplyData {
     required this.storyCreatedAt,
     this.storyExpiresAt,
     this.storyDurationHours,
+    this.replyKind = 'reply',
+    this.elementId,
+    this.questionText,
+    this.answerText,
+    this.respondentId,
+    this.respondentUsername,
   });
 
   factory StoryReplyData.fromJson(Map<String, dynamic> json) {
@@ -121,6 +137,12 @@ class StoryReplyData {
       storyCreatedAt: createdAt,
       storyExpiresAt: expiresAt,
       storyDurationHours: durationHours,
+      replyKind: (json['reply_kind'] ?? 'reply').toString(),
+      elementId: json['element_id']?.toString(),
+      questionText: json['question_text']?.toString(),
+      answerText: json['answer_text']?.toString() ?? json['answer']?.toString(),
+      respondentId: json['respondent_id']?.toString(),
+      respondentUsername: json['respondent_username']?.toString(),
     );
   }
 
@@ -134,6 +156,12 @@ class StoryReplyData {
         'story_created_at': storyCreatedAt.toIso8601String(),
         'story_expires_at': storyExpiresAt?.toIso8601String(),
         'story_duration_hours': storyDurationHours,
+        'reply_kind': replyKind,
+        'element_id': elementId,
+        'question_text': questionText,
+        'answer_text': answerText,
+        'respondent_id': respondentId,
+        'respondent_username': respondentUsername,
       };
 }
 
@@ -524,6 +552,7 @@ class MessageModel {
               'comment_count': contentJson['commentsCount'] ?? 0,
               'is_verified': false,
               'verification_type': contentJson['verificationType'] ?? 'none',
+              'role': contentJson['role'],
             });
           }
         } catch (e) {

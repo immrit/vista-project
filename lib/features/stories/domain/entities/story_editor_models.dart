@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:convert';
 import 'dart:math' as math;
 
 /// نوع استیکر تعاملی
@@ -13,6 +14,7 @@ enum StoryInteractionType {
   countdown,
   music,
   gif,
+  photo,
   weather,
   date,
 }
@@ -194,8 +196,8 @@ class TextStoryItem extends StoryItem {
         'rotation': rotation,
         'z_index': zIndex,
         'text': text,
-        'color': color.value,
-        'background_color': backgroundColor?.value,
+        'color': color.toARGB32(),
+        'background_color': backgroundColor?.toARGB32(),
         'font_size': fontSize,
         'font_family': fontFamily,
         'text_align': textAlign.index,
@@ -427,9 +429,12 @@ class DrawingPath {
 /// Legacy Compatibility - برای سازگاری با کد قبلی
 @Deprecated('Use TextStoryItem instead')
 class StoryElement {
+  String? elementId;
   String text;
   double x;
   double y;
+  double? xNorm;
+  double? yNorm;
   double rotation;
   double scale;
   Color color;
@@ -439,11 +444,16 @@ class StoryElement {
   StoryInteractionType interactionType;
   Map<String, dynamic>? interactionData;
   int styleIndex;
+  double? width;
+  double? height;
 
   StoryElement({
+    this.elementId,
     required this.text,
     required this.x,
     required this.y,
+    this.xNorm,
+    this.yNorm,
     this.rotation = 0,
     this.scale = 1,
     required this.color,
@@ -453,7 +463,20 @@ class StoryElement {
     this.interactionType = StoryInteractionType.none,
     this.interactionData,
     this.styleIndex = 0,
+    this.width,
+    this.height,
   });
+
+  int get resolvedStyleIndex {
+    final dynamic styleRaw = interactionData?['style'];
+    if (styleRaw is int) return styleRaw;
+    if (styleRaw is num) return styleRaw.toInt();
+    if (styleRaw is String) {
+      final parsed = int.tryParse(styleRaw);
+      if (parsed != null) return parsed;
+    }
+    return styleIndex;
+  }
 
   /// تبدیل به TextStoryItem جدید
   TextStoryItem toTextStoryItem() {
@@ -472,39 +495,119 @@ class StoryElement {
   }
 
   factory StoryElement.fromJson(Map<String, dynamic> json) {
+    final rawType = (json['type'] ?? json['interaction_type'] ?? 'none')
+        .toString()
+        .toLowerCase();
+    final interactionTypeRaw = rawType == 'sticker'
+        ? (json['interaction_type'] ?? 'none').toString().toLowerCase()
+        : rawType;
+
+    dynamic rawData = json['data'] ?? json['interaction_data'];
+    if (rawData == null && json['interaction_type'] != null) {
+      rawData = json['interaction_data'];
+    }
+    final parsedData = _parseInteractionData(rawData);
+
+    final styleRaw = json['style_index'] ?? parsedData?['style'];
+    final style = styleRaw is num
+        ? styleRaw.toInt()
+        : int.tryParse(styleRaw?.toString() ?? '') ?? 0;
+
+    final text = (json['text'] ?? '').toString();
+
     return StoryElement(
-      text: json['text'] as String? ?? '',
-      x: (json['x'] as num).toDouble(),
-      y: (json['y'] as num).toDouble(),
-      rotation: (json['rotation'] as num?)?.toDouble() ?? 0.0,
-      scale: (json['scale'] as num?)?.toDouble() ?? 1.0,
-      color: Color(json['color'] as int? ?? 0xFFFFFFFF),
-      fontSize: (json['font_size'] as num?)?.toDouble() ?? 20.0,
+      elementId: (json['element_id'] ?? json['id'])?.toString(),
+      text: text,
+      x: _asDouble(json['x']) ?? 0.0,
+      y: _asDouble(json['y']) ?? 0.0,
+      xNorm: _asDouble(json['x_norm']),
+      yNorm: _asDouble(json['y_norm']),
+      rotation: _asDouble(json['rotation']) ?? 0.0,
+      scale: _asDouble(json['scale']) ?? 1.0,
+      color: Color(_asInt(json['color']) ?? 0xFFFFFFFF),
+      fontSize: _asDouble(json['font_size']) ?? 20.0,
       fontFamily: json['font_family'] as String? ?? 'Vazir',
-      textAlign: TextAlign.values[json['text_align'] as int? ?? 2],
+      textAlign: _parseTextAlign(json['text_align']),
       interactionType: StoryInteractionType.values.firstWhere(
-        (e) => e.name == json['type'],
+        (e) => e.name == interactionTypeRaw,
         orElse: () => StoryInteractionType.none,
       ),
-      interactionData: json['data'] as Map<String, dynamic>?,
-      styleIndex: json['style_index'] as int? ?? 0,
+      interactionData: parsedData,
+      styleIndex: style,
+      width: _asDouble(json['width']),
+      height: _asDouble(json['height']),
     );
   }
 
   Map<String, dynamic> toJson() {
+    final normalizedData = Map<String, dynamic>.from(interactionData ?? {});
+    normalizedData.putIfAbsent('style', () => resolvedStyleIndex);
+
     return {
+      'element_id': elementId,
+      'id': elementId,
       'text': text,
       'x': x,
       'y': y,
+      'x_norm': xNorm,
+      'y_norm': yNorm,
       'rotation': rotation,
       'scale': scale,
-      'color': color.value,
+      'color': color.toARGB32(),
       'font_size': fontSize,
       'font_family': fontFamily,
       'text_align': textAlign.index,
       'type': interactionType.name,
-      'data': interactionData,
-      'style_index': styleIndex,
+      'data': normalizedData,
+      // Legacy keys used by older parser paths.
+      'interaction_type': interactionType.name,
+      'interaction_data': normalizedData,
+      'style_index': resolvedStyleIndex,
+      'width': width,
+      'height': height,
     };
+  }
+
+  static Map<String, dynamic>? _parseInteractionData(dynamic rawData) {
+    if (rawData == null) return null;
+    if (rawData is Map<String, dynamic>) return rawData;
+    if (rawData is Map) {
+      return rawData.map(
+        (key, value) => MapEntry(key.toString(), value),
+      );
+    }
+    if (rawData is String && rawData.trim().isNotEmpty) {
+      try {
+        final decoded = jsonDecode(rawData);
+        if (decoded is Map<String, dynamic>) return decoded;
+        if (decoded is Map) {
+          return decoded.map(
+            (key, value) => MapEntry(key.toString(), value),
+          );
+        }
+      } catch (_) {
+        return null;
+      }
+    }
+    return null;
+  }
+
+  static double? _asDouble(dynamic value) {
+    if (value is num) return value.toDouble();
+    return double.tryParse(value?.toString() ?? '');
+  }
+
+  static int? _asInt(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '');
+  }
+
+  static TextAlign _parseTextAlign(dynamic raw) {
+    final index = _asInt(raw) ?? 2;
+    if (index < 0 || index >= TextAlign.values.length) {
+      return TextAlign.center;
+    }
+    return TextAlign.values[index];
   }
 }

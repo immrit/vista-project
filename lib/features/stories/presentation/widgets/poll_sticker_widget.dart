@@ -18,7 +18,7 @@ class PollStickerWidget extends StatelessWidget {
     final String option1 = data['option1'] ?? 'گزینه ۱';
     final String option2 = data['option2'] ?? 'گزینه ۲';
 
-    final int style = element.styleIndex % 3;
+    final int style = element.resolvedStyleIndex % 3;
 
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 300),

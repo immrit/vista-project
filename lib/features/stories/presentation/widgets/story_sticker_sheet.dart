@@ -1,12 +1,16 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../../../services/weather_service.dart';
+import '../../../../services/MusicService.dart';
+import '../../../../model/MusicModel.dart';
 import 'location_picker_sheet.dart';
 import 'link_input_sheet.dart';
 import 'poll_input_sheet.dart';
 import 'mention_input_sheet.dart';
 import 'countdown_input_sheet.dart';
 import 'questions_input_sheet.dart';
+import '../../../chat/widgets/gif_picker_widget.dart';
 import '../../domain/entities/story_editor_models.dart';
 import '../../../../utils/user_friendly_error_utils.dart';
 
@@ -30,6 +34,8 @@ class _StoryStickerSheetState extends State<StoryStickerSheet>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final TextEditingController _searchController = TextEditingController();
+  final MusicService _musicService = MusicService();
+  final ImagePicker _imagePicker = ImagePicker();
 
   @override
   void initState() {
@@ -263,6 +269,7 @@ class _StoryStickerSheetState extends State<StoryStickerSheet>
                   ),
                   child: TextField(
                     controller: _searchController,
+                    onChanged: (_) => setState(() {}),
                     style: const TextStyle(color: Colors.white),
                     decoration: InputDecoration(
                       hintText: 'جستجو...',
@@ -311,6 +318,22 @@ class _StoryStickerSheetState extends State<StoryStickerSheet>
   }
 
   Widget _buildInteractiveStickersGrid() {
+    final query = _searchController.text.trim().toLowerCase();
+    final stickers = query.isEmpty
+        ? _interactiveStickers
+        : _interactiveStickers
+            .where((sticker) => sticker.label.toLowerCase().contains(query))
+            .toList();
+
+    if (stickers.isEmpty) {
+      return const Center(
+        child: Text(
+          'موردی پیدا نشد',
+          style: TextStyle(color: Colors.white70, fontFamily: 'Vazir'),
+        ),
+      );
+    }
+
     return GridView.builder(
       padding: const EdgeInsets.all(16),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -319,9 +342,9 @@ class _StoryStickerSheetState extends State<StoryStickerSheet>
         crossAxisSpacing: 12,
         mainAxisSpacing: 12,
       ),
-      itemCount: _interactiveStickers.length,
+      itemCount: stickers.length,
       itemBuilder: (context, index) {
-        final sticker = _interactiveStickers[index];
+        final sticker = stickers[index];
         return _buildStickerCard(sticker);
       },
     );
@@ -380,6 +403,20 @@ class _StoryStickerSheetState extends State<StoryStickerSheet>
   }
 
   Widget _buildEmojiGrid() {
+    final query = _searchController.text.trim();
+    final emojis = query.isEmpty
+        ? _emojis
+        : _emojis.where((emoji) => emoji.contains(query)).toList();
+
+    if (emojis.isEmpty) {
+      return const Center(
+        child: Text(
+          'ایموجی پیدا نشد',
+          style: TextStyle(color: Colors.white70, fontFamily: 'Vazir'),
+        ),
+      );
+    }
+
     return GridView.builder(
       padding: const EdgeInsets.all(16),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -387,16 +424,16 @@ class _StoryStickerSheetState extends State<StoryStickerSheet>
         mainAxisSpacing: 12,
         crossAxisSpacing: 12,
       ),
-      itemCount: _emojis.length,
+      itemCount: emojis.length,
       itemBuilder: (context, index) {
         return GestureDetector(
           onTap: () {
-            widget.onStickerSelected(_emojis[index]);
+            widget.onStickerSelected(emojis[index]);
             Navigator.pop(context);
           },
           child: Center(
             child: Text(
-              _emojis[index],
+              emojis[index],
               style: const TextStyle(fontSize: 32),
             ),
           ),
@@ -439,9 +476,17 @@ class _StoryStickerSheetState extends State<StoryStickerSheet>
       case 'countdown':
         _showCountdownDialog();
         break;
+      case 'music':
+        _showMusicPicker();
+        break;
+      case 'gif':
+        _showGifPicker();
+        break;
+      case 'photo':
+        _pickPhotoFromGallery();
+        break;
       case 'date':
         _addDateSticker();
-        _closeStickerSheet();
         break;
       case 'weather':
         _addWeatherSticker();
@@ -501,6 +546,7 @@ class _StoryStickerSheetState extends State<StoryStickerSheet>
             'city': locationName,
             'latitude': lat,
             'longitude': lng,
+            'style': 0,
           };
           if (temperature != null) {
             payload['temperature'] = temperature;
@@ -590,7 +636,7 @@ class _StoryStickerSheetState extends State<StoryStickerSheet>
     final tag = value.trim().replaceAll('#', '');
     _handleStickerData(
       StoryInteractionType.hashtag,
-      {'hashtag': tag},
+      {'hashtag': tag, 'style': 0},
       fallbackText: '#$tag',
     );
     Navigator.pop(ctx);
@@ -661,11 +707,147 @@ class _StoryStickerSheetState extends State<StoryStickerSheet>
 
   void _addDateSticker() {
     final now = DateTime.now();
-    widget.onStickerSelected('${now.year}/${now.month}/${now.day}');
+    final displayText =
+        '${now.year}/${now.month.toString().padLeft(2, '0')}/${now.day.toString().padLeft(2, '0')}';
+    _handleStickerData(
+      StoryInteractionType.date,
+      {
+        'dateIso': now.toIso8601String(),
+        'displayText': displayText,
+        'style': 0,
+      },
+      fallbackText: displayText,
+      closeStickerSheet: true,
+    );
   }
 
   void _addWeatherSticker() {
     _showLocationPicker(targetType: StoryInteractionType.weather);
+  }
+
+  void _showMusicPicker() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _MusicPickerSheet(
+        musicService: _musicService,
+        onMusicSelected: (music) {
+          Navigator.of(ctx).pop();
+          _handleStickerData(
+            StoryInteractionType.music,
+            {
+              'musicId': music.id,
+              'title': music.title,
+              'artist': music.artist,
+              'musicUrl': music.musicUrl,
+              'coverUrl': music.coverUrl,
+              'startSec': 0,
+              'durationSec': 30,
+              'style': 0,
+            },
+            fallbackText: '${music.title} - ${music.artist}',
+            closeStickerSheet: true,
+          );
+        },
+      ),
+    );
+  }
+
+  void _showGifPicker() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        height: MediaQuery.of(ctx).size.height * 0.8,
+        decoration: const BoxDecoration(
+          color: Color(0xFF1C1C1E),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.symmetric(vertical: 12),
+                decoration: BoxDecoration(
+                  color: Colors.white24,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  children: [
+                    Icon(Icons.gif_box_outlined, color: Colors.white),
+                    SizedBox(width: 8),
+                    Text(
+                      'انتخاب GIF',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        fontFamily: 'Vazir',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+              Expanded(
+                child: GifPickerWidget(
+                  onGifSelected: (gifUrl) {
+                    Navigator.of(ctx).pop();
+                    _handleStickerData(
+                      StoryInteractionType.gif,
+                      {
+                        'gifUrl': gifUrl,
+                        'previewUrl': gifUrl,
+                        'width': 220.0,
+                        'height': 220.0,
+                        'style': 0,
+                      },
+                      fallbackText: 'GIF',
+                      closeStickerSheet: true,
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickPhotoFromGallery() async {
+    try {
+      final picked = await _imagePicker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 90,
+        maxWidth: 2048,
+        maxHeight: 2048,
+      );
+      if (picked == null || !mounted) return;
+
+      _handleStickerData(
+        StoryInteractionType.photo,
+        {
+          'imagePath': picked.path,
+          'width': 180.0,
+          'height': 180.0,
+          'style': 0,
+        },
+        fallbackText: 'Photo',
+        closeStickerSheet: true,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      UserFriendlyErrorUtils.showErrorSnackBar(context, e);
+    }
   }
 
   void _handleStickerData(
@@ -698,4 +880,216 @@ class _InteractiveSticker {
     required this.type,
     required this.gradient,
   });
+}
+
+class _MusicPickerSheet extends StatefulWidget {
+  final MusicService musicService;
+  final ValueChanged<MusicModel> onMusicSelected;
+
+  const _MusicPickerSheet({
+    required this.musicService,
+    required this.onMusicSelected,
+  });
+
+  @override
+  State<_MusicPickerSheet> createState() => _MusicPickerSheetState();
+}
+
+class _MusicPickerSheetState extends State<_MusicPickerSheet> {
+  late Future<List<MusicModel>> _musicsFuture;
+  final TextEditingController _searchController = TextEditingController();
+  List<MusicModel> _cachedMusics = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _musicsFuture = widget.musicService.fetchMusics(limit: 50);
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.8,
+      decoration: const BoxDecoration(
+        color: Color(0xFF1C1C1E),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Column(
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.symmetric(vertical: 12),
+              decoration: BoxDecoration(
+                color: Colors.white24,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  Icon(Icons.music_note_rounded, color: Colors.white),
+                  SizedBox(width: 8),
+                  Text(
+                    'انتخاب موزیک',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      fontFamily: 'Vazir',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: TextField(
+                controller: _searchController,
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  hintText: 'جستجو در موزیک‌ها...',
+                  hintStyle: const TextStyle(color: Colors.white54),
+                  prefixIcon:
+                      const Icon(Icons.search_rounded, color: Colors.white54),
+                  filled: true,
+                  fillColor: Colors.white12,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+                onChanged: (_) => setState(() {}),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Expanded(
+              child: FutureBuilder<List<MusicModel>>(
+                future: _musicsFuture,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(
+                      child: CircularProgressIndicator(color: Colors.white),
+                    );
+                  }
+                  if (snapshot.hasError) {
+                    return const Center(
+                      child: Text(
+                        'خطا در دریافت لیست موزیک',
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontFamily: 'Vazir',
+                        ),
+                      ),
+                    );
+                  }
+
+                  _cachedMusics = snapshot.data ?? const [];
+                  final query = _searchController.text.trim().toLowerCase();
+                  final filtered = query.isEmpty
+                      ? _cachedMusics
+                      : _cachedMusics
+                          .where((music) =>
+                              music.title.toLowerCase().contains(query) ||
+                              music.artist.toLowerCase().contains(query))
+                          .toList();
+
+                  if (filtered.isEmpty) {
+                    return const Center(
+                      child: Text(
+                        'موزیکی پیدا نشد',
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontFamily: 'Vazir',
+                        ),
+                      ),
+                    );
+                  }
+
+                  return ListView.separated(
+                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+                    itemCount: filtered.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    itemBuilder: (context, index) {
+                      final music = filtered[index];
+                      return ListTile(
+                        tileColor: Colors.white10,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        onTap: () => widget.onMusicSelected(music),
+                        leading: ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: music.coverUrl != null &&
+                                  music.coverUrl!.trim().isNotEmpty
+                              ? Image.network(
+                                  music.coverUrl!,
+                                  width: 48,
+                                  height: 48,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) => Container(
+                                    width: 48,
+                                    height: 48,
+                                    color: Colors.white12,
+                                    child: const Icon(
+                                      Icons.music_note_rounded,
+                                      color: Colors.white70,
+                                    ),
+                                  ),
+                                )
+                              : Container(
+                                  width: 48,
+                                  height: 48,
+                                  color: Colors.white12,
+                                  child: const Icon(
+                                    Icons.music_note_rounded,
+                                    color: Colors.white70,
+                                  ),
+                                ),
+                        ),
+                        title: Text(
+                          music.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                            fontFamily: 'Vazir',
+                          ),
+                        ),
+                        subtitle: Text(
+                          music.artist,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontFamily: 'Vazir',
+                          ),
+                        ),
+                        trailing: const Icon(
+                          Icons.chevron_right_rounded,
+                          color: Colors.white54,
+                        ),
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:Vista/features/posts/screens/PostDetailPage.dart';
+import 'verification_badge_icon.dart';
+import '../utils/verification_badge_utils.dart';
 
 class SharedPostCardWidget extends StatelessWidget {
   final String messageContent;
@@ -137,7 +139,8 @@ class SharedPostCardWidget extends StatelessWidget {
                     ),
                     const SizedBox(width: 4),
                     // نشان تایید
-                    if (verificationType != 'none')
+                    if (parseVerificationBadgeType(verificationType) !=
+                        ResolvedVerificationBadgeType.none)
                       _buildVerificationBadge(verificationType),
                   ],
                 ),
@@ -284,30 +287,11 @@ class SharedPostCardWidget extends StatelessWidget {
   }
 
   Widget _buildVerificationBadge(String verificationType) {
-    IconData icon = Icons.verified;
-    Color color = Colors.blue;
-
-    switch (verificationType) {
-      case 'blueTick':
-        color = Colors.blue;
-        break;
-      case 'goldTick':
-        color = Colors.amber;
-        break;
-      case 'blackTick':
-        return Container(
-          padding: const EdgeInsets.all(1),
-          decoration: BoxDecoration(
-            color: Colors.white60,
-            shape: BoxShape.circle,
-          ),
-          child: const Icon(Icons.verified, color: Colors.black, size: 12),
-        );
-      default:
-        color = Colors.blue;
-    }
-
-    return Icon(icon, color: color, size: 14);
+    return VerificationBadgeIcon(
+      isVerified: verificationType != 'none',
+      verificationType: verificationType,
+      size: 14,
+    );
   }
 
   String _extractUsername() {

@@ -21,7 +21,7 @@ class HashtagStickerWidget extends StatelessWidget {
     // اطمینان از شروع با #
     if (!hashtag.startsWith('#')) hashtag = '#$hashtag';
 
-    final int style = element.styleIndex % 3;
+    final int style = element.resolvedStyleIndex % 3;
 
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 300),

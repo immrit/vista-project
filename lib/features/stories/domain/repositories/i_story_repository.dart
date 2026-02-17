@@ -117,10 +117,35 @@ abstract class IStoryRepository {
   Future<StoryResult<void>> removeReaction(String storyId);
 
   /// پاسخ به استوری
-  Future<StoryResult<void>> replyToStory(String storyId, String message);
+  Future<StoryResult<void>> replyToStory(
+    String storyId,
+    String message, {
+    Map<String, dynamic>? replyMeta,
+  });
 
   /// رأی به نظرسنجی
-  Future<StoryResult<void>> voteOnPoll(String storyId, String optionId);
+  Future<StoryResult<void>> voteOnPoll({
+    required String storyId,
+    required String elementId,
+    required int optionIndex,
+  });
+
+  /// دریافت نتایج نظرسنجی
+  Future<StoryResult<StoryPollResult>> getPollResults({
+    required String storyId,
+    required String elementId,
+  });
+
+  /// ثبت پاسخ برای استیکر سوال
+  Future<StoryResult<void>> submitQuestionAnswer({
+    required String storyId,
+    required String elementId,
+    required String answer,
+  });
+
+  /// دریافت پاسخ‌های استیکرهای سوال یک استوری
+  Future<StoryResult<List<StoryQuestionAnswer>>> getStoryQuestionAnswers(
+      String storyId);
 
   /// گزارش استوری
   Future<StoryResult<void>> reportStory(String storyId, String reason);
@@ -181,6 +206,8 @@ class StoryView {
   final String? viewerUsername;
   final String? viewerAvatarUrl;
   final bool isVerified;
+  final String? verificationType;
+  final String? role;
   final DateTime viewedAt;
   final StoryReactionType? reaction;
 
@@ -189,6 +216,8 @@ class StoryView {
     this.viewerUsername,
     this.viewerAvatarUrl,
     this.isVerified = false,
+    this.verificationType,
+    this.role,
     required this.viewedAt,
     this.reaction,
   });
@@ -199,6 +228,8 @@ class StoryView {
       viewerUsername: map['profiles']?['username'],
       viewerAvatarUrl: map['profiles']?['avatar_url'],
       isVerified: map['profiles']?['is_verified'] ?? false,
+      verificationType: map['profiles']?['verification_type']?.toString(),
+      role: map['profiles']?['role']?.toString(),
       viewedAt:
           DateTime.parse(map['viewed_at'] ?? DateTime.now().toIso8601String()),
       reaction: map['reaction'] != null

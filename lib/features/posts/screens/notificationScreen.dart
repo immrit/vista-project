@@ -7,6 +7,8 @@ import 'package:shimmer/shimmer.dart';
 import '../../../model/notificationModel.dart';
 import '../../../provider/notification_provider.dart';
 import 'package:Vista/services/notification_navigation_service.dart';
+import 'package:Vista/widgets/verification_badge_icon.dart';
+import 'package:Vista/utils/verification_badge_utils.dart';
 
 class NotificationsPage extends ConsumerStatefulWidget {
   const NotificationsPage({super.key});
@@ -110,30 +112,22 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
       );
 
   Widget _buildVerificationBadge(NotificationModel notification) {
-    if (notification.hasBlueBadge) {
-      return const Padding(
-        padding: EdgeInsets.only(right: 4),
-        child: Icon(Icons.verified, color: Colors.blue, size: 16),
-      );
+    final resolvedType = resolveVerificationBadgeType(
+      isVerified: notification.userIsVerified,
+      verificationType: notification.verificationType,
+    );
+    if (resolvedType == ResolvedVerificationBadgeType.none) {
+      return const SizedBox.shrink();
     }
-    if (notification.hasGoldBadge) {
-      return const Padding(
-        padding: EdgeInsets.only(right: 4),
-        child: Icon(Icons.verified, color: Colors.amber, size: 16),
-      );
-    }
-    if (notification.hasBlackBadge) {
-      return Container(
-        margin: const EdgeInsets.only(right: 4),
-        padding: const EdgeInsets.all(0.1),
-        decoration: const BoxDecoration(
-          color: Colors.white60,
-          shape: BoxShape.circle,
-        ),
-        child: const Icon(Icons.verified, color: Colors.black, size: 16),
-      );
-    }
-    return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(right: 4),
+      child: VerificationBadgeIcon(
+        isVerified: notification.userIsVerified,
+        verificationType: notification.verificationType,
+        size: 16,
+      ),
+    );
   }
 
   IconData _getNotificationIcon(String type) {

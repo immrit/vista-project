@@ -21,6 +21,7 @@ import 'package:Vista/features/posts/widgets/post_music_bubble.dart';
 import '../../../utils/premium_features_helper.dart';
 import '../../../services/smart_share_service.dart';
 import '../providers/saved_posts_provider.dart';
+import 'package:Vista/widgets/verification_badge_icon.dart';
 
 class PostDetailsPage extends ConsumerStatefulWidget {
   const PostDetailsPage({super.key, required this.postId});
@@ -592,23 +593,12 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
   }
 
   Widget _buildVerificationBadge(PublicPostModel profile) {
-    // نمایش تیک مناسب براساس نوع تأیید
-    if (profile.hasBlueBadge) {
-      return const Icon(Icons.verified, color: Colors.blue, size: 16);
-    } else if (profile.hasGoldBadge) {
-      return const Icon(Icons.verified, color: Colors.amber, size: 16);
-    } else if (profile.hasBlackBadge) {
-      return Container(
-        padding: const EdgeInsets.all(.1), // فاصله باریک برای پس‌زمینه
-        decoration: BoxDecoration(
-          color: Colors.white60, // پس‌زمینه سفید
-          shape: BoxShape.circle, // پس‌زمینه دایره‌ای
-        ),
-        child: const Icon(Icons.verified, color: Colors.black, size: 16),
-      );
-    } else {
-      return const SizedBox.shrink(); // در صورت نداشتن تیک، چیزی نمایش نمی‌دهیم
-    }
+    return VerificationBadgeIcon(
+      isVerified: profile.isVerified,
+      verificationType: profile.verificationType,
+      role: profile.profiles?['role']?.toString(),
+      size: 16,
+    );
   }
 
   String _formatDate(DateTime date) {
@@ -1024,23 +1014,12 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
   }
 
   Widget _buildVerificationBadgeComment(CommentModel profile) {
-    // نمایش تیک مناسب براساس نوع تأیید
-    if (profile.hasBlueBadge) {
-      return const Icon(Icons.verified, color: Colors.blue, size: 16);
-    } else if (profile.hasGoldBadge) {
-      return const Icon(Icons.verified, color: Colors.amber, size: 16);
-    } else if (profile.hasBlackBadge) {
-      return Container(
-        padding: const EdgeInsets.all(.1), // فاصله باریک برای پس‌زمینه
-        decoration: BoxDecoration(
-          color: Colors.white60, // پس‌زمینه سفید
-          shape: BoxShape.circle, // پس‌زمینه دایره‌ای
-        ),
-        child: const Icon(Icons.verified, color: Colors.black, size: 16),
-      );
-    } else {
-      return const SizedBox.shrink(); // در صورت نداشتن تیک، چیزی نمایش نمی‌دهیم
-    }
+    return VerificationBadgeIcon(
+      isVerified: profile.isVerified,
+      verificationType: profile.verificationType,
+      role: profile.role,
+      size: 16,
+    );
   }
 
   void _sendComment() async {

@@ -649,6 +649,7 @@ class _UserSelectionBottomSheetState
       'commentsCount': post.commentCount,
       'createdAt': post.createdAt.toIso8601String(),
       'verificationType': verificationTypeStr,
+      'role': post.profiles?['role'],
       'hashtags': post.hashtags,
     };
 

@@ -76,6 +76,8 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
   bool _isOverTrash = false;
   bool _showVerticalGuide = false;
   bool _showHorizontalGuide = false;
+  bool _wasVerticallyAligned = false;
+  bool _wasHorizontallyAligned = false;
 
   // Story Duration
   StoryDuration _storyDuration = StoryDuration.hours24;
@@ -121,17 +123,57 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
   void _updateItem(StoryItem updatedItem) {
     setState(() {
       final index = _items.indexWhere((item) => item.id == updatedItem.id);
-      if (index != -1) {
-        _items[index] = updatedItem;
+      if (index == -1) return;
+
+      StoryItem effectiveItem = updatedItem;
+
+      // Snap gently to canvas center for better precision (Instagram-like feel).
+      final canvasSize = _resolveCanvasSize();
+      final centerX = canvasSize.width / 2;
+      final centerY = canvasSize.height / 2;
+      const snapThreshold = 12.0;
+
+      var isNearVerticalCenter = false;
+      var isNearHorizontalCenter = false;
+      if (_isDragging) {
+        isNearVerticalCenter =
+            (effectiveItem.x - centerX).abs() < snapThreshold;
+        isNearHorizontalCenter =
+            (effectiveItem.y - centerY).abs() < snapThreshold;
+
+        if (isNearVerticalCenter && !_wasVerticallyAligned) {
+          HapticFeedback.selectionClick();
+        }
+        if (isNearHorizontalCenter && !_wasHorizontallyAligned) {
+          HapticFeedback.selectionClick();
+        }
+
+        _wasVerticallyAligned = isNearVerticalCenter;
+        _wasHorizontallyAligned = isNearHorizontalCenter;
+
+        _showVerticalGuide = isNearVerticalCenter;
+        _showHorizontalGuide = isNearHorizontalCenter;
+
+        if (isNearVerticalCenter || isNearHorizontalCenter) {
+          effectiveItem = effectiveItem.copyWith(
+            x: isNearVerticalCenter ? centerX : effectiveItem.x,
+            y: isNearHorizontalCenter ? centerY : effectiveItem.y,
+          );
+        }
+      } else {
+        _wasVerticallyAligned = false;
+        _wasHorizontallyAligned = false;
+        _showVerticalGuide = false;
+        _showHorizontalGuide = false;
       }
+      _items[index] = effectiveItem;
 
       // Check for trash proximity
-      final screenSize = MediaQuery.of(context).size;
-      final trashY = screenSize.height - 80;
-      final trashX = screenSize.width / 2;
+      final trashY = canvasSize.height - 80;
+      final trashX = canvasSize.width / 2;
 
       final dist =
-          (Offset(updatedItem.x, updatedItem.y) - Offset(trashX, trashY))
+          (Offset(effectiveItem.x, effectiveItem.y) - Offset(trashX, trashY))
               .distance;
 
       final wasOverTrash = _isOverTrash;
@@ -140,14 +182,6 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
       if (_isOverTrash && !wasOverTrash) {
         HapticFeedback.mediumImpact();
       }
-
-      // Check for alignment guides
-      final centerX = screenSize.width / 2;
-      final centerY = screenSize.height / 2;
-      const snapThreshold = 15.0;
-
-      _showVerticalGuide = (updatedItem.x - centerX).abs() < snapThreshold;
-      _showHorizontalGuide = (updatedItem.y - centerY).abs() < snapThreshold;
     });
   }
 
@@ -207,6 +241,12 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final canOpenStickerSheetWithSwipe = !_isDrawing &&
+        !_isDragging &&
+        !_showTextInput &&
+        _selectedItemId == null &&
+        _items.isEmpty;
+
     return PopScope(
       canPop: _items.isEmpty && _drawingPaths.isEmpty,
       onPopInvokedWithResult: (didPop, result) async {
@@ -249,19 +289,22 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
       child: Scaffold(
         backgroundColor: Colors.black,
         body: GestureDetector(
-          onVerticalDragStart: (details) {
-            _dragStartY = details.globalPosition.dy;
-          },
-          onVerticalDragEnd: (details) {
-            final screenHeight = MediaQuery.of(context).size.height;
-            if (_dragStartY > screenHeight * 0.9) return;
-
-            if (!_isDrawing &&
-                !_isDragging &&
-                (details.primaryVelocity ?? 0) < -300) {
-              _showStickerSheet();
-            }
-          },
+          onVerticalDragStart: canOpenStickerSheetWithSwipe
+              ? (details) {
+                  _dragStartY = details.globalPosition.dy;
+                }
+              : null,
+          onVerticalDragEnd: canOpenStickerSheetWithSwipe
+              ? (details) {
+                  final screenHeight = MediaQuery.of(context).size.height;
+                  final startedFromBottomZone =
+                      _dragStartY > screenHeight * 0.55;
+                  if (!startedFromBottomZone) return;
+                  if ((details.primaryVelocity ?? 0) < -450) {
+                    _showStickerSheet();
+                  }
+                }
+              : null,
           child: Stack(
             fit: StackFit.expand,
             children: [
@@ -296,6 +339,7 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
 
                       // 2. آیتم‌ها با ویجت جدید
                       ..._items.map((item) => Positioned(
+                            key: ValueKey('story_item_${item.id}'),
                             left: 0,
                             top: 0,
                             child: _buildEditableItem(item),
@@ -408,7 +452,11 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
       onUpdate: _updateItem,
       onSelect: () => _selectItem(item.id),
       onDragStart: () {
-        setState(() => _isDragging = true);
+        setState(() {
+          _isDragging = true;
+          _wasVerticallyAligned = false;
+          _wasHorizontallyAligned = false;
+        });
         // Bring to front
         _items.remove(item);
         _items.add(item);
@@ -422,6 +470,8 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
           _isOverTrash = false;
           _showVerticalGuide = false;
           _showHorizontalGuide = false;
+          _wasVerticallyAligned = false;
+          _wasHorizontallyAligned = false;
         });
       },
       onDoubleTap: () {
@@ -582,8 +632,14 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
   }
 
   Widget _buildStickerContent(StickerStoryItem item) {
+    final styleRaw = item.interactionData?['style'];
+    final style = styleRaw is num
+        ? styleRaw.toInt()
+        : int.tryParse(styleRaw?.toString() ?? '') ?? 0;
+
     // تبدیل موقت به StoryElement برای سازگاری با StickerFactory
     final legacyElement = StoryElement(
+      elementId: item.id,
       text: '',
       x: item.x,
       y: item.y,
@@ -593,6 +649,9 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
       fontSize: 20,
       interactionType: item.interactionType,
       interactionData: item.interactionData,
+      styleIndex: style,
+      width: item.width,
+      height: item.height,
     );
 
     return StickerFactory.buildSticker(legacyElement);
@@ -909,6 +968,8 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
 
       final caption =
           _items.whereType<TextStoryItem>().map((e) => e.text).join('\n');
+      final canvasSize = _resolveCanvasSize();
+      final elements = _serializeStoryItems(canvasSize);
 
       // Return result to StoryCreationScreen
       if (mounted) {
@@ -919,25 +980,7 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
           'caption': caption.isEmpty ? null : caption,
           'duration': _storyDuration,
           'privacy': privacy,
-          'elements': _items
-              .whereType<TextStoryItem>()
-              // Convert text items to legacy elements if needed, or just pass them
-              .map((e) => StoryElement(
-                    text: e.text,
-                    x: e.x,
-                    y: e.y,
-                    color: e.color,
-                    fontSize: e.fontSize,
-                    scale: e.scale,
-                    rotation: e.rotation,
-                    fontFamily: e.fontFamily,
-                    textAlign: e.textAlign,
-                    styleIndex: e.styleIndex,
-                    interactionType: e.animationType != TextAnimationType.none
-                        ? StoryInteractionType.none // Or map animation here
-                        : StoryInteractionType.none,
-                  ))
-              .toList(),
+          'elements': elements,
         });
       }
     } catch (e) {
@@ -951,6 +994,116 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
         setState(() => _isSaving = false);
       }
     }
+  }
+
+  Size _resolveCanvasSize() {
+    final renderObject = _canvasKey.currentContext?.findRenderObject();
+    if (renderObject is RenderBox && renderObject.hasSize) {
+      return renderObject.size;
+    }
+    return MediaQuery.of(context).size;
+  }
+
+  double? _normalizedCoordinate(double value, double maxValue) {
+    if (!maxValue.isFinite || maxValue <= 0) return null;
+    final normalized = value / maxValue;
+    if (!normalized.isFinite) return null;
+    return normalized.clamp(0.0, 1.0);
+  }
+
+  int _safeStyle(dynamic rawStyle) {
+    if (rawStyle is int) return rawStyle;
+    if (rawStyle is num) return rawStyle.toInt();
+    return int.tryParse(rawStyle?.toString() ?? '') ?? 0;
+  }
+
+  double _safeDouble(dynamic value, {double fallback = 0}) {
+    if (value is num) return value.toDouble();
+    return double.tryParse(value?.toString() ?? '') ?? fallback;
+  }
+
+  List<StoryElement> _serializeStoryItems(Size canvasSize) {
+    return _items.map((item) {
+      final xNorm = _normalizedCoordinate(item.x, canvasSize.width);
+      final yNorm = _normalizedCoordinate(item.y, canvasSize.height);
+
+      if (item is TextStoryItem) {
+        return StoryElement(
+          elementId: item.id,
+          text: item.text,
+          x: item.x,
+          y: item.y,
+          xNorm: xNorm,
+          yNorm: yNorm,
+          color: item.color,
+          fontSize: item.fontSize,
+          scale: item.scale,
+          rotation: item.rotation,
+          fontFamily: item.fontFamily,
+          textAlign: item.textAlign,
+          styleIndex: item.styleIndex,
+          interactionType: StoryInteractionType.none,
+        );
+      }
+
+      if (item is StickerStoryItem) {
+        final data = Map<String, dynamic>.from(item.interactionData ?? {});
+        final style = _safeStyle(data['style']);
+        data['style'] = style;
+
+        return StoryElement(
+          elementId: item.id,
+          text: '',
+          x: item.x,
+          y: item.y,
+          xNorm: xNorm,
+          yNorm: yNorm,
+          rotation: item.rotation,
+          scale: item.scale,
+          color: Colors.white,
+          fontSize: 20,
+          interactionType: item.interactionType,
+          interactionData: data,
+          styleIndex: style,
+          width: item.width,
+          height: item.height,
+        );
+      }
+
+      if (item is ImageStoryItem) {
+        return StoryElement(
+          elementId: item.id,
+          text: '',
+          x: item.x,
+          y: item.y,
+          xNorm: xNorm,
+          yNorm: yNorm,
+          rotation: item.rotation,
+          scale: item.scale,
+          color: Colors.white,
+          fontSize: 16,
+          interactionType: StoryInteractionType.photo,
+          interactionData: {
+            'imagePath': item.imagePath,
+            'style': 0,
+          },
+          styleIndex: 0,
+          width: item.width,
+          height: item.height,
+        );
+      }
+
+      return StoryElement(
+        elementId: item.id,
+        text: '',
+        x: item.x,
+        y: item.y,
+        xNorm: xNorm,
+        yNorm: yNorm,
+        color: Colors.white,
+        fontSize: 16,
+      );
+    }).toList();
   }
 
   OverlayEntry? _loadingOverlay;
@@ -1240,6 +1393,26 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
         },
         onInteractiveStickerSelected: (type, data) {
           final screenSize = MediaQuery.of(parentContext).size;
+          if (type == StoryInteractionType.photo) {
+            final imagePath = data['imagePath']?.toString() ?? '';
+            if (imagePath.trim().isEmpty) return;
+            final imageWidth = _safeDouble(data['width'], fallback: 160);
+            final imageHeight = _safeDouble(data['height'], fallback: 160);
+
+            final imageItem = ImageStoryItem(
+              x: screenSize.width / 2,
+              y: screenSize.height / 2,
+              imagePath: imagePath,
+              width: imageWidth,
+              height: imageHeight,
+            );
+
+            setState(() {
+              _items.add(imageItem);
+              _selectedItemId = imageItem.id;
+            });
+            return;
+          }
 
           // استیکر تعاملی → تبدیل به StickerStoryItem
           final newItem = StickerStoryItem(
@@ -1247,7 +1420,9 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
             y: screenSize.height / 2,
             stickerPath: '',
             interactionType: type,
-            interactionData: data,
+            interactionData: Map<String, dynamic>.from(data),
+            width: _safeDouble(data['width'], fallback: 100),
+            height: _safeDouble(data['height'], fallback: 100),
           );
 
           setState(() {

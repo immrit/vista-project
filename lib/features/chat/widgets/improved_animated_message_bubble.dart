@@ -462,11 +462,29 @@ class _ImprovedAnimatedMessageBubbleState
         ? storyData.storyOwnerUsername
         : 'کاربر';
     final isExpired = _isStoryReplyExpired(storyData);
+    final isQuestionReply = storyData.replyKind == 'question';
     final headerText =
         widget.isMe ? 'پاسخ به استوری $ownerUsername' : 'پاسخ به استوری شما';
     final secondaryText = isExpired
         ? 'استوری در دسترس نیست'
         : (storyData.storyMediaType == 'video' ? 'ویدیو' : 'تصویر');
+    String effectiveHeaderText = headerText;
+    String effectiveSecondaryText = secondaryText;
+    final answerPreview = ((storyData.answerText?.trim().isNotEmpty ?? false)
+            ? storyData.answerText!.trim()
+            : widget.content.trim())
+        .trim();
+
+    if (isQuestionReply) {
+      effectiveHeaderText = widget.isMe
+          ? 'پاسخ شما به سوال استوری $ownerUsername'
+          : 'پاسخ به سوال استوری شما';
+      if (!isExpired) {
+        final question = storyData.questionText?.trim() ?? '';
+        effectiveSecondaryText =
+            question.isNotEmpty ? 'سوال: $question' : 'پاسخ به استیکر سوال';
+      }
+    }
 
     return GestureDetector(
       onTap: widget.onStoryReplyTap != null
@@ -498,7 +516,7 @@ class _ImprovedAnimatedMessageBubbleState
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    headerText,
+                    effectiveHeaderText,
                     textDirection: TextDirection.rtl,
                     style: TextStyle(
                       color: theme.sendButtonColor,
@@ -510,7 +528,7 @@ class _ImprovedAnimatedMessageBubbleState
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    secondaryText,
+                    effectiveSecondaryText,
                     textDirection: TextDirection.rtl,
                     style: TextStyle(
                       color: widget.isMe
@@ -521,6 +539,21 @@ class _ImprovedAnimatedMessageBubbleState
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
+                  if (isQuestionReply && answerPreview.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      answerPreview,
+                      textDirection: TextDirection.rtl,
+                      style: TextStyle(
+                        color: widget.isMe
+                            ? theme.myBubbleTextColor.withOpacity(0.8)
+                            : theme.otherBubbleTextColor.withOpacity(0.8),
+                        fontSize: 11,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -533,6 +566,7 @@ class _ImprovedAnimatedMessageBubbleState
   Widget _buildStoryReplyThumbnail(
       ChatTheme theme, StoryReplyData data, bool isExpired) {
     final hasThumbnail = data.storyThumbnailUrl.isNotEmpty;
+    final isQuestionReply = data.replyKind == 'question';
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(8),
@@ -561,7 +595,11 @@ class _ImprovedAnimatedMessageBubbleState
                 height: 56,
                 color: theme.dividerColor.withOpacity(0.2),
                 child: Icon(
-                  data.storyMediaType == 'video' ? Icons.videocam : Icons.image,
+                  isQuestionReply
+                      ? Icons.question_answer_rounded
+                      : (data.storyMediaType == 'video'
+                          ? Icons.videocam
+                          : Icons.image),
                   color: theme.dividerColor.withOpacity(0.6),
                   size: 24,
                 ),
@@ -573,7 +611,11 @@ class _ImprovedAnimatedMessageBubbleState
               height: 56,
               color: theme.dividerColor.withOpacity(0.2),
               child: Icon(
-                data.storyMediaType == 'video' ? Icons.videocam : Icons.image,
+                isQuestionReply
+                    ? Icons.question_answer_rounded
+                    : (data.storyMediaType == 'video'
+                        ? Icons.videocam
+                        : Icons.image),
                 color: theme.dividerColor.withOpacity(0.6),
                 size: 24,
               ),
@@ -592,6 +634,26 @@ class _ImprovedAnimatedMessageBubbleState
                   Icons.play_arrow,
                   color: Colors.white,
                   size: 14,
+                ),
+              ),
+            ),
+          if (isQuestionReply)
+            Positioned(
+              bottom: 4,
+              left: 4,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.black54,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: const Text(
+                  'Q&A',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 8,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
             ),

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../model/publicPostModel.dart';
-import '../../model/ProfileModel.dart';
+import 'verification_badge_icon.dart';
 
 /// ویجت فقط کارت پست (بدون بک‌گراند)
 class VistaPostCardWidget extends StatelessWidget {
@@ -126,17 +126,11 @@ class VistaPostCardWidget extends StatelessWidget {
                     ),
                     if (post.isVerified) ...[
                       const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.all(3),
-                        decoration: BoxDecoration(
-                          color: _getVerificationColor(post.verificationType),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          Icons.verified,
-                          size: 30, // اندازه خیلی بزرگ‌تر
-                          color: Colors.white,
-                        ),
+                      VerificationBadgeIcon(
+                        isVerified: post.isVerified,
+                        verificationType: post.verificationType,
+                        role: post.profiles?['role']?.toString(),
+                        size: 30,
                       ),
                     ],
                   ],
@@ -354,20 +348,6 @@ class VistaPostCardWidget extends StatelessWidget {
       return '${(number / 1000).toStringAsFixed(1)}K';
     } else {
       return number.toString();
-    }
-  }
-
-  /// دریافت رنگ تیک تأیید بر اساس نوع
-  Color _getVerificationColor(VerificationType type) {
-    switch (type) {
-      case VerificationType.blueTick:
-        return Colors.blue;
-      case VerificationType.goldTick:
-        return Colors.amber;
-      case VerificationType.blackTick:
-        return Colors.black;
-      case VerificationType.none:
-        return Colors.grey;
     }
   }
 

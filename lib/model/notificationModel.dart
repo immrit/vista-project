@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:equatable/equatable.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import '../utils/verification_badge_utils.dart';
 
 enum VerificationType { none, blueTick, goldTick, blackTick }
 
@@ -100,6 +101,22 @@ class NotificationModel extends Equatable {
         return type;
     }
   }
+
+  static VerificationType _mapResolvedType(ResolvedVerificationBadgeType type) {
+    switch (type) {
+      case ResolvedVerificationBadgeType.blueTick:
+        return VerificationType.blueTick;
+      case ResolvedVerificationBadgeType.goldTick:
+        return VerificationType.goldTick;
+      case ResolvedVerificationBadgeType.blackTick:
+        return VerificationType.blackTick;
+      case ResolvedVerificationBadgeType.none:
+        return VerificationType.none;
+    }
+  }
+
+  static bool _isTruthy(dynamic value) =>
+      value == true || value?.toString().toLowerCase() == 'true';
 
   /// Factory method برای ایجاد NotificationModel از FCM RemoteMessage
   factory NotificationModel.fromFCM(RemoteMessage message) {
@@ -207,14 +224,21 @@ class NotificationModel extends Equatable {
     conversationId ??= data['conversation_id'] as String?;
 
     // تعیین verification type
-    VerificationType verificationType = VerificationType.none;
-    if (data['has_blue_badge'] == 'true') {
-      verificationType = VerificationType.blueTick;
-    } else if (data['has_gold_badge'] == 'true') {
-      verificationType = VerificationType.goldTick;
-    } else if (data['has_black_badge'] == 'true') {
-      verificationType = VerificationType.blackTick;
+    final userIsVerified = _isTruthy(data['is_verified']);
+    dynamic verificationRaw = data['verification_type'];
+    if (_isTruthy(data['has_blue_badge'])) {
+      verificationRaw = 'blueTick';
+    } else if (_isTruthy(data['has_gold_badge'])) {
+      verificationRaw = 'goldTick';
+    } else if (_isTruthy(data['has_black_badge'])) {
+      verificationRaw = 'blackTick';
     }
+
+    final verificationType = _mapResolvedType(resolveVerificationBadgeType(
+      isVerified: userIsVerified,
+      verificationType: verificationRaw,
+      role: data['role']?.toString(),
+    ));
 
     return NotificationModel(
       id: messageId ??
@@ -230,8 +254,7 @@ class NotificationModel extends Equatable {
       type: type,
       username: username,
       fullName: fullName,
-      userIsVerified:
-          data['is_verified'] == 'true' || data['is_verified'] == true,
+      userIsVerified: userIsVerified,
       avatarUrl: avatarUrl ?? data['actor_avatar'] as String?,
       postId: postId,
       commentId: commentId,
@@ -327,20 +350,17 @@ class NotificationModel extends Equatable {
       type: canonicalType(json['type']?.toString()),
       username: json['username'] ?? '',
       fullName: json['full_name'] ?? '',
-      userIsVerified:
-          json['is_verified'] == 'true' || json['is_verified'] == true,
+      userIsVerified: _isTruthy(json['is_verified']),
       avatarUrl: json['avatar_url'],
       postId: json['post_id'],
       commentId: json['comment_id'],
       parentCommentId: json['parent_comment_id'],
       isRead: json['is_read'] ?? false,
-      verificationType: json['verification_type'] == 'blue'
-          ? VerificationType.blueTick
-          : json['verification_type'] == 'gold'
-              ? VerificationType.goldTick
-              : json['verification_type'] == 'black'
-                  ? VerificationType.blackTick
-                  : VerificationType.none,
+      verificationType: _mapResolvedType(resolveVerificationBadgeType(
+        isVerified: _isTruthy(json['is_verified']),
+        verificationType: json['verification_type'],
+        role: json['role']?.toString(),
+      )),
       openScreen: json['open_screen'],
       conversationId: json['conversation_id'],
       followerId: json['follower_id'],
@@ -358,21 +378,12 @@ class NotificationModel extends Equatable {
     final sender = map['sender'] as Map<String, dynamic>?;
 
     // تبدیل verification type
-    VerificationType verificationType = VerificationType.none;
-    if (sender != null) {
-      final verificationTypeStr = sender['verification_type'] as String?;
-      switch (verificationTypeStr) {
-        case 'blue':
-          verificationType = VerificationType.blueTick;
-          break;
-        case 'gold':
-          verificationType = VerificationType.goldTick;
-          break;
-        case 'black':
-          verificationType = VerificationType.blackTick;
-          break;
-      }
-    }
+    final userIsVerified = _isTruthy(sender?['is_verified']);
+    final verificationType = _mapResolvedType(resolveVerificationBadgeType(
+      isVerified: userIsVerified,
+      verificationType: sender?['verification_type'],
+      role: sender?['role']?.toString(),
+    ));
 
     return NotificationModel(
       id: map['id'] as String? ?? '',
@@ -385,7 +396,7 @@ class NotificationModel extends Equatable {
       type: canonicalType(map['type']?.toString()),
       username: sender?['username'] as String? ?? '',
       fullName: sender?['full_name'] as String? ?? '',
-      userIsVerified: sender?['is_verified'] as bool? ?? false,
+      userIsVerified: userIsVerified,
       avatarUrl: sender?['avatar_url'] as String?,
       postId: map['post_id'] as String?,
       commentId: map['comment_id'] as String?,

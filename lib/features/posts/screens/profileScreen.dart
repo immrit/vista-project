@@ -40,6 +40,7 @@ import 'package:Vista/features/posts/screens/PostDetailPage.dart';
 import 'package:Vista/features/search/screens/searchPage.dart';
 import 'package:Vista/features/posts/widgets/hashtag_rich_text.dart';
 import 'package:Vista/features/posts/widgets/post_music_bubble.dart';
+import 'package:Vista/widgets/verification_badge_icon.dart';
 
 /// صفحه پروفایل ویستا - طراحی مدرن Instagram/Threads
 class ProfileScreen extends ConsumerStatefulWidget {
@@ -179,7 +180,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                   fontSize: 20,
                 ),
           ),
-          if (profile?.isVerified == true) ...[
+          if (profile != null && profile.isVerified) ...[
             const SizedBox(width: 4),
             _buildVerificationBadge(profile!),
           ],
@@ -203,21 +204,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
   }
 
   Widget _buildVerificationBadge(ProfileModel profile) {
-    if (profile.hasBlueBadge) {
-      return const Icon(Icons.verified, color: Colors.blue, size: 18);
-    } else if (profile.hasGoldBadge) {
-      return const Icon(Icons.verified, color: Colors.amber, size: 18);
-    } else if (profile.hasBlackBadge) {
-      return Container(
-        padding: const EdgeInsets.all(0.5),
-        decoration: const BoxDecoration(
-          color: Colors.white60,
-          shape: BoxShape.circle,
-        ),
-        child: const Icon(Icons.verified, color: Colors.black, size: 16),
-      );
-    }
-    return const Icon(Icons.verified, color: Colors.blue, size: 18);
+    return VerificationBadgeIcon(
+      isVerified: profile.isVerified,
+      verificationType: profile.verificationType,
+      role: profile.role,
+      size: 18,
+    );
   }
 
   bool _isPrivateAccount(ProfileModel profile) {
@@ -707,21 +699,12 @@ class _ProfileHeader extends ConsumerWidget {
   }
 
   Widget _buildVerificationBadge() {
-    if (profile.hasBlueBadge) {
-      return const Icon(Icons.verified, color: Colors.blue, size: 16);
-    } else if (profile.hasGoldBadge) {
-      return const Icon(Icons.verified, color: Colors.amber, size: 16);
-    } else if (profile.hasBlackBadge) {
-      return Container(
-        padding: const EdgeInsets.all(0.5),
-        decoration: const BoxDecoration(
-          color: Colors.white60,
-          shape: BoxShape.circle,
-        ),
-        child: const Icon(Icons.verified, color: Colors.black, size: 14),
-      );
-    }
-    return const Icon(Icons.verified, color: Colors.blue, size: 16);
+    return VerificationBadgeIcon(
+      isVerified: profile.isVerified,
+      verificationType: profile.verificationType,
+      role: profile.role,
+      size: 16,
+    );
   }
 
   /// نمایش باتم‌شیت انتخاب نوع محتوا

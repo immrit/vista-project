@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../../../../widgets/verification_badge_icon.dart';
 
 import '../../../../provider/provider.dart';
 import '../../../../features/chat/providers/chat_providers.dart';
@@ -164,7 +165,8 @@ class _BlockedUsersPageState extends ConsumerState<BlockedUsersPage> {
       // سپس اطلاعات پروفایل این کاربران را دریافت می‌کنیم
       final profilesResponse = await Supabase.instance.client
           .from('profiles')
-          .select('id, username, full_name, avatar_url, is_verified')
+          .select(
+              'id, username, full_name, avatar_url, is_verified, verification_type, role')
           .inFilter('id', blockedUserIds);
 
       logInfo('👥 اطلاعات پروفایل‌ها: ${profilesResponse.length} رکورد');
@@ -194,6 +196,8 @@ class _BlockedUsersPageState extends ConsumerState<BlockedUsersPage> {
             fullName: profile['full_name'] as String? ?? 'کاربر ناشناس',
             avatarUrl: profile['avatar_url'] as String?,
             isVerified: profile['is_verified'] as bool? ?? false,
+            verificationType: profile['verification_type'],
+            role: profile['role']?.toString(),
             blockedAt: DateTime.parse(blockedItem['created_at'] as String),
           );
 
@@ -705,9 +709,10 @@ class _BlockedUsersPageState extends ConsumerState<BlockedUsersPage> {
                     if (user.isVerified)
                       Container(
                         margin: const EdgeInsets.only(left: 8),
-                        child: Icon(
-                          Icons.verified,
-                          color: Colors.blue,
+                        child: VerificationBadgeIcon(
+                          isVerified: user.isVerified,
+                          verificationType: user.verificationType,
+                          role: user.role,
                           size: 18,
                         ),
                       ),
@@ -792,6 +797,8 @@ class BlockedUserModel {
   final String fullName;
   final String? avatarUrl;
   final bool isVerified;
+  final dynamic verificationType;
+  final String? role;
   final DateTime blockedAt;
 
   BlockedUserModel({
@@ -800,6 +807,8 @@ class BlockedUserModel {
     required this.fullName,
     this.avatarUrl,
     required this.isVerified,
+    this.verificationType,
+    this.role,
     required this.blockedAt,
   });
 }

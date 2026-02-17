@@ -9,6 +9,10 @@ import 'countdown_sticker_widget.dart';
 import 'link_sticker_widget.dart';
 import 'mention_sticker_widget.dart';
 import 'hashtag_sticker_widget.dart';
+import 'music_sticker_widget.dart';
+import 'gif_sticker_widget.dart';
+import 'date_sticker_widget.dart';
+import 'photo_sticker_widget.dart';
 
 class StickerFactory {
   /// Builds the appropriate sticker widget based on element type.
@@ -43,8 +47,19 @@ class StickerFactory {
         // Question stickers use the dedicated card style below.
         return _buildQuestionSticker(element);
 
+      case StoryInteractionType.music:
+        return MusicStickerWidget(element: element, isEditable: isEditable);
+
+      case StoryInteractionType.gif:
+        return GifStickerWidget(element: element, isEditable: isEditable);
+
+      case StoryInteractionType.date:
+        return DateStickerWidget(element: element, isEditable: isEditable);
+
+      case StoryInteractionType.photo:
+        return PhotoStickerWidget(element: element, isEditable: isEditable);
+
       case StoryInteractionType.none:
-      default:
         // Default Text Rendering
         return Text(
           element.text,
@@ -66,14 +81,18 @@ class StickerFactory {
 
   static Widget _buildQuestionSticker(StoryElement element) {
     final question = element.interactionData?['question'] ?? 'سوالی داری؟';
+    final style = element.resolvedStyleIndex % 2;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFFE91E63), Color(0xFF9C27B0)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        gradient: style == 0
+            ? const LinearGradient(
+                colors: [Color(0xFFE91E63), Color(0xFF9C27B0)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              )
+            : null,
+        color: style == 0 ? null : Colors.white,
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
@@ -81,8 +100,8 @@ class StickerFactory {
         children: [
           Text(
             question,
-            style: const TextStyle(
-              color: Colors.white,
+            style: TextStyle(
+              color: style == 0 ? Colors.white : Colors.black87,
               fontSize: 16,
               fontWeight: FontWeight.bold,
               fontFamily: 'Vazir',
@@ -92,13 +111,15 @@ class StickerFactory {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
+              color:
+                  style == 0 ? Colors.white.withOpacity(0.2) : Colors.black12,
               borderRadius: BorderRadius.circular(8),
             ),
             child: Text(
               'پاسخ دهید...',
               style: TextStyle(
-                color: Colors.white.withOpacity(0.7),
+                color:
+                    style == 0 ? Colors.white.withOpacity(0.7) : Colors.black54,
                 fontSize: 12,
                 fontFamily: 'Vazir',
               ),
