@@ -1,4 +1,4 @@
-import '../security/logging_utility.dart';
+﻿import '../security/logging_utility.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../model/message_model.dart';
@@ -298,7 +298,7 @@ class InstantMessageDeletion {
       // 2️⃣ SERVER REQUEST
       await ImprovedErrorHandler.handleMessageOperation(() async {
         if (forEveryone) {
-          // 🔥 استفاده از متد جدید برای حذف مکالمه برای همه (مثل تلگرام)
+          // 🔥 استفاده از متد جدید برای حذف مکالمه برای همه (مثل ویستا)
           await ref
               .read(chatRepositoryProvider)
               .clearConversation(conversationId, forEveryone: true);

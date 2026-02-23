@@ -1,9 +1,9 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import '../../widgets/vista_settings_widgets.dart';
 
-/// صفحه تنظیمات داده و ذخیره‌سازی - طراحی مشابه اینستاگرام
+/// صفحه تنظیمات داده و ذخیره‌سازی - طراحی مشابه ویستا
 class DataStorageSettingsPage extends StatefulWidget {
   const DataStorageSettingsPage({super.key});
 

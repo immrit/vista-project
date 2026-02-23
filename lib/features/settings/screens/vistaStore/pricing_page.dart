@@ -1,4 +1,4 @@
-import 'dart:ui';
+﻿import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:Vista/services/BazaarPaymentService.dart';
@@ -32,7 +32,7 @@ class _PricingPageState extends ConsumerState<PricingPage> {
       'title': 'سالانه',
       'price': '۷۹۹,۰۰۰ تومان',
       'desc': '۳۳٪ تخفیف (پیشنهادی)',
-      'color': const Color(0xFF8774E1), // رنگ بنفش تلگرام
+      'color': const Color(0xFF8774E1), // رنگ بنفش ویستا
       'badge': 'بصرفه',
     },
   ];
@@ -155,7 +155,7 @@ class _PricingPageState extends ConsumerState<PricingPage> {
 
   @override
   Widget build(BuildContext context) {
-    // رنگ بنفش تلگرامی
+    // رنگ بنفش ویستا
     const premiumColor = Color(0xFF8774E1);
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
@@ -193,7 +193,7 @@ class _PricingPageState extends ConsumerState<PricingPage> {
                           ),
                         ),
                       ),
-                      // آیکون اصلی (ستاره چرخنده یا مشابه تلگرام)
+                      // آیکون اصلی (ستاره چرخنده یا مشابه ویستا)
                       Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [

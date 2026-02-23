@@ -1,0 +1,10 @@
+{
+  "source_repo": "https://github.com/DrKLO/Telegram",
+  "commit_sha": "3581a10f8ecaa0f6d42d7a77442742caf95c6a13",
+  "asset_count": 3967,
+  "emoji_pages": 8,
+  "emoji_total": 3593,
+  "generated_at": "2026-02-23T16:35:57.776965+00:00",
+  "assets_dir": "D:/vista/assets/emoji/telegram",
+  "map_file": "D:/vista/lib/features/emoji/data/telegram_emoji_map.json"
+}

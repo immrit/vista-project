@@ -1,6 +1,6 @@
-// lib/features/chat/widgets/telegram_message_status.dart
+﻿// lib/features/chat/widgets/telegram_message_status.dart
 //
-// ویجت نمایش وضعیت پیام - کاملاً مشابه تلگرام
+// ویجت نمایش وضعیت پیام - کاملاً مشابه ویستا
 // اصلاح شده: رفع مشکل پرش با استفاده از CustomPainter برای تمام وضعیت‌ها
 
 import 'package:flutter/material.dart';
@@ -11,11 +11,11 @@ class MessageStatusColors {
   static const Color pending = Color(0xFF9E9E9E); // خاکستری روشن
   static const Color sent = Color(0xFF9E9E9E); // خاکستری
   static const Color delivered = Color(0xFF9E9E9E); // خاکستری
-  static const Color read = Color(0xFF4FC3F7); // آبی روشن (مثل تلگرام)
+  static const Color read = Color(0xFF4FC3F7); // آبی روشن (مثل ویستا)
   static const Color failed = Color(0xFFE57373); // قرمز
 }
 
-/// ویجت تیک پیام با انیمیشن - بهینه شده مثل تلگرام
+/// ویجت تیک پیام با انیمیشن - بهینه شده مثل ویستا
 ///
 /// ویژگی‌های کلیدی برای جلوگیری از پرش:
 /// 1. استفاده از CustomPainter برای تمام وضعیت‌ها (ساعت، تیک، خطا)
@@ -122,7 +122,7 @@ class _TelegramMessageStatusState extends State<TelegramMessageStatus> {
 }
 
 /// یک Painter واحد برای تمام وضعیت‌ها
-/// این تکنیک در تلگرام استفاده می‌شود تا مختصات رسم همواره ثابت باشد
+/// این تکنیک در ویستا استفاده می‌شود تا مختصات رسم همواره ثابت باشد
 class _StatusPainter extends CustomPainter {
   final MessageDeliveryStatus status;
   final Color color;
@@ -145,7 +145,7 @@ class _StatusPainter extends CustomPainter {
       ..isAntiAlias = true;
 
     // محاسبه مختصات مرکزی برای اینکه ساعت و تیک دقیقاً هم‌مرکز باشند
-    // در تلگرام تیک‌ها کمی سمت راست‌تر هستند، اما ساعت باید وسط باشد.
+    // در ویستا تیک‌ها کمی سمت راست‌تر هستند، اما ساعت باید وسط باشد.
     // ما یک افست پایه در نظر می‌گیریم.
 
     // سایز مبنا (ارتفاع ویجت)
@@ -201,7 +201,7 @@ class _StatusPainter extends CustomPainter {
     final path = Path();
 
     // مقیاس‌دهی مختصات بر اساس ارتفاع (s)
-    // مختصات دقیق برای تیک (شبیه تلگرام)
+    // مختصات دقیق برای تیک (شبیه ویستا)
     // شروع تیک
     final startX = s * 0.25;
     final startY = s * 0.55;
@@ -242,7 +242,7 @@ class _StatusPainter extends CustomPainter {
     canvas.drawPath(path1, paint);
 
     // تیک دوم (فقط قسمت بالایی که دیده می‌شود) - یا تیک کامل عقب
-    // در تلگرام تیک عقب کامل رسم نمی‌شود، فقط بخشی از آن
+    // در ویستا تیک عقب کامل رسم نمی‌شود، فقط بخشی از آن
     final path2 = Path();
 
     // تیک عقب
@@ -252,7 +252,7 @@ class _StatusPainter extends CustomPainter {
     final backMidY = s * 0.75;
 
     // فقط تا پایین رسم می‌کنیم و کمی بالا می‌آییم (چون بقیش زیر تیک جلویی است)
-    // اما برای سادگی و زیبایی مشابه تلگرام، معمولا یک تیک کوچک سمت چپ است
+    // اما برای سادگی و زیبایی مشابه ویستا، معمولا یک تیک کوچک سمت چپ است
 
     path2.moveTo(backStartX, backStartY);
     path2.lineTo(backMidX, backMidY);
@@ -466,7 +466,7 @@ class ReadReceiptInfo extends StatelessWidget {
 
 /// ✅ Status Icon ساده با transition نرم - بدون پرش
 /// استفاده از Icon به جای CustomPaint (برای موارد ساده‌تر)
-/// دقیقاً مثل تلگرام
+/// دقیقاً مثل ویستا
 class SmoothStatusIcon extends StatelessWidget {
   final bool isPending;
   final bool isSeen;

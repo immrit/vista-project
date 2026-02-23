@@ -1,6 +1,6 @@
-// lib/features/chat/widgets/gif_picker_widget.dart
+﻿// lib/features/chat/widgets/gif_picker_widget.dart
 //
-// ویجت انتخاب GIF - مشابه تلگرام
+// ویجت انتخاب GIF - مشابه ویستا
 //
 // ویژگی‌ها:
 // ✅ جستجوی GIF از Tenor

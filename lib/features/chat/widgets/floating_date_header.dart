@@ -1,6 +1,6 @@
-// lib/features/chat/widgets/floating_date_header.dart
+﻿// lib/features/chat/widgets/floating_date_header.dart
 //
-// تاریخ شناور - با الهام از تلگرام
+// تاریخ شناور - با الهام از ویستا
 //
 // ویژگی‌ها:
 // ✅ نمایش تاریخ هنگام اسکرول

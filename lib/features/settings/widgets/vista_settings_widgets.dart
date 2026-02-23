@@ -1,7 +1,7 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 
 /// ویجت‌های مشترک تنظیمات ویستا
-/// طراحی مدرن و تمیز با الهام از اینستاگرام
+/// طراحی مدرن و تمیز با الهام از ویستا
 
 /// آیتم تنظیمات با طراحی یکپارچه
 class VistaSettingsTile extends StatelessWidget {

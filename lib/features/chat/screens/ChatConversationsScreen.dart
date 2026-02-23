@@ -85,9 +85,6 @@ class _ChatConversationsScreenState
 
   // AppBar بهینه‌شده
   PreferredSizeWidget _buildAppBar(ThemeData theme) {
-    // ✅ استفاده از provider بهینه‌شده
-    final isLoading = ref.watch(conversationsLoadingProvider);
-
     return AppBar(
       backgroundColor: theme.appBarTheme.backgroundColor,
       elevation: 0,
@@ -171,17 +168,24 @@ class _ChatConversationsScreenState
           },
         ),
         const SizedBox(width: 12),
-        if (isLoading)
-          SizedBox(
-            width: 16,
-            height: 16,
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              valueColor: AlwaysStoppedAnimation<Color>(
-                theme.primaryColor,
-              ),
-            ),
-          ),
+        Consumer(
+          builder: (context, ref, child) {
+            final isLoading = ref.watch(conversationsLoadingProvider);
+            if (isLoading) {
+              return SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    theme.primaryColor,
+                  ),
+                ),
+              );
+            }
+            return const SizedBox.shrink();
+          },
+        ),
         _buildSearchToggle(theme),
         _buildMoreMenuButton(theme),
         const SizedBox(width: 8),
@@ -328,40 +332,45 @@ class _ChatConversationsScreenState
     );
   }
 
-  // ✅ لیست بهینه‌شده مکالمات با StreamProvider جدید
+  // ✅ لیست بهینه‌شده مکالمات با StreamProvider جدید و استفاده از Consumer برای جلوگیری از رندر کل صفحه
   Widget _buildUnifiedList(ThemeData theme) {
-    // استفاده از StreamProvider (مشابه درخواست کاربر)
-    final conversationsAsync = ref.watch(conversationsStreamProvider);
+    return Consumer(
+      builder: (context, ref, child) {
+        final conversationsAsync = ref.watch(conversationsStreamProvider);
 
-    return conversationsAsync.when(
-      data: (conversations) {
-        if (conversations.isEmpty) {
-          return _buildEmptyState(
-            theme,
-            'هیچ گفتگویی وجود ندارد',
-            Icons.chat_bubble_outline_rounded,
-          );
-        }
+        return conversationsAsync.when(
+          data: (conversations) {
+            if (conversations.isEmpty) {
+              return _buildEmptyState(
+                theme,
+                'هیچ گفتگویی وجود ندارد',
+                Icons.chat_bubble_outline_rounded,
+              );
+            }
 
-        // ✅ مرتب‌سازی محلی (طبق درخواست کاربر)
-        final sortedConversations = List<ConversationModel>.from(conversations)
-          ..sort((a, b) {
-            final aTime = a.lastMessageTime ?? a.updatedAt;
-            final bTime = b.lastMessageTime ?? b.updatedAt;
-            return bTime.compareTo(aTime);
-          });
+            // ✅ مرتب‌سازی محلی
+            final sortedConversations =
+                List<ConversationModel>.from(conversations)
+                  ..sort((a, b) {
+                    final aTime = a.lastMessageTime ?? a.updatedAt;
+                    final bTime = b.lastMessageTime ?? b.updatedAt;
+                    return bTime.compareTo(aTime);
+                  });
 
-        return _buildOptimizedConversationsList(theme, sortedConversations);
+            return _buildOptimizedConversationsList(
+                theme, sortedConversations, ref);
+          },
+          loading: () => _buildLoadingState(theme),
+          error: (error, stack) =>
+              _buildErrorState(theme, 'خطا در بارگذاری: $error'),
+        );
       },
-      loading: () => _buildLoadingState(theme),
-      error: (error, stack) =>
-          _buildErrorState(theme, 'خطا در بارگذاری: $error'),
     );
   }
 
   // ✅ لیست بهینه با Swipe Actions و گروه‌بندی Pinned
   Widget _buildOptimizedConversationsList(
-      ThemeData theme, List<ConversationModel> conversations) {
+      ThemeData theme, List<ConversationModel> conversations, WidgetRef ref) {
     // فیلتر جستجو
     final filteredConversations = _searchQuery.isEmpty
         ? conversations

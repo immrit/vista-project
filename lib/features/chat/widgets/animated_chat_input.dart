@@ -394,9 +394,11 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
   Widget build(BuildContext context) {
     final theme = context.chatTheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isInputFocused = widget.focusNode?.hasFocus == true;
     final shouldReduceEffects = widget.reduceEffects ||
         !widget.allowHeavyEffects ||
         widget.blurSigma <= 0.1 ||
+        isInputFocused ||
         _isKeyboardAnimating ||
         MediaQuery.of(context).disableAnimations ||
         MediaQuery.of(context).accessibleNavigation;
@@ -953,7 +955,7 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
     // ✅ در تم تاریک، اگر رنگ sendButtonColor سفید یا خیلی روشن است، از آبی استاندارد استفاده می‌کنیم
     Color buttonColor = theme.sendButtonColor;
     if (theme.isDark && buttonColor.computeLuminance() > 0.8) {
-      buttonColor = const Color(0xFF3390EC); // آبی استاندارد تلگرام
+      buttonColor = const Color(0xFF3390EC); // آبی استاندارد رابط
     }
 
     return GestureDetector(

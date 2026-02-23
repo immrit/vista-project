@@ -1,4 +1,4 @@
-import 'dart:ui';
+﻿import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../theme/chat_theme.dart';
@@ -224,7 +224,7 @@ class _TelegramContextMenuState extends State<TelegramContextMenu>
             return Stack(
               children: [
                 // 1. پس‌زمینه بلور
-                // 1. پس‌زمینه (بدون افکت بلور - ساده و سریع مثل تلگرام اندروید)
+                // 1. پس‌زمینه (بدون افکت بلور - ساده و سریع مثل ویستا اندروید)
                 Positioned.fill(
                   child: FadeTransition(
                     opacity: _fadeAnimation,

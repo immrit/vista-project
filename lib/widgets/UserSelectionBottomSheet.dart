@@ -9,6 +9,7 @@ import '../../model/ProfileModel.dart';
 import '../../provider/optimized_conversations_provider.dart';
 import '../../features/chat/providers/chat_providers.dart';
 import '../../services/user_friendly_error_handler.dart';
+import '../../features/chat/domain/message_payload.dart';
 
 class UserSelectionBottomSheet extends ConsumerStatefulWidget {
   final PublicPostModel post;
@@ -535,11 +536,13 @@ class _UserSelectionBottomSheetState
           final postContent = _createPostJsonContent(widget.post);
 
           // ارسال پیام با attachmentType: 'post' برای نمایش به صورت کارت پست
-          await repo.sendMessage(
+          final payload = MessagePayload(
             conversationId: conversationId,
             content: postContent,
             attachmentType: 'post',
           );
+
+          await repo.sendMessage(payload);
 
           successCount++;
         } catch (e) {

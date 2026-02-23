@@ -458,7 +458,7 @@ class PushNotificationService {
     final data = message.data;
     final type = data['type'];
 
-    if (type == 'chat_message') {
+    if (_isChatMessageType(type?.toString())) {
       if (_isChatForActiveConversation(data)) {
         return;
       }
@@ -502,6 +502,7 @@ class PushNotificationService {
       }
 
       final senderName = data['sender_name']?.toString() ?? 'User';
+      final attachmentType = data['attachment_type']?.toString();
       // We don't have full profile profile here, but we have enough for the message list
       // Note: MessageModel usually needs just senderId.
 
@@ -523,7 +524,10 @@ class PushNotificationService {
         isSeen: false,
         isSent: true, // It came from server, so it is sent.
         isDelivered: true,
-        messageType: 'text', // Use 'messageType', not 'type'. Default to text.
+        attachmentUrl: data['attachment_url']?.toString(),
+        attachmentType: attachmentType,
+        audioUrl: data['audio_url']?.toString(),
+        messageType: attachmentType?.isNotEmpty == true ? attachmentType : 'text',
         replyToMessageId: data['reply_to_message_id']?.toString(),
         // isEdited: false, // Not in constructor
         // isDeleted: false, // Not in constructor

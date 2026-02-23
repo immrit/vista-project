@@ -1,7 +1,7 @@
-import 'package:equatable/equatable.dart';
+﻿import 'package:equatable/equatable.dart';
 import 'package:flutter/foundation.dart';
 
-/// مدل وضعیت پروفایل (مشابه Note در اینستاگرام)
+/// مدل وضعیت پروفایل (مشابه Note در ویستا)
 /// هر کاربر می‌تواند یک وضعیت ۲۴ ساعته داشته باشد
 @immutable
 class ProfileNoteModel extends Equatable {

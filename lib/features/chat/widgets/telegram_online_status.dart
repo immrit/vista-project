@@ -1,6 +1,6 @@
-// lib/features/chat/widgets/telegram_online_status.dart
+﻿// lib/features/chat/widgets/telegram_online_status.dart
 //
-// ویجت وضعیت آنلاین به سبک تلگرام
+// ویجت وضعیت آنلاین به سبک ویستا
 //
 // ویژگی‌ها:
 // ✅ انیمیشن‌های روان و حرفه‌ای
@@ -19,7 +19,7 @@ import '../../../provider/presence_provider.dart';
 
 /// رنگ‌های وضعیت
 class OnlineStatusColors {
-  static const Color online = Color(0xFF4CAF50);      // سبز تلگرام
+  static const Color online = Color(0xFF4CAF50);      // سبز ویستا
   static const Color typing = Color(0xFF2196F3);      // آبی
   static const Color recording = Color(0xFFE91E63);   // صورتی
   static const Color offline = Color(0xFF9E9E9E);     // خاکستری
@@ -322,7 +322,7 @@ class _TypingDotsAnimationState extends State<TypingDotsAnimation>
   }
 }
 
-/// ✅ ویجت کامل وضعیت آنلاین به سبک تلگرام - بهینه با Riverpod
+/// ✅ ویجت کامل وضعیت آنلاین به سبک ویستا - بهینه با Riverpod
 class TelegramOnlineStatus extends ConsumerWidget {
   final String userId;
   final bool showDot;

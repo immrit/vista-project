@@ -1,4 +1,4 @@
-// lib/services/user_presence_service.dart
+﻿// lib/services/user_presence_service.dart
 //
 // سرویس مدیریت وضعیت آنلاین کاربران - Real-time با Supabase
 //
@@ -54,7 +54,7 @@ class UserPresenceState {
   bool get isRecording => status == UserPresenceStatus.recording;
   bool get isAway => status == UserPresenceStatus.away;
 
-  /// فرمت نمایش وضعیت به سبک تلگرام
+  /// فرمت نمایش وضعیت به سبک ویستا
   String get displayText {
     // اگر اجازه نمایش ندارد
     if (!canViewLastSeen) {
@@ -74,7 +74,7 @@ class UserPresenceState {
     }
   }
 
-  /// فرمت تقریبی برای حالت مخفی (مثل تلگرام)
+  /// فرمت تقریبی برای حالت مخفی (مثل ویستا)
   String _getApproximateLastSeen() {
     if (lastOnline == null) return 'آخرین بازدید: اخیراً';
 

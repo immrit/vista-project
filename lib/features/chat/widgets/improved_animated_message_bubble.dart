@@ -14,11 +14,12 @@ import 'media_message_bubble.dart';
 import 'file_message_bubble.dart';
 import '../../../services/telegram_read_receipt_service.dart';
 import '../../../model/message_model.dart';
-import '../../../utils/rich_text_parser.dart';
 import '../../../utils/navigation_helper.dart';
 import '../../../utils/user_friendly_error_utils.dart';
 import '../performance/chat_performance_profile.dart';
 import '../performance/motion_tokens.dart';
+import '../../emoji/domain/emoji_render_policy.dart';
+import '../../emoji/widgets/telegram_emoji_text.dart';
 
 /// Message delivery state for the bubble widget.
 enum MessageStatus {
@@ -143,6 +144,7 @@ class _ImprovedAnimatedMessageBubbleState
   static final Set<String> _shownMessages = {};
 
   late AnimationController _controller;
+  late String _formattedTime;
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _slideAnimation;
   late Animation<double> _scaleAnimation;
@@ -156,6 +158,7 @@ class _ImprovedAnimatedMessageBubbleState
   @override
   void initState() {
     super.initState();
+    _formattedTime = widget.time.toFixedTimeLabel();
     _setupAnimations();
 
     final uniqueId = widget.messageId;
@@ -243,6 +246,14 @@ class _ImprovedAnimatedMessageBubbleState
           const Interval(0.0, 0.7, curve: Curves.easeOutBack),
       },
     ));
+  }
+
+  @override
+  void didUpdateWidget(ImprovedAnimatedMessageBubble oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.time != oldWidget.time) {
+      _formattedTime = widget.time.toFixedTimeLabel();
+    }
   }
 
   @override
@@ -784,6 +795,7 @@ class _ImprovedAnimatedMessageBubbleState
         fileName: resolvedFileName,
         fileSizeBytes: widget.message?.attachmentSizeBytes,
         localFilePath: widget.message?.localFilePath,
+        caption: widget.content.isNotEmpty ? widget.content : null,
         isMe: widget.isMe,
         time: widget.time,
       );
@@ -797,36 +809,35 @@ class _ImprovedAnimatedMessageBubbleState
         children: [
           Flexible(
             child: widget.content.isNotEmpty
-                ? RichText(
+                ? TelegramEmojiRichText(
+                    text: '${widget.content}\u200F',
+                    useTelegramEmoji:
+                        EmojiRenderPolicy.useTelegramEmojiRenderer(),
                     textDirection: TextDirection.rtl,
                     textAlign: TextAlign.right,
-                    text: RichTextParser.buildRichText(
-                      text: '${widget.content}\u200F',
-                      baseStyle: TextStyle(
-                        color: widget.isMe
-                            ? theme.myBubbleTextColor
-                            : theme.otherBubbleTextColor,
-                        fontSize: 15,
-                        height: 1.4,
-                        fontFamily: 'Vazir',
-                        fontFamilyFallback: const [
-                          'Apple Color Emoji',
-                          'Segoe UI Emoji',
-                          'Noto Color Emoji',
-                        ],
-                      ),
-                      linkColor: Colors.blueAccent,
-                      mentionColor: Colors.blueAccent,
-                      hashtagColor: Colors.blueAccent,
-                      onMentionTap: (username) {
-                        NavigationHelper.navigateToUserProfile(
-                            context, username);
-                      },
-                      onHashtagTap: (tag) {
-                        NavigationHelper.navigateToHashtagPosts(context, tag);
-                      },
-                      onLinkTap: widget.onLinkTap,
+                    baseStyle: TextStyle(
+                      color: widget.isMe
+                          ? theme.myBubbleTextColor
+                          : theme.otherBubbleTextColor,
+                      fontSize: 15,
+                      height: 1.4,
+                      fontFamily: 'Vazir',
+                      fontFamilyFallback: const [
+                        'Apple Color Emoji',
+                        'Segoe UI Emoji',
+                        'Noto Color Emoji',
+                      ],
                     ),
+                    linkColor: Colors.blueAccent,
+                    mentionColor: Colors.blueAccent,
+                    hashtagColor: Colors.blueAccent,
+                    onMentionTap: (username) {
+                      NavigationHelper.navigateToUserProfile(context, username);
+                    },
+                    onHashtagTap: (tag) {
+                      NavigationHelper.navigateToHashtagPosts(context, tag);
+                    },
+                    onLinkTap: widget.onLinkTap,
                   )
                 : const SizedBox.shrink(),
           ),
@@ -1281,7 +1292,7 @@ class _ImprovedAnimatedMessageBubbleState
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
               Text(
-                widget.time.toFixedTimeLabel(),
+                _formattedTime,
                 style: TextStyle(
                   color: widget.isMe
                       ? theme.myBubbleTextColor.withOpacity(0.7)
@@ -1305,7 +1316,7 @@ class _ImprovedAnimatedMessageBubbleState
       mainAxisAlignment: MainAxisAlignment.end,
       children: [
         Text(
-          widget.time.toFixedTimeLabel(),
+          _formattedTime,
           style: TextStyle(
             color: widget.isMe
                 ? theme.myBubbleTextColor.withOpacity(0.7)

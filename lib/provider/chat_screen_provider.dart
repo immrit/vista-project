@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../features/chat/providers/chat_providers.dart';
 import '../model/message_model.dart';
+import '../features/chat/domain/message_payload.dart';
 
 class ChatScreenArgs {
   final String conversationId;
@@ -105,7 +106,8 @@ class ChatScreenNotifier extends StateNotifier<ChatScreenState> {
     state = state.copyWith(isSending: true);
     try {
       final repo = ref.read(chatRepositoryProvider);
-      await repo.sendMessage(
+
+      final payload = MessagePayload(
         conversationId: conversationId,
         content: content,
         replyToMessageId: state.replyToMessage?.id,
@@ -113,6 +115,8 @@ class ChatScreenNotifier extends StateNotifier<ChatScreenState> {
         attachmentType: attachmentType,
         duration: duration,
       );
+
+      await repo.sendMessage(payload);
 
       if (tempMessageId != null) {
         removePendingMessage(tempMessageId);

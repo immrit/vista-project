@@ -1,6 +1,6 @@
-// lib/features/stories/presentation/widgets/story_media_picker_sheet.dart
+﻿// lib/features/stories/presentation/widgets/story_media_picker_sheet.dart
 //
-// Bottom Sheet انتخاب رسانه استوری - با الهام از تلگرام
+// Bottom Sheet انتخاب رسانه استوری - با الهام از ویستا
 //
 // ویژگی‌ها:
 // ✅ گرید گالری با پیش‌نمایش

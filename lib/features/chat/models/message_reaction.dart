@@ -1,6 +1,6 @@
-// lib/features/chat/models/message_reaction.dart
+﻿// lib/features/chat/models/message_reaction.dart
 //
-// مدل‌های واکنش به پیام - الهام از تلگرام
+// مدل‌های واکنش به پیام - الهام از ویستا
 //
 
 /// انواع واکنش‌های از پیش تعریف شده

@@ -1,4 +1,4 @@
-import '../security/logging_utility.dart';
+﻿import '../security/logging_utility.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:math';
@@ -86,7 +86,7 @@ class VoiceRecordingService {
       final timestamp = DateTime.now().millisecondsSinceEpoch;
       _currentRecordingPath = path.join(tempDir.path, 'voice_$timestamp.m4a');
 
-      // تنظیمات ضبط بهینه برای کیفیت بالا مثل تلگرام و واتساپ
+      // تنظیمات ضبط بهینه برای کیفیت بالا مثل ویستا و پیام‌رسان
       await _recorderController.record(
         path: _currentRecordingPath!,
         bitRate: 128000, // بیت ریت بالاتر برای کیفیت بهتر

@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:isar/isar.dart';
@@ -14,7 +14,7 @@ import 'package:Vista/features/search/screens/VistaQRScanner.dart';
 import 'package:Vista/widgets/verification_badge_icon.dart';
 import 'dart:async';
 
-/// صفحه جستجو مدرن - الهام گرفته از اینستاگرام
+/// صفحه جستجو مدرن - الهام گرفته از ویستا
 class SearchPage extends ConsumerStatefulWidget {
   final String? initialHashtag;
 

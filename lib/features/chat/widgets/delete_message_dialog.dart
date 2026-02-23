@@ -1,6 +1,6 @@
-// lib/features/chat/widgets/delete_message_dialog.dart
+﻿// lib/features/chat/widgets/delete_message_dialog.dart
 //
-// دیالوگ حذف پیام (تلگرام استایل)
+// دیالوگ حذف پیام (ویستا استایل)
 //
 
 import 'package:flutter/material.dart';

@@ -21,6 +21,8 @@ import '../../../provider/settings_providers.dart';
 import '../services/chat_transfer_manager.dart';
 import 'telegram_message_status.dart';
 import '../performance/chat_performance_profile.dart';
+import '../../emoji/domain/emoji_render_policy.dart';
+import '../../emoji/widgets/telegram_emoji_text.dart';
 
 enum MediaType { image, video, gif }
 
@@ -633,8 +635,11 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
       child: Stack(
         clipBehavior: Clip.none,
         children: [
-          Text(
+          TelegramEmojiText(
             widget.caption!,
+            useTelegramEmoji: EmojiRenderPolicy.useTelegramEmojiRenderer(),
+            textDirection: TextDirection.rtl,
+            textAlign: TextAlign.right,
             style: TextStyle(
               color: widget.isMe
                   ? theme.myBubbleTextColor

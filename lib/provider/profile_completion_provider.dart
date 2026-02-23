@@ -1,6 +1,7 @@
 import '../security/logging_utility.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:Vista/core/security/input_policy.dart';
 
 final profileCompletionProvider =
     StateNotifierProvider<ProfileCompletionNotifier, bool>((ref) {
@@ -19,16 +20,23 @@ class ProfileCompletionNotifier extends StateNotifier<bool> {
 
       final response = await supabase
           .from('profiles')
-          .select('username, full_name, birth_date')
+          .select('username, full_name, birth_date, phone_number')
           .eq('id', user.id)
           .single();
 
-      final bool isComplete = response['username'] != null &&
-          response['username'].toString().isNotEmpty &&
+      final username = response['username']?.toString() ?? '';
+      final usernameValidation = validateUsername(username);
+      final phone = response['phone_number']?.toString() ?? '';
+      final normalizedPhone = normalizePhone09(phone);
+
+      final bool isComplete = usernameValidation.isValid &&
           response['full_name'] != null &&
           response['full_name'].toString().isNotEmpty &&
           response['birth_date'] != null &&
-          response['birth_date'].toString().isNotEmpty;
+          response['birth_date'].toString().isNotEmpty &&
+          phone.isNotEmpty &&
+          normalizedPhone != null &&
+          normalizedPhone == phone;
 
       state = isComplete;
       return isComplete;

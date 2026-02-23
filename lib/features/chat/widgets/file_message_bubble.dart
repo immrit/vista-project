@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:open_filex/open_filex.dart';
 
+import '../../emoji/domain/emoji_render_policy.dart';
+import '../../emoji/widgets/telegram_emoji_text.dart';
 import '../services/chat_transfer_manager.dart';
 import '../theme/chat_theme.dart';
 
@@ -14,6 +16,7 @@ class FileMessageBubble extends StatefulWidget {
   final String fileName;
   final int? fileSizeBytes;
   final String? localFilePath;
+  final String? caption; // متن پیام یا کپشن ضمیمه شده به فایل
   final bool isMe;
   final DateTime time;
 
@@ -24,6 +27,7 @@ class FileMessageBubble extends StatefulWidget {
     required this.fileName,
     this.fileSizeBytes,
     this.localFilePath,
+    this.caption,
     required this.isMe,
     required this.time,
   });
@@ -187,6 +191,24 @@ class _FileMessageBubbleState extends State<FileMessageBubble> {
               ],
             ),
           ),
+          if (widget.caption != null && widget.caption!.trim().isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TelegramEmojiText(
+                widget.caption!,
+                useTelegramEmoji: EmojiRenderPolicy.useTelegramEmojiRenderer(),
+                textDirection: TextDirection.rtl,
+                textAlign: TextAlign.right,
+                style: TextStyle(
+                  color: primaryForeground,
+                  fontSize: 14,
+                  height: 1.35,
+                  fontFamily: 'Vazir',
+                ),
+              ),
+            ),
+          ],
           const SizedBox(height: 10),
           Row(
             children: [

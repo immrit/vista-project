@@ -1,8 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:Vista/core/security/input_policy.dart';
 
-import '../../../services/auth_api_service.dart';
+import '../data/auth_repository.dart';
 import '../widgets/ribbon_background.dart';
 
 class PasswordRecoveryConfirmScreen extends StatefulWidget {
@@ -80,7 +81,7 @@ class _PasswordRecoveryConfirmScreenState
 
     setState(() => _isLoading = true);
     try {
-      await AuthApiService().sendRecoveryCode(optionId);
+      await AuthRepository().sendRecoveryCode(optionId);
       if (!mounted) return;
       _startResendCountdown(60);
       _showSuccess('کد مجدداً ارسال شد');
@@ -107,8 +108,9 @@ class _PasswordRecoveryConfirmScreenState
       _showError('رمز جدید را وارد کنید');
       return;
     }
-    if (newPassword.length < 6) {
-      _showError('رمز عبور باید حداقل ۶ کاراکتر باشد');
+    final passwordValidation = validatePasswordBalanced(newPassword);
+    if (!passwordValidation.isValid) {
+      _showError(passwordValidation.message);
       return;
     }
     if (newPassword != confirmPassword) {
@@ -118,7 +120,7 @@ class _PasswordRecoveryConfirmScreenState
 
     setState(() => _isLoading = true);
     try {
-      await AuthApiService().completeRecovery(
+      await AuthRepository().completeRecovery(
         optionId: optionId,
         code: code,
         newPassword: newPassword,

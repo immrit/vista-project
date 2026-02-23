@@ -13,6 +13,7 @@ import '../security/secure_kv_store.dart';
 import '../DB/entities/recent_search_entity.dart';
 import '../DB/entities/app_settings_entity.dart';
 import '../DB/entities/deletion_task_entity.dart';
+import '../DB/entities/retry_queue_entity.dart';
 
 class IsarDatabaseManager {
   static final IsarDatabaseManager _instance = IsarDatabaseManager._internal();
@@ -20,13 +21,33 @@ class IsarDatabaseManager {
   IsarDatabaseManager._internal();
 
   Isar? _isar;
+  Future<Isar>? _openingFuture;
   static const String _isarKeyStorageKey = 'isar_encryption_key';
   static const String _isarEncryptionEnabledKey = 'isar_encryption_enabled';
 
   Future<Isar> get instance async {
-    if (_isar != null) return _isar!;
-    _isar = await _init();
-    return _isar!;
+    if (_isar != null && _isar!.isOpen) {
+      return _isar!;
+    }
+
+    final alreadyOpen = Isar.getInstance();
+    if (alreadyOpen != null && alreadyOpen.isOpen) {
+      _isar = alreadyOpen;
+      return alreadyOpen;
+    }
+
+    if (_openingFuture != null) {
+      return _openingFuture!;
+    }
+
+    _openingFuture = _init();
+    try {
+      final opened = await _openingFuture!;
+      _isar = opened;
+      return opened;
+    } finally {
+      _openingFuture = null;
+    }
   }
 
   Future<Isar> _init() async {
@@ -44,6 +65,7 @@ class IsarDatabaseManager {
       DeletionTaskEntitySchema,
       ProfileEntitySchema,
       PostEntitySchema,
+      RetryQueueEntitySchema,
     ];
 
     final namedArgs = <Symbol, dynamic>{
@@ -58,6 +80,16 @@ class IsarDatabaseManager {
     try {
       final result = await Function.apply(Isar.open, [schemas], namedArgs);
       return result as Isar;
+    } on IsarError catch (e) {
+      // Guard against concurrent open attempts returning
+      // "Instance has already been opened."
+      if (e.toString().contains('already been opened')) {
+        final alreadyOpen = Isar.getInstance();
+        if (alreadyOpen != null && alreadyOpen.isOpen) {
+          return alreadyOpen;
+        }
+      }
+      rethrow;
     } on NoSuchMethodError {
       if (namedArgs.containsKey(#encryptionKey)) {
         namedArgs.remove(#encryptionKey);
@@ -77,10 +109,8 @@ class IsarDatabaseManager {
 
   Future<List<int>?> _getEncryptionKey(Directory dir) async {
     try {
-      final enabled =
-          await SecureKeyValueStore.read(_isarEncryptionEnabledKey);
-      final existingKeyB64 =
-          await SecureKeyValueStore.read(_isarKeyStorageKey);
+      final enabled = await SecureKeyValueStore.read(_isarEncryptionEnabledKey);
+      final existingKeyB64 = await SecureKeyValueStore.read(_isarKeyStorageKey);
 
       if (existingKeyB64 != null && existingKeyB64.isNotEmpty) {
         return base64.decode(existingKeyB64);

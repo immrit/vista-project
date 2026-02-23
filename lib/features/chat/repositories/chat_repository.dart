@@ -10,6 +10,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../model/message_model.dart';
 import '../../../model/conversation_model.dart';
+import '../domain/message_payload.dart';
 
 /// نتیجه عملیات با قابلیت نمایش خطای کاربرپسند
 class ChatResult<T> {
@@ -121,29 +122,8 @@ abstract class ChatRepository {
   /// 3. به تغییرات Real-time گوش میده
   Stream<List<MessageModel>> watchMessages(String conversationId);
 
-  /// ارسال پیام جدید
-  ///
-  /// این متد:
-  /// 1. فوری پیام رو توی Cache میذاره (Optimistic Update) ⚡
-  /// 2. به Server می‌فرسته
-  /// 3. در صورت خطا، Rollback می‌کنه ↩️
-  Future<ChatResult<MessageModel>> sendMessage({
-    required String conversationId,
-    required String content,
-    String? id, // ✅ Added for Optimistic UI (UUID v4)
-    String? attachmentUrl,
-    String? attachmentType,
-    String? attachmentFileName,
-    String? attachmentMimeType,
-    int? attachmentSizeBytes,
-    String? audioTitle,
-    String? audioArtist,
-    String? audioAlbum,
-    int? duration,
-    String? replyToMessageId,
-    String? replyToContent,
-    String? replyToSenderName,
-  });
+  /// سیستم جدید: همه‌چیز در MessagePayload کپسوله شده است
+  Future<ChatResult<MessageModel>> sendMessage(MessagePayload payload);
 
   /// Create an optimistic pending upload message in local cache.
   Future<ChatResult<MessageModel>> createPendingMessage({

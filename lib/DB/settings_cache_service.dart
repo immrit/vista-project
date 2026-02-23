@@ -1,4 +1,4 @@
-import '../security/logging_utility.dart';
+﻿import '../security/logging_utility.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -158,7 +158,7 @@ class SettingsCacheService {
         'auto_sync': true,
         'sync_interval_minutes': 30,
 
-        // تنظیمات دانلود خودکار مدیا (مشابه تلگرام)
+        // تنظیمات دانلود خودکار مدیا (مشابه ویستا)
         'auto_download_mobile_image': true, // عکس در موبایل: پیش‌فرض روشن
         'auto_download_mobile_video': false, // ویدیو در موبایل: پیش‌فرض خاموش
         'auto_download_wifi_image': true, // عکس در وای‌فای: روشن

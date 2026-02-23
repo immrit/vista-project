@@ -1,6 +1,6 @@
-// lib/features/chat/widgets/instagram_style_post_card.dart
+﻿// lib/features/chat/widgets/instagram_style_post_card.dart
 //
-// کارت پست به سبک اینستاگرام/تردز برای چت
+// کارت پست به سبک ویستا/تردز برای چت
 //
 // این ویجت برای نمایش پست‌های اشتراک‌گذاری شده در چت استفاده میشه
 // طراحی مشابه Instagram و Threads
@@ -199,7 +199,7 @@ class _InstagramStylePostCardState extends State<InstagramStylePostCard>
     );
   }
 
-  /// هدر پست (مشابه اینستاگرام)
+  /// هدر پست (مشابه ویستا)
   Widget _buildPostHeader(ChatTheme theme) {
     return Container(
       padding: const EdgeInsets.all(12),

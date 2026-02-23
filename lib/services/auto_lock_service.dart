@@ -1,7 +1,7 @@
-import 'dart:async';
+﻿import 'dart:async';
 import '../security/logging_utility.dart';
 
-/// سرویس مدیریت قفل خودکار اپلیکیشن (اصلاح شده برای رفتار مثل تلگرام)
+/// سرویس مدیریت قفل خودکار اپلیکیشن (اصلاح شده برای رفتار مثل ویستا)
 class AutoLockService {
   static final AutoLockService _instance = AutoLockService._internal();
   factory AutoLockService() => _instance;

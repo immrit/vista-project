@@ -1,8 +1,8 @@
-import 'dart:ui';
+﻿import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../../domain/entities/story_editor_models.dart';
 
-/// استیکر هشتگ با سه استایل مختلف (مشابه اینستاگرام)
+/// استیکر هشتگ با سه استایل مختلف (مشابه ویستا)
 class HashtagStickerWidget extends StatelessWidget {
   final StoryElement element;
   final bool isEditable;
@@ -44,7 +44,7 @@ class HashtagStickerWidget extends StatelessWidget {
     }
   }
 
-  /// استایل ۰: پس‌زمینه گرادیان نارنجی-بنفش (اینستاگرامی)
+  /// استایل ۰: پس‌زمینه گرادیان نارنجی-بنفش (ویستای)
   Widget _buildGradientStyle(Key key, String hashtag) {
     return AnimatedContainer(
       key: key,

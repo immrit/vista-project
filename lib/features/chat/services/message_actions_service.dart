@@ -1,4 +1,4 @@
-// lib/features/chat/services/message_actions_service.dart
+﻿// lib/features/chat/services/message_actions_service.dart
 //
 // سرویس اقدامات روی پیام‌ها (ویرایش، فوروارد)
 //
@@ -33,7 +33,7 @@ class ActionResult<T> {
 class MessageActionsService {
   final SupabaseClient _supabase;
 
-  // محدودیت زمانی ویرایش (48 ساعت مثل تلگرام)
+  // محدودیت زمانی ویرایش (48 ساعت مثل ویستا)
   static const editTimeLimit = Duration(hours: 48);
 
   MessageActionsService(this._supabase);

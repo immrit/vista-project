@@ -66,23 +66,35 @@ class ChatLocalDataSourceIsar {
           .findFirst();
 
       if (conversation != null) {
-        conversation.lastMessage = merged.content; // Or proper snippet
+        conversation.lastMessage = merged.content;
         conversation.lastMessageTime = merged.createdAt;
-        conversation.updatedAt = merged.createdAt; // Sort by this
+        conversation.updatedAt = merged.createdAt;
 
-        // If message is NOT from me, increment unread count
-        if (!merged.isMe) {
-          // If we are currently in this chat, don't increment (Handled by repo usually, but good to check)
-          // However, repo handles logic. Ideally here we just increment.
-          // But valid 'unread' logic usually depends on if the user has read it.
-          // If isSeen is false and it's not me, increment.
-          if (!merged.isSeen) {
-            conversation.unreadCount = conversation.unreadCount + 1;
-          }
+        // ذخیره جزییات آخرین پیام برای نمایش بهتر بج‌ها و وضعیت پیام
+        conversation.lastMessageType = merged.attachmentType ?? 'text';
+        conversation.isLastMessageFromMe = merged.isMe;
+        conversation.lastMessageSenderId = merged.senderId;
+
+        // تنظیم وضعیت تحویل آخرین پیام
+        if (merged.isPending == true) {
+          conversation.lastMessageDeliveryStatus = 'pending';
+        } else if (merged.isFailed == true) {
+          conversation.lastMessageDeliveryStatus = 'failed';
+        } else if (merged.isSeen == true) {
+          conversation.lastMessageDeliveryStatus = 'seen';
+        } else if (merged.isDelivered == true) {
+          conversation.lastMessageDeliveryStatus = 'delivered';
+        } else if (merged.isSent == true) {
+          conversation.lastMessageDeliveryStatus = 'sent';
+        } else {
+          conversation.lastMessageDeliveryStatus = 'sent';
         }
 
-        // If it IS me, typically unread count doesn't change for ME, but for THEM.
-        // But the conversation list shows MY unread count.
+        // اگر پیام از طرف من نیست و دیده نشده، شمارنده اضافه شود
+        if (merged.isMe == false && merged.isSeen == false) {
+          conversation.unreadCount += 1;
+          conversation.hasUnreadMessages = true;
+        }
 
         await isar.conversationEntitys.put(conversation);
       } else {
@@ -125,6 +137,7 @@ class ChatLocalDataSourceIsar {
 
       if (conversation != null) {
         conversation.unreadCount = 0;
+        conversation.hasUnreadMessages = false;
         await isar.conversationEntitys.put(conversation);
       }
     });
@@ -154,6 +167,7 @@ class ChatLocalDataSourceIsar {
 
       if (conversation != null) {
         conversation.unreadCount = 0;
+        conversation.hasUnreadMessages = false;
         await isar.conversationEntitys.put(conversation);
       }
     });
@@ -308,15 +322,54 @@ class ChatLocalDataSourceIsar {
   Future<void> saveConversations(List<ConversationModel> conversations) async {
     if (conversations.isEmpty) return;
     final isar = await _dbManager.instance;
-    final entities = conversations.map(ConversationEntity.fromModel).toList();
     await isar.writeTxn(() async {
-      await isar.conversationEntitys.putAll(entities);
+      for (final conv in conversations) {
+        final existing = await isar.conversationEntitys
+            .filter()
+            .idEqualTo(conv.id)
+            .findFirst();
+        if (existing != null && existing.updatedAt.isAfter(conv.updatedAt)) {
+          // حفظ دیتای لوکال چون جدیدتر از دیتای سرور است
+          final updatedEntity = ConversationEntity.fromModel(conv)
+            ..lastMessage = existing.lastMessage
+            ..lastMessageTime = existing.lastMessageTime
+            ..lastMessageType = existing.lastMessageType
+            ..lastMessageDeliveryStatus = existing.lastMessageDeliveryStatus
+            ..isLastMessageFromMe = existing.isLastMessageFromMe
+            ..lastMessageSenderId = existing.lastMessageSenderId
+            ..unreadCount = existing.unreadCount
+            ..hasUnreadMessages = existing.hasUnreadMessages
+            ..updatedAt = existing.updatedAt;
+          await isar.conversationEntitys.put(updatedEntity);
+          continue;
+        }
+        await isar.conversationEntitys.put(ConversationEntity.fromModel(conv));
+      }
     });
   }
 
   Future<void> saveConversation(ConversationModel conversation) async {
     final isar = await _dbManager.instance;
     await isar.writeTxn(() async {
+      final existing = await isar.conversationEntitys
+          .filter()
+          .idEqualTo(conversation.id)
+          .findFirst();
+      if (existing != null &&
+          existing.updatedAt.isAfter(conversation.updatedAt)) {
+        final updatedEntity = ConversationEntity.fromModel(conversation)
+          ..lastMessage = existing.lastMessage
+          ..lastMessageTime = existing.lastMessageTime
+          ..lastMessageType = existing.lastMessageType
+          ..lastMessageDeliveryStatus = existing.lastMessageDeliveryStatus
+          ..isLastMessageFromMe = existing.isLastMessageFromMe
+          ..lastMessageSenderId = existing.lastMessageSenderId
+          ..unreadCount = existing.unreadCount
+          ..hasUnreadMessages = existing.hasUnreadMessages
+          ..updatedAt = existing.updatedAt;
+        await isar.conversationEntitys.put(updatedEntity);
+        return;
+      }
       await isar.conversationEntitys
           .put(ConversationEntity.fromModel(conversation));
     });

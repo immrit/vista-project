@@ -1,4 +1,4 @@
-// lib/features/chat/theme/chat_theme.dart
+﻿// lib/features/chat/theme/chat_theme.dart
 //
 // سیستم تم چت - هماهنگ با تم اصلی برنامه
 //
@@ -172,7 +172,7 @@ class ChatTheme {
     this.fadeDuration = const Duration(milliseconds: 200),
   });
 
-  /// شعاع گوشه‌های حباب مثل تلگرام (گوشه‌های ادغام‌شده تیزتر)
+  /// شعاع گوشه‌های حباب مثل ویستا (گوشه‌های ادغام‌شده تیزتر)
   BorderRadius bubbleBorderRadius({
     required bool isMe,
     required bool isFirstInGroup,
@@ -270,7 +270,7 @@ class ChatTheme {
 
     // ✅ در تم تاریک، اگر رنگ primary سفید یا خیلی روشن است، از آبی استاندارد استفاده می‌کنیم
     final sendButtonColor = (primary.computeLuminance() > 0.8)
-        ? const Color(0xFF3390EC) // آبی استاندارد تلگرام
+        ? const Color(0xFF3390EC) // آبی استاندارد ویستا
         : primary;
 
     return ChatTheme(

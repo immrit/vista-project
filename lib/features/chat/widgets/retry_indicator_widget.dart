@@ -1,9 +1,9 @@
-// lib/features/chat/widgets/retry_indicator_widget.dart
+﻿// lib/features/chat/widgets/retry_indicator_widget.dart
 //
-// نمایش وضعیت ارسال پیام با الهام از تلگرام
+// نمایش وضعیت ارسال پیام با الهام از ویستا
 //
 // ویژگی‌ها:
-// ✅ Clock icon برای pending (مثل تلگرام)
+// ✅ Clock icon برای pending (مثل ویستا)
 // ✅ Checkmark animation برای sent
 // ✅ Double checkmark برای read
 // ✅ Error icon با retry
@@ -23,7 +23,7 @@ enum MessageSendStatus {
   failed,    // خطا - علامت تعجب قرمز
 }
 
-/// Retry Indicator به سبک تلگرام
+/// Retry Indicator به سبک ویستا
 class TelegramRetryIndicator extends StatefulWidget {
   final MessageSendStatus status;
   final VoidCallback? onRetry;
@@ -141,7 +141,7 @@ class _TelegramRetryIndicatorState extends State<TelegramRetryIndicator>
     }
   }
 
-  /// ساعت برای pending (مثل تلگرام)
+  /// ساعت برای pending (مثل ویستا)
   Widget _buildPendingIcon() {
     return RotationTransition(
       turns: _rotationAnimation,
@@ -154,7 +154,7 @@ class _TelegramRetryIndicatorState extends State<TelegramRetryIndicator>
     );
   }
 
-  /// یک تیک برای sent (مثل تلگرام)
+  /// یک تیک برای sent (مثل ویستا)
   Widget _buildSentIcon() {
     return ScaleTransition(
       scale: _scaleAnimation,
@@ -167,7 +167,7 @@ class _TelegramRetryIndicatorState extends State<TelegramRetryIndicator>
     );
   }
 
-  /// دو تیک خاکستری برای delivered (مثل تلگرام)
+  /// دو تیک خاکستری برای delivered (مثل ویستا)
   Widget _buildDeliveredIcon() {
     return ScaleTransition(
       scale: _scaleAnimation,
@@ -199,7 +199,7 @@ class _TelegramRetryIndicatorState extends State<TelegramRetryIndicator>
     );
   }
 
-  /// دو تیک آبی برای read (مثل تلگرام)
+  /// دو تیک آبی برای read (مثل ویستا)
   Widget _buildReadIcon() {
     return ScaleTransition(
       scale: _scaleAnimation,
@@ -231,7 +231,7 @@ class _TelegramRetryIndicatorState extends State<TelegramRetryIndicator>
     );
   }
 
-  /// علامت خطا با قابلیت retry (مثل تلگرام)
+  /// علامت خطا با قابلیت retry (مثل ویستا)
   Widget _buildFailedIcon() {
     return GestureDetector(
       onTap: () {
@@ -258,7 +258,7 @@ class _TelegramRetryIndicatorState extends State<TelegramRetryIndicator>
   }
 }
 
-/// Connection Status Banner (مثل تلگرام)
+/// Connection Status Banner (مثل ویستا)
 class TelegramConnectionBanner extends StatefulWidget {
   final bool isConnected;
   final VoidCallback? onRetry;
@@ -400,7 +400,7 @@ class _TelegramConnectionBannerState extends State<TelegramConnectionBanner>
   }
 }
 
-/// Pending Messages Counter (مثل تلگرام)
+/// Pending Messages Counter (مثل ویستا)
 class TelegramPendingCounter extends StatelessWidget {
   final int count;
   final VoidCallback? onTap;

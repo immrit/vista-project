@@ -1,4 +1,4 @@
-// lib/model/message_model.dart
+﻿// lib/model/message_model.dart
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import '../services/telegram_read_receipt_service.dart';
@@ -76,7 +76,7 @@ class SharedPostData {
   }
 }
 
-/// مدل داده‌های پاسخ به استوری (مشابه دایرکت اینستاگرام)
+/// مدل داده‌های پاسخ به استوری (مشابه دایرکت ویستا)
 class StoryReplyData {
   final String storyId;
   final String storyOwnerId;
@@ -216,13 +216,13 @@ class MessageModel {
   final SharedPostData? sharedPostData; // داده‌های پست اشتراک‌گذاری شده
   final StoryReplyData? storyReplyData; // داده‌های پاسخ به استوری
 
-  // فیلدهای حذف پیام (مشابه تلگرام)
+  // فیلدهای حذف پیام (مشابه ویستا)
   final bool
       deletedGlobally; // حذف د‌و‌طرفه: اگر true باشد، پیام باید برای همه حذف شود
   final List<String>
       deletedForUserIds; // حذف یک‌طرفه: شامل user_id کاربرانی که پیام را فقط برای خود حذف کرده‌اند
 
-  // ✅ فیلدهای جدید برای نمایش تصاویر با پیشرفت آپلود (مثل تلگرام)
+  // ✅ فیلدهای جدید برای نمایش تصاویر با پیشرفت آپلود (مثل ویستا)
   final String? localImagePath; // مسیر محلی تصویر (قبل از آپلود)
   final String? localFilePath; // مسیر محلی فایل (قبل از آپلود)
   final double? uploadProgress; // پیشرفت آپلود (0.0 تا 1.0)

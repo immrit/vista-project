@@ -122,7 +122,7 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
 
   void _updateItem(StoryItem updatedItem) {
     setState(() {
-      final index = _items.indexWhere((item) => item.id == updatedItem.id);
+      final index = _items.lastIndexWhere((item) => item.id == updatedItem.id);
       if (index == -1) return;
 
       StoryItem effectiveItem = updatedItem;
@@ -167,6 +167,7 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
         _showHorizontalGuide = false;
       }
       _items[index] = effectiveItem;
+      _dedupeItemsById();
 
       // Check for trash proximity
       final trashY = canvasSize.height - 80;
@@ -183,6 +184,27 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
         HapticFeedback.mediumImpact();
       }
     });
+  }
+
+  void _dedupeItemsById() {
+    final seenIds = <String>{};
+    for (int i = _items.length - 1; i >= 0; i--) {
+      final id = _items[i].id;
+      if (seenIds.contains(id)) {
+        _items.removeAt(i);
+        continue;
+      }
+      seenIds.add(id);
+    }
+  }
+
+  void _bringItemToFront(String itemId) {
+    final index = _items.lastIndexWhere((item) => item.id == itemId);
+    if (index == -1) return;
+
+    final currentItem = _items.removeAt(index);
+    _items.add(currentItem);
+    _dedupeItemsById();
   }
 
   void _deleteItem(String itemId) {
@@ -456,10 +478,8 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
           _isDragging = true;
           _wasVerticallyAligned = false;
           _wasHorizontallyAligned = false;
+          _bringItemToFront(item.id);
         });
-        // Bring to front
-        _items.remove(item);
-        _items.add(item);
       },
       onDragEnd: () {
         if (_isOverTrash) {

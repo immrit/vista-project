@@ -25,6 +25,8 @@ final dynamicThemeProvider = Provider<ThemeData>((ref) {
   final largeText = accessibility['large_text'] as bool? ?? false;
   final boldText = accessibility['bold_text'] as bool? ?? false;
   final highContrast = accessibility['high_contrast'] as bool? ?? false;
+  final colorBlindMode =
+      (accessibility['color_blind_mode'] as String? ?? 'none').toLowerCase();
 
   // Basic Theme
   ThemeData theme = brightness == Brightness.dark
@@ -48,11 +50,28 @@ final dynamicThemeProvider = Provider<ThemeData>((ref) {
     dividerColor: highContrast
         ? (brightness == Brightness.dark ? Colors.white70 : Colors.black87)
         : theme.dividerColor,
+    extensions: [
+      ...theme.extensions.values,
+      _ColorBlindThemeExtension(mode: colorBlindMode),
+    ],
   );
 });
 
+final colorBlindModeProvider = Provider<String>((ref) {
+  final appSettingsAsync = ref.watch(advancedAppSettingsProvider);
+  final accessibility =
+      appSettingsAsync.value?['accessibility'] as Map<String, dynamic>? ?? {};
+  return (accessibility['color_blind_mode'] as String? ?? 'none').toLowerCase();
+});
+
+final colorBlindMatrixProvider = Provider<List<double>?>((ref) {
+  final mode = ref.watch(colorBlindModeProvider);
+  return _matrixForColorBlindMode(mode);
+});
+
 TextTheme _withBoldText(TextTheme textTheme) {
-  TextStyle? bold(TextStyle? style) => style?.copyWith(fontWeight: FontWeight.w700);
+  TextStyle? bold(TextStyle? style) =>
+      style?.copyWith(fontWeight: FontWeight.w700);
 
   return textTheme.copyWith(
     displayLarge: bold(textTheme.displayLarge),
@@ -151,6 +170,101 @@ class BrightnessNotifier extends StateNotifier<Brightness> {
     } catch (e) {
       logDebug('خطا در ذخیره brightness: $e');
     }
+  }
+}
+
+class _ColorBlindThemeExtension
+    extends ThemeExtension<_ColorBlindThemeExtension> {
+  final String mode;
+
+  const _ColorBlindThemeExtension({required this.mode});
+
+  @override
+  ThemeExtension<_ColorBlindThemeExtension> copyWith({String? mode}) {
+    return _ColorBlindThemeExtension(mode: mode ?? this.mode);
+  }
+
+  @override
+  ThemeExtension<_ColorBlindThemeExtension> lerp(
+      covariant ThemeExtension<_ColorBlindThemeExtension>? other, double t) {
+    if (other is! _ColorBlindThemeExtension) return this;
+    return t < 0.5 ? this : other;
+  }
+}
+
+List<double>? _matrixForColorBlindMode(String mode) {
+  switch (mode) {
+    case 'protanopia':
+      return const [
+        0.567,
+        0.433,
+        0.0,
+        0.0,
+        0.0,
+        0.558,
+        0.442,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.242,
+        0.758,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+      ];
+    case 'deuteranopia':
+      return const [
+        0.625,
+        0.375,
+        0.0,
+        0.0,
+        0.0,
+        0.7,
+        0.3,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.3,
+        0.7,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+      ];
+    case 'tritanopia':
+      return const [
+        0.95,
+        0.05,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.433,
+        0.567,
+        0.0,
+        0.0,
+        0.0,
+        0.475,
+        0.525,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+      ];
+    default:
+      return null;
   }
 }
 

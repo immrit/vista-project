@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:Vista/core/security/input_policy.dart';
 import 'package:Vista/utils/widgets.dart';
 
 import '../../../provider/provider.dart';
@@ -30,6 +31,10 @@ class ChangePasswordWidget extends ConsumerWidget {
               if (value == null || value.isEmpty) {
                 return 'لطفا پسورد جدید را وارد نمایید';
               }
+              final validation = validatePasswordBalanced(value);
+              if (!validation.isValid) {
+                return validation.message;
+              }
               return null;
             }, true, TextInputType.visiblePassword),
             SizedBox(
@@ -48,21 +53,26 @@ class ChangePasswordWidget extends ConsumerWidget {
             SizedBox(
               height: 10.h,
             ),
-            customButton(() {
+            customButton(() async {
               if (_formKey.currentState!.validate()) {
-                ref
-                    .read(changePasswordProvider(_newPasswordController.text)
-                        .future)
-                    .then((_) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                        content: Text('Password updated successfully')),
-                  );
-                }).catchError((error) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('پسورد جدید ثبت شد')),
-                  );
-                });
+                try {
+                  await ref.read(
+                      changePasswordProvider(_newPasswordController.text)
+                          .future);
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                          content: Text('پسورد جدید با موفقیت ثبت شد')),
+                    );
+                    Navigator.pop(context);
+                  }
+                } catch (error) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text(error.toString())),
+                    );
+                  }
+                }
               }
             }, 'ویرایش رمز عبور', ref),
           ],

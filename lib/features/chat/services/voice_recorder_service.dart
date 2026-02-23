@@ -1,9 +1,9 @@
-// lib/features/chat/services/voice_recorder_service.dart
+﻿// lib/features/chat/services/voice_recorder_service.dart
 //
 // سرویس ضبط صدا (Voice Recording) مدرن
 //
 // ویژگی‌ها:
-// ✅ ضبط صدا با کیفیت AAC (مثل تلگرام)
+// ✅ ضبط صدا با کیفیت AAC (مثل ویستا)
 // ✅ مدیریت خودکار پرمیشن‌ها
 // ✅ استریم دامنه صدا برای ویژوالایزر (Waveform)
 // ✅ مدیریت فایل‌های موقت
@@ -58,7 +58,7 @@ class VoiceRecorderService {
             'voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
         _currentPath = '${appDir.path}/$fileName';
 
-        // تنظیمات کیفیت ضبط (مثل تلگرام)
+        // تنظیمات کیفیت ضبط (مثل ویستا)
         const config = RecordConfig(
           encoder: AudioEncoder.aacLc,
           bitRate: 128000,

@@ -53,6 +53,7 @@ import 'package:Vista/features/settings/screens/vistaStore/store.dart';
 import 'package:Vista/features/posts/screens/ExploreFeedScreen.dart';
 import 'package:Vista/features/posts/screens/PostDetailPage.dart';
 import 'package:Vista/features/posts/screens/profileScreen.dart';
+import 'package:Vista/features/emoji/domain/telegram_emoji_lookup.dart';
 
 // Stories Module
 import 'package:Vista/features/stories/stories.dart';
@@ -185,7 +186,7 @@ class MyApp extends ConsumerStatefulWidget {
   const MyApp({super.key});
 
   @override
-  _MyAppState createState() => _MyAppState();
+  ConsumerState<MyApp> createState() => _MyAppState();
 }
 
 class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
@@ -213,6 +214,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    unawaited(TelegramEmojiLookup.instance.load());
     WidgetsBinding.instance.addObserver(this);
     _appLinks = AppLinks();
     _setupDeepLinkHandling();
@@ -373,8 +375,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final theme = ref.watch(dynamicThemeProvider);
-    // Performance settings omitted for brevity, logic can be re-added or simplified.
-    // Assuming defaults for now to keep file clean.
+    final colorBlindMatrix = ref.watch(colorBlindMatrixProvider);
 
     return ScreenUtilInit(
       designSize: Size(viewPort.width, viewPort.height),
@@ -386,11 +387,15 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
             navigatorKey: navigatorKey,
             title: 'Vista',
             debugShowCheckedModeBanner: false,
-            // AppThemes logic needed?
-            // User had complex logic with ColorFiltered.
-            // I'll stick to basic theme for now to ensure compile.
-            // If they had custom theme logic, better to import providers.
             theme: theme,
+            builder: (context, child) {
+              final safeChild = child ?? const SizedBox.shrink();
+              if (colorBlindMatrix == null) return safeChild;
+              return ColorFiltered(
+                colorFilter: ColorFilter.matrix(colorBlindMatrix),
+                child: safeChild,
+              );
+            },
             home: const SessionAuthWrapper(), // Use SessionAuthWrapper
             initialRoute: '/',
             routes: {

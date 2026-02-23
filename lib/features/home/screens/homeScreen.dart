@@ -12,6 +12,7 @@ import 'package:Vista/features/posts/screens/ExploreFeedScreen.dart';
 import 'package:Vista/features/search/screens/searchPage.dart';
 import 'package:Vista/provider/chat_provider.dart';
 import 'package:Vista/provider/optimized_conversations_provider.dart';
+import 'package:Vista/core/security/input_policy.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../features/auth/widgets/otp_dialog.dart';
 import '../../../provider/provider.dart';
@@ -116,13 +117,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
         final profile = await supabase
             .from('profiles')
-            .select('phone')
+            .select('phone_number')
             .eq('id', user.id)
             .maybeSingle();
 
         if (profile != null) {
-          final phone = profile['phone'] as String?;
-          if (phone == null || phone.isEmpty) {
+          final phone = profile['phone_number'] as String?;
+          final normalized = phone == null ? null : normalizePhone09(phone);
+          if (phone == null || phone.isEmpty || normalized != phone) {
             if (mounted) {
               await Future.delayed(const Duration(seconds: 1));
               _showPhoneVerificationDialog();
@@ -224,9 +226,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   onPressed: isLoading
                       ? null
                       : () async {
-                          final phone = phoneController.text.trim();
-                          if (phone.isEmpty ||
-                              !RegExp(r'^\+?[0-9]{10,13}$').hasMatch(phone)) {
+                          final phone = normalizePhone09(phoneController.text);
+                          if (phone == null) {
                             setDialogState(() {
                               errorText = 'شماره موبایل نامعتبر است';
                             });
@@ -240,7 +241,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
                           try {
                             await ref
-                                .read(authNotifierProvider.notifier)
+                                .read(authControllerProvider.notifier)
                                 .sendOtp(phone);
 
                             if (!mounted) return;
@@ -255,7 +256,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             if (verified) {
                               try {
                                 await supabase.from('profiles').update({
-                                  'phone': phone,
+                                  'phone_number': phone,
                                 }).eq('id', supabase.auth.currentUser!.id);
 
                                 ScaffoldMessenger.of(context).showSnackBar(

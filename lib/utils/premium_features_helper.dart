@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import '../model/UserModel.dart';
 import '../model/publicPostModel.dart';
 
@@ -13,7 +13,7 @@ class PremiumFeaturesHelper {
     return currentUser.hasGoldBadge || currentUser.hasBlueBadge;
   }
 
-  /// نمایش دیالوگ ترغیب به خرید تیک طلایی (طراحی مشابه تلگرام)
+  /// نمایش دیالوگ ترغیب به خرید تیک طلایی (طراحی مشابه ویستا)
   static void showPremiumPromptDialog(
     BuildContext context, {
     String feature = 'استوری ۴۸ ساعته',

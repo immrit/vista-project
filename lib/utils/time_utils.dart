@@ -1,4 +1,4 @@
-// lib/utils/time_utils.dart
+﻿// lib/utils/time_utils.dart
 import 'package:flutter/material.dart';
 
 import 'package:timeago/timeago.dart' as timeago;
@@ -123,12 +123,12 @@ class TimeUtils {
     return formatUserPresence(time);
   }
 
-  // فرمت ساعت پیام (مثل تلگرام) - با ارقام فارسی
+  // فرمت ساعت پیام (مثل ویستا) - با ارقام فارسی
   static String formatMessageTime(DateTime messageTime) {
     return formatTime(messageTime);
   }
 
-  // فرمت تاریخ برای جداکننده (مثل تلگرام)
+  // فرمت تاریخ برای جداکننده (مثل ویستا)
   static String formatDateDivider(DateTime date) {
     final now = DateTime.now();
     final localTime = date.toLocal();
@@ -165,7 +165,7 @@ class TimeUtils {
     return '$dayStr ${_getPersianMonth(jDate.month)} $yearStr';
   }
 
-  // فرمت زمان در لیست گفتگوها (مثل تلگرام)
+  // فرمت زمان در لیست گفتگوها (مثل ویستا)
   static String formatConversationTime(DateTime messageTime) {
     final now = DateTime.now();
     final localTime = messageTime.toLocal();
@@ -224,7 +224,7 @@ class TimeUtils {
     return currentLocal.difference(previousLocal).abs();
   }
 
-  // تشخیص نیاز به فاصله بیشتر بین پیام‌ها (مثل تلگرام)
+  // تشخیص نیاز به فاصله بیشتر بین پیام‌ها (مثل ویستا)
   static bool needsExtraSpacing(
       DateTime currentMessage, DateTime? previousMessage) {
     if (previousMessage == null) return false;
@@ -310,7 +310,7 @@ class TimeUtils {
     }
   }
 
-  // ========== سیستم فاصله‌گذاری پیام‌ها (مثل تلگرام) ==========
+  // ========== سیستم فاصله‌گذاری پیام‌ها (مثل ویستا) ==========
 
   /// فاصله استانداد بین پیام‌ها
   static const double standardSpacing = 2.0;

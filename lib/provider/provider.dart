@@ -35,77 +35,12 @@ import '../services/voice_cache_service.dart';
 import 'session_provider.dart';
 // Import security provider
 
-// Export security providers
 export 'security_provider.dart';
-export 'auth_provider.dart';
+export '../features/auth/providers/auth_controller.dart';
 
-//check user state
-final authStateProvider = StreamProvider<User?>((ref) {
-  return supabase.auth.onAuthStateChange.map((event) => event.session?.user);
-});
-
-final authProvider = Provider<User?>((ref) {
-  final auth = Supabase.instance.client.auth;
-  return auth.currentUser;
-});
-
-//fetch user profile
-final profileProvider = FutureProvider<Map<String, dynamic>?>((ref) async {
-  final user = ref.watch(authStateProvider).when(
-        data: (user) => user,
-        loading: () => null,
-        error: (err, stack) => null,
-      );
-
-  if (user == null) {
-    throw Exception('User is not logged in');
-  }
-
-  final response = await supabase.from('profiles').select('''
-        *,
-        verification_type,
-        account_type,
-        role
-      ''').eq('id', user.id).maybeSingle();
-
-  if (response == null) {
-    throw Exception('Profile not found');
-  }
-
-  return response;
-});
-
-//Edite Profile
-
-final profileUpdateProvider =
-    FutureProvider.family<void, Map<String, dynamic>>((ref, updatedData) async {
-  final user = ref.watch(authStateProvider).when(
-        data: (user) => user,
-        loading: () => null,
-        error: (err, stack) => null,
-      );
-  if (user == null) {
-    throw Exception('User is not logged in');
-  }
-
-  final response =
-      await supabase.from('profiles').update(updatedData).eq('id', user.id);
-
-  if (response != null) {
-    throw Exception('Failed to update profile');
-  }
-});
-
-//update pass
-
-final changePasswordProvider =
-    FutureProvider.family<void, String>((ref, newPassword) async {
-  final response = await Supabase.instance.client.auth.updateUser(
-    UserAttributes(password: newPassword),
-  );
-
-  throw Exception(response);
-});
+export '../features/profile/providers/profile_controller.dart';
+import '../features/profile/providers/profile_controller.dart';
+// profileProvider and profileUpdateProvider moved to profile_controller.dart
 
 //delete notes
 

@@ -130,7 +130,7 @@ Future<bool> showOtpDialog(
                           });
                           try {
                             await ref
-                                .read(authNotifierProvider.notifier)
+                                .read(authControllerProvider.notifier)
                                 .sendOtp(phoneNumber);
                           } catch (e) {
                             setDialogState(() => error = 'خطا در ارسال مجدد');
@@ -163,7 +163,7 @@ Future<bool> showOtpDialog(
                             });
                             try {
                               final success = await ref
-                                  .read(authNotifierProvider.notifier)
+                                  .read(authControllerProvider.notifier)
                                   .verifyOtp(
                                       phone: phoneNumber,
                                       token: otpController.text);

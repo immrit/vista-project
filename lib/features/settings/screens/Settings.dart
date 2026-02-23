@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../../utils/const.dart';
@@ -14,7 +14,7 @@ import 'subpages/AboutSettingsPage.dart';
 import 'vistaStore/pricing_page.dart';
 import 'TermsAndConditions.dart';
 
-/// صفحه تنظیمات ساده و تمیز - الهام گرفته از اینستاگرام
+/// صفحه تنظیمات ساده و تمیز - الهام گرفته از ویستا
 class Settings extends ConsumerWidget {
   const Settings({super.key});
 

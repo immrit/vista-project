@@ -12,6 +12,7 @@ import '../../../utils/const.dart';
 import '../../../provider/provider.dart';
 import '../../../provider/ProfileImageUploadService.dart';
 import '../../../services/user_friendly_error_handler.dart';
+import '../../../core/security/input_policy.dart';
 import '../../auth/widgets/otp_dialog.dart';
 
 class EditProfile extends ConsumerStatefulWidget {
@@ -37,7 +38,6 @@ class _EditProfileState extends ConsumerState<EditProfile> {
   final picker = ImagePicker();
 
   // Add validation pattern constant
-  final _usernamePattern = RegExp(r'^[a-z][a-z0-9._-]{4,}$');
   final _emailPattern = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
 
   @override
@@ -470,30 +470,59 @@ class _EditProfileState extends ConsumerState<EditProfile> {
 
   Future<void> _updateProfile() async {
     setState(() => _isLoading = true);
-    final username = _usernameController.text.trim();
-    final email = emailController.text.trim();
+    final username =
+        normalizeDigits(_usernameController.text).trim().toLowerCase();
+    final email = normalizeDigits(emailController.text).trim().toLowerCase();
+    final rawPhone = _phoneController.text.trim();
+    final normalizedPhone = normalizePhone09(rawPhone);
 
     try {
-      // بررسی صحت نام کاربری
-      if (!_usernamePattern.hasMatch(username)) {
+      final usernameValidation = validateUsername(username);
+      if (!usernameValidation.isValid) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-                'نام کاربری باید با حرف کوچک شروع شود و می‌تواند شامل حروف کوچک، اعداد و علامت‌های - . _ باشد'),
-          ),
+          SnackBar(content: Text(usernameValidation.message)),
         );
         setState(() => _isLoading = false);
         return;
       }
 
-      // بررسی صحت ایمیل
-      if (!_emailPattern.hasMatch(email)) {
+      if (email.isEmpty || !_emailPattern.hasMatch(email)) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('لطفاً یک ایمیل معتبر وارد کنید')),
         );
         setState(() => _isLoading = false);
         return;
       }
+
+      if (fullNameController.text.trim().isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('نام و نام خانوادگی نمی‌تواند خالی باشد')),
+        );
+        setState(() => _isLoading = false);
+        return;
+      }
+
+      if (_birthDate == null || _birthDate!.trim().isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('تاریخ تولد را وارد کنید')),
+        );
+        setState(() => _isLoading = false);
+        return;
+      }
+
+      if (rawPhone.isEmpty || normalizedPhone == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('شماره موبایل باید با فرمت 09 و 11 رقم باشد')),
+        );
+        setState(() => _isLoading = false);
+        return;
+      }
+
+      _usernameController.text = username;
+      emailController.text = email;
+      _phoneController.text = normalizedPhone;
 
       // بررسی نام کاربری تکراری
       final response = await supabase
@@ -512,7 +541,8 @@ class _EditProfileState extends ConsumerState<EditProfile> {
       }
 
       // به‌روزرسانی ایمیل کاربر اگر تغییر کرده باشد
-      final currentEmail = supabase.auth.currentUser!.email;
+      final currentEmail =
+          supabase.auth.currentUser!.email?.trim().toLowerCase();
       bool emailChangeRequested = false;
 
       if (currentEmail != email) {
@@ -520,11 +550,8 @@ class _EditProfileState extends ConsumerState<EditProfile> {
           // استفاده از طرح URI مستقیم اپلیکیشن برای ریدایرکت
           final redirectUrl = 'vista://auth/email-change';
 
-          print(
-              'Requesting email change from $currentEmail to $email with redirectUrl: $redirectUrl');
-
           // درخواست تغییر ایمیل با تنظیم آدرس ریدایرکت
-          final result = await supabase.auth.updateUser(
+          await supabase.auth.updateUser(
             UserAttributes(
               email: email,
               data: {
@@ -533,7 +560,7 @@ class _EditProfileState extends ConsumerState<EditProfile> {
             ),
           );
 
-          logInfo('Update user response: ${result.user?.email}');
+          logInfo('Update user response received');
 
           emailChangeRequested = true;
 
@@ -558,15 +585,18 @@ class _EditProfileState extends ConsumerState<EditProfile> {
       }
 
       final data = await ref.read(profileProvider.future);
-      final String newPhone = _phoneController.text.trim();
-      final bool phoneChanged =
-          data != null && newPhone != (data['phone_number'] ?? "");
+      final String currentPhone =
+          normalizePhone09((data?['phone_number'] ?? '').toString()) ?? '';
+      final bool phoneChanged = normalizedPhone != currentPhone;
 
-      if (phoneChanged && newPhone.isNotEmpty) {
+      if (phoneChanged) {
         try {
-          await ref.read(authNotifierProvider.notifier).sendOtp(newPhone);
+          await ref
+              .read(authControllerProvider.notifier)
+              .sendOtp(normalizedPhone);
           // Step 2: Show OTP Dialog
-          final bool verified = await showOtpDialog(context, ref, newPhone);
+          final bool verified =
+              await showOtpDialog(context, ref, normalizedPhone);
           if (!verified) {
             setState(() => _isLoading = false);
             return; // Exit if OTP verification failed or canceled
@@ -582,13 +612,13 @@ class _EditProfileState extends ConsumerState<EditProfile> {
       }
 
       // به‌روزرسانی پروفایل
-      final updates = {
+      final updates = sanitizeProfilePayload({
         'username': username,
-        'full_name': fullNameController.text,
-        'bio': bioController.text,
+        'full_name': fullNameController.text.trim(),
+        'bio': bioController.text.trim(),
         'birth_date': _birthDate,
-        'phone_number': newPhone, // Updated to correct column name
-      };
+        'phone_number': normalizedPhone,
+      });
 
       await supabase
           .from('profiles')
@@ -724,13 +754,9 @@ class _EditProfileState extends ConsumerState<EditProfile> {
                             if (value == null || value.isEmpty) {
                               return 'نام کاربری نمی‌تواند خالی باشد';
                             }
-                            if (value.length < 5) {
-                              return 'نام کاربری باید حداقل ۵ حرف داشته باشد';
-                            }
-                            if (!_usernamePattern.hasMatch(value)) {
-                              return 'فقط حروف کوچک انگلیسی، اعداد و علامت‌های - . _ مجاز است';
-                            }
-                            return null;
+                            final result = validateUsername(
+                                normalizeDigits(value).trim().toLowerCase());
+                            return result.isValid ? null : result.message;
                           },
                         ),
                         const SizedBox(height: 16),

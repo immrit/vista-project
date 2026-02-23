@@ -1,9 +1,16 @@
-// lib/features/chat/widgets/vista_emoji_panel.dart
-
+import 'dart:async';
 import 'dart:ui' as ui;
+
+import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
+import 'package:emoji_picker_flutter/locales/default_emoji_set_locale.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../emoji/domain/emoji_render_policy.dart';
+import '../../emoji/domain/telegram_emoji_lookup.dart';
+import '../../emoji/widgets/telegram_emoji_inline.dart';
+import '../utils/grapheme_text_editing.dart';
 import 'gif_picker_widget.dart';
 
 enum PanelView { emoji, gif }
@@ -11,7 +18,7 @@ enum PanelView { emoji, gif }
 class VistaEmojiPanel extends StatefulWidget {
   final TextEditingController controller;
   final double height;
-  final Function(String gifUrl)? onGifSelected; // تابع اصلی اتصال به چت
+  final Function(String gifUrl)? onGifSelected;
 
   const VistaEmojiPanel({
     super.key,
@@ -25,19 +32,31 @@ class VistaEmojiPanel extends StatefulWidget {
 }
 
 class _VistaEmojiPanelState extends State<VistaEmojiPanel> {
+  static const String _recentsStorageKey = 'vista_recent_emojis_v1';
+
   PanelView _currentView = PanelView.emoji;
   int _selectedCategoryIndex = 0;
   late final PageController _pageController;
+  late final TextEditingController _searchController;
+
+  bool _useTelegramPanel = false;
+  String _searchQuery = '';
+  List<String> _recentEmojis = <String>[];
+  Map<Category, List<Emoji>> _emojiByCategory = <Category, List<Emoji>>{};
 
   final List<_EmojiCategory> _categories = const [
     _EmojiCategory(icon: Icons.access_time_rounded, category: Category.RECENT),
     _EmojiCategory(
-        icon: Icons.emoji_emotions_rounded, category: Category.SMILEYS),
+      icon: Icons.emoji_emotions_rounded,
+      category: Category.SMILEYS,
+    ),
     _EmojiCategory(icon: Icons.pets_rounded, category: Category.ANIMALS),
     _EmojiCategory(
         icon: Icons.directions_car_rounded, category: Category.TRAVEL),
     _EmojiCategory(
-        icon: Icons.sports_soccer_rounded, category: Category.ACTIVITIES),
+      icon: Icons.sports_soccer_rounded,
+      category: Category.ACTIVITIES,
+    ),
     _EmojiCategory(icon: Icons.lightbulb_rounded, category: Category.OBJECTS),
     _EmojiCategory(icon: Icons.tag_rounded, category: Category.SYMBOLS),
     _EmojiCategory(icon: Icons.flag_rounded, category: Category.FLAGS),
@@ -47,62 +66,128 @@ class _VistaEmojiPanelState extends State<VistaEmojiPanel> {
   void initState() {
     super.initState();
     _pageController = PageController();
+    _searchController = TextEditingController();
+    _searchController.addListener(_onSearchChanged);
+    unawaited(_initializePanelMode());
   }
 
   @override
   void dispose() {
     _pageController.dispose();
+    _searchController
+      ..removeListener(_onSearchChanged)
+      ..dispose();
     super.dispose();
+  }
+
+  Future<void> _initializePanelMode() async {
+    await TelegramEmojiLookup.instance.load();
+    final useTelegram = EmojiRenderPolicy.useTelegramEmojiPanel();
+    final categories = _loadEmojiCatalog();
+    final recents = await _loadRecentEmojis();
+    if (!mounted) return;
+    setState(() {
+      _useTelegramPanel = useTelegram;
+      _emojiByCategory = categories;
+      _recentEmojis = recents;
+    });
+  }
+
+  Map<Category, List<Emoji>> _loadEmojiCatalog() {
+    final set = getDefaultEmojiLocale(const Locale('en'));
+    final map = <Category, List<Emoji>>{};
+    for (final item in set) {
+      map[item.category] = item.emoji;
+    }
+    return map;
+  }
+
+  Future<List<String>> _loadRecentEmojis() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getStringList(_recentsStorageKey) ?? <String>[];
+    } catch (_) {
+      return <String>[];
+    }
+  }
+
+  Future<void> _saveRecentEmoji(String emoji) async {
+    if (emoji.trim().isEmpty) return;
+    _recentEmojis.remove(emoji);
+    _recentEmojis.insert(0, emoji);
+    if (_recentEmojis.length > 48) {
+      _recentEmojis = _recentEmojis.sublist(0, 48);
+    }
+    if (mounted) setState(() {});
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(_recentsStorageKey, _recentEmojis);
+    } catch (_) {}
+  }
+
+  void _onSearchChanged() {
+    if (!mounted) return;
+    setState(() {
+      _searchQuery = _searchController.text.trim().toLowerCase();
+    });
   }
 
   void _onCategoryTap(int index) {
     HapticFeedback.lightImpact();
     setState(() => _selectedCategoryIndex = index);
-    _pageController.animateToPage(
-      index,
-      duration: const Duration(milliseconds: 200),
-      curve: Curves.easeInOut,
-    );
+    if (!_useTelegramPanel) {
+      _pageController.animateToPage(
+        index,
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeInOut,
+      );
+    }
   }
 
-  void _onEmojiSelected(Category category, Emoji emoji) {
+  void _insertEmoji(String emojiText) {
     HapticFeedback.lightImpact();
-    final text = widget.controller.text;
-    final selection = widget.controller.selection;
-    final start = selection.isValid ? selection.start : text.length;
-    final end = selection.isValid ? selection.end : text.length;
-    final newText = text.replaceRange(start, end, emoji.emoji);
-    widget.controller.value = TextEditingValue(
-      text: newText,
-      selection: TextSelection.collapsed(offset: start + emoji.emoji.length),
+    widget.controller.value = GraphemeTextEditing.insertText(
+      widget.controller.value,
+      emojiText,
     );
+    unawaited(_saveRecentEmoji(emojiText));
+  }
+
+  void _onEmojiSelected(Category _, Emoji emoji) {
+    _insertEmoji(emoji.emoji);
   }
 
   void _onBackspace() {
     HapticFeedback.lightImpact();
-    final text = widget.controller.text;
-    final selection = widget.controller.selection;
-    if (selection.isValid && !selection.isCollapsed) {
-      final newText = text.replaceRange(selection.start, selection.end, '');
-      widget.controller.value = TextEditingValue(
-        text: newText,
-        selection: TextSelection.collapsed(offset: selection.start),
-      );
-      return;
+    widget.controller.value =
+        GraphemeTextEditing.backspace(widget.controller.value);
+  }
+
+  List<Emoji> _currentTelegramEmojis() {
+    final selectedCategory = _categories[_selectedCategoryIndex].category;
+
+    if (_searchQuery.isNotEmpty) {
+      final all = _emojiByCategory.values.expand((e) => e);
+      return all
+          .where(
+            (e) =>
+                e.emoji.contains(_searchQuery) ||
+                e.name.toLowerCase().contains(_searchQuery),
+          )
+          .toList(growable: false);
     }
-    if (text.isNotEmpty) {
-      final cursorPosition = selection.isValid ? selection.start : text.length;
-      if (cursorPosition > 0) {
-        final newText = text.substring(0, cursorPosition - 1) +
-            (cursorPosition < text.length
-                ? text.substring(cursorPosition)
-                : '');
-        widget.controller.value = TextEditingValue(
-          text: newText,
-          selection: TextSelection.collapsed(offset: cursorPosition - 1),
-        );
+
+    if (selectedCategory == Category.RECENT) {
+      if (_recentEmojis.isEmpty) {
+        return (_emojiByCategory[Category.SMILEYS] ?? const <Emoji>[])
+            .take(40)
+            .toList(growable: false);
       }
+      return _recentEmojis.map((e) => Emoji(e, e)).toList(growable: false);
     }
+
+    return _emojiByCategory[selectedCategory] ?? const <Emoji>[];
   }
 
   @override
@@ -121,32 +206,24 @@ class _VistaEmojiPanelState extends State<VistaEmojiPanel> {
       color: backgroundColor,
       child: Stack(
         children: [
-          // 1. محتوای اصلی (ایموجی یا گیف)
           Padding(
             padding: const EdgeInsets.only(bottom: 45),
             child: IndexedStack(
               index: _currentView == PanelView.emoji ? 0 : 1,
               children: [
-                _buildEmojiPage(backgroundColor),
-                // ✅ بخش گیف: اتصال مستقیم به تابع پدر
+                _useTelegramPanel
+                    ? _buildTelegramEmojiView(backgroundColor, isDark)
+                    : _buildSystemEmojiPage(backgroundColor),
                 GifPickerWidget(
-                  // حذف کلید ثابت برای جلوگیری از مشکل کش شدن ویجت
-                  // key: const ValueKey('gif_picker'),
                   onGifSelected: (url) {
-                    print("🚀 VistaPanel: GIF Selected -> $url");
                     if (widget.onGifSelected != null) {
                       widget.onGifSelected!(url);
-                    } else {
-                      print(
-                          "❌ Error: onGifSelected callback is NULL in VistaPanel");
                     }
                   },
                 ),
               ],
             ),
           ),
-
-          // 2. نوار ابزار پایین (تب‌ها)
           Positioned(
             left: 0,
             right: 0,
@@ -168,14 +245,23 @@ class _VistaEmojiPanelState extends State<VistaEmojiPanel> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
-                      _buildTabBtn(Icons.gif_box_outlined, PanelView.gif,
-                          activeIconColor, isDark),
-                      _buildTabBtn(Icons.emoji_emotions_outlined,
-                          PanelView.emoji, activeIconColor, isDark),
+                      _buildTabBtn(
+                        Icons.gif_box_outlined,
+                        PanelView.gif,
+                        activeIconColor,
+                        isDark,
+                      ),
+                      _buildTabBtn(
+                        Icons.emoji_emotions_outlined,
+                        PanelView.emoji,
+                        activeIconColor,
+                        isDark,
+                      ),
                       Container(
-                          width: 1,
-                          height: 16,
-                          color: theme.dividerColor.withOpacity(0.3)),
+                        width: 1,
+                        height: 16,
+                        color: theme.dividerColor.withOpacity(0.3),
+                      ),
                       if (_currentView == PanelView.emoji)
                         Expanded(
                           child: ListView.builder(
@@ -227,9 +313,11 @@ class _VistaEmojiPanelState extends State<VistaEmojiPanel> {
                             width: 60,
                             alignment: Alignment.center,
                             color: Colors.transparent,
-                            child: Icon(Icons.backspace_outlined,
-                                color: isDark ? Colors.white70 : Colors.black54,
-                                size: 22),
+                            child: Icon(
+                              Icons.backspace_outlined,
+                              color: isDark ? Colors.white70 : Colors.black54,
+                              size: 22,
+                            ),
                           ),
                         )
                       else
@@ -245,7 +333,88 @@ class _VistaEmojiPanelState extends State<VistaEmojiPanel> {
     );
   }
 
-  Widget _buildEmojiPage(Color bgColor) {
+  Widget _buildTelegramEmojiView(Color bgColor, bool isDark) {
+    final emojis = _currentTelegramEmojis();
+    final hintColor = isDark ? Colors.white38 : Colors.black38;
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(10, 10, 10, 6),
+          child: TextField(
+            controller: _searchController,
+            textDirection: TextDirection.rtl,
+            style: TextStyle(
+              color: isDark ? Colors.white : Colors.black87,
+              fontSize: 14,
+            ),
+            decoration: InputDecoration(
+              hintText: 'جستجوی ایموجی',
+              hintStyle: TextStyle(color: hintColor),
+              isDense: true,
+              filled: true,
+              fillColor: isDark ? const Color(0xFF141416) : Colors.white,
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
+              ),
+              suffixIcon: _searchQuery.isEmpty
+                  ? null
+                  : IconButton(
+                      onPressed: _searchController.clear,
+                      icon: Icon(
+                        Icons.close_rounded,
+                        size: 18,
+                        color: hintColor,
+                      ),
+                    ),
+            ),
+          ),
+        ),
+        Expanded(
+          child: emojis.isEmpty
+              ? Center(
+                  child: Text(
+                    'ایموجی پیدا نشد',
+                    style: TextStyle(color: hintColor, fontSize: 13),
+                  ),
+                )
+              : GridView.builder(
+                  padding: const EdgeInsets.fromLTRB(8, 2, 8, 8),
+                  physics: const BouncingScrollPhysics(),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 8,
+                    mainAxisSpacing: 2,
+                    crossAxisSpacing: 2,
+                  ),
+                  itemCount: emojis.length,
+                  itemBuilder: (context, index) {
+                    final emojiText = emojis[index].emoji;
+                    return GestureDetector(
+                      onTap: () => _insertEmoji(emojiText),
+                      child: Container(
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: bgColor,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: TelegramEmojiInline(
+                          emoji: emojiText,
+                          size: 29,
+                          fallbackStyle: const TextStyle(fontSize: 26),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSystemEmojiPage(Color bgColor) {
     return PageView.builder(
       controller: _pageController,
       onPageChanged: (index) => setState(() => _selectedCategoryIndex = index),
@@ -256,8 +425,7 @@ class _VistaEmojiPanelState extends State<VistaEmojiPanel> {
               _onEmojiSelected(cat ?? _categories[index].category, emoji),
           config: Config(
             height: widget.height - 45,
-            checkPlatformCompatibility:
-                false, // ❌ جلوگیری از استایل iOS که باعث هدر شناور می‌شود
+            checkPlatformCompatibility: false,
             emojiViewConfig: EmojiViewConfig(
               columns: 8,
               emojiSizeMax: 28,
@@ -266,12 +434,12 @@ class _VistaEmojiPanelState extends State<VistaEmojiPanel> {
               horizontalSpacing: 0,
               gridPadding: EdgeInsets.zero,
               recentsLimit: 28,
-              buttonMode: ButtonMode.MATERIAL, // ✅ استایل متریال ساده‌تر
+              buttonMode: ButtonMode.MATERIAL,
             ),
             categoryViewConfig: CategoryViewConfig(
               initCategory: _categories[index].category,
               backgroundColor: bgColor,
-              tabBarHeight: 0, // مخفی کردن تب‌بار
+              tabBarHeight: 0,
               dividerColor: Colors.transparent,
               indicatorColor: Colors.transparent,
               iconColor: Colors.transparent,
@@ -288,7 +456,11 @@ class _VistaEmojiPanelState extends State<VistaEmojiPanel> {
   }
 
   Widget _buildTabBtn(
-      IconData icon, PanelView view, Color activeColor, bool isDark) {
+    IconData icon,
+    PanelView view,
+    Color activeColor,
+    bool isDark,
+  ) {
     final isSelected = _currentView == view;
     return GestureDetector(
       onTap: () {
@@ -313,5 +485,9 @@ class _VistaEmojiPanelState extends State<VistaEmojiPanel> {
 class _EmojiCategory {
   final IconData icon;
   final Category category;
-  const _EmojiCategory({required this.icon, required this.category});
+
+  const _EmojiCategory({
+    required this.icon,
+    required this.category,
+  });
 }

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../services/auth_api_service.dart';
+import '../data/auth_repository.dart';
 import '../widgets/ribbon_background.dart';
 
 class ResetPasswordScreen extends StatefulWidget {
@@ -49,7 +49,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
     });
 
     try {
-      final options = await AuthApiService().getRecoveryOptions(identifier);
+      final options = await AuthRepository().getRecoveryOptions(identifier);
       if (!mounted) return;
       setState(() {
         _options = options;
@@ -70,7 +70,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
   Future<void> _selectOption(RecoveryOption option) async {
     setState(() => _isLoading = true);
     try {
-      await AuthApiService().sendRecoveryCode(option.id);
+      await AuthRepository().sendRecoveryCode(option.id);
       if (!mounted) return;
       Navigator.pushNamed(
         context,

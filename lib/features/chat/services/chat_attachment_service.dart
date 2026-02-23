@@ -10,9 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as p;
-import '../../../services/uploadFileChatService.dart';
-import '../../../services/uploadImageChatService.dart';
-import '../../../services/uploadAudioChatService.dart';
+import '../../../core/services/media_upload_service.dart';
 import '../../../services/audio_recording_service.dart';
 import '../../../security/logging_utility.dart';
 
@@ -133,7 +131,7 @@ class ChatAttachmentService {
     void Function(double)? onProgress,
   }) async {
     try {
-      final url = await ChatImageUploadService.uploadChatImage(
+      final url = await MediaUploadService.uploadChatImage(
         file,
         conversationId,
         onProgress: onProgress,
@@ -187,7 +185,7 @@ class ChatAttachmentService {
   }) async {
     try {
       // برای ویدیو از uploadChatBinaryFile استفاده میکنیم
-      final url = await ChatFileUploadService.uploadChatBinaryFile(
+      final url = await MediaUploadService.uploadChatBinaryFile(
         file,
         conversationId,
         onProgress: onProgress,
@@ -267,20 +265,20 @@ class ChatAttachmentService {
       AttachmentType resultType = AttachmentType.file;
 
       if (extension == 'pdf') {
-        url = await ChatFileUploadService.uploadChatPdfFile(
+        url = await MediaUploadService.uploadChatPdfFile(
           file,
           conversationId,
           onProgress: onProgress,
         );
       } else if (_isAudioExtension(extension)) {
-        url = await ChatAudioUploadService.uploadChatAudio(
+        url = await MediaUploadService.uploadChatAudio(
           file,
           conversationId,
           onProgress: onProgress,
         );
         resultType = AttachmentType.audio;
       } else {
-        url = await ChatFileUploadService.uploadChatBinaryFile(
+        url = await MediaUploadService.uploadChatBinaryFile(
           file,
           conversationId,
           onProgress: onProgress,
@@ -390,7 +388,7 @@ class ChatAttachmentService {
     void Function(double)? onProgress,
   }) async {
     try {
-      final url = await ChatAudioUploadService.uploadChatAudio(
+      final url = await MediaUploadService.uploadChatAudio(
         audioFile,
         conversationId,
         onProgress: onProgress,
@@ -426,7 +424,7 @@ class ChatAttachmentService {
     void Function(double)? onProgress,
   }) async {
     try {
-      final url = await ChatAudioUploadService.uploadChatAudio(
+      final url = await MediaUploadService.uploadChatAudio(
         audioFile,
         conversationId,
         onProgress: onProgress,
@@ -480,7 +478,7 @@ class ChatAttachmentService {
 
       final file = File(result.files.first.path!);
 
-      final url = await ChatAudioUploadService.uploadChatAudio(
+      final url = await MediaUploadService.uploadChatAudio(
         file,
         conversationId,
         onProgress: onProgress,

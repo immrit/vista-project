@@ -14,6 +14,7 @@ class AdaptiveEffectsController extends StateNotifier<AdaptiveEffectsState> {
   final FrameBudgetService _frameBudgetService;
 
   bool _dynamicEffectsEnabled = true;
+  bool _gpuAccelerationEnabled = true;
   double _maxBlurSigma = 10.0;
   String _chatEntryModePref = 'adaptive';
   bool _chatPerfEnabled = true;
@@ -51,6 +52,8 @@ class AdaptiveEffectsController extends StateNotifier<AdaptiveEffectsState> {
   }) {
     if (rendering != null) {
       _dynamicEffectsEnabled = rendering['dynamic_effects'] as bool? ?? true;
+      _gpuAccelerationEnabled =
+          rendering['enable_gpu_acceleration'] as bool? ?? true;
       _maxBlurSigma =
           ((rendering['max_blur_sigma'] as num?) ?? 10.0).toDouble();
     }
@@ -102,18 +105,26 @@ class AdaptiveEffectsController extends StateNotifier<AdaptiveEffectsState> {
         level = ChatEffectsLevel.low;
       }
     }
+    if (!_gpuAccelerationEnabled && level == ChatEffectsLevel.high) {
+      level = ChatEffectsLevel.medium;
+    }
 
     final blurSigma = switch (level) {
       ChatEffectsLevel.low => 0.0,
       ChatEffectsLevel.medium => 4.0,
       ChatEffectsLevel.high => 8.0,
     }
-        .clamp(0.0, _maxBlurSigma);
+        .clamp(0.0, _gpuAccelerationEnabled ? _maxBlurSigma : 4.0);
 
-    final chatEntryMode = _resolveEntryMode(level, isFast);
+    var chatEntryMode = _resolveEntryMode(level, isFast);
+    if (!_gpuAccelerationEnabled &&
+        chatEntryMode == ChatEntryAnimationMode.full) {
+      chatEntryMode = ChatEntryAnimationMode.minimal;
+    }
     final enableMessageEntryAnimation =
         chatEntryMode != ChatEntryAnimationMode.off;
-    final allowHeavyBlur = level == ChatEffectsLevel.high && !isFast;
+    final allowHeavyBlur =
+        _gpuAccelerationEnabled && level == ChatEffectsLevel.high && !isFast;
 
     final shouldUpdateBudget = _shouldUpdateBudget(
       previous: state.budgetSnapshot,

@@ -1,6 +1,6 @@
-// lib/features/chat/widgets/edit_message_dialog.dart
+﻿// lib/features/chat/widgets/edit_message_dialog.dart
 //
-// دیالوگ ویرایش پیام - با الهام از تلگرام
+// دیالوگ ویرایش پیام - با الهام از ویستا
 //
 
 import 'package:flutter/material.dart';

@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../../services/session_manager_service_v2.dart';
 
 final supabase = Supabase.instance.client;
@@ -10,9 +11,12 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 const String defaultAvatarUrl = 'lib/utils/images/default-avatar.jpg';
 
-const String supabaseCdnUrl = 'https://api.coffevista.ir:8443';
-const String supabaseDirectUrl = 'http://cdn.exiritshop.ir:8000';
-const String supabaseAnonKey =
+String get supabaseCdnUrl =>
+    dotenv.env['SUPABASE_CDN_URL'] ?? 'https://api.coffevista.ir:8443';
+String get supabaseDirectUrl =>
+    dotenv.env['SUPABASE_DIRECT_URL'] ?? 'http://cdn.exiritshop.ir:8000';
+String get supabaseAnonKey =>
+    dotenv.env['SUPABASE_ANON_KEY'] ??
     'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE';
 
 /// HTTP Client با timeout و retry mechanism برای Supabase
@@ -177,7 +181,6 @@ extension PostgrestFilterBuilderExtensions on PostgrestFilterBuilder {
   }
 }
 
-
 bool _isSecureUrl(String url) {
   try {
     final uri = Uri.parse(url);
@@ -186,6 +189,7 @@ bool _isSecureUrl(String url) {
     return false;
   }
 }
+
 Future<bool> checkSupabaseConnectivity() async {
   try {
     await Supabase.instance.client.from('profiles').select().limit(1).timeout(
@@ -335,8 +339,3 @@ void _logSessionStatus() {
     print('⚠️ Error checking session status: $e');
   }
 }
-
-
-
-
-

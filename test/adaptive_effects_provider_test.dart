@@ -110,5 +110,36 @@ void main() {
       expect(controller.state.chatEntryMode, ChatEntryAnimationMode.full);
       expect(controller.state.isFastScrolling, isFalse);
     });
+
+    test('limits heavy effects when gpu acceleration is disabled', () {
+      final service = FrameBudgetService.instance;
+      service.stopMonitoring();
+      service.profileNotifier.value = ChatPerformanceProfile.high;
+      service.snapshotNotifier.value = const FrameBudgetSnapshot(
+        p50Ms: 8.0,
+        p95Ms: 12.0,
+        p99Ms: 16.0,
+        jankRatio: 0.01,
+        sampleCount: 120,
+      );
+
+      final controller = AdaptiveEffectsController(service);
+      addTearDown(controller.dispose);
+      controller.applySettings(
+        rendering: {
+          'dynamic_effects': true,
+          'enable_gpu_acceleration': false,
+          'max_blur_sigma': 12.0,
+        },
+        animations: {
+          'chat_entry_mode': 'full',
+        },
+      );
+
+      expect(controller.state.effectsLevel, isNot(ChatEffectsLevel.high));
+      expect(controller.state.allowHeavyBlur, isFalse);
+      expect(controller.state.blurSigma, lessThanOrEqualTo(4.0));
+      expect(controller.state.chatEntryMode, ChatEntryAnimationMode.minimal);
+    });
   });
 }

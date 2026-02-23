@@ -161,6 +161,9 @@ class _ThemeSettingsPageState extends ConsumerState<ThemeSettingsPage> {
   Widget _buildPerformanceSettingsCard(
       BuildContext context, bool isDark, ColorScheme colorScheme) {
     final performanceAsync = ref.watch(performanceSettingsProvider);
+    final appSettingsAsync = ref.watch(advancedAppSettingsProvider);
+    final appearance =
+        appSettingsAsync.value?['appearance'] as Map<String, dynamic>? ?? {};
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16.0),
@@ -262,8 +265,8 @@ class _ThemeSettingsPageState extends ConsumerState<ThemeSettingsPage> {
                   SettingsListItem(
                     icon: Icons.memory_rounded,
                     iconColor: isDark ? Colors.white : Colors.black,
-                    title: 'GPU Acceleration',
-                    subtitle: 'افزایش سرعت رندرینگ',
+                    title: 'شتاب‌دهی GPU',
+                    subtitle: 'کنترل افکت‌های سنگین و بهبود روانی رندر',
                     trailing: Switch(
                       value:
                           rendering['enable_gpu_acceleration'] as bool? ?? true,
@@ -284,8 +287,8 @@ class _ThemeSettingsPageState extends ConsumerState<ThemeSettingsPage> {
                   SettingsListItem(
                     icon: Icons.auto_awesome_rounded,
                     iconColor: isDark ? Colors.white : Colors.black,
-                    title: 'Dynamic Effects',
-                    subtitle: 'Auto-adjust blur and motion by frame budget',
+                    title: 'افکت‌های پویا',
+                    subtitle: 'تنظیم خودکار تاری و حرکت بر اساس فریم‌ریت',
                     trailing: Switch(
                       value: rendering['dynamic_effects'] as bool? ?? true,
                       activeThumbColor: isDark ? Colors.white : Colors.black,
@@ -302,7 +305,7 @@ class _ThemeSettingsPageState extends ConsumerState<ThemeSettingsPage> {
                   SettingsListItem(
                     icon: Icons.blur_on_rounded,
                     iconColor: isDark ? Colors.white : Colors.black,
-                    title: 'Max Blur Sigma',
+                    title: 'حداکثر شدت تاری',
                     subtitle:
                         (rendering['max_blur_sigma'] as num? ?? 10).toString(),
                     onTap: () => _showMaxBlurSigmaDialog(context, rendering),
@@ -311,17 +314,28 @@ class _ThemeSettingsPageState extends ConsumerState<ThemeSettingsPage> {
                   SettingsListItem(
                     icon: Icons.chat_bubble_outline_rounded,
                     iconColor: isDark ? Colors.white : Colors.black,
-                    title: 'Chat Entry Motion',
-                    subtitle: (animations['chat_entry_mode'] as String?) ??
-                        'adaptive',
+                    title: 'انیمیشن ورود به چت',
+                    subtitle: _chatEntryModeLabel(
+                      (animations['chat_entry_mode'] as String?) ?? 'adaptive',
+                    ),
                     onTap: () => _showChatEntryModeDialog(context, animations),
+                  ),
+                  _buildDivider(),
+                  SettingsListItem(
+                    icon: Icons.emoji_emotions_rounded,
+                    iconColor: isDark ? Colors.white : Colors.black,
+                    title: 'استایل ایموجی',
+                    subtitle: _emojiStyleLabel(
+                      (appearance['emoji_style'] as String? ?? 'custom'),
+                    ),
+                    onTap: () => _showEmojiStyleDialog(context, appearance),
                   ),
                   _buildDivider(),
                   SettingsListItem(
                     icon: Icons.flag_rounded,
                     iconColor: isDark ? Colors.white : Colors.black,
-                    title: 'chat_perf_v1',
-                    subtitle: 'Master performance rollout',
+                    title: 'شتاب‌دهنده پرفورمنس چت (V1)',
+                    subtitle: 'استفاده از الگوریتم جدید عملکرد',
                     trailing: Switch(
                       value: featureFlags['chat_perf_v1'] as bool? ?? true,
                       activeThumbColor: isDark ? Colors.white : Colors.black,
@@ -341,8 +355,8 @@ class _ThemeSettingsPageState extends ConsumerState<ThemeSettingsPage> {
                   SettingsListItem(
                     icon: Icons.flag_circle_rounded,
                     iconColor: isDark ? Colors.white : Colors.black,
-                    title: 'adaptive_effects_v1',
-                    subtitle: 'Enable adaptive blur and motion policy',
+                    title: 'افکت‌های تطبیقی (V1)',
+                    subtitle: 'فعال‌سازی هوشمند تاری و تحرک با افت فریم',
                     trailing: Switch(
                       value:
                           featureFlags['adaptive_effects_v1'] as bool? ?? true,
@@ -363,8 +377,8 @@ class _ThemeSettingsPageState extends ConsumerState<ThemeSettingsPage> {
                   SettingsListItem(
                     icon: Icons.flag_outlined,
                     iconColor: isDark ? Colors.white : Colors.black,
-                    title: 'motion_tokens_v1',
-                    subtitle: 'Enable new chat motion token pack',
+                    title: 'توکن‌های حرکتی (V1)',
+                    subtitle: 'فعال‌سازی بسته انیمیشن‌های روان و فشرده',
                     trailing: Switch(
                       value: featureFlags['motion_tokens_v1'] as bool? ?? true,
                       activeThumbColor: isDark ? Colors.white : Colors.black,
@@ -613,12 +627,12 @@ class _ThemeSettingsPageState extends ConsumerState<ThemeSettingsPage> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Chat entry motion'),
+        title: const Text('انیمیشن ورود به چت'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             RadioListTile<String>(
-              title: const Text('Adaptive'),
+              title: const Text('تطبیقی'),
               value: 'adaptive',
               groupValue: currentMode,
               onChanged: (value) async {
@@ -631,7 +645,7 @@ class _ThemeSettingsPageState extends ConsumerState<ThemeSettingsPage> {
               },
             ),
             RadioListTile<String>(
-              title: const Text('Full'),
+              title: const Text('کامل'),
               value: 'full',
               groupValue: currentMode,
               onChanged: (value) async {
@@ -644,7 +658,7 @@ class _ThemeSettingsPageState extends ConsumerState<ThemeSettingsPage> {
               },
             ),
             RadioListTile<String>(
-              title: const Text('Minimal'),
+              title: const Text('حداقل'),
               value: 'minimal',
               groupValue: currentMode,
               onChanged: (value) async {
@@ -657,7 +671,7 @@ class _ThemeSettingsPageState extends ConsumerState<ThemeSettingsPage> {
               },
             ),
             RadioListTile<String>(
-              title: const Text('Off'),
+              title: const Text('خاموش'),
               value: 'off',
               groupValue: currentMode,
               onChanged: (value) async {
@@ -684,7 +698,7 @@ class _ThemeSettingsPageState extends ConsumerState<ThemeSettingsPage> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Max blur sigma'),
+        title: const Text('حداکثر شدت تاری'),
         content: StatefulBuilder(
           builder: (context, setLocalState) {
             return Column(
@@ -708,7 +722,7 @@ class _ThemeSettingsPageState extends ConsumerState<ThemeSettingsPage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            child: const Text('انصراف'),
           ),
           TextButton(
             onPressed: () async {
@@ -722,7 +736,7 @@ class _ThemeSettingsPageState extends ConsumerState<ThemeSettingsPage> {
               });
               ref.invalidate(performanceSettingsProvider);
             },
-            child: const Text('Save'),
+            child: const Text('ذخیره'),
           ),
         ],
       ),
@@ -732,13 +746,37 @@ class _ThemeSettingsPageState extends ConsumerState<ThemeSettingsPage> {
   String _getColorBlindModeText(String mode) {
     switch (mode) {
       case 'protanopia':
-        return 'Protanopia (قرمز-سبز)';
+        return 'پروتانوپیا (اختلال قرمز-سبز)';
       case 'deuteranopia':
-        return 'Deuteranopia (قرمز-سبز)';
+        return 'دوتِرانوپیا (اختلال قرمز-سبز)';
       case 'tritanopia':
-        return 'Tritanopia (آبی-زرد)';
+        return 'تریتانوپیا (اختلال آبی-زرد)';
       default:
         return 'غیرفعال';
+    }
+  }
+
+  String _chatEntryModeLabel(String mode) {
+    switch (mode.toLowerCase()) {
+      case 'full':
+        return 'کامل';
+      case 'minimal':
+        return 'حداقل';
+      case 'off':
+        return 'خاموش';
+      case 'adaptive':
+      default:
+        return 'تطبیقی';
+    }
+  }
+
+  String _emojiStyleLabel(String style) {
+    switch (style.toLowerCase()) {
+      case 'system':
+        return 'سیستمی';
+      case 'custom':
+      default:
+        return 'اختصاصی (آفلاین)';
     }
   }
 
@@ -768,7 +806,7 @@ class _ThemeSettingsPageState extends ConsumerState<ThemeSettingsPage> {
               },
             ),
             RadioListTile<String>(
-              title: const Text('Protanopia (قرمز-سبز)'),
+              title: const Text('پروتانوپیا (اختلال قرمز-سبز)'),
               value: 'protanopia',
               groupValue: currentMode,
               onChanged: (value) async {
@@ -782,7 +820,7 @@ class _ThemeSettingsPageState extends ConsumerState<ThemeSettingsPage> {
               },
             ),
             RadioListTile<String>(
-              title: const Text('Deuteranopia (قرمز-سبز)'),
+              title: const Text('دوتِرانوپیا (اختلال قرمز-سبز)'),
               value: 'deuteranopia',
               groupValue: currentMode,
               onChanged: (value) async {
@@ -796,7 +834,7 @@ class _ThemeSettingsPageState extends ConsumerState<ThemeSettingsPage> {
               },
             ),
             RadioListTile<String>(
-              title: const Text('Tritanopia (آبی-زرد)'),
+              title: const Text('تریتانوپیا (اختلال آبی-زرد)'),
               value: 'tritanopia',
               groupValue: currentMode,
               onChanged: (value) async {
@@ -807,6 +845,55 @@ class _ThemeSettingsPageState extends ConsumerState<ThemeSettingsPage> {
                 });
                 ref.invalidate(advancedAppSettingsProvider);
                 ref.invalidate(dynamicThemeProvider);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showEmojiStyleDialog(
+      BuildContext context, Map<String, dynamic> appearance) {
+    final currentStyle =
+        (appearance['emoji_style'] as String? ?? 'custom').toLowerCase();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('استایل ایموجی'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            RadioListTile<String>(
+              title: const Text('اختصاصی (آفلاین)'),
+              value: 'custom',
+              groupValue: currentStyle,
+              onChanged: (value) async {
+                Navigator.pop(context);
+                final service = AdvancedSettingsService();
+                await service.updateAdvancedAppSettings({
+                  'appearance': {
+                    ...appearance,
+                    'emoji_style': value,
+                  }
+                });
+                ref.invalidate(advancedAppSettingsProvider);
+              },
+            ),
+            RadioListTile<String>(
+              title: const Text('سیستمی'),
+              value: 'system',
+              groupValue: currentStyle,
+              onChanged: (value) async {
+                Navigator.pop(context);
+                final service = AdvancedSettingsService();
+                await service.updateAdvancedAppSettings({
+                  'appearance': {
+                    ...appearance,
+                    'emoji_style': value,
+                  }
+                });
+                ref.invalidate(advancedAppSettingsProvider);
               },
             ),
           ],

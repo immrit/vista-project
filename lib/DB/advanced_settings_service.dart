@@ -81,6 +81,8 @@ class AdvancedSettingsService {
           'chat_perf_v1': true,
           'adaptive_effects_v1': true,
           'motion_tokens_v1': true,
+          'telegram_emoji_panel_v1': true,
+          'emoji_renderer_v1': true,
         },
 
         // 📊 تنظیمات داده
@@ -170,6 +172,7 @@ class AdvancedSettingsService {
           'font_family': 'default',
           'font_size': 'medium', // small, medium, large, xlarge
           'compact_mode': false,
+          'emoji_style': 'custom', // custom, system
         },
 
         // 🔊 صدا و لمسی
@@ -214,7 +217,25 @@ class AdvancedSettingsService {
       });
     }
 
+    _ensureNestedDefaults();
     await _saveToDisk();
+  }
+
+  void _ensureNestedDefaults() {
+    final appearance =
+        _appSettingsCache['appearance'] as Map<String, dynamic>? ?? {};
+    appearance.putIfAbsent('emoji_style', () => 'custom');
+    _appSettingsCache['appearance'] = appearance;
+
+    final featureFlags =
+        _performanceSettingsCache['feature_flags'] as Map<String, dynamic>? ??
+            {};
+    featureFlags.putIfAbsent('chat_perf_v1', () => true);
+    featureFlags.putIfAbsent('adaptive_effects_v1', () => true);
+    featureFlags.putIfAbsent('motion_tokens_v1', () => true);
+    featureFlags.putIfAbsent('telegram_emoji_panel_v1', () => true);
+    featureFlags.putIfAbsent('emoji_renderer_v1', () => true);
+    _performanceSettingsCache['feature_flags'] = featureFlags;
   }
 
   /// بارگذاری از دیسک

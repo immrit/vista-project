@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'dart:async';
@@ -182,7 +182,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
           ),
           if (profile != null && profile.isVerified) ...[
             const SizedBox(width: 4),
-            _buildVerificationBadge(profile!),
+            _buildVerificationBadge(profile),
           ],
         ],
       ),
@@ -1355,7 +1355,7 @@ class _PostsGridViewState extends ConsumerState<_PostsGridView> {
   }
 }
 
-/// آیتم لیست پست (طراحی شبیه توییتر/تردز)
+/// آیتم لیست پست (طراحی شبیه شبکه/تردز)
 class _PostListItem extends ConsumerWidget {
   final PublicPostModel post;
   final bool isDark;

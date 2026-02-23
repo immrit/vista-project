@@ -1,4 +1,4 @@
-import '../../security/logging_utility.dart';
+﻿import '../../security/logging_utility.dart';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -114,12 +114,12 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
                   children: [
                     _buildAppIcon(
                       icon: _buildInstagramIcon(),
-                      label: 'استوری اینستاگرام',
+                      label: 'استوری',
                       onTap: _shareToInstagramStories,
                     ),
                     _buildAppIcon(
                       icon: _buildWhatsAppIcon(),
-                      label: 'واتساپ',
+                      label: 'پیام‌رسان',
                       onTap: _shareToWhatsApp,
                     ),
                     _buildAppIcon(
@@ -350,7 +350,7 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
-                'تصویر استوری آماده شد، در حال اشتراک‌گذاری به اینستاگرام...',
+                'تصویر استوری آماده شد، در حال اشتراک‌گذاری...',
               ),
               backgroundColor: Colors.green,
               duration: Duration(seconds: 2),
@@ -379,7 +379,7 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              '❌ خطا در اشتراک‌گذاری به اینستاگرام: لطفا دوباره امتحان کنید',
+              '❌ خطا در اشتراک‌گذاری: لطفا دوباره امتحان کنید',
             ),
             backgroundColor: Colors.red,
             duration: Duration(seconds: 4),
@@ -398,10 +398,10 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
     }
   }
 
-  /// اشتراک‌گذاری مستقیم به اینستاگرام
+  /// اشتراک‌گذاری مستقیم به ویستا
   Future<void> _shareToInstagramDirectly(File imageFile) async {
     try {
-      // تصویر ترکیبی را مستقیماً به اینستاگرام ارسال می‌کنیم
+      // تصویر ترکیبی را مستقیماً به ویستا ارسال می‌کنیم
       await _shareToInstagramViaIntent(imageFile);
     } catch (e) {
       logInfo('Direct sharing failed: $e');
@@ -410,13 +410,13 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
     }
   }
 
-  /// اشتراک‌گذاری به اینستاگرام از طریق Intent
+  /// اشتراک‌گذاری به ویستا از طریق Intent
   Future<void> _shareToInstagramViaIntent(File imageFile) async {
     try {
       // ایجاد Intent برای اشتراک‌گذاری
       const platform = MethodChannel('com.vista.app/share');
 
-      // ارسال تصویر ترکیبی به اینستاگرام
+      // ارسال تصویر ترکیبی به ویستا
       final result = await platform.invokeMethod('shareToInstagram', {
         'imagePath': imageFile.path,
         'packageName': 'com.instagram.android',
@@ -426,7 +426,7 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
         if (result == "Instagram opened successfully") {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('در حال باز کردن اینستاگرام...'),
+              content: Text('در حال باز کردن برنامه مقصد...'),
               backgroundColor: Colors.green,
               duration: Duration(seconds: 2),
             ),
@@ -434,7 +434,7 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('در حال تلاش برای باز کردن اینستاگرام...'),
+              content: Text('در حال تلاش برای باز کردن برنامه مقصد...'),
               backgroundColor: Colors.blue,
               duration: Duration(seconds: 2),
             ),

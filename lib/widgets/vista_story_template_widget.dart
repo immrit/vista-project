@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'dart:math' as math;
 import '../../model/publicPostModel.dart';
 import 'verification_badge_icon.dart';
@@ -29,7 +29,7 @@ class VistaStoryTemplateWidget extends StatelessWidget {
     return RepaintBoundary(
       key: repaintBoundaryKey,
       child: Container(
-        width: 1080, // ابعاد استاندارد اینستاگرام
+        width: 1080, // ابعاد استاندارد ویستا
         height: 1920, // نسبت 9:16 استاندارد
         color: backgroundColor ?? Colors.white,
         child: Stack(

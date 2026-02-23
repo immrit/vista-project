@@ -1,4 +1,4 @@
-import '../security/logging_utility.dart';
+﻿import '../security/logging_utility.dart';
 import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
@@ -200,7 +200,7 @@ class VistaStoryTemplateGenerator {
     }
   }
 
-  /// اشتراک‌گذاری قالب به اینستاگرام استوری
+  /// اشتراک‌گذاری قالب به ویستا استوری
   Future<void> shareToInstagramStory(File imageFile) async {
     try {
       final String filePath = imageFile.path;

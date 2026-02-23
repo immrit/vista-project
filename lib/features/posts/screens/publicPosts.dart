@@ -33,7 +33,7 @@ import '../../../provider/provider.dart';
 import '../../../services/smart_share_service.dart';
 import 'package:Vista/features/posts/widgets/standard_edit_post_dialog.dart';
 import 'package:Vista/features/posts/widgets/post_music_bubble.dart';
-import '../../../../features/posts/providers/post_upload_provider.dart';
+import '../providers/post_upload_provider.dart';
 import '../providers/saved_posts_provider.dart';
 import 'notificationScreen.dart';
 import 'profileScreen.dart';

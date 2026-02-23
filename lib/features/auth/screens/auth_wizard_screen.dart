@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pinput/pinput.dart';
 import '../../../provider/provider.dart';
+import '../../../core/security/input_policy.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../widgets/ribbon_background.dart';
 import '../widgets/blend_mask.dart';
@@ -45,63 +46,46 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
 
   // --- Logic Helpers ---
 
-  bool _isNumeric(String s) {
-    if (s.isEmpty) return false;
-    return double.tryParse(s) != null;
-  }
-
   String _sanitizeInput(String input) {
-    const farsiDigits = '۰۱۲۳۴۵۶۷۸۹';
-    const arabicDigits = '٠١٢٣٤٥٦٧٨٩';
-    var result = input;
-    for (int i = 0; i < 10; i++) {
-      result = result.replaceAll(farsiDigits[i], '$i');
-      result = result.replaceAll(arabicDigits[i], '$i');
-    }
-    return result.trim();
+    return normalizeDigits(input).trim();
   }
 
   // Check if user exists in DB (Real Supabase Call)
   Future<bool> _checkUserExists(String input) async {
     try {
-      // 1. Check if input is empty
       if (input.isEmpty) return false;
+      final client = Supabase.instance.client;
 
-      // 2. Determine column to search
-      // Note: We assume 'profiles' table has 'email', 'username', and 'phone_number'.
-      // If the schema differs, this query needs adjustment.
-      // We search across all potential columns using 'or' filter for robustness.
-
-      // Sanitized input is already local digits "09..." or "email@..." or "username"
-      // If it's phone, we might need E.164 (+98...) for some tables, but usually profiles stores what is registered.
-      // Let's search raw input first.
-
-      String query = 'email.eq.$input,username.eq.$input';
-
-      // If input looks like a phone (starts with 09 and is digits), check both formats
-      if (_isNumeric(input) && input.startsWith('09')) {
-        final formatted = '+98${input.substring(1)}';
-        query += ',phone_number.eq.$input,phone_number.eq.$formatted';
-      } else {
-        query += ',phone_number.eq.$input';
+      final normalizedPhone = normalizePhone09(input);
+      if (normalizedPhone != null) {
+        final byPhone = await client
+            .from('profiles')
+            .select('id')
+            .eq('phone_number', normalizedPhone)
+            .maybeSingle();
+        return byPhone != null;
       }
 
-      final response = await Supabase.instance.client
+      if (input.contains('@')) {
+        final byEmail = await client
+            .from('profiles')
+            .select('id')
+            .eq('email', input.toLowerCase())
+            .maybeSingle();
+        return byEmail != null;
+      }
+
+      final byUsername = await client
           .from('profiles')
           .select('id')
-          .or(query)
+          .eq('username', input.toLowerCase())
           .maybeSingle();
-
-      return response != null;
+      return byUsername != null;
     } catch (e) {
       debugPrint('Error checking user existence: $e');
-      // In case of error (e.g. network), we might assume false or throw.
-      // For smooth UX, return false implies "Treat as new user" which might lead to Registration flow.
-      // If it IS an existing user and we say false, they usually get "Phone already registered" error during OTP/Signup which is acceptable recovery.
       return false;
     }
   }
-
   // --- Navigation & State Machine ---
 
   void _nextPage(int page) {
@@ -123,36 +107,29 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
 
     setState(() => _isLoading = true);
 
-    // 1. Determine Input Type
-    // Simple check: if fully numeric and > 9 chars -> Phone. Else -> Email/User.
-    String sanitizedForCheck = input.replaceAll('+', '');
-    _isPhoneInput =
-        _isNumeric(sanitizedForCheck) && sanitizedForCheck.length > 9;
+    final normalizedPhone = normalizePhone09(input);
+    _isPhoneInput = normalizedPhone != null;
 
     try {
-      // 2. Check Exists
-      bool userExists = await _checkUserExists(input);
+      final userExists =
+          await _checkUserExists(_isPhoneInput ? normalizedPhone! : input);
 
       setState(() {
         _isLoading = false;
       });
 
-      // 3. Branching Logic
       if (_isPhoneInput) {
         if (userExists) {
-          // Existing Phone -> Go to Password
+          _inputController.text = normalizedPhone!;
           _nextPage(1);
         } else {
-          // New Phone -> Go to OTP (Registration)
+          _inputController.text = normalizedPhone!;
           _sendOtp(isResend: false);
         }
       } else {
-        // Email/Username
         if (userExists) {
-          // Existing Email/User -> Go to Password
           _nextPage(1);
         } else {
-          // New Email/User -> Error/Prompt
           _showSnack('برای ثبت نام جدید لطفاً از شماره موبایل استفاده کنید');
         }
       }
@@ -175,16 +152,18 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
       final input = _sanitizeInput(_inputController.text);
       String? loginPhone;
       String? loginEmail;
+      final client = Supabase.instance.client;
 
       if (_isPhoneInput) {
-        // Try to find email associated with this phone
-        final formatted =
-            input.startsWith('09') ? '+98${input.substring(1)}' : input;
+        final normalizedPhone = normalizePhone09(input);
+        if (normalizedPhone == null) {
+          throw 'شماره موبایل نامعتبر است';
+        }
 
-        final data = await Supabase.instance.client
+        final data = await client
             .from('profiles')
             .select('email, account_status')
-            .or('phone_number.eq.$input,phone_number.eq.$formatted')
+            .eq('phone_number', normalizedPhone)
             .maybeSingle();
 
         if (data != null) {
@@ -195,22 +174,19 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
           if (data['email'] != null) {
             loginEmail = data['email'];
           } else {
-            // No email found, fallback to phone
-            loginPhone = formatted;
+            loginPhone = normalizedPhone;
           }
         } else {
-          // Should ideally not happen if checkUserExists passed, but valid fallback
-          loginPhone = formatted;
+          loginPhone = normalizedPhone;
         }
       } else {
         if (input.contains('@')) {
-          loginEmail = input;
+          loginEmail = input.toLowerCase();
         } else {
-          // Username -> Email lookup (Case Insensitive)
-          final data = await Supabase.instance.client
+          final data = await client
               .from('profiles')
               .select('email, account_status')
-              .ilike('username', input)
+              .eq('username', input.toLowerCase())
               .maybeSingle();
 
           if (data != null) {
@@ -229,8 +205,22 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
         }
       }
 
-      final response = await Supabase.instance.client.auth.signInWithPassword(
-          email: loginEmail, phone: loginPhone, password: password);
+      final emailForAuth = (loginEmail != null && loginEmail.trim().isNotEmpty)
+          ? loginEmail
+          : null;
+      final phoneForAuth = (loginPhone != null && loginPhone.trim().isNotEmpty)
+          ? loginPhone
+          : null;
+
+      if (emailForAuth == null && phoneForAuth == null) {
+        throw 'شناسه ورود معتبر یافت نشد';
+      }
+
+      final response = await client.auth.signInWithPassword(
+        email: emailForAuth,
+        phone: phoneForAuth,
+        password: password,
+      );
       if (response.user == null) throw 'ورود ناموفق بود';
 
       setState(() => _isLoading = false);
@@ -238,7 +228,7 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
       final user = response.user!;
       bool phoneNumberIsSet = user.phone != null && user.phone!.isNotEmpty;
       if (!phoneNumberIsSet) {
-        final profile = await Supabase.instance.client
+        final profile = await client
             .from('profiles')
             .select('phone_number')
             .eq('id', user.id)
@@ -249,31 +239,12 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
       }
 
       if (phoneNumberIsSet) {
-        // Success -> Home
         _showSnack('ورود موفقیت آمیز بود');
         Navigator.pushReplacementNamed(context, '/home');
       } else {
-        // Force Update Phone -> OTP Slide (Slide 2)
         _showSnack('لطفاً شماره موبایل خود را تایید کنید');
-        // We might need to ask for the phone number first if they logged in via email
-        // For simplicity, let's assume we redirect them to slide 0 logic or a specific slide.
-        // If they logged in via email (and no phone), we need phone input.
-        // Let's reset input controller to empty and push them to Slide 2?
-        // Or re-use Slide 0 prompt?
-        // As per prompt: "Go to Slide: Add Phone (Slide 2/OTP)".
-        // Slide 2 assumes we have a phone number to verify.
-        // So we might need an intermediate state or just reset Slide 0 to "Phone Only" mode.
-        // Let's Assume Slide 2 handles OTP. We need a phone number.
-        // If we don't have it, we can't send OTP.
-        // Slight deviation: If login successful but no phone -> Show BottomSheet to get Phone -> Then OTP.
-        // For this task, let's stick to the requested flow:
-        // "If phone_number is NULL -> Go to Slide: Add Phone"
-        // Since Slide 2 is the OTP slide usually, maybe "Add Phone" is a new slide or reuse Slide 0?
-        // Let's assume user must enter phone now.
-        // I will redirect to Slide 2, but we need to ASK for phone first.
-        // I will add a small logic to ask for phone if missing, effectively reusing Slide 0 but forcing phone.
         _inputController.clear();
-        _pageController.jumpToPage(0); // Go back to start
+        _pageController.jumpToPage(0);
         _showSnack('برای تکمیل حساب کاربری، شماره موبایل خود را وارد کنید');
       }
     } catch (e) {
@@ -308,18 +279,20 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
   }
 
   Future<void> _sendOtp({bool isResend = false}) async {
-    final phone = _sanitizeInput(_inputController.text);
-    // Basic validation
-    if (phone.length < 10) return;
+    final phone = normalizePhone09(_sanitizeInput(_inputController.text));
+    if (phone == null) {
+      _showSnack('شماره موبایل نامعتبر است');
+      return;
+    }
+    _inputController.text = phone;
 
     if (!isResend) {
-      // Only show loading if moving to page defaults
       setState(() => _isLoading = true);
     }
 
     try {
       final success =
-          await ref.read(authNotifierProvider.notifier).sendOtp(phone);
+          await ref.read(authControllerProvider.notifier).sendOtp(phone);
 
       setState(() => _isLoading = false);
 
@@ -332,7 +305,8 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
           _showSnack('کد تایید مجدداً ارسال شد');
         }
       } else {
-        final error = ref.read(authNotifierProvider).error ?? 'خطا در ارسال کد';
+        final error =
+            ref.read(authControllerProvider).error ?? 'خطا در ارسال کد';
         _showSnack(error);
       }
     } catch (e) {
@@ -343,7 +317,11 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
 
   Future<void> _verifyOtp() async {
     final otp = _sanitizeInput(_otpController.text);
-    final phone = _sanitizeInput(_inputController.text);
+    final phone = normalizePhone09(_sanitizeInput(_inputController.text));
+    if (phone == null) {
+      _showSnack('شماره موبایل نامعتبر است');
+      return;
+    }
 
     if (otp.length < 4) return;
 
@@ -354,7 +332,7 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
 
     try {
       final success = await ref
-          .read(authNotifierProvider.notifier)
+          .read(authControllerProvider.notifier)
           .verifyOtp(phone: phone, token: otp);
 
       if (success) {

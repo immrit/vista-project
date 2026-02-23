@@ -53,14 +53,8 @@ class AppInitialization {
   static bool _audioBackgroundDisabledForSession = false;
   static bool get isAudioBackgroundReady => _audioBackgroundInitialized;
 
-  static Future<void> loadDeferredServices() async {
-    // Placeholder for deferred services initialization
-  }
-
-  static Future<void> init() async {
-    WidgetsFlutterBinding.ensureInitialized();
-    await ensureAudioBackgroundReady();
-    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+  static Future<void> initCore() async {
+    // WidgetsFlutterBinding.ensureInitialized() توسط فایل main لود می‌شود
     SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
       systemNavigationBarColor: Colors.transparent,
       systemNavigationBarDividerColor: Colors.transparent,
@@ -73,8 +67,8 @@ class AppInitialization {
     PerformanceMonitor().startMonitoring();
     FrameBudgetService.instance.startMonitoring();
 
-    // PHASE 1: Core Platform Services (Parallel)
-    // These are independent and can run together.
+    // فاز ۱: سرویس‌های حیاتی پلتفرم (اجرای موازی)
+    // این سرویس‌ها برای بالا آمدن اولیه اپ (مسیریابی روت و دیزاین) نیاز هستند
     await Future.wait([
       _initializeFirebase(),
       initializeSupabaseWithFailover().timeout(
@@ -83,24 +77,46 @@ class AppInitialization {
       ),
     ]);
 
-    await PushNotificationService(null).ensureLocalNotificationsInitialized();
+    // مدیر نشست ضروری است تا بدانیم کاربر لاگین هست یا خیر
+    await SessionManagerServiceV2().initialize();
 
-    // PHASE 2: Data layer (Parallel)
-    // Supabase is ready now. SessionManager needs Supabase.
-    await Future.wait([
-      SessionManagerServiceV2().initialize(),
+    // تمامی پردازش‌های سنگین و دیتابیس‌های لوکال که ربطی به صفحه اول ندارند
+    // به اولین فریم خالیِ بعد از لود موکول می‌شوند
+    // (فراخوانی به app_runner منتقل شده تا جریان منطقی‌تر باشد)
+    // WidgetsBinding.instance.addPostFrameCallback((_) {
+    //   _initDeferredServices();
+    // });
+  }
+
+  static Future<void> loadDeferredServices() async {
+    debugPrint('⏳ Starting deferred services initialization...');
+
+    // ۱. نصب نوتیفیکیشن‌های بک‌گراند
+    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+    PushNotificationService(null)
+        .ensureLocalNotificationsInitialized()
+        .then((_) {
+      debugPrint('✅ Local Notifications Ready');
+    });
+
+    // ۲. سیستم پخش پلیر بدون بلاک‌کردن رندر فلاتر
+    ensureAudioBackgroundReady().then((_) {
+      debugPrint('✅ Audio Background Ready');
+    });
+
+    // ۳. فازهای لاجیکی و کش‌ها (مانند Isar)
+    Future.wait([
       IsarDatabaseManager().instance,
-    ]);
-
-    // PHASE 3: Feature Services & Cache (Parallel)
-    // These might depend on Isar/Supabase
-    await Future.wait([
       SettingsCacheService().initialize(),
       AdvancedSettingsService().initialize(),
       HighPerformanceCacheSystem().initialize(),
-    ]);
+    ]).then((_) {
+      debugPrint('✅ Deferred Storage Ready');
+    }).catchError((e, s) {
+      debugPrint('❌ Errore in deferred services: $e\n$s');
+    });
 
-    // Monitoring (Fire & Forget)
+    // ۴. پایشگر برنامه‌ها (Fire & Forget)
     MemoryLeakDetector().startMonitoring();
   }
 

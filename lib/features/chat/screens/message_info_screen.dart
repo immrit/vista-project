@@ -1,6 +1,6 @@
-// lib/features/chat/screens/message_info_screen.dart
+﻿// lib/features/chat/screens/message_info_screen.dart
 //
-// اطلاعات دقیق پیام (الهام از تلگرام)
+// اطلاعات دقیق پیام (الهام از ویستا)
 //
 // ویژگی‌ها:
 // ✅ زمان ارسال/تحویل/خوانده شدن
@@ -13,6 +13,8 @@ import 'package:flutter/material.dart';
 import 'package:shamsi_date/shamsi_date.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import '../../../model/message_model.dart';
+import '../../emoji/domain/emoji_render_policy.dart';
+import '../../emoji/widgets/telegram_emoji_text.dart';
 
 /// صفحه اطلاعات پیام
 class MessageInfoScreen extends StatelessWidget {
@@ -125,10 +127,11 @@ class MessageInfoScreen extends StatelessWidget {
                 color: theme.dividerColor.withOpacity(0.3),
               ),
             ),
-            child: Text(
+            child: TelegramEmojiText(
               message.content.isNotEmpty
                   ? '${message.content}\u200F'
                   : '[${_getAttachmentTypeLabel(message.attachmentType)}]',
+              useTelegramEmoji: EmojiRenderPolicy.useTelegramEmojiRenderer(),
               textDirection: TextDirection.rtl,
               textAlign: TextAlign.right,
               style: TextStyle(

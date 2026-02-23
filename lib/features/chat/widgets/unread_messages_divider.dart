@@ -1,6 +1,6 @@
-// lib/features/chat/widgets/unread_messages_divider.dart
+﻿// lib/features/chat/widgets/unread_messages_divider.dart
 //
-// نشانگر پیام‌های خوانده نشده - با الهام از تلگرام
+// نشانگر پیام‌های خوانده نشده - با الهام از ویستا
 //
 // ویژگی‌ها:
 // ✅ انیمیشن ظاهر شدن

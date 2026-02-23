@@ -1,6 +1,6 @@
-// lib/services/telegram_read_receipt_service.dart
+﻿// lib/services/telegram_read_receipt_service.dart
 //
-// سرویس مدیریت وضعیت خوانده شدن پیام‌ها - به سبک تلگرام
+// سرویس مدیریت وضعیت خوانده شدن پیام‌ها - به سبک ویستا
 //
 // ویژگی‌ها:
 // ✅ Real-time وضعیت تحویل و خوانده شدن
@@ -14,7 +14,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-/// وضعیت تحویل پیام - مثل تلگرام
+/// وضعیت تحویل پیام - مثل ویستا
 enum MessageDeliveryStatus {
   pending, // ⏳ در انتظار ارسال (ساعت)
   sent, // ✓ ارسال شده به سرور (یک تیک خاکستری)

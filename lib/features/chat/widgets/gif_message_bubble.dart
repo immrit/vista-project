@@ -1,6 +1,6 @@
-// lib/features/chat/widgets/gif_message_bubble.dart
+﻿// lib/features/chat/widgets/gif_message_bubble.dart
 //
-// ویجت نمایش GIF در چت - مشابه تلگرام
+// ویجت نمایش GIF در چت - مشابه ویستا
 //
 // ویژگی‌ها:
 // ✅ نمایش GIF با CachedNetworkImage
@@ -27,7 +27,7 @@ class GifMessageBubble extends StatelessWidget {
     const double defaultHeight = 150;
 
     return ClipRRect(
-      borderRadius: BorderRadius.circular(16), // گردی گوشه‌ها مثل تلگرام
+      borderRadius: BorderRadius.circular(16), // گردی گوشه‌ها مثل ویستا
       child: Stack(
         children: [
           // تصویر گیف
@@ -56,7 +56,7 @@ class GifMessageBubble extends StatelessWidget {
             ),
           ),
 
-          // برچسب GIF در گوشه (مثل تلگرام)
+          // برچسب GIF در گوشه (مثل ویستا)
           Positioned(
             top: 8,
             left: 8,

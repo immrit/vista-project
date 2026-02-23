@@ -1,6 +1,6 @@
-import 'dart:collection';
+﻿import 'dart:collection';
 
-/// ✅ LRU Cache - مثل تلگرام
+/// ✅ LRU Cache - مثل ویستا
 /// یک cache با الگوریتم Least Recently Used برای مدیریت حافظه
 class LRUCache<K, V> {
   final int _maxSize;

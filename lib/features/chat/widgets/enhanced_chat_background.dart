@@ -1,10 +1,10 @@
-// lib/features/chat/widgets/enhanced_chat_background.dart
+﻿// lib/features/chat/widgets/enhanced_chat_background.dart
 //
-// بک‌گراند چت با الهام از تلگرام
+// بک‌گراند چت با الهام از ویستا
 //
 // ویژگی‌ها:
 // ✅ والپیپر کش شده با Fade transition
-// ✅ Pattern overlay (مثل تلگرام)
+// ✅ Pattern overlay (مثل ویستا)
 // ✅ Blur effect برای dark mode
 // ✅ حالت تم روشن و تاریک
 // ✅ Smooth animations
@@ -16,7 +16,7 @@ import 'dart:ui';
 import '../../../services/wallpaper_cache_service.dart';
 import '../../../provider/settings_providers.dart';
 
-/// Enhanced Chat Background با الهام از تلگرام
+/// Enhanced Chat Background با الهام از ویستا
 /// این ویجت به صورت خودکار تنظیمات بلور را از provider می‌خواند
 /// و در هر دو تم روشن و تاریک (به جز تم مشکی مطلق) بلور را اعمال می‌کند
 class EnhancedChatBackground extends ConsumerStatefulWidget {
@@ -86,10 +86,10 @@ class _EnhancedChatBackgroundState
           errorBuilder: (_, __, ___) => const SizedBox.shrink(),
         ),
 
-        // 3️⃣ Network Wallpaper با Fade Animation (مثل تلگرام)
+        // 3️⃣ Network Wallpaper با Fade Animation (مثل ویستا)
         // حذف شد - فقط از تصویر محلی استفاده می‌کنیم
 
-        // 4️⃣ Pattern Overlay (مثل تلگرام - نقش‌های ظریف)
+        // 4️⃣ Pattern Overlay (مثل ویستا - نقش‌های ظریف)
         if (widget.enablePattern && !reduceEffects)
           Opacity(
             opacity: isDark ? 0.03 : 0.05,
@@ -114,7 +114,7 @@ class _EnhancedChatBackgroundState
             ),
           ),
 
-        // 6️⃣ Gradient Overlay (برای خوانایی بهتر - مثل تلگرام)
+        // 6️⃣ Gradient Overlay (برای خوانایی بهتر - مثل ویستا)
         Container(
           decoration: BoxDecoration(
             gradient: LinearGradient(
@@ -152,7 +152,7 @@ class _EnhancedChatBackgroundState
   }
 }
 
-/// Pattern Painter (شبیه نقش‌های تلگرام)
+/// Pattern Painter (شبیه نقش‌های ویستا)
 class _TelegramPatternPainter extends CustomPainter {
   final bool isDark;
 
@@ -167,7 +167,7 @@ class _TelegramPatternPainter extends CustomPainter {
 
     const spacing = 30.0;
 
-    // خطوط مورب (مثل تلگرام)
+    // خطوط مورب (مثل ویستا)
     for (double i = -size.height; i < size.width + size.height; i += spacing) {
       canvas.drawLine(
         Offset(i, 0),
@@ -198,7 +198,7 @@ class TelegramMessagePattern extends StatelessWidget {
 
     return Stack(
       children: [
-        // Pattern فقط برای پیام‌های ارسالی در تلگرام
+        // Pattern فقط برای پیام‌های ارسالی در ویستا
         if (isMe)
           Positioned.fill(
             child: Opacity(

@@ -1,6 +1,6 @@
-// lib/features/chat/widgets/voice_message_bubble.dart
+﻿// lib/features/chat/widgets/voice_message_bubble.dart
 //
-// ویجت پیام صوتی مدرن با الهام از تلگرام
+// ویجت پیام صوتی مدرن با الهام از ویستا
 //
 // ویژگی‌ها:
 // ✅ Waveform انیمیشن‌دار
@@ -19,8 +19,10 @@ import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 import '../theme/chat_theme.dart';
 import '../../../services/voice_player_service.dart';
+import '../../emoji/domain/emoji_render_policy.dart';
+import '../../emoji/widgets/telegram_emoji_text.dart';
 
-/// ویجت پیام صوتی شبیه تلگرام
+/// ویجت پیام صوتی شبیه ویستا
 class VoiceMessageBubble extends StatefulWidget {
   final String messageId;
   final String audioUrl;
@@ -387,6 +389,25 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble>
               ),
             ],
           ),
+          if (widget.caption != null && widget.caption!.trim().isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TelegramEmojiText(
+                widget.caption!,
+                useTelegramEmoji: EmojiRenderPolicy.useTelegramEmojiRenderer(),
+                textDirection: TextDirection.rtl,
+                textAlign: TextAlign.right,
+                style: TextStyle(
+                  color: widget.isMe
+                      ? theme.myBubbleTextColor
+                      : theme.otherBubbleTextColor,
+                  fontSize: 15,
+                  fontFamily: 'Vazir',
+                ),
+              ),
+            ),
+          ],
           if (_error != null) ...[
             const SizedBox(height: 6),
             Row(

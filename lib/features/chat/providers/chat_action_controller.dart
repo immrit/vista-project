@@ -5,6 +5,7 @@ import 'package:Vista/features/chat/providers/chat_providers.dart';
 import 'package:Vista/security/logging_utility.dart';
 import 'package:Vista/features/chat/services/message_actions_service.dart';
 import 'package:Vista/services/message_reaction_service.dart'; // Add this imports for keeping existing functionality
+import 'package:Vista/features/chat/domain/message_payload.dart';
 
 part 'chat_action_controller.g.dart';
 
@@ -87,7 +88,8 @@ class ChatActionController extends _$ChatActionController {
 
     try {
       final repository = ref.read(chatRepositoryProvider);
-      final result = await repository.sendMessage(
+
+      final payload = MessagePayload(
         conversationId: conversationId,
         content: content,
         id: id,
@@ -104,6 +106,8 @@ class ChatActionController extends _$ChatActionController {
         replyToContent: replyToContent ?? state.replyMessage?.content,
         replyToSenderName: replyToSenderName ?? state.replyMessage?.senderName,
       );
+
+      final result = await repository.sendMessage(payload);
 
       return result.fold(
         (success) {

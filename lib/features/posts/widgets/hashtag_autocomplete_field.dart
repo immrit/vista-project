@@ -1,8 +1,8 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-/// فیلد متنی با قابلیت Autocomplete هشتگ (مشابه اینستاگرام)
+/// فیلد متنی با قابلیت Autocomplete هشتگ (مشابه ویستا)
 class HashtagAutocompleteField extends StatefulWidget {
   final TextEditingController controller;
   final int maxLines;

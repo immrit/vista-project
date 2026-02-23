@@ -1,4 +1,4 @@
-// lib/features/chat/repositories/chat_repository_impl.dart
+﻿// lib/features/chat/repositories/chat_repository_impl.dart
 
 import 'dart:async';
 import 'package:flutter/foundation.dart';
@@ -9,6 +9,7 @@ import '../../../model/message_model.dart';
 import '../../../model/conversation_model.dart';
 import '../data/datasources/chat_local_datasource_isar.dart';
 import '../services/message_reactions_service.dart'; // ✅ اضافه شد
+import '../domain/message_payload.dart';
 import 'package:uuid/uuid.dart';
 import '../../../../services/vista_node_service.dart';
 import '../../../../security/logging_utility.dart'; // Added
@@ -242,23 +243,10 @@ class ChatRepositoryImpl implements ChatRepository {
                       conversationId, userId);
 
               if (existingConvForUpdate != null) {
-                // ✅ Active Chat Logic: Don't increment unread if active
-                int newUnreadCount;
+                // ✅ Active Chat Logic: Reset unread if user is currently looking at this chat
                 if (conversationId == _activeConversationId) {
-                  newUnreadCount = 0; // User is looking at the chat
-                } else {
-                  newUnreadCount = newMessage.senderId != userId
-                      ? existingConvForUpdate.unreadCount + 1
-                      : existingConvForUpdate.unreadCount;
+                  await _localDataSource.resetUnreadCount(conversationId);
                 }
-
-                final updatedConv = existingConvForUpdate.copyWith(
-                  lastMessage: newMessage.content,
-                  updatedAt: newMessage.createdAt,
-                  unreadCount: newUnreadCount,
-                  hasUnreadMessages: newUnreadCount > 0,
-                );
-                await _localDataSource.saveConversation(updatedConv);
               } else {
                 // If conversation doesn't exist locally, fetch it
                 logInfo(
@@ -456,23 +444,23 @@ class ChatRepositoryImpl implements ChatRepository {
   }
 
   @override
-  Future<ChatResult<MessageModel>> sendMessage({
-    required String conversationId,
-    required String content,
-    String? id,
-    String? attachmentUrl,
-    String? attachmentType,
-    String? attachmentFileName,
-    String? attachmentMimeType,
-    int? attachmentSizeBytes,
-    String? audioTitle,
-    String? audioArtist,
-    String? audioAlbum,
-    int? duration,
-    String? replyToMessageId,
-    String? replyToContent,
-    String? replyToSenderName,
-  }) async {
+  Future<ChatResult<MessageModel>> sendMessage(MessagePayload payload) async {
+    final conversationId = payload.conversationId;
+    final content = payload.content;
+    final id = payload.id;
+    final attachmentUrl = payload.attachmentUrl;
+    final attachmentType = payload.attachmentType;
+    final attachmentFileName = payload.attachmentFileName;
+    final attachmentMimeType = payload.attachmentMimeType;
+    final attachmentSizeBytes = payload.attachmentSizeBytes;
+    final audioTitle = payload.audioTitle;
+    final audioArtist = payload.audioArtist;
+    final audioAlbum = payload.audioAlbum;
+    final duration = payload.duration;
+    final replyToMessageId = payload.replyToMessageId;
+    final replyToContent = payload.replyToContent;
+    final replyToSenderName = payload.replyToSenderName;
+
     final userId = _currentUserId;
     if (userId == null) return ChatResult.failure('کاربر وارد نشده است');
 
@@ -519,22 +507,8 @@ class ChatRepositoryImpl implements ChatRepository {
     );
 
     try {
-      // 1. Save Optimistic Message to Local DB
+      // 1. Save Optimistic Message to Local DB (این متد به صورت خودکار کانورسیشن را نیز آپدیت می‌کند)
       await _localDataSource.saveMessage(messageModel);
-
-      // 3. Update Conversation Metadata (Optimistic)
-      final existingConv =
-          await _localDataSource.getConversation(conversationId, userId);
-      if (existingConv != null) {
-        final updatedConv = existingConv.copyWith(
-          lastMessage: messageModel.content,
-          updatedAt: now,
-          unreadCount: 0,
-        );
-        await _localDataSource.saveConversation(updatedConv);
-      } else {
-        // Handle case where conversation doesn't exist locally yet (rare but possible)
-      }
 
       // 4. Send to Supabase (using the SAME ID)
       final insertPayload = <String, dynamic>{
@@ -566,17 +540,8 @@ class ChatRepositoryImpl implements ChatRepository {
           serverMessage, existingLocalMessage ?? messageModel);
 
       // 5. Update Local DB w/ Server Response (mark as sent)
-      // No delete needed! Just update.
+      // این متد بصورت اتوماتیک کانورسیشن را آپدیت می‌کند
       await _localDataSource.saveMessage(mergedServerMessage);
-
-      // 7. Sync Conversation Metadata (Confirmed)
-      if (existingConv != null) {
-        final updatedConv = existingConv.copyWith(
-          lastMessage: mergedServerMessage.content,
-          updatedAt: mergedServerMessage.createdAt,
-        );
-        await _localDataSource.saveConversation(updatedConv);
-      }
 
       return ChatResult.success(mergedServerMessage);
     } catch (e) {
@@ -778,7 +743,7 @@ class ChatRepositoryImpl implements ChatRepository {
       if (userId == null) return;
 
       // 1. دریافت آخرین 50 پیام از سرور
-      // تلگرام هم همیشه یک "Snapshot" از آخرین وضعیت می‌گیرد.
+      // ویستا هم همیشه یک "Snapshot" از آخرین وضعیت می‌گیرد.
       final response = await _supabase
           .from('messages')
           .select(_messageSelectWithProfiles)

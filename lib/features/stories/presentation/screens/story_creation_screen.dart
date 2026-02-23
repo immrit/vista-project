@@ -1,4 +1,4 @@
-import 'dart:io';
+﻿import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -15,7 +15,7 @@ import 'story_editor_screen.dart';
 import 'story_privacy_settings_screen.dart';
 import '../../../../utils/user_friendly_error_utils.dart';
 
-/// صفحه ایجاد استوری - مشابه اینستاگرام
+/// صفحه ایجاد استوری - مشابه ویستا
 class StoryCreationScreen extends ConsumerStatefulWidget {
   const StoryCreationScreen({super.key});
 

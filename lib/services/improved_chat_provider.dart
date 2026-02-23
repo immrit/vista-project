@@ -1,14 +1,15 @@
-import '../security/logging_utility.dart';
+﻿import '../security/logging_utility.dart';
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../model/message_model.dart';
 // import '../services/cache_sync_service.dart'; // Removed
 import 'package:Vista/features/chat/repositories/chat_repository.dart';
 import 'package:Vista/features/chat/providers/chat_providers.dart';
+import 'package:Vista/features/chat/domain/message_payload.dart';
 
 import '../utils/const.dart';
 
-/// Provider بهبود یافته برای مدیریت چت با سیستم sync تلگرامی
+/// Provider بهبود یافته برای مدیریت چت با سیستم sync ویستا
 class ImprovedChatProvider extends StateNotifier<ImprovedChatState> {
   final String conversationId;
   final ChatRepository _chatRepository; // ✅ Injected
@@ -174,16 +175,17 @@ class ImprovedChatProvider extends StateNotifier<ImprovedChatState> {
       // but here we are managing state manually.
       // Calling sendMessage on repo returns the final message.
 
-      final result = await _chatRepository.sendMessage(
+      // Sending to Server using MessagePayload
+      final payload = MessagePayload(
         conversationId: conversationId,
         content: content,
         attachmentUrl: attachmentUrl,
         attachmentType: attachmentType,
         replyToMessageId: replyToMessageId,
-        id: tempId, // Pass temp ID if we want repo to use it or track it?
-        // Repo usually generates its own or uses UUID, let's see.
-        // Providing ID helps if we want to match it.
+        id: tempId,
       );
+
+      final result = await _chatRepository.sendMessage(payload);
 
       if (!result.isSuccess) throw Exception(result.error);
 

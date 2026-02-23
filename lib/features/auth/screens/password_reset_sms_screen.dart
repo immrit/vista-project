@@ -2,8 +2,9 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:Vista/core/security/input_policy.dart';
 
-import '../../../services/auth_api_service.dart';
+import '../data/auth_repository.dart';
 
 class PasswordResetSmsScreen extends StatefulWidget {
   const PasswordResetSmsScreen({super.key});
@@ -39,7 +40,8 @@ class _PasswordResetSmsScreenState extends State<PasswordResetSmsScreen>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final args =
           ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
-      _phone = args?['phone'] as String?;
+      final phoneArg = args?['phone'] as String?;
+      _phone = phoneArg == null ? null : normalizePhone09(phoneArg);
       if (_phone != null && _phone!.isNotEmpty) {
         _startResendCountdown(30);
       }
@@ -101,8 +103,8 @@ class _PasswordResetSmsScreenState extends State<PasswordResetSmsScreen>
   }
 
   Future<void> _resendCode() async {
-    final phone = _phone;
-    if (phone == null || phone.isEmpty) {
+    final phone = _phone == null ? null : normalizePhone09(_phone!);
+    if (phone == null) {
       _showErrorSnackBar('شماره موبایل یافت نشد. لطفاً دوباره تلاش کنید');
       return;
     }
@@ -110,7 +112,7 @@ class _PasswordResetSmsScreenState extends State<PasswordResetSmsScreen>
 
     try {
       _startResendCountdown(60);
-      await AuthApiService().sendOtp(phone);
+      await AuthRepository().sendOtp(phone);
       _showSuccessSnackBar(
           'اگر حسابی با این شماره وجود داشته باشد، کد بازنشانی ارسال می‌شود');
     } catch (_) {
@@ -120,8 +122,8 @@ class _PasswordResetSmsScreenState extends State<PasswordResetSmsScreen>
   }
 
   Future<void> _resetPasswordViaSms() async {
-    final phone = _phone;
-    if (phone == null || phone.isEmpty) {
+    final phone = _phone == null ? null : normalizePhone09(_phone!);
+    if (phone == null) {
       _showErrorSnackBar('شماره موبایل یافت نشد. لطفاً دوباره تلاش کنید');
       return;
     }
@@ -138,8 +140,10 @@ class _PasswordResetSmsScreenState extends State<PasswordResetSmsScreen>
       _showErrorSnackBar('لطفاً رمز جدید را وارد کنید');
       return;
     }
-    if (newPassword.length < 6) {
-      _showErrorSnackBar('رمز عبور باید حداقل ۶ کاراکتر باشد');
+    final passwordValidation =
+        validatePasswordBalanced(newPassword, phone: phone);
+    if (!passwordValidation.isValid) {
+      _showErrorSnackBar(passwordValidation.message);
       return;
     }
     if (newPassword != confirmPassword) {
@@ -149,7 +153,7 @@ class _PasswordResetSmsScreenState extends State<PasswordResetSmsScreen>
 
     setState(() => _isLoading = true);
     try {
-      await AuthApiService().resetPasswordSms(
+      await AuthRepository().resetPasswordSms(
         phoneNumber: phone,
         code: code,
         newPassword: newPassword,

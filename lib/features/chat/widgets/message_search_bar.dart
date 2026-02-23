@@ -1,6 +1,6 @@
-// lib/features/chat/widgets/message_search_bar.dart
+﻿// lib/features/chat/widgets/message_search_bar.dart
 //
-// نوار جستجو در پیام‌ها - با الهام از تلگرام
+// نوار جستجو در پیام‌ها - با الهام از ویستا
 //
 // ویژگی‌ها:
 // ✅ انیمیشن ظاهر شدن/محو شدن

@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -7,7 +7,7 @@ import '../../services/telegram_read_receipt_service.dart';
 import '../../features/chat/widgets/telegram_message_status.dart';
 import 'package:Vista/utils/const.dart';
 
-/// 🚀 ویجت Swipeable برای آیتم مکالمه (مثل تلگرام)
+/// 🚀 ویجت Swipeable برای آیتم مکالمه (مثل ویستا)
 ///
 /// قابلیت‌ها:
 /// - Swipe راست: Pin/Unpin

@@ -4,6 +4,7 @@
 //
 
 import 'package:equatable/equatable.dart';
+import '../features/chat/domain/message_payload.dart';
 
 /// نوع عملیات
 enum RetryOperationType {
@@ -16,52 +17,52 @@ enum RetryOperationType {
 
 /// وضعیت آیتم
 enum RetryItemStatus {
-  pending,    // در انتظار ارسال
-  sending,    // در حال ارسال
-  failed,     // ارسال ناموفق
-  completed,  // ارسال موفق
-  cancelled,  // لغو شده
+  pending, // در انتظار ارسال
+  sending, // در حال ارسال
+  failed, // ارسال ناموفق
+  completed, // ارسال موفق
+  cancelled, // لغو شده
 }
 
 /// اولویت ارسال
 enum RetryPriority {
-  high,    // پیام‌های متنی
-  medium,  // ویرایش و حذف
-  low,     // آپلود فایل
+  high, // پیام‌های متنی
+  medium, // ویرایش و حذف
+  low, // آپلود فایل
 }
 
 /// آیتم صف ارسال مجدد
 class RetryQueueItem extends Equatable {
   /// شناسه یکتا
   final String id;
-  
+
   /// نوع عملیات
   final RetryOperationType type;
-  
+
   /// وضعیت
   final RetryItemStatus status;
-  
+
   /// اولویت
   final RetryPriority priority;
-  
+
   /// شناسه مکالمه
   final String conversationId;
-  
+
   /// داده‌های عملیات (JSON serializable)
   final Map<String, dynamic> payload;
-  
+
   /// زمان ایجاد
   final DateTime createdAt;
-  
+
   /// زمان آخرین تلاش
   final DateTime? lastAttemptAt;
-  
+
   /// تعداد تلاش‌ها
   final int attemptCount;
-  
+
   /// حداکثر تعداد تلاش
   final int maxAttempts;
-  
+
   /// پیام خطا (در صورت وجود)
   final String? errorMessage;
 
@@ -84,29 +85,30 @@ class RetryQueueItem extends Equatable {
   // ═══════════════════════════════════════════════════════════════════════════
 
   /// ساخت آیتم برای ارسال پیام
-  factory RetryQueueItem.sendMessage({
-    required String id,
-    required String conversationId,
-    required String content,
-    String? attachmentUrl,
-    String? attachmentType,
-    String? replyToMessageId,
-    String? replyToContent,
-    String? replyToSenderName,
-  }) {
+  factory RetryQueueItem.sendMessage(MessagePayload payload,
+      {required String id}) {
     return RetryQueueItem(
       id: id,
       type: RetryOperationType.sendMessage,
       status: RetryItemStatus.pending,
-      priority: attachmentUrl != null ? RetryPriority.low : RetryPriority.high,
-      conversationId: conversationId,
+      priority: payload.attachmentUrl != null
+          ? RetryPriority.low
+          : RetryPriority.high,
+      conversationId: payload.conversationId,
       payload: {
-        'content': content,
-        'attachment_url': attachmentUrl,
-        'attachment_type': attachmentType,
-        'reply_to_message_id': replyToMessageId,
-        'reply_to_content': replyToContent,
-        'reply_to_sender_name': replyToSenderName,
+        'content': payload.content,
+        'attachment_url': payload.attachmentUrl,
+        'attachment_type': payload.attachmentType,
+        'attachment_file_name': payload.attachmentFileName,
+        'attachment_mime_type': payload.attachmentMimeType,
+        'attachment_size_bytes': payload.attachmentSizeBytes,
+        'audio_title': payload.audioTitle,
+        'audio_artist': payload.audioArtist,
+        'audio_album': payload.audioAlbum,
+        'duration': payload.duration,
+        'reply_to_message_id': payload.replyToMessageId,
+        'reply_to_content': payload.replyToContent,
+        'reply_to_sender_name': payload.replyToSenderName,
       },
       createdAt: DateTime.now(),
     );
@@ -204,10 +206,10 @@ class RetryQueueItem extends Equatable {
   // ═══════════════════════════════════════════════════════════════════════════
 
   /// آیا قابل retry هست؟
-  bool get canRetry => 
-    status != RetryItemStatus.completed &&
-    status != RetryItemStatus.cancelled &&
-    attemptCount < maxAttempts;
+  bool get canRetry =>
+      status != RetryItemStatus.completed &&
+      status != RetryItemStatus.cancelled &&
+      attemptCount < maxAttempts;
 
   /// آیا منقضی شده؟
   bool get isExpired {
@@ -220,9 +222,9 @@ class RetryQueueItem extends Equatable {
   }
 
   /// آیا پیام متنی هست؟
-  bool get isTextMessage => 
-    type == RetryOperationType.sendMessage &&
-    payload['attachment_url'] == null;
+  bool get isTextMessage =>
+      type == RetryOperationType.sendMessage &&
+      payload['attachment_url'] == null;
 
   /// متن توضیح وضعیت
   String get statusText {
@@ -326,23 +328,22 @@ class RetryQueueItem extends Equatable {
 
   @override
   List<Object?> get props => [
-    id,
-    type,
-    status,
-    priority,
-    conversationId,
-    payload,
-    createdAt,
-    lastAttemptAt,
-    attemptCount,
-    maxAttempts,
-    errorMessage,
-  ];
+        id,
+        type,
+        status,
+        priority,
+        conversationId,
+        payload,
+        createdAt,
+        lastAttemptAt,
+        attemptCount,
+        maxAttempts,
+        errorMessage,
+      ];
 
   @override
   String toString() {
     return 'RetryQueueItem(id: $id, type: ${type.name}, status: ${status.name}, '
-           'attempts: $attemptCount/$maxAttempts)';
+        'attempts: $attemptCount/$maxAttempts)';
   }
 }
-

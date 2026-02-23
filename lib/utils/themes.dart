@@ -101,16 +101,63 @@ class VistaThemes {
 
     // Text Theme
     textTheme: const TextTheme(
-      displayLarge: TextStyle(fontFamily: fontFamily, color: Colors.black),
-      displayMedium: TextStyle(fontFamily: fontFamily, color: Colors.black),
-      displaySmall: TextStyle(fontFamily: fontFamily, color: Colors.black),
+      displayLarge: TextStyle(
+          fontFamily: fontFamily,
+          color: Colors.black,
+          fontFamilyFallback: [
+            'Apple Color Emoji',
+            'Segoe UI Emoji',
+            'Noto Color Emoji'
+          ]),
+      displayMedium: TextStyle(
+          fontFamily: fontFamily,
+          color: Colors.black,
+          fontFamilyFallback: [
+            'Apple Color Emoji',
+            'Segoe UI Emoji',
+            'Noto Color Emoji'
+          ]),
+      displaySmall: TextStyle(
+          fontFamily: fontFamily,
+          color: Colors.black,
+          fontFamilyFallback: [
+            'Apple Color Emoji',
+            'Segoe UI Emoji',
+            'Noto Color Emoji'
+          ]),
       headlineMedium: TextStyle(
           fontFamily: fontFamily,
           color: Colors.black,
-          fontWeight: FontWeight.bold),
-      bodyLarge: TextStyle(fontFamily: fontFamily, color: Colors.black),
-      bodyMedium: TextStyle(fontFamily: fontFamily, color: Colors.black87),
-      titleMedium: TextStyle(fontFamily: fontFamily, color: Colors.black),
+          fontWeight: FontWeight.bold,
+          fontFamilyFallback: [
+            'Apple Color Emoji',
+            'Segoe UI Emoji',
+            'Noto Color Emoji'
+          ]),
+      bodyLarge: TextStyle(
+          fontFamily: fontFamily,
+          color: Colors.black,
+          fontFamilyFallback: [
+            'Apple Color Emoji',
+            'Segoe UI Emoji',
+            'Noto Color Emoji'
+          ]),
+      bodyMedium: TextStyle(
+          fontFamily: fontFamily,
+          color: Colors.black87,
+          fontFamilyFallback: [
+            'Apple Color Emoji',
+            'Segoe UI Emoji',
+            'Noto Color Emoji'
+          ]),
+      titleMedium: TextStyle(
+          fontFamily: fontFamily,
+          color: Colors.black,
+          fontFamilyFallback: [
+            'Apple Color Emoji',
+            'Segoe UI Emoji',
+            'Noto Color Emoji'
+          ]),
     ),
 
     // Bottom Navigation Bar Theme
@@ -222,16 +269,63 @@ class VistaThemes {
 
     // Text Theme
     textTheme: const TextTheme(
-      displayLarge: TextStyle(fontFamily: fontFamily, color: Colors.white),
-      displayMedium: TextStyle(fontFamily: fontFamily, color: Colors.white),
-      displaySmall: TextStyle(fontFamily: fontFamily, color: Colors.white),
+      displayLarge: TextStyle(
+          fontFamily: fontFamily,
+          color: Colors.white,
+          fontFamilyFallback: [
+            'Apple Color Emoji',
+            'Segoe UI Emoji',
+            'Noto Color Emoji'
+          ]),
+      displayMedium: TextStyle(
+          fontFamily: fontFamily,
+          color: Colors.white,
+          fontFamilyFallback: [
+            'Apple Color Emoji',
+            'Segoe UI Emoji',
+            'Noto Color Emoji'
+          ]),
+      displaySmall: TextStyle(
+          fontFamily: fontFamily,
+          color: Colors.white,
+          fontFamilyFallback: [
+            'Apple Color Emoji',
+            'Segoe UI Emoji',
+            'Noto Color Emoji'
+          ]),
       headlineMedium: TextStyle(
           fontFamily: fontFamily,
           color: Colors.white,
-          fontWeight: FontWeight.bold),
-      bodyLarge: TextStyle(fontFamily: fontFamily, color: Colors.white),
-      bodyMedium: TextStyle(fontFamily: fontFamily, color: Colors.white70),
-      titleMedium: TextStyle(fontFamily: fontFamily, color: Colors.white),
+          fontWeight: FontWeight.bold,
+          fontFamilyFallback: [
+            'Apple Color Emoji',
+            'Segoe UI Emoji',
+            'Noto Color Emoji'
+          ]),
+      bodyLarge: TextStyle(
+          fontFamily: fontFamily,
+          color: Colors.white,
+          fontFamilyFallback: [
+            'Apple Color Emoji',
+            'Segoe UI Emoji',
+            'Noto Color Emoji'
+          ]),
+      bodyMedium: TextStyle(
+          fontFamily: fontFamily,
+          color: Colors.white70,
+          fontFamilyFallback: [
+            'Apple Color Emoji',
+            'Segoe UI Emoji',
+            'Noto Color Emoji'
+          ]),
+      titleMedium: TextStyle(
+          fontFamily: fontFamily,
+          color: Colors.white,
+          fontFamilyFallback: [
+            'Apple Color Emoji',
+            'Segoe UI Emoji',
+            'Noto Color Emoji'
+          ]),
     ),
 
     // Bottom Navigation Bar Theme

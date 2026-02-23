@@ -1,6 +1,6 @@
-// lib/features/chat/widgets/telegram_reaction_picker.dart
+﻿// lib/features/chat/widgets/telegram_reaction_picker.dart
 //
-// Reaction Picker به سبک تلگرام iOS
+// Reaction Picker به سبک ویستا iOS
 //
 // ویژگی‌ها:
 // ✅ ظاهر شیشه‌ای و قرصی (Pill Shape)
@@ -12,7 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:ui';
 
-/// لیست گسترده‌ای از ری‌اکشن‌ها مشابه تلگرام
+/// لیست گسترده‌ای از ری‌اکشن‌ها مشابه ویستا
 const List<String> kDefaultReactions = [
   '👍', '👎', '❤️', '🔥', '🥰', '👏', '😁', '🤔', '🤯', '😱', '🤬', '😢', 
   '🎉', '🤩', '🤮', '💩', '🙏', '👌', '🕊️', '🤡', '🥱', '🥴', '😍', '🐳', 
@@ -198,7 +198,7 @@ class _TelegramReactionPickerState extends State<TelegramReactionPicker>
   }
 }
 
-/// Reaction Display در Message Bubble (مثل تلگرام)
+/// Reaction Display در Message Bubble (مثل ویستا)
 class TelegramReactionDisplay extends StatelessWidget {
   final Map<String, List<String>> reactions; // emoji -> [userId1, userId2, ...]
   final String currentUserId;

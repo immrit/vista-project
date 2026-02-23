@@ -1,4 +1,4 @@
-// lib/features/chat/screens/modern_chat_screen.dart
+﻿// lib/features/chat/screens/modern_chat_screen.dart
 //
 // صفحه چت مدرن با انیمیشن‌های حرفه‌ای
 //
@@ -13,6 +13,7 @@
 //
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 import 'package:dio/dio.dart';
@@ -226,6 +227,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   Timer? _pollingTimer;
   Timer? _floatingDateHideTimer;
   Timer? _activeConversationHeartbeatTimer;
+  Timer? _typingDebounceTimer;
   ProviderSubscription<AsyncValue<List<MessageModel>>>? _messagesListener;
   ProviderSubscription<AsyncValue<Map<String, dynamic>>>?
       _performanceSettingsListener;
@@ -599,6 +601,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _typingDebounceTimer?.cancel();
     // توقف تایپ هنگام خروج - با try-catch برای جلوگیری از خطا
     try {
       if (mounted) {
@@ -1297,7 +1300,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
     // Tap معمولی فقط برای باز کردن جزئیات/پیش‌نمایش مدیا استفاده می‌شود.
     final hasAttachment =
-        (message.attachmentUrl?.isNotEmpty ?? false) || message.isSharedPost;
+        (message.attachmentUrl?.isNotEmpty ?? false) ||
+            _isSharedPostMessage(message);
     if (hasAttachment) {
       _showMessageDetails(message);
     }
@@ -1565,7 +1569,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                   ),
                   const SizedBox(height: 2),
 
-                  // ✅ وضعیت آنلاین به سبک تلگرام - Real-time
+                  // ✅ وضعیت آنلاین به سبک ویستا - Real-time
                   TelegramOnlineStatus(
                     userId: widget.args.otherUserId,
                     isTyping: _isOtherUserTyping, // استفاده از متغیر صحیح
@@ -2473,17 +2477,33 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
   void _onTextChanged(String text) {
     if (!mounted) return;
-    if (text.isNotEmpty) {
+    final userId = _currentUserId;
+    if (userId == null) return;
+
+    final hasText = text.trim().isNotEmpty;
+    _typingDebounceTimer?.cancel();
+
+    if (!hasText) {
       try {
-        if (_currentUserId != null) {
-          ref
-              .read(typingServiceProvider)
-              .startTyping(widget.args.conversationId, _currentUserId!);
-        }
+        ref
+            .read(typingServiceProvider)
+            .stopTyping(widget.args.conversationId, userId);
+      } catch (e) {
+        debugPrint('Error stopping typing: $e');
+      }
+      return;
+    }
+
+    _typingDebounceTimer = Timer(const Duration(milliseconds: 220), () {
+      if (!mounted) return;
+      try {
+        ref
+            .read(typingServiceProvider)
+            .startTyping(widget.args.conversationId, userId);
       } catch (e) {
         debugPrint('Error starting typing: $e');
       }
-    }
+    });
   }
 
   /// Handle autocomplete triggers (@mention or #hashtag)
@@ -3079,7 +3099,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     _onAddReaction(message, '❤️');
   }
 
-  /// ✅ تابع جدید: نمایش Context Menu به سبک تلگرام
+  /// ✅ تابع جدید: نمایش Context Menu به سبک ویستا
   void _showTelegramContextMenu(
       BuildContext bubbleContext, MessageModel message) async {
     // برای باز شدن منو، فقط فوکوس را آزاد می‌کنیم و از hide اجباری کیبورد اجتناب می‌کنیم.
@@ -3109,6 +3129,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     final isVideo = message.attachmentType == 'video';
     final isVoice =
         message.attachmentType == 'voice' || message.attachmentType == 'audio';
+    final isSharedPost = _isSharedPostMessage(message);
     final isDocument = message.attachmentType != null &&
         ![
           'gif',
@@ -3118,7 +3139,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
           'audio',
           'location',
           'contact',
-          'post'
+          'post',
+          'shared_post',
         ].contains(message.attachmentType);
 
     // 2. ساخت ویجت برای نمایش در Overlay
@@ -3146,6 +3168,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
           !isImage &&
           !isVideo &&
           !isVoice &&
+          !isSharedPost &&
           message.content.isNotEmpty)
         TelegramContextMenuItem(
           icon: Icons.copy_rounded,
@@ -3212,6 +3235,15 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
           icon: Icons.download_rounded,
           label: 'دانلود فایل',
           onTap: () => _downloadFile(message),
+        ),
+        const TelegramContextMenuItem.divider(),
+      ],
+
+      if (isSharedPost) ...[
+        TelegramContextMenuItem(
+          icon: Icons.open_in_new_rounded,
+          label: 'باز کردن پست',
+          onTap: () => _showMessageDetails(message),
         ),
         const TelegramContextMenuItem.divider(),
       ],
@@ -3295,11 +3327,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   /// اگر پیام پست است، کارت گرافیکی پست را نمایش می‌دهد (نه کد JSON)
   Widget _buildMessagePreviewWidget(MessageModel message, bool isMe) {
     // 1. اگر پیام پست است، ویجت پست را برگردان تا کارت گرافیکی دیده شود نه کد JSON
-    if (message.isSharedPost ||
-        message.sharedPostData != null ||
-        message.messageType == 'post' ||
-        message.messageType == 'shared_post' ||
-        message.attachmentType == 'post') {
+    if (_isSharedPostMessage(message)) {
       // استفاده از IgnorePointer برای اینکه دکمه‌های پست در حالت پیش‌نمایش کار نکنند
       return IgnorePointer(
         child: _buildPostMessageBubble(message, isMe),
@@ -3341,6 +3369,18 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
   /// ✅ تابع جدید: نمایش جزئیات پیام
   void _showMessageDetails(MessageModel message) {
+    if (_isSharedPostMessage(message)) {
+      final parsedPostData =
+          message.sharedPostData ?? _extractLegacySharedPostData(message);
+      final postId = parsedPostData?.postId.trim() ?? '';
+      if (postId.isNotEmpty) {
+        _navigateToPostScreen(postId);
+      } else {
+        _showErrorSnackBar('شناسه پست یافت نشد');
+      }
+      return;
+    }
+
     // تشخیص نوع پیام
     final isDocument = message.attachmentType == 'document' ||
         (message.attachmentType != null &&
@@ -4108,8 +4148,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   /// ساخت ویجت پست برای پیام‌های پست
   Widget _buildPostMessageBubble(MessageModel message, bool isMe) {
     try {
-      // ✅ کد جدید: استفاده مستقیم از دیتای مدل (پارس شده در fromJson)
-      final postData = message.sharedPostData;
+      final postData =
+          message.sharedPostData ?? _extractLegacySharedPostData(message);
 
       if (postData == null) {
         // Fallback به پیام متنی معمولی
@@ -4139,9 +4179,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       final authorAvatar = postData.postAuthorAvatar;
       final authorUsername = postData.postAuthorUsername;
       final postContent = postData.postContent;
-      final mediaUrls = postData.postImageUrl != null
-          ? [postData.postImageUrl!]
-          : (postData.postVideoUrl != null ? [postData.postVideoUrl!] : null);
+      final mediaUrls = _extractSharedPostMediaUrls(message, postData);
       final likesCount = postData.likeCount;
       final commentsCount = postData.commentCount;
       final postCreatedAt = postData.postCreatedAt;
@@ -4314,7 +4352,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       ChatEntryAnimationMode.full => index < 5 && !_isNearTop,
     };
 
-    final bubbleContent = message.attachmentType == 'post'
+    final bubbleContent = _isSharedPostMessage(message)
         ? Builder(
             builder: (postContext) => _buildPostMessageBubble(message, isMe),
           )
@@ -4375,6 +4413,148 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       ),
       child: bubbleContent,
     );
+  }
+
+  bool _isSharedPostMessage(MessageModel message) {
+    if (message.sharedPostData != null || message.isSharedPost) return true;
+
+    final attachmentType = (message.attachmentType ?? '').toLowerCase().trim();
+    if (attachmentType == 'post' || attachmentType == 'shared_post') {
+      return true;
+    }
+
+    final messageType = (message.messageType ?? '').toLowerCase().trim();
+    if (messageType == 'post' ||
+        messageType == 'shared_post' ||
+        messageType == 'sharedpost') {
+      return true;
+    }
+
+    return _extractLegacySharedPostData(message) != null;
+  }
+
+  SharedPostData? _extractLegacySharedPostData(MessageModel message) {
+    final raw = message.content.trim();
+    if (raw.isEmpty || !raw.startsWith('{')) {
+      return null;
+    }
+
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return null;
+      final map = Map<String, dynamic>.from(decoded as Map);
+
+      final postId =
+          (map['postId'] ?? map['post_id'] ?? map['id'] ?? '').toString();
+      if (postId.isEmpty) {
+        return null;
+      }
+
+      int parseInt(dynamic value) {
+        if (value is int) return value;
+        if (value is num) return value.toInt();
+        return int.tryParse(value?.toString() ?? '') ?? 0;
+      }
+
+      bool parseBool(dynamic value) {
+        if (value is bool) return value;
+        final v = value?.toString().toLowerCase().trim();
+        return v == 'true' || v == '1' || v == 'yes' || v == 'on';
+      }
+
+      DateTime parseDate(dynamic value) {
+        if (value is DateTime) return value;
+        final parsed = DateTime.tryParse(value?.toString() ?? '');
+        return parsed ?? message.createdAt;
+      }
+
+      final mediaUrls = <String>[];
+      final mediaRaw = map['mediaUrls'] ?? map['media_urls'];
+      if (mediaRaw is List) {
+        for (final item in mediaRaw) {
+          final url = item?.toString().trim() ?? '';
+          if (url.isNotEmpty) {
+            mediaUrls.add(url);
+          }
+        }
+      }
+
+      final postImageUrl = (map['post_image_url'] ??
+              map['postImageUrl'] ??
+              (mediaUrls.isNotEmpty ? mediaUrls.first : null))
+          ?.toString();
+
+      final postVideoUrl =
+          (map['post_video_url'] ?? map['postVideoUrl'])?.toString();
+
+      return SharedPostData(
+        postId: postId,
+        postContent: (map['post_content'] ?? map['content'] ?? '').toString(),
+        postImageUrl: (postImageUrl?.trim().isNotEmpty ?? false)
+            ? postImageUrl!.trim()
+            : null,
+        postVideoUrl: (postVideoUrl?.trim().isNotEmpty ?? false)
+            ? postVideoUrl!.trim()
+            : null,
+        postAuthorName:
+            (map['post_author_name'] ?? map['authorName'] ?? '').toString(),
+        postAuthorUsername:
+            (map['post_author_username'] ?? map['authorUsername'] ?? '')
+                .toString(),
+        postAuthorAvatar:
+            (map['post_author_avatar'] ?? map['authorAvatar'])?.toString(),
+        postCreatedAt:
+            parseDate(map['post_created_at'] ?? map['createdAt'] ?? ''),
+        likeCount: parseInt(map['like_count'] ?? map['likesCount']),
+        commentCount: parseInt(map['comment_count'] ?? map['commentsCount']),
+        isVerified: parseBool(map['is_verified']),
+        verificationType:
+            (map['verification_type'] ?? map['verificationType'] ?? 'none')
+                .toString(),
+        role: map['role']?.toString(),
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  List<String>? _extractSharedPostMediaUrls(
+    MessageModel message,
+    SharedPostData postData,
+  ) {
+    final urls = <String>{};
+
+    final image = postData.postImageUrl?.trim() ?? '';
+    if (image.isNotEmpty) {
+      urls.add(image);
+    }
+
+    final video = postData.postVideoUrl?.trim() ?? '';
+    if (video.isNotEmpty) {
+      urls.add(video);
+    }
+
+    final raw = message.content.trim();
+    if (raw.startsWith('{')) {
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is Map) {
+          final map = Map<String, dynamic>.from(decoded as Map);
+          final mediaRaw = map['mediaUrls'] ?? map['media_urls'];
+          if (mediaRaw is List) {
+            for (final item in mediaRaw) {
+              final url = item?.toString().trim() ?? '';
+              if (url.isNotEmpty) {
+                urls.add(url);
+              }
+            }
+          }
+        }
+      } catch (_) {}
+    }
+
+    if (urls.isEmpty) return null;
+    return urls.toList(growable: false);
   }
 
   /// Navigate to post screen

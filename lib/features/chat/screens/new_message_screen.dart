@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../models/group_user_item.dart';
@@ -6,7 +6,7 @@ import '../services/group_service.dart';
 import 'group_create_screen.dart';
 import 'modern_chat_screen.dart';
 
-/// صفحه پیام جدید - UI ساده و مینیمال مشابه اینستاگرام
+/// صفحه پیام جدید - UI ساده و مینیمال مشابه ویستا
 class NewMessageScreen extends StatefulWidget {
   const NewMessageScreen({super.key});
 

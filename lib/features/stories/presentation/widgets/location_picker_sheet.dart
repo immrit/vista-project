@@ -1,9 +1,9 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import '../../../../utils/user_friendly_error_utils.dart';
 
-/// صفحه انتخاب لوکیشن با GPS (مشابه تلگرام)
+/// صفحه انتخاب لوکیشن با GPS (مشابه ویستا)
 class LocationPickerSheet extends StatefulWidget {
   final Function(String locationName, double lat, double lng)
       onLocationSelected;

@@ -1,4 +1,4 @@
-import '../../../security/logging_utility.dart';
+﻿import '../../../security/logging_utility.dart';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
@@ -17,7 +17,7 @@ import '../../../model/UserModel.dart';
 import '../../../provider/provider.dart';
 import 'package:Vista/widgets/YourVideoTrimmerPage.dart';
 import 'package:Vista/widgets/verification_badge_icon.dart';
-import '../../../../features/posts/providers/post_upload_provider.dart';
+import '../providers/post_upload_provider.dart';
 import '../widgets/hashtag_autocomplete_field.dart';
 
 class AddPublicPostScreen extends ConsumerStatefulWidget {
@@ -43,7 +43,6 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
   String? _selectedVideoName; // برای وب
   final FocusNode _focusNode = FocusNode();
   VideoPlayerController? _videoPlayerController; // کنترلر ویدیو
-  dynamic _html;
 
   @override
   void initState() {
@@ -513,7 +512,6 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = ref.watch(themeProvider);
     // Use Theme.of(context).brightness to ensure consistency with the current context (Scaffold, etc.)
     // avoiding discrepancies if provider and context update at different times or ways.
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
@@ -570,7 +568,7 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
 
                         const SizedBox(height: 16),
 
-                        // هشتگ‌ها داخل متن پست با # نوشته می‌شوند (مثل اینستاگرام)
+                        // هشتگ‌ها داخل متن پست با # نوشته می‌شوند (مثل ویستا)
                         // و در لحظه پیشنهاد هشتگ‌های موجود نمایش داده می‌شود.
                         const SizedBox(height: 16),
 
@@ -687,31 +685,6 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
         role: userData?['role']?.toString(),
         size: 16,
       ),
-    );
-  }
-
-  Widget _buildUserInfo(BuildContext context, Map<String, dynamic> userData) {
-    return Row(
-      children: [
-        CircleAvatar(
-          radius: 20,
-          backgroundImage: userData['avatar_url'] != null
-              ? NetworkImage(userData['avatar_url'])
-              : const AssetImage('lib/utils/images/default-avatar.jpg')
-                  as ImageProvider,
-        ),
-        const SizedBox(width: 8),
-        Row(
-          children: [
-            Text(
-              userData['username'] ?? 'کاربر',
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-            // نمایش نشان تأیید در کنار نام کاربر
-            _buildVerificationBadge(userData),
-          ],
-        ),
-      ],
     );
   }
 
