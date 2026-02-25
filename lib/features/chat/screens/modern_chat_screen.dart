@@ -32,6 +32,7 @@ import '../../../model/message_model.dart';
 import '../../../utils/compat_extensions.dart';
 import '../../../utils/time_utils.dart';
 import '../providers/chat_providers.dart';
+import '../repositories/chat_repository.dart';
 
 // ✅ Theme & Widgets
 import '../theme/chat_theme.dart';
@@ -187,6 +188,9 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   final AttachmentTypeResolver _attachmentTypeResolver =
       const AttachmentTypeResolver();
   final MessageTombstoneService _tombstoneService = MessageTombstoneService();
+  late final ChatRepository _chatRepository;
+  late final TypingService _typingService;
+  late final AdaptiveEffectsController _adaptiveEffectsController;
   // TODO: Use CompleteDeletionService for delete with undo
   // final _completeDeletionService = CompleteDeletionService();
 
@@ -235,6 +239,9 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   @override
   void initState() {
     super.initState();
+    _chatRepository = ref.read(chatRepositoryProvider);
+    _typingService = ref.read(typingServiceProvider);
+    _adaptiveEffectsController = ref.read(adaptiveEffectsProvider.notifier);
     WidgetsBinding.instance.addObserver(this);
     _setupAnimations();
     _scrollController.addListener(_onScroll);
@@ -254,9 +261,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     // ✅ تنظیم چت فعال برای جلوگیری از دریافت بج پیام
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
-        ref
-            .read(chatRepositoryProvider)
-            .setActiveConversation(widget.args.conversationId);
+        _chatRepository.setActiveConversation(widget.args.conversationId);
         CurrentChatTracker.instance.setOpenConversation(
           widget.args.conversationId,
         );
@@ -271,13 +276,9 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     // ✅ آپدیت فوری بج پیام (اگر پیام خوانده نشده داشتیم)
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
-        ref
-            .read(chatRepositoryProvider)
-            .resetUnreadCount(widget.args.conversationId);
+        _chatRepository.resetUnreadCount(widget.args.conversationId);
 
-        ref
-            .read(chatRepositoryProvider)
-            .markMessagesAsSeen(widget.args.conversationId);
+        _chatRepository.markMessagesAsSeen(widget.args.conversationId);
       }
     });
 
@@ -337,11 +338,11 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
           final featureFlags = featureFlagsRaw is Map
               ? Map<String, dynamic>.from(featureFlagsRaw)
               : null;
-          ref.read(adaptiveEffectsProvider.notifier).applySettings(
-                animations: animations,
-                rendering: rendering,
-                featureFlags: featureFlags,
-              );
+          _adaptiveEffectsController.applySettings(
+            animations: animations,
+            rendering: rendering,
+            featureFlags: featureFlags,
+          );
         });
       },
       fireImmediately: true,
@@ -604,12 +605,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     _typingDebounceTimer?.cancel();
     // توقف تایپ هنگام خروج - با try-catch برای جلوگیری از خطا
     try {
-      if (mounted) {
-        if (_currentUserId != null) {
-          ref
-              .read(typingServiceProvider)
-              .stopTyping(widget.args.conversationId, _currentUserId!);
-        }
+      if (_currentUserId != null) {
+        _typingService.stopTyping(widget.args.conversationId, _currentUserId!);
       }
     } catch (e) {
       // Ignore errors after dispose
@@ -644,7 +641,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       notifier.dispose();
     }
     _messageReactionNotifiers.clear();
-    ref.read(adaptiveEffectsProvider.notifier).updateScrollVelocity(0);
+    _adaptiveEffectsController.updateScrollVelocity(0);
 
     _scrollEndTimer?.cancel();
     _appBarAnimController.dispose();
@@ -711,14 +708,14 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   void _clearActiveConversationState() {
     CurrentChatTracker.instance.clearOpenConversation();
     try {
-      ref.read(chatRepositoryProvider).setActiveConversation(null);
+      _chatRepository.setActiveConversation(null);
     } catch (_) {}
     unawaited(_setServerActiveConversation(isActive: false));
   }
 
   void _startPolling() {
     // ✅ Smart Polling: گوش دادن به وضعیت اتصال ریل‌تایم
-    final repo = ref.read(chatRepositoryProvider);
+    final repo = _chatRepository;
 
     _realtimeSubscription = repo.realtimeStatus.listen((status) {
       if (status == RealtimeSubscribeStatus.subscribed) {
@@ -842,7 +839,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
     _lastScrollVelocitySampleAt = now;
     _lastScrollVelocitySampleOffset = currentScroll;
-    ref.read(adaptiveEffectsProvider.notifier).updateScrollVelocity(velocity);
+    _adaptiveEffectsController.updateScrollVelocity(velocity);
   }
 
   void _updateVisibleDate({bool force = false}) {
@@ -1299,9 +1296,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     }
 
     // Tap معمولی فقط برای باز کردن جزئیات/پیش‌نمایش مدیا استفاده می‌شود.
-    final hasAttachment =
-        (message.attachmentUrl?.isNotEmpty ?? false) ||
-            _isSharedPostMessage(message);
+    final hasAttachment = (message.attachmentUrl?.isNotEmpty ?? false) ||
+        _isSharedPostMessage(message);
     if (hasAttachment) {
       _showMessageDetails(message);
     }
@@ -4442,7 +4438,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     try {
       final decoded = jsonDecode(raw);
       if (decoded is! Map) return null;
-      final map = Map<String, dynamic>.from(decoded as Map);
+      final map = Map<String, dynamic>.from(decoded);
 
       final postId =
           (map['postId'] ?? map['post_id'] ?? map['id'] ?? '').toString();
@@ -4539,7 +4535,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       try {
         final decoded = jsonDecode(raw);
         if (decoded is Map) {
-          final map = Map<String, dynamic>.from(decoded as Map);
+          final map = Map<String, dynamic>.from(decoded);
           final mediaRaw = map['mediaUrls'] ?? map['media_urls'];
           if (mediaRaw is List) {
             for (final item in mediaRaw) {
