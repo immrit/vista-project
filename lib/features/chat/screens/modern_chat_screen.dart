@@ -1296,8 +1296,9 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     }
 
     // Tap معمولی فقط برای باز کردن جزئیات/پیش‌نمایش مدیا استفاده می‌شود.
-    final hasAttachment = (message.attachmentUrl?.isNotEmpty ?? false) ||
-        _isSharedPostMessage(message);
+    final hasAttachment =
+        (message.attachmentUrl?.isNotEmpty ?? false) ||
+            _isSharedPostMessage(message);
     if (hasAttachment) {
       _showMessageDetails(message);
     }
@@ -4183,6 +4184,21 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       final isVerified = postData.isVerified;
       final role = postData.role;
       final hashtags = null; // SharedPostData فعلاً hashtags ندارد
+      final handlePostTap = () {
+        if (_isSelectionMode) {
+          _toggleMessageSelection(message.id);
+        } else {
+          _navigateToPostScreen(postId);
+        }
+      };
+      final handlePostLongPress = () {
+        HapticFeedback.mediumImpact();
+        if (_isSelectionMode) {
+          _toggleMessageSelection(message.id);
+        } else {
+          _showTelegramContextMenu(context, message);
+        }
+      };
 
       // ✅ ساختار جدید برای کنترل کامل کلیک‌ها
       return Stack(
@@ -4190,22 +4206,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
           // ویجت پست
           GestureDetector(
             // اولویت کلیک با ماست
-            onTap: () {
-              if (_isSelectionMode) {
-                _toggleMessageSelection(message.id);
-              } else {
-                _navigateToPostScreen(postId);
-              }
-            },
-            onLongPress: () {
-              HapticFeedback.mediumImpact();
-              if (_isSelectionMode) {
-                _toggleMessageSelection(message.id);
-              } else {
-                // پاس دادن context درست برای باز شدن منو روی پست
-                _showTelegramContextMenu(context, message);
-              }
-            },
+            onTap: handlePostTap,
+            onLongPress: handlePostLongPress,
             child: AbsorbPointer(
               // اگر در حالت انتخاب هستیم، اجازه نده دکمه‌های داخلی پست (لایک و...) کار کنند
               absorbing: _isSelectionMode,
@@ -4226,9 +4228,9 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                 role: role,
                 hashtags: hashtags,
                 status: _getMessageStatus(message),
-                // callbacks داخلی ویجت را خالی می‌گذاریم چون GestureDetector والد هندل می‌کند
-                onTap: () {},
-                onLongPress: () {},
+                // callbacks داخلی را هم به همان هندلرها وصل می‌کنیم تا tap حتماً کار کند
+                onTap: handlePostTap,
+                onLongPress: handlePostLongPress,
                 onShare: () async {
                   if (!_isSelectionMode) {
                     final result = await ForwardMessageSheet.show(
@@ -4438,7 +4440,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     try {
       final decoded = jsonDecode(raw);
       if (decoded is! Map) return null;
-      final map = Map<String, dynamic>.from(decoded);
+      final map = Map<String, dynamic>.from(decoded as Map);
 
       final postId =
           (map['postId'] ?? map['post_id'] ?? map['id'] ?? '').toString();
@@ -4535,7 +4537,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       try {
         final decoded = jsonDecode(raw);
         if (decoded is Map) {
-          final map = Map<String, dynamic>.from(decoded);
+          final map = Map<String, dynamic>.from(decoded as Map);
           final mediaRaw = map['mediaUrls'] ?? map['media_urls'];
           if (mediaRaw is List) {
             for (final item in mediaRaw) {

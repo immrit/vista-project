@@ -777,7 +777,8 @@ Widget _buildPostItem(
                   Text(post.username,
                       style: const TextStyle(fontWeight: FontWeight.bold)),
                   const SizedBox(width: 4),
-                  if (post.isVerified) _buildVerificationBadge(post)
+                  if (_shouldShowVerificationBadge(post))
+                    _buildVerificationBadge(post)
                 ],
               ),
             ),
@@ -1056,11 +1057,16 @@ Widget _buildPostItem(
 
 Widget _buildVerificationBadge(PublicPostModel profile) {
   return VerificationBadgeIcon(
-    isVerified: profile.isVerified,
+    isVerified: _shouldShowVerificationBadge(profile),
     verificationType: profile.verificationType,
     role: profile.profiles?['role']?.toString(),
     size: 16,
   );
+}
+
+bool _shouldShowVerificationBadge(PublicPostModel post) {
+  return post.isVerified ||
+      post.verificationType.toString().split('.').last != 'none';
 }
 
 Widget _buildHashtags(List<String> hashtags, BuildContext context) {

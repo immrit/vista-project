@@ -299,6 +299,10 @@ class ConversationModel {
 
     if (lastMessage == null || lastMessage!.isEmpty) return null;
 
+    if (_looksLikeSharedPostPayload(lastMessage!)) {
+      return _formatSharedPostPreview(lastMessage!);
+    }
+
     // Check if message is encrypted
     if (lastMessage!.startsWith('e2ee:v1:')) {
       return '🔒 پیام رمزگذاری شده';
@@ -309,6 +313,45 @@ class ConversationModel {
 
   /// ✅ اصلاح شده: نمایش پیش‌نمایش بر اساس نوع پیام
   /// برای پست‌ها، JSON را پارس می‌کند و نام نویسنده را استخراج می‌کند
+  bool _looksLikeSharedPostPayload(String content) {
+    final normalized = content.trim();
+    if (!normalized.startsWith('{') || !normalized.endsWith('}')) {
+      return false;
+    }
+
+    try {
+      final decoded = jsonDecode(normalized);
+      if (decoded is! Map) return false;
+      final map = Map<String, dynamic>.from(decoded);
+      final hasPostId = map['postId'] != null || map['post_id'] != null;
+      final hasAuthor = map['authorName'] != null ||
+          map['postAuthorName'] != null ||
+          map['post_author_name'] != null;
+      return hasPostId || hasAuthor;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  String _formatSharedPostPreview(String content) {
+    try {
+      final decoded = jsonDecode(content.trim());
+      if (decoded is Map) {
+        final map = Map<String, dynamic>.from(decoded);
+        final authorName = (map['post_author_name'] ??
+                map['authorName'] ??
+                map['postAuthorName'] ??
+                '')
+            .toString()
+            .trim();
+        if (authorName.isNotEmpty) {
+          return '📮 پست از $authorName';
+        }
+      }
+    } catch (_) {}
+    return '📮 پست اشتراک‌گذاری شده';
+  }
+
   String _getMessageTypePreview(String type) {
     switch (type.toLowerCase()) {
       case 'voice':

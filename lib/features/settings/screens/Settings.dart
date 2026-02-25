@@ -13,6 +13,7 @@ import 'subpages/data_storage_settings_page.dart';
 import 'subpages/AboutSettingsPage.dart';
 import 'vistaStore/pricing_page.dart';
 import 'TermsAndConditions.dart';
+import '../../../services/AppInfoService.dart';
 
 /// صفحه تنظیمات ساده و تمیز - الهام گرفته از ویستا
 class Settings extends ConsumerWidget {
@@ -208,17 +209,31 @@ class Settings extends ConsumerWidget {
         const SizedBox(height: 40),
 
         // نسخه برنامه
-        Center(
+        _buildAppVersionLabel(isDark),
+        const SizedBox(height: 20),
+      ],
+    );
+  }
+
+  Widget _buildAppVersionLabel(bool isDark) {
+    return FutureBuilder<String>(
+      future: AppInfoService.getPubspecVersion(),
+      builder: (context, snapshot) {
+        final version =
+            (snapshot.data != null && snapshot.data!.trim().isNotEmpty)
+                ? snapshot.data!.trim()
+                : '--';
+
+        return Center(
           child: Text(
-            'نسخه ۱.۰.۰',
+            'نسخه $version',
             style: TextStyle(
               color: isDark ? Colors.grey[600] : Colors.grey[500],
               fontSize: 12,
             ),
           ),
-        ),
-        const SizedBox(height: 20),
-      ],
+        );
+      },
     );
   }
 

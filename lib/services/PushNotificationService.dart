@@ -527,7 +527,8 @@ class PushNotificationService {
         attachmentUrl: data['attachment_url']?.toString(),
         attachmentType: attachmentType,
         audioUrl: data['audio_url']?.toString(),
-        messageType: attachmentType?.isNotEmpty == true ? attachmentType : 'text',
+        messageType:
+            attachmentType?.isNotEmpty == true ? attachmentType : 'text',
         replyToMessageId: data['reply_to_message_id']?.toString(),
         // isEdited: false, // Not in constructor
         // isDeleted: false, // Not in constructor
@@ -561,7 +562,10 @@ class PushNotificationService {
     final int notificationId = conversationId.hashCode;
     final String groupKey = conversationId;
     final String senderName = data['sender_name']?.toString() ?? 'کاربر';
-    final String messageContent = data['content']?.toString() ?? 'پیام جدید';
+    final String messageContent = _buildReadableMessageBody(
+      data,
+      fallback: 'پیام جدید',
+    );
     final String? senderAvatarUrl = data['sender_avatar'];
 
     // ✅ ۱. دانلود هوشمند عکس پروفایل
@@ -694,12 +698,20 @@ class PushNotificationService {
         data['sender_name']?.toString() ??
         notification?.title ??
         'Vista';
-    String body = data['message']?.toString() ??
-        data['content']?.toString() ??
-        notification?.body ??
-        'خبر جدید';
+    String body = _buildReadableMessageBody(
+      data,
+      fallback: data['message']?.toString() ??
+          data['content']?.toString() ??
+          notification?.body ??
+          'خبر جدید',
+    );
 
-    body = _filterLinksFromText(body);
+    body = body.isNotEmpty
+        ? body
+        : data['message']?.toString() ??
+            data['content']?.toString() ??
+            notification?.body ??
+            'خبر جدید';
 
     await _flutterLocalNotifications.show(
       message.hashCode,
@@ -837,6 +849,96 @@ class PushNotificationService {
     _onMessageOpenedSubscription?.cancel();
     _onMessageOpenedSubscription = null;
     _listenersBound = false;
+  }
+
+  bool _isChatMessageType(String? type) {
+    final normalized = (type ?? '').trim().toLowerCase();
+    return normalized == 'chat_message' || normalized == 'message';
+  }
+
+  String _buildReadableMessageBody(
+    Map<String, dynamic> data, {
+    String fallback = 'پیام جدید',
+  }) {
+    final attachmentType = (data['attachment_type'] ?? data['attachmentType'])
+            ?.toString()
+            .trim()
+            .toLowerCase() ??
+        '';
+    final rawContent =
+        (data['content'] ?? data['message'] ?? '').toString().trim();
+    final decodedMap = _tryParseJsonMap(rawContent);
+
+    if (attachmentType == 'post' ||
+        attachmentType == 'shared_post' ||
+        _looksLikeSharedPostPayload(decodedMap)) {
+      return _buildSharedPostPreview(decodedMap);
+    }
+
+    switch (attachmentType) {
+      case 'image':
+        return 'تصویر';
+      case 'video':
+        return 'ویدیو';
+      case 'voice':
+      case 'audio':
+        return 'پیام صوتی';
+      case 'gif':
+        return 'GIF';
+      case 'file':
+      case 'document':
+        return 'فایل';
+    }
+
+    if (rawContent.isEmpty) return fallback;
+    final filtered = _filterLinksFromText(rawContent);
+    return filtered.isEmpty ? fallback : filtered;
+  }
+
+  Map<String, dynamic>? _tryParseJsonMap(String raw) {
+    if (raw.isEmpty || !raw.startsWith('{')) return null;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map) {
+        return Map<String, dynamic>.from(decoded);
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  bool _looksLikeSharedPostPayload(Map<String, dynamic>? map) {
+    if (map == null) return false;
+    return map.containsKey('postId') ||
+        map.containsKey('post_id') ||
+        map.containsKey('postAuthorName') ||
+        map.containsKey('authorName');
+  }
+
+  String _buildSharedPostPreview(Map<String, dynamic>? postMap) {
+    if (postMap == null) {
+      return 'یک پست به اشتراک گذاشته شد';
+    }
+
+    final content = (postMap['content'] ?? postMap['post_content'] ?? '')
+        .toString()
+        .replaceAll('\n', ' ')
+        .trim();
+
+    if (content.isNotEmpty) {
+      return _shorten(content, 70);
+    }
+
+    final author = (postMap['authorName'] ??
+            postMap['postAuthorName'] ??
+            postMap['post_author_name'] ??
+            '')
+        .toString()
+        .trim();
+    if (author.isNotEmpty) {
+      return 'پست اشتراک‌گذاری‌شده از $author';
+    }
+
+    return 'یک پست به اشتراک گذاشته شد';
   }
 
   String _filterLinksFromText(String text) {

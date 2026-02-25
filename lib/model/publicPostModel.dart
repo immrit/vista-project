@@ -88,7 +88,7 @@ class PublicPostModel {
       profiles: map['profiles'] as Map<String, dynamic>?,
       likeCount: _parseInt(map, 'like_count'),
       isLiked: _parseBool(map, 'is_liked'),
-      isVerified: map['is_verified'] ?? false,
+      isVerified: _parseIsVerified(map),
       verificationType:
           _parseVerificationType(map), // <-- فقط همین خط تغییر کند
       commentCount: _parseInt(map, 'comment_count'),
@@ -162,9 +162,7 @@ class PublicPostModel {
 
   static VerificationType _parseVerificationType(Map<String, dynamic> map) {
     final profile = map['profiles'] as Map<String, dynamic>? ?? const {};
-    final isVerified = (map['is_verified'] as bool?) ??
-        (profile['is_verified'] as bool?) ??
-        false;
+    final isVerified = _parseIsVerified(map);
     final role = (map['role'] ?? profile['role'])?.toString();
     final dynamic raw =
         map['verification_type'] ?? profile['verification_type'];
@@ -184,6 +182,23 @@ class PublicPostModel {
       case ResolvedVerificationBadgeType.none:
         return VerificationType.none;
     }
+  }
+
+  static bool _parseIsVerified(Map<String, dynamic> map) {
+    final profile = map['profiles'] as Map<String, dynamic>? ?? const {};
+    final direct = _coerceBool(map['is_verified']);
+    final fromProfile = _coerceBool(profile['is_verified']);
+    final rawType = map['verification_type'] ?? profile['verification_type'];
+    final hasBadgeType = parseVerificationBadgeType(rawType) !=
+        ResolvedVerificationBadgeType.none;
+    return direct || fromProfile || hasBadgeType;
+  }
+
+  static bool _coerceBool(dynamic value) {
+    if (value is bool) return value;
+    if (value is num) return value != 0;
+    final normalized = value?.toString().trim().toLowerCase();
+    return normalized == 'true' || normalized == '1' || normalized == 'yes';
   }
 
   static List<String> _parseHashtags(Map<String, dynamic> map) {

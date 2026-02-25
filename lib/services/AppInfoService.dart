@@ -26,6 +26,15 @@ class AppInfoService {
     return packageInfo.version;
   }
 
+  /// دریافت نسخه دقیق pubspec (فرمت: version+build)
+  static Future<String> getPubspecVersion() async {
+    final packageInfo = await getPackageInfo();
+    final version = packageInfo.version.trim();
+    final buildNumber = packageInfo.buildNumber.trim();
+    if (buildNumber.isEmpty) return version;
+    return '$version+$buildNumber';
+  }
+
   /// دریافت شماره ساخت
   static Future<String> getBuildNumber() async {
     final packageInfo = await getPackageInfo();

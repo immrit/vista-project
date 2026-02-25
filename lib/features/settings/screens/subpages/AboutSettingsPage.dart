@@ -146,15 +146,7 @@ class AboutSettingsPage extends StatelessWidget {
               ),
               child: Column(
                 children: [
-                  SettingsListItem(
-                    icon: Icons.code,
-                    iconColor: Colors.teal,
-                    title: 'نسخه برنامه',
-                    subtitle: AppInfoService.getShortVersionInfo(),
-                    onTap: () {
-                      BazaarService.showUpdateDialog(context);
-                    },
-                  ),
+                  _buildVersionSettingsItem(context),
                   _buildDivider(),
                   SettingsListItem(
                     icon: Icons.update,
@@ -185,6 +177,28 @@ class AboutSettingsPage extends StatelessWidget {
           margin: const EdgeInsets.only(left: 68.0),
           height: 0.5,
           color: isDark ? Colors.grey[700] : Colors.grey[200],
+        );
+      },
+    );
+  }
+
+  Widget _buildVersionSettingsItem(BuildContext context) {
+    return FutureBuilder<String>(
+      future: AppInfoService.getPubspecVersion(),
+      builder: (context, snapshot) {
+        final version =
+            (snapshot.data != null && snapshot.data!.trim().isNotEmpty)
+                ? snapshot.data!.trim()
+                : '--';
+
+        return SettingsListItem(
+          icon: Icons.code,
+          iconColor: Colors.teal,
+          title: 'نسخه برنامه',
+          subtitle: 'نسخه $version',
+          onTap: () {
+            BazaarService.showUpdateDialog(context);
+          },
         );
       },
     );

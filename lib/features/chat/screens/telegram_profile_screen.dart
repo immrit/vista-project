@@ -12,6 +12,7 @@
 // ✅ گرید رسانه‌ها
 //
 
+import 'dart:convert';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -34,6 +35,31 @@ import '../../../features/chat/providers/chat_providers.dart';
 import '../../../provider/provider.dart';
 import '../../../utils/user_friendly_error_utils.dart';
 import '../../posts/screens/profileScreen.dart';
+import '../../posts/screens/PostDetailPage.dart';
+
+enum _SharedPostKind { text, image, video, music }
+
+class _SharedPostGridItemData {
+  const _SharedPostGridItemData({
+    required this.postId,
+    required this.author,
+    required this.preview,
+    required this.createdAt,
+    required this.kind,
+    this.imageUrl,
+    this.videoUrl,
+    this.musicUrl,
+  });
+
+  final String postId;
+  final String author;
+  final String preview;
+  final DateTime createdAt;
+  final _SharedPostKind kind;
+  final String? imageUrl;
+  final String? videoUrl;
+  final String? musicUrl;
+}
 
 /// صفحه جزئیات چت - Vista
 class VistaChatProfileScreen extends ConsumerStatefulWidget {
@@ -75,7 +101,7 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 6, vsync: this);
+    _tabController = TabController(length: 7, vsync: this);
     _scrollController = ScrollController()..addListener(_onScroll);
   }
 
@@ -560,7 +586,7 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
                     size: 22,
                   ),
                   onPressed: () {
-                    _showQrDialog(username);
+                    _showQrDialog(widget.otherUserId, username: username);
                   },
                 ),
               ),
@@ -689,6 +715,7 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
             ),
             tabs: const [
               Tab(text: 'پست‌ها'),
+              Tab(text: 'رسانه'),
               Tab(text: 'فایل‌ها'),
               Tab(text: 'لینک‌ها'),
               Tab(text: 'صدا'),
@@ -703,6 +730,7 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
             child: TabBarView(
               controller: _tabController,
               children: [
+                _buildPostsTab(isDark),
                 _buildMediaTab(isDark),
                 _buildFilesTab(isDark),
                 _buildLinksTab(isDark),
@@ -713,6 +741,53 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildPostsTab(bool isDark) {
+    final mediaAsync =
+        ref.watch(legacy_chat.sharedMediaProvider(widget.conversationId));
+
+    return mediaAsync.when(
+      data: (messages) {
+        final sharedPosts =
+            messages.where(_isSharedPostMessage).toList(growable: false);
+        if (sharedPosts.isEmpty) {
+          return _buildEmptyState(
+            icon: Icons.article_outlined,
+            text: 'هیچ پستی یافت نشد',
+            isDark: isDark,
+          );
+        }
+
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final crossAxisCount =
+                _resolvePostsCrossAxisCount(constraints.maxWidth);
+
+            return GridView.builder(
+              padding: const EdgeInsets.all(12),
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: crossAxisCount,
+                crossAxisSpacing: 10,
+                mainAxisSpacing: 10,
+                childAspectRatio: constraints.maxWidth >= 760 ? 0.9 : 0.82,
+              ),
+              itemCount: sharedPosts.length,
+              itemBuilder: (context, index) => _buildSharedPostGridTile(
+                _buildSharedPostGridItemData(sharedPosts[index]),
+                isDark,
+              ),
+            );
+          },
+        );
+      },
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (_, __) => _buildEmptyState(
+        icon: Icons.error_outline,
+        text: 'خطا در بارگذاری پست‌ها',
+        isDark: isDark,
       ),
     );
   }
@@ -757,6 +832,432 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
         icon: Icons.error_outline,
         text: 'خطا در بارگذاری رسانه‌ها',
         isDark: isDark,
+      ),
+    );
+  }
+
+  int _resolvePostsCrossAxisCount(double width) {
+    if (width >= 980) return 4;
+    if (width >= 700) return 3;
+    return 2;
+  }
+
+  Widget _buildSharedPostGridTile(_SharedPostGridItemData post, bool isDark) {
+    final cardColor = isDark ? const Color(0xFF2A3646) : Colors.white;
+    final subtitleColor = isDark ? Colors.white70 : Colors.black54;
+
+    return Material(
+      color: cardColor,
+      borderRadius: BorderRadius.circular(14),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => _openSharedPostById(post.postId),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(child: _buildSharedPostGridPreview(post, isDark)),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10, 9, 10, 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    post.author.isNotEmpty ? post.author : 'پست اشتراک‌گذاری‌شده',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                      color: isDark ? Colors.white : Colors.black87,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    post.preview,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      height: 1.25,
+                      color: subtitleColor,
+                    ),
+                  ),
+                  const SizedBox(height: 7),
+                  Row(
+                    children: [
+                      _buildSharedPostTypeChip(post.kind, isDark),
+                      const Spacer(),
+                      Text(
+                        _formatDate(post.createdAt),
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: isDark ? Colors.white38 : Colors.grey[600],
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSharedPostGridPreview(_SharedPostGridItemData post, bool isDark) {
+    final fallbackColor = isDark ? const Color(0xFF334155) : Colors.blueGrey[50]!;
+    final iconColor = isDark ? Colors.white70 : const Color(0xFF546E7A);
+
+    if (post.kind == _SharedPostKind.image || post.kind == _SharedPostKind.video) {
+      final mediaUrl = post.kind == _SharedPostKind.video
+          ? (post.imageUrl ?? post.videoUrl)
+          : post.imageUrl;
+      if (mediaUrl != null && mediaUrl.isNotEmpty) {
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            CachedNetworkImage(
+              imageUrl: mediaUrl,
+              fit: BoxFit.cover,
+              placeholder: (context, url) => ColoredBox(color: fallbackColor),
+              errorWidget: (_, __, ___) =>
+                  Icon(Icons.image_not_supported_outlined, color: iconColor),
+            ),
+            if (post.kind == _SharedPostKind.video)
+              Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Colors.transparent, Colors.black.withOpacity(0.58)],
+                  ),
+                ),
+                child: const Center(
+                  child: Icon(
+                    Icons.play_circle_fill_rounded,
+                    color: Colors.white,
+                    size: 44,
+                  ),
+                ),
+              ),
+          ],
+        );
+      }
+    }
+
+    final bool isMusic = post.kind == _SharedPostKind.music;
+    final colors = isMusic
+        ? <Color>[
+            const Color(0xFF0EA5E9),
+            const Color(0xFF2563EB),
+          ]
+        : <Color>[
+            const Color(0xFFFB7185),
+            const Color(0xFFF59E0B),
+          ];
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: colors,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(
+              isMusic
+                  ? Icons.music_note_rounded
+                  : Icons.subject_rounded,
+              color: Colors.white,
+              size: 22,
+            ),
+          ),
+          const Spacer(),
+          Text(
+            isMusic ? 'پست موزیک' : 'پست متنی',
+            style: const TextStyle(
+              fontSize: 14,
+              color: Colors.white,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSharedPostTypeChip(_SharedPostKind kind, bool isDark) {
+    final icon = _sharedPostTypeIcon(kind);
+    final label = _sharedPostTypeLabel(kind);
+
+    final bg = isDark ? Colors.white.withOpacity(0.11) : _primaryColor.withOpacity(0.08);
+    final fg = isDark ? Colors.white70 : _primaryColor;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: fg),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 10,
+              color: fg,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  IconData _sharedPostTypeIcon(_SharedPostKind kind) {
+    switch (kind) {
+      case _SharedPostKind.text:
+        return Icons.subject_rounded;
+      case _SharedPostKind.image:
+        return Icons.image_outlined;
+      case _SharedPostKind.video:
+        return Icons.videocam_outlined;
+      case _SharedPostKind.music:
+        return Icons.music_note_outlined;
+    }
+  }
+
+  String _sharedPostTypeLabel(_SharedPostKind kind) {
+    switch (kind) {
+      case _SharedPostKind.text:
+        return 'متن';
+      case _SharedPostKind.image:
+        return 'عکس';
+      case _SharedPostKind.video:
+        return 'ویدیو';
+      case _SharedPostKind.music:
+        return 'موزیک';
+    }
+  }
+
+  _SharedPostGridItemData _buildSharedPostGridItemData(MessageModel message) {
+    final parsedMap = _decodeSharedPostMap(message);
+    final model = message.sharedPostData;
+
+    final postId = _firstNonEmpty([
+          model?.postId,
+          parsedMap?['postId'],
+          parsedMap?['post_id'],
+          parsedMap?['id'],
+        ]) ??
+        '';
+
+    final author = _firstNonEmpty([
+          model?.postAuthorName,
+          parsedMap?['authorName'],
+          parsedMap?['postAuthorName'],
+          parsedMap?['post_author_name'],
+          parsedMap?['full_name'],
+          parsedMap?['username'],
+        ]) ??
+        '';
+
+    final preview = _firstNonEmpty([
+          model?.postContent,
+          parsedMap?['content'],
+          parsedMap?['post_content'],
+          parsedMap?['caption'],
+          parsedMap?['text'],
+        ]) ??
+        'برای مشاهده پست لمس کنید';
+
+    final mediaUrls = _extractMediaUrls(parsedMap);
+    final imageUrl = _firstNonEmpty([
+      model?.postImageUrl,
+      parsedMap?['image_url'],
+      parsedMap?['post_image_url'],
+      parsedMap?['imageUrl'],
+      _firstMatching(mediaUrls, _looksLikeImageUrl),
+    ]);
+    final videoUrl = _firstNonEmpty([
+      model?.postVideoUrl,
+      parsedMap?['video_url'],
+      parsedMap?['post_video_url'],
+      parsedMap?['videoUrl'],
+      _firstMatching(mediaUrls, _looksLikeVideoUrl),
+    ]);
+    final musicUrl = _firstNonEmpty([
+      parsedMap?['music_url'],
+      parsedMap?['post_music_url'],
+      parsedMap?['musicUrl'],
+      parsedMap?['audio_url'],
+      parsedMap?['audioUrl'],
+      parsedMap?['song_url'],
+      parsedMap?['track_url'],
+      _firstMatching(mediaUrls, _looksLikeAudioUrl),
+    ]);
+
+    final kind = videoUrl != null
+        ? _SharedPostKind.video
+        : imageUrl != null
+            ? _SharedPostKind.image
+            : musicUrl != null
+                ? _SharedPostKind.music
+                : _SharedPostKind.text;
+
+    return _SharedPostGridItemData(
+      postId: postId,
+      author: author,
+      preview: preview,
+      createdAt: message.createdAt,
+      kind: kind,
+      imageUrl: imageUrl,
+      videoUrl: videoUrl,
+      musicUrl: musicUrl,
+    );
+  }
+
+  Map<String, dynamic>? _decodeSharedPostMap(MessageModel message) {
+    final content = message.content.trim();
+    if (!content.startsWith('{')) return null;
+    try {
+      final decoded = jsonDecode(content);
+      if (decoded is Map) {
+        return Map<String, dynamic>.from(decoded);
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  List<String> _extractMediaUrls(Map<String, dynamic>? map) {
+    if (map == null) return const [];
+    final raw = map['mediaUrls'] ?? map['media_urls'];
+    if (raw is! List) return const [];
+
+    final urls = <String>[];
+    for (final item in raw) {
+      final normalized = _normalizeUrlValue(item);
+      if (normalized != null) {
+        urls.add(normalized);
+      }
+    }
+    return urls;
+  }
+
+  String? _firstMatching(List<String> items, bool Function(String value) test) {
+    for (final item in items) {
+      if (test(item)) return item;
+    }
+    return null;
+  }
+
+  String? _firstNonEmpty(Iterable<dynamic> candidates) {
+    for (final candidate in candidates) {
+      final normalized = _normalizeUrlValue(candidate, allowAnyText: true);
+      if (normalized != null) return normalized;
+    }
+    return null;
+  }
+
+  String? _normalizeUrlValue(dynamic value, {bool allowAnyText = false}) {
+    final text = value?.toString().trim() ?? '';
+    if (text.isEmpty || text.toLowerCase() == 'null') {
+      return null;
+    }
+    if (allowAnyText) return text;
+    if (text.startsWith('http://') || text.startsWith('https://')) {
+      return text;
+    }
+    return null;
+  }
+
+  bool _looksLikeImageUrl(String url) {
+    final normalized = url.toLowerCase();
+    return normalized.endsWith('.jpg') ||
+        normalized.endsWith('.jpeg') ||
+        normalized.endsWith('.png') ||
+        normalized.endsWith('.webp') ||
+        normalized.endsWith('.gif') ||
+        normalized.endsWith('.heic');
+  }
+
+  bool _looksLikeVideoUrl(String url) {
+    final normalized = url.toLowerCase();
+    return normalized.endsWith('.mp4') ||
+        normalized.endsWith('.mov') ||
+        normalized.endsWith('.mkv') ||
+        normalized.endsWith('.webm') ||
+        normalized.endsWith('.m4v');
+  }
+
+  bool _looksLikeAudioUrl(String url) {
+    final normalized = url.toLowerCase();
+    return normalized.endsWith('.mp3') ||
+        normalized.endsWith('.wav') ||
+        normalized.endsWith('.ogg') ||
+        normalized.endsWith('.aac') ||
+        normalized.endsWith('.m4a') ||
+        normalized.endsWith('.flac');
+  }
+
+  bool _isSharedPostMessage(MessageModel message) {
+    if (message.sharedPostData != null || message.isSharedPost) return true;
+
+    final attachmentType = (message.attachmentType ?? '').toLowerCase();
+    if (attachmentType == 'post' || attachmentType == 'shared_post') {
+      return true;
+    }
+
+    final content = message.content.trim();
+    if (!content.startsWith('{')) return false;
+    try {
+      final decoded = jsonDecode(content);
+      if (decoded is Map) {
+        final map = Map<String, dynamic>.from(decoded);
+        return map['postId'] != null || map['post_id'] != null;
+      }
+    } catch (_) {}
+    return false;
+  }
+
+  String _extractPostIdFromMessage(MessageModel message) {
+    final postIdFromModel = message.sharedPostData?.postId.trim() ?? '';
+    if (postIdFromModel.isNotEmpty) return postIdFromModel;
+
+    final map = _decodeSharedPostMap(message);
+    return _firstNonEmpty([map?['postId'], map?['post_id']]) ?? '';
+  }
+
+  void _openSharedPost(MessageModel message) {
+    final postId = _extractPostIdFromMessage(message);
+    _openSharedPostById(postId);
+  }
+
+  void _openSharedPostById(String postId) {
+    if (postId.isEmpty) {
+      _showSnackBar('شناسه پست یافت نشد', isError: true);
+      return;
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PostDetailsPage(postId: postId),
       ),
     );
   }
@@ -899,19 +1400,21 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
 
     return mediaAsync.when(
       data: (messages) {
-        // فیلتر کردن پیام‌هایی که لینک دارند
-        final linkMessages = messages.where((m) {
-          if (m.content.isEmpty) return false;
-          // استفاده از رجکس ساده برای پیدا کردن http/https
-          // یا استفاده از RichTextParser اگر ایمپورت شده باشد (که بهتر است)
-          return m.content
-                  .contains(RegExp(r'https?:\/\/', caseSensitive: false)) ||
-              m.content.contains(RegExp(r'www\.', caseSensitive: false));
-        }).toList();
+        final linkEntries = <_MessageLinkEntry>[];
+        for (final message in messages) {
+          if (_isSharedPostMessage(message)) continue;
+          final content = message.content.trim();
+          if (content.isEmpty) continue;
+          final urls = _extractUrlsFromText(content);
+          for (final url in urls) {
+            if (_isSharedPostLink(url)) continue;
+            linkEntries.add(_MessageLinkEntry(message: message, url: url));
+          }
+        }
 
-        if (linkMessages.isEmpty) {
+        if (linkEntries.isEmpty) {
           return _buildEmptyState(
-            icon: Icons.link_off_outlined, // آیکون متفاوت
+            icon: Icons.link_off_outlined,
             text: 'هیچ لینکی یافت نشد',
             isDark: isDark,
           );
@@ -919,18 +1422,17 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
 
         return ListView.separated(
           padding: const EdgeInsets.symmetric(vertical: 8),
-          itemCount: linkMessages.length,
+          itemCount: linkEntries.length,
           separatorBuilder: (_, __) => Divider(
             height: 1,
             indent: 72,
             color: isDark ? Colors.white12 : Colors.black12,
           ),
           itemBuilder: (context, index) {
-            final msg = linkMessages[index];
-            // استخراج اولین لینک برای نمایش
-            final urlMatch = RegExp(r'((https?:\/\/)|(www\.))[^\s]+')
-                .firstMatch(msg.content);
-            final url = urlMatch?.group(0) ?? '';
+            final entry = linkEntries[index];
+            final msg = entry.message;
+            final url = entry.url;
+            final description = _removeUrlFromText(msg.content, url);
 
             return ListTile(
               leading: Container(
@@ -953,9 +1455,7 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
                 overflow: TextOverflow.ellipsis,
               ),
               subtitle: Text(
-                msg.content.replaceAll(url, '').trim().isEmpty
-                    ? 'بدون توضیحات'
-                    : msg.content.replaceAll(url, '').trim(),
+                description.isEmpty ? 'بدون توضیحات' : description,
                 style: TextStyle(
                   color: isDark ? Colors.white70 : Colors.black54,
                   fontSize: 12,
@@ -970,16 +1470,7 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
                   fontSize: 10,
                 ),
               ),
-              onTap: () {
-                final uri =
-                    Uri.tryParse(url.startsWith('http') ? url : 'https://$url');
-                if (uri != null) {
-                  // استفاده از url_launcher (باید ایمپورت شده باشد)
-                  // launchUrl(uri, mode: LaunchMode.externalApplication);
-                  // چون دسترسی به ایمپورت نداریم، فعلا اسنک‌بار می‌زنیم یا فرض می‌کنیم تابع کمکی هست
-                  _showSnackBar('در حال باز کردن لینک: $url');
-                }
-              },
+              onTap: () => _launchExternalUrl(url),
             );
           },
         );
@@ -991,6 +1482,75 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
         isDark: isDark,
       ),
     );
+  }
+
+  List<String> _extractUrlsFromText(String text) {
+    final urlRegex = RegExp(
+      r'((https?:\/\/|www\.)[^\s<>()]+|(?:[a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}(?:\/[^\s<>()]*)?)',
+      caseSensitive: false,
+    );
+
+    final unique = <String>{};
+    final urls = <String>[];
+
+    for (final match in urlRegex.allMatches(text)) {
+      var url = match.group(0)?.trim() ?? '';
+      if (url.isEmpty) continue;
+      url = url.replaceAll(RegExp(r'[)\],.!?;:]+$'), '');
+      if (url.isEmpty) continue;
+      if (unique.add(url)) {
+        urls.add(url);
+      }
+    }
+
+    return urls;
+  }
+
+  String _removeUrlFromText(String text, String url) {
+    final normalizedUrl = RegExp.escape(url);
+    final withoutUrl = text.replaceAll(RegExp(normalizedUrl), '').trim();
+    return withoutUrl;
+  }
+
+  bool _isSharedPostLink(String url) {
+    final normalized = url.startsWith('http') ? url : 'https://$url';
+    final uri = Uri.tryParse(normalized);
+    if (uri == null) return false;
+
+    final host = uri.host.toLowerCase();
+    final fullPath = uri.path.toLowerCase();
+    final firstSegment =
+        uri.pathSegments.isNotEmpty ? uri.pathSegments.first.toLowerCase() : '';
+    final hasPostPath = firstSegment == 'post' ||
+        firstSegment == 'posts' ||
+        firstSegment == 'p' ||
+        fullPath.contains('/post/') ||
+        fullPath.contains('/posts/');
+    final hasPostQuery = uri.queryParameters.containsKey('postId') ||
+        uri.queryParameters.containsKey('post_id');
+    final vistaPostScheme =
+        uri.scheme.toLowerCase() == 'vista' && firstSegment == 'post';
+    final isVistaHost = host.contains('vista');
+
+    return vistaPostScheme || (isVistaHost && (hasPostPath || hasPostQuery));
+  }
+
+  Future<void> _launchExternalUrl(String url) async {
+    final normalized = url.startsWith('http') ? url : 'https://$url';
+    final uri = Uri.tryParse(normalized);
+    if (uri == null) {
+      _showSnackBar('لینک معتبر نیست', isError: true);
+      return;
+    }
+
+    try {
+      final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!opened) {
+        _showSnackBar('امکان باز کردن لینک وجود ندارد', isError: true);
+      }
+    } catch (_) {
+      _showSnackBar('خطا در باز کردن لینک', isError: true);
+    }
   }
 
   /// تب صدا
@@ -1526,18 +2086,19 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
     }
   }
 
-  void _showQrDialog(String username) {
-    final normalized = username.trim();
-    if (normalized.isEmpty) {
-      _showSnackBar('نام کاربری معتبر نیست', isError: true);
+  void _showQrDialog(String vistaId, {String? username}) {
+    final normalizedId = vistaId.trim();
+    if (normalizedId.isEmpty) {
+      _showSnackBar('Vista ID معتبر نیست', isError: true);
       return;
     }
 
-    final qrData = 'vista://user/$normalized';
+    final qrData = 'vista://user/$normalizedId';
+    final normalizedUsername = username?.trim() ?? '';
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('کد کاربری'),
+        title: const Text('QR کاربر'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -1547,10 +2108,22 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
               backgroundColor: Colors.white,
             ),
             const SizedBox(height: 12),
-            Text('@$normalized', textDirection: TextDirection.ltr),
+            Text('Vista ID: $normalizedId', textDirection: TextDirection.ltr),
+            if (normalizedUsername.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text('@$normalizedUsername', textDirection: TextDirection.ltr),
+            ],
           ],
         ),
         actions: [
+          TextButton(
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: normalizedId));
+              Navigator.pop(ctx);
+              _showSnackBar('Vista ID کپی شد');
+            },
+            child: const Text('کپی Vista ID'),
+          ),
           TextButton(
             onPressed: () => Navigator.pop(ctx),
             child: const Text('بستن'),
@@ -1802,6 +2375,16 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
       ),
     );
   }
+}
+
+class _MessageLinkEntry {
+  final MessageModel message;
+  final String url;
+
+  const _MessageLinkEntry({
+    required this.message,
+    required this.url,
+  });
 }
 
 class GalleryPhotoViewWrapper extends StatelessWidget {

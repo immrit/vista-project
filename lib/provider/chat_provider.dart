@@ -132,7 +132,7 @@ final sharedMediaProvider = FutureProvider.family
         .from('messages')
         .select()
         .eq('conversation_id', conversationId)
-        .not('attachment_type', 'is', null)
+        .or('attachment_type.not.is.null,content.ilike.%http%,content.ilike.%www.%')
         .order('created_at', ascending: false);
 
     final userId = supabase.auth.currentUser?.id ?? '';

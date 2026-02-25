@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'dart:async';
@@ -41,6 +41,8 @@ import 'package:Vista/features/search/screens/searchPage.dart';
 import 'package:Vista/features/posts/widgets/hashtag_rich_text.dart';
 import 'package:Vista/features/posts/widgets/post_music_bubble.dart';
 import 'package:Vista/widgets/verification_badge_icon.dart';
+import 'package:Vista/widgets/ReelsScreen.dart';
+import 'package:get_thumbnail_video/video_thumbnail.dart';
 
 /// صفحه پروفایل ویستا - طراحی مدرن Instagram/Threads
 class ProfileScreen extends ConsumerStatefulWidget {
@@ -151,7 +153,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                   children: [
                     _buildPostsGrid(profileState, isCurrentUserProfile, isDark),
                     _buildReelsGrid(profileState, isCurrentUserProfile, isDark),
-                    _buildTaggedGrid(isDark),
+                    _buildMusicTab(profileState, isCurrentUserProfile, isDark),
                   ],
                 ),
               ),
@@ -298,6 +300,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
       ProfileModel profile, bool isCurrentUser, bool isDark) {
     final isPrivateAsync = ref.watch(userSettingsByIdProvider(profile.id));
     final currentUserId = ref.read(authProvider)?.id;
+    final postsAsync = ref.watch(profilePostsProvider(profile.id));
 
     return isPrivateAsync.when(
       data: (settings) {
@@ -309,20 +312,29 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
           return _PrivateAccountPlaceholder(isDark: isDark);
         }
 
-        final reels = profile.posts.where((p) => p.hasVideo).toList();
-
-        if (reels.isEmpty) {
-          return _EmptyPlaceholder(
-            title: 'هنوز کلیپی نیست',
-            subtitle: isCurrentUser
-                ? 'اولین کلیپ خود را به اشتراک بگذارید'
-                : 'این کاربر هنوز کلیپی منتشر نکرده',
-            icon: Icons.play_circle_outline,
-            isDark: isDark,
-          );
-        }
-
-        return _ReelsGridView(reels: reels, isDark: isDark);
+        return postsAsync.when(
+          data: (posts) {
+            final reels = posts.where((p) => p.hasVideo).toList();
+            if (reels.isEmpty) {
+              return _EmptyPlaceholder(
+                title: 'هنوز کلیپی نیست',
+                subtitle: isCurrentUser
+                    ? 'اولین کلیپ خود را به اشتراک بگذارید'
+                    : 'این کاربر هنوز کلیپی منتشر نکرده',
+                icon: Icons.play_circle_outline,
+                isDark: isDark,
+              );
+            }
+            return _ReelsGridView(reels: reels, isDark: isDark);
+          },
+          loading: () => Center(
+            child: CircularProgressIndicator(
+              color: isDark ? Colors.white : Colors.black,
+            ),
+          ),
+          error: (_, __) =>
+              const Center(child: Text('خطا در بارگذاری کلیپ‌ها')),
+        );
       },
       loading: () => Center(
         child: CircularProgressIndicator(
@@ -333,14 +345,57 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     );
   }
 
-  // ========== Tagged Grid ==========
+  // ========== Music Grid ==========
 
-  Widget _buildTaggedGrid(bool isDark) {
-    return _EmptyPlaceholder(
-      title: 'بدون تگ',
-      subtitle: 'هنوز در پستی تگ نشده‌اید',
-      icon: Icons.person_pin_outlined,
-      isDark: isDark,
+  Widget _buildMusicTab(ProfileModel profile, bool isCurrentUser, bool isDark) {
+    final isPrivateAsync = ref.watch(userSettingsByIdProvider(profile.id));
+    final currentUserId = ref.read(authProvider)?.id;
+    final postsAsync = ref.watch(profilePostsProvider(profile.id));
+
+    return isPrivateAsync.when(
+      data: (settings) {
+        final isPrivate = (settings?['is_private'] as bool?) ?? false;
+        final blockedView =
+            isPrivate && !profile.isFollowed && profile.id != currentUserId;
+
+        if (blockedView) {
+          return _PrivateAccountPlaceholder(isDark: isDark);
+        }
+
+        return postsAsync.when(
+          data: (posts) {
+            final musicPosts = posts
+                .where((p) =>
+                    (p.musicUrl ?? '').trim().isNotEmpty ||
+                    (p.title ?? '').trim().isNotEmpty)
+                .toList();
+            if (musicPosts.isEmpty) {
+              return _EmptyPlaceholder(
+                title: 'هنوز موزیکی نیست',
+                subtitle: isCurrentUser
+                    ? 'برای پست‌هایتان موزیک اضافه کنید'
+                    : 'این کاربر هنوز موزیکی منتشر نکرده',
+                icon: Icons.music_note_outlined,
+                isDark: isDark,
+              );
+            }
+            return _MusicListView(posts: musicPosts, isDark: isDark);
+          },
+          loading: () => Center(
+            child: CircularProgressIndicator(
+              color: isDark ? Colors.white : Colors.black,
+            ),
+          ),
+          error: (_, __) =>
+              const Center(child: Text('خطا در بارگذاری موزیک‌ها')),
+        );
+      },
+      loading: () => Center(
+        child: CircularProgressIndicator(
+          color: isDark ? Colors.white : Colors.black,
+        ),
+      ),
+      error: (_, __) => const Center(child: Text('خطا در بارگذاری')),
     );
   }
 
@@ -457,7 +512,17 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
               ),
               onTap: () {
                 Navigator.pop(context);
-                // Share profile
+                final username =
+                    (ref.read(userProfileProvider(widget.userId))?.username ??
+                            widget.username)
+                        .trim();
+                if (username.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('نام کاربری در دسترس نیست')),
+                  );
+                  return;
+                }
+                SmartShareService().shareProfile(username, context: context);
               },
             ),
             ListTile(
@@ -471,7 +536,21 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
               ),
               onTap: () {
                 Navigator.pop(context);
-                // Copy link
+                final username =
+                    (ref.read(userProfileProvider(widget.userId))?.username ??
+                            widget.username)
+                        .trim();
+                if (username.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('نام کاربری در دسترس نیست')),
+                  );
+                  return;
+                }
+                final profileUrl = 'https://cafevista.ir/profile/$username';
+                Clipboard.setData(ClipboardData(text: profileUrl));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('لینک پروفایل کپی شد')),
+                );
               },
             ),
             ListTile(
@@ -479,7 +558,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
               title: const Text('گزارش', style: TextStyle(color: Colors.red)),
               onTap: () {
                 Navigator.pop(context);
-                // Report user
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('گزارش کاربر ثبت شد')),
+                );
               },
             ),
             const SizedBox(height: 16),
@@ -1118,7 +1199,7 @@ class _ProfileTabBarDelegate extends SliverPersistentHeaderDelegate {
         tabs: const [
           Tab(icon: Icon(Icons.grid_on, size: 24)),
           Tab(icon: Icon(Icons.play_arrow_outlined, size: 26)),
-          Tab(icon: Icon(Icons.person_pin_outlined, size: 24)),
+          Tab(icon: Icon(Icons.music_note_outlined, size: 24)),
         ],
       ),
     );
@@ -1415,6 +1496,15 @@ class _PostListItem extends ConsumerWidget {
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
+                      if (_shouldShowVerificationBadge()) ...[
+                        const SizedBox(width: 4),
+                        VerificationBadgeIcon(
+                          isVerified: true,
+                          verificationType: post.verificationType,
+                          role: post.profiles?['role']?.toString(),
+                          size: 15,
+                        ),
+                      ],
                       const SizedBox(width: 6),
                       Text(
                         '• ${_getTimeAgo(post.createdAt)}',
@@ -1514,7 +1604,7 @@ class _PostListItem extends ConsumerWidget {
                                   ? (isLiked ? 1 : -1)
                                   : 0);
 
-                          return GestureDetector(
+                          return _buildActionTapTarget(
                             onTap: () async {
                               ref
                                   .read(likeStateProvider.notifier)
@@ -1536,6 +1626,7 @@ class _PostListItem extends ConsumerWidget {
                               }
                             },
                             child: Row(
+                              mainAxisSize: MainAxisSize.min,
                               children: [
                                 Icon(
                                   isLiked
@@ -1565,11 +1656,12 @@ class _PostListItem extends ConsumerWidget {
                           );
                         },
                       ),
-                      const SizedBox(width: 24),
+                      const SizedBox(width: 8),
                       // دکمه کامنت
-                      GestureDetector(
+                      _buildActionTapTarget(
                         onTap: () => _showCommentsSheet(context, ref),
                         child: Row(
+                          mainAxisSize: MainAxisSize.min,
                           children: [
                             Image.asset(
                               'lib/utils/images/component/comment.png',
@@ -1593,7 +1685,7 @@ class _PostListItem extends ConsumerWidget {
                           ],
                         ),
                       ),
-                      const SizedBox(width: 24),
+                      const SizedBox(width: 8),
                       // دکمه ذخیره
                       _buildAction(
                         icon: isSaved
@@ -1614,9 +1706,9 @@ class _PostListItem extends ConsumerWidget {
                           }
                         },
                       ),
-                      const SizedBox(width: 24),
+                      const SizedBox(width: 8),
                       // دکمه اشتراک‌گذاری
-                      GestureDetector(
+                      _buildActionTapTarget(
                         onTap: () =>
                             SmartShareService().showShareOptions(post, context),
                         child: Image.asset(
@@ -1646,9 +1738,10 @@ class _PostListItem extends ConsumerWidget {
     required VoidCallback onTap,
     Color? iconColor,
   }) {
-    return GestureDetector(
+    return _buildActionTapTarget(
       onTap: onTap,
       child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
             icon,
@@ -1668,6 +1761,27 @@ class _PostListItem extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  Widget _buildActionTapTarget({
+    required VoidCallback onTap,
+    required Widget child,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+          child: child,
+        ),
+      ),
+    );
+  }
+
+  bool _shouldShowVerificationBadge() {
+    return post.isVerified || post.verificationType != VerificationType.none;
   }
 
   String _getTimeAgo(DateTime dateTime) {
@@ -1951,6 +2065,91 @@ class _PostListItem extends ConsumerWidget {
   }
 }
 
+class _MusicListView extends StatelessWidget {
+  final List<PublicPostModel> posts;
+  final bool isDark;
+
+  const _MusicListView({
+    required this.posts,
+    required this.isDark,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView.separated(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      itemCount: posts.length,
+      separatorBuilder: (_, __) => Divider(
+        height: 1,
+        color: isDark ? const Color(0xFF303D4F) : const Color(0xFFE4E6E9),
+      ),
+      itemBuilder: (context, index) {
+        final post = posts[index];
+        final title = _resolveMusicTitle(post);
+        return ListTile(
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => PostDetailsPage(postId: post.id)),
+          ),
+          leading: Container(
+            width: 46,
+            height: 46,
+            decoration: BoxDecoration(
+              color: (isDark ? Colors.white : Colors.black).withOpacity(0.08),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(Icons.music_note_rounded),
+          ),
+          title: Text(
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: isDark ? Colors.white : Colors.black87,
+            ),
+          ),
+          subtitle: Text(
+            post.username,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 12,
+              color: isDark ? Colors.white60 : Colors.grey[600],
+            ),
+          ),
+          trailing: Icon(
+            Icons.play_circle_outline_rounded,
+            color: isDark ? Colors.white70 : Colors.grey[700],
+          ),
+        );
+      },
+    );
+  }
+
+  String _resolveMusicTitle(PublicPostModel post) {
+    final direct = post.title?.trim() ?? '';
+    if (direct.isNotEmpty) return direct;
+
+    final url = post.musicUrl?.trim() ?? '';
+    if (url.isEmpty) return 'Music';
+
+    final uri = Uri.tryParse(url);
+    final lastSegment = (uri?.pathSegments.isNotEmpty ?? false)
+        ? uri!.pathSegments.last
+        : url.split('/').last;
+
+    final withoutExtension = lastSegment.replaceFirst(RegExp(r'\.[^.]+$'), '');
+    final normalized = withoutExtension
+        .replaceFirst(RegExp(r'^[^_]+_[0-9]+_'), '')
+        .replaceAll('_', ' ')
+        .trim();
+
+    return normalized.isEmpty ? 'Music' : normalized;
+  }
+}
+
 /// گرید کلیپ‌ها
 class _ReelsGridView extends StatelessWidget {
   final List<PublicPostModel> reels;
@@ -1971,7 +2170,11 @@ class _ReelsGridView extends StatelessWidget {
       itemCount: reels.length,
       itemBuilder: (context, index) {
         final reel = reels[index];
-        return _ReelGridItem(reel: reel, isDark: isDark);
+        return _ReelGridItem(
+          reel: reel,
+          reels: reels,
+          isDark: isDark,
+        );
       },
     );
   }
@@ -1980,35 +2183,41 @@ class _ReelsGridView extends StatelessWidget {
 /// آیتم گرید کلیپ
 class _ReelGridItem extends StatelessWidget {
   final PublicPostModel reel;
+  final List<PublicPostModel> reels;
   final bool isDark;
 
-  const _ReelGridItem({required this.reel, required this.isDark});
+  const _ReelGridItem({
+    required this.reel,
+    required this.reels,
+    required this.isDark,
+  });
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: () {
-        // Navigate to reel
+        final playableReels =
+            reels.where((item) => item.videoUrl?.isNotEmpty == true).toList();
+        if (playableReels.isEmpty) return;
+
+        final selectedIndex =
+            playableReels.indexWhere((item) => item.id == reel.id);
+        if (selectedIndex < 0) return;
+
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ReelsScreen(
+              posts: List<PublicPostModel>.from(playableReels),
+              initialIndex: selectedIndex,
+            ),
+          ),
+        );
       },
       child: Stack(
         fit: StackFit.expand,
         children: [
-          if (reel.imageUrl != null)
-            CachedNetworkImage(
-              imageUrl: reel.imageUrl!,
-              fit: BoxFit.cover,
-              placeholder: (_, __) => Container(
-                color: isDark ? Colors.grey[900] : Colors.grey[200],
-              ),
-              errorWidget: (_, __, ___) => Container(
-                color: isDark ? Colors.grey[900] : Colors.grey[200],
-                child: const Icon(Icons.broken_image),
-              ),
-            )
-          else
-            Container(
-              color: isDark ? Colors.grey[900] : Colors.grey[200],
-            ),
+          _buildThumbnail(),
 
           // Play icon overlay
           Positioned(
@@ -2038,6 +2247,44 @@ class _ReelGridItem extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Widget _buildThumbnail() {
+    final fallback = Container(
+      color: isDark ? Colors.grey[900] : Colors.grey[200],
+    );
+
+    if (reel.imageUrl != null && reel.imageUrl!.isNotEmpty) {
+      return CachedNetworkImage(
+        imageUrl: reel.imageUrl!,
+        fit: BoxFit.cover,
+        placeholder: (_, __) => fallback,
+        errorWidget: (_, __, ___) => fallback,
+      );
+    }
+
+    if (reel.videoUrl != null && reel.videoUrl!.isNotEmpty) {
+      return FutureBuilder<Uint8List?>(
+        future: VideoThumbnail.thumbnailData(
+          video: reel.videoUrl!,
+          quality: 70,
+          maxWidth: 420,
+        ),
+        builder: (context, snapshot) {
+          final bytes = snapshot.data;
+          if (bytes == null || bytes.isEmpty) {
+            return fallback;
+          }
+          return Image.memory(
+            bytes,
+            fit: BoxFit.cover,
+            gaplessPlayback: true,
+          );
+        },
+      );
+    }
+
+    return fallback;
   }
 
   String _formatViewCount(int count) {

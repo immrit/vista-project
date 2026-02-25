@@ -118,6 +118,106 @@ class NotificationModel extends Equatable {
   static bool _isTruthy(dynamic value) =>
       value == true || value?.toString().toLowerCase() == 'true';
 
+  static Map<String, dynamic>? _tryDecodeMap(String raw) {
+    if (raw.isEmpty || !raw.trimLeft().startsWith('{')) return null;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map) {
+        return Map<String, dynamic>.from(decoded);
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  static bool _looksLikeSharedPostPayload(Map<String, dynamic>? map) {
+    if (map == null) return false;
+    return map.containsKey('postId') ||
+        map.containsKey('post_id') ||
+        map.containsKey('authorName') ||
+        map.containsKey('postAuthorName') ||
+        map.containsKey('post_author_name');
+  }
+
+  static String _sharedPostPreview(Map<String, dynamic>? map) {
+    if (map == null) return 'یک پست به اشتراک گذاشته شد';
+
+    final content = (map['content'] ?? map['post_content'] ?? '')
+        .toString()
+        .replaceAll('\n', ' ')
+        .trim();
+    if (content.isNotEmpty) return content;
+
+    final author = (map['authorName'] ??
+            map['postAuthorName'] ??
+            map['post_author_name'] ??
+            '')
+        .toString()
+        .trim();
+    if (author.isNotEmpty) return 'پست اشتراک‌گذاری‌شده از $author';
+
+    return 'یک پست به اشتراک گذاشته شد';
+  }
+
+  static String _defaultContentForType(String type) {
+    switch (canonicalType(type)) {
+      case 'message':
+        return 'پیام جدید';
+      case 'follow':
+        return 'دنبال‌کننده جدید';
+      case 'follow_request':
+        return 'درخواست دنبال کردن';
+      case 'follow_request_accepted':
+        return 'درخواست دنبال‌کردن پذیرفته شد';
+      case 'like':
+        return 'لایک جدید';
+      case 'comment':
+        return 'نظر جدید';
+      case 'comment_reply':
+        return 'پاسخ جدید';
+      default:
+        return 'اعلان جدید';
+    }
+  }
+
+  static String _normalizeContent(
+    String raw, {
+    String? type,
+    String? attachmentType,
+  }) {
+    final trimmed = raw.trim();
+    final normalizedAttachment = (attachmentType ?? '').toLowerCase().trim();
+
+    if (normalizedAttachment == 'post' ||
+        normalizedAttachment == 'shared_post') {
+      return _sharedPostPreview(_tryDecodeMap(trimmed));
+    }
+
+    final decodedMap = _tryDecodeMap(trimmed);
+    if (_looksLikeSharedPostPayload(decodedMap)) {
+      return _sharedPostPreview(decodedMap);
+    }
+
+    switch (normalizedAttachment) {
+      case 'image':
+        return 'تصویر';
+      case 'video':
+        return 'ویدیو';
+      case 'voice':
+      case 'audio':
+        return 'پیام صوتی';
+      case 'gif':
+        return 'GIF';
+      case 'file':
+      case 'document':
+        return 'فایل';
+    }
+
+    if (trimmed.isEmpty) {
+      return _defaultContentForType(type ?? '');
+    }
+    return trimmed;
+  }
+
   /// Factory method برای ایجاد NotificationModel از FCM RemoteMessage
   factory NotificationModel.fromFCM(RemoteMessage message) {
     final data = message.data;
@@ -222,6 +322,12 @@ class NotificationModel extends Equatable {
 
     // اگر conversation_id از nested payload نیومد، از data مستقیم بگیر
     conversationId ??= data['conversation_id'] as String?;
+
+    content = _normalizeContent(
+      content,
+      type: type,
+      attachmentType: data['attachment_type']?.toString(),
+    );
 
     // تعیین verification type
     final userIsVerified = _isTruthy(data['is_verified']);
@@ -343,7 +449,11 @@ class NotificationModel extends Equatable {
       id: json['id'] ?? json['notification_id'] ?? '',
       senderId: json['sender_id'] ?? '',
       recipientId: json['recipient_id'] ?? '',
-      content: json['content'] ?? '',
+      content: _normalizeContent(
+        json['content']?.toString() ?? '',
+        type: json['type']?.toString(),
+        attachmentType: json['attachment_type']?.toString(),
+      ),
       createdAt: json['created_at'] != null
           ? DateTime.parse(json['created_at'])
           : DateTime.now(),
@@ -389,7 +499,11 @@ class NotificationModel extends Equatable {
       id: map['id'] as String? ?? '',
       senderId: map['sender_id'] as String? ?? '',
       recipientId: map['recipient_id'] as String? ?? '',
-      content: map['content'] as String? ?? '',
+      content: _normalizeContent(
+        map['content'] as String? ?? '',
+        type: map['type']?.toString(),
+        attachmentType: map['attachment_type']?.toString(),
+      ),
       createdAt: map['created_at'] != null
           ? DateTime.parse(map['created_at'] as String)
           : DateTime.now(),
