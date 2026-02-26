@@ -6,6 +6,8 @@ part 'message_entity.g.dart';
 
 @collection
 class MessageEntity {
+  static const String _mediaGroupStoragePrefix = '__media_group__:';
+
   Id? isarId;
 
   @Index(unique: true, replace: true)
@@ -102,7 +104,10 @@ class MessageEntity {
       ..isForwarded = model.isForwarded
       ..originalSenderId = model.originalSenderId
       ..forwardedFromSenderName = model.forwardedFromSenderName
-      ..originalMessageId = model.originalMessageId
+      ..originalMessageId = _encodeOriginalMessageIdForStorage(
+        originalMessageId: model.originalMessageId,
+        mediaGroupId: model.mediaGroupId,
+      )
       ..messageType = model.messageType
       ..deletedGlobally = model.deletedGlobally
       ..deletedForUserIds = model.deletedForUserIds
@@ -124,6 +129,9 @@ class MessageEntity {
   }
 
   MessageModel toModel() {
+    final decodedOriginalMeta =
+        _decodeOriginalMessageIdFromStorage(originalMessageId);
+
     Map<String, List<String>> reactions = {};
     if (reactionsJson != null) {
       try {
@@ -178,7 +186,8 @@ class MessageEntity {
       isForwarded: isForwarded,
       originalSenderId: originalSenderId,
       forwardedFromSenderName: forwardedFromSenderName,
-      originalMessageId: originalMessageId,
+      originalMessageId: decodedOriginalMeta.originalMessageId,
+      mediaGroupId: decodedOriginalMeta.mediaGroupId,
       messageType: messageType,
       deletedGlobally: deletedGlobally,
       deletedForUserIds: deletedForUserIds ?? [],
@@ -189,6 +198,39 @@ class MessageEntity {
           ? StoryReplyData.fromJson(jsonDecode(storyReplyDataJson!))
           : null,
     );
+  }
+
+  static String? _encodeOriginalMessageIdForStorage({
+    String? originalMessageId,
+    String? mediaGroupId,
+  }) {
+    final normalizedOriginal = originalMessageId?.trim() ?? '';
+    if (normalizedOriginal.isNotEmpty) return normalizedOriginal;
+
+    final normalizedGroup = mediaGroupId?.trim() ?? '';
+    if (normalizedGroup.isEmpty) return null;
+    return '$_mediaGroupStoragePrefix$normalizedGroup';
+  }
+
+  static ({
+    String? originalMessageId,
+    String? mediaGroupId,
+  }) _decodeOriginalMessageIdFromStorage(String? storedValue) {
+    final normalized = storedValue?.trim() ?? '';
+    if (normalized.isEmpty) {
+      return (originalMessageId: null, mediaGroupId: null);
+    }
+
+    if (normalized.startsWith(_mediaGroupStoragePrefix)) {
+      final mediaGroupId =
+          normalized.substring(_mediaGroupStoragePrefix.length).trim();
+      return (
+        originalMessageId: null,
+        mediaGroupId: mediaGroupId.isEmpty ? null : mediaGroupId,
+      );
+    }
+
+    return (originalMessageId: normalized, mediaGroupId: null);
   }
 }
 

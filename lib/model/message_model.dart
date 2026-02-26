@@ -180,6 +180,7 @@ class MessageModel {
   final String? audioTitle;
   final String? audioArtist;
   final String? audioAlbum;
+  final String? mediaGroupId;
   final int? duration; // مدت زمان فایل صوتی (ثانیه)
   final bool isRead;
   final bool isSent;
@@ -381,6 +382,7 @@ class MessageModel {
     this.audioTitle,
     this.audioArtist,
     this.audioAlbum,
+    this.mediaGroupId,
     this.duration,
     this.isRead = false,
     this.isSent = true,
@@ -432,7 +434,7 @@ class MessageModel {
     if (isPending) {
       return MessageDeliveryStatus.pending;
     }
-    if (isSeen) {
+    if (isSeen || isRead) {
       return MessageDeliveryStatus.read;
     }
     if (isDelivered) {
@@ -448,6 +450,7 @@ class MessageModel {
   void updateStatus({
     bool? pending,
     bool? seen,
+    bool? read,
     bool? failed,
     bool? sent,
     bool? delivered,
@@ -456,6 +459,7 @@ class MessageModel {
     final newStatus = _calculateDeliveryStatusFromFields(
       pending: pending ?? isPending,
       seen: seen ?? isSeen,
+      read: read ?? isRead,
       failed: failed ?? isFailed,
       sent: sent ?? isSent,
       delivered: delivered ?? isDelivered,
@@ -471,6 +475,7 @@ class MessageModel {
   MessageDeliveryStatus _calculateDeliveryStatusFromFields({
     required bool pending,
     required bool seen,
+    required bool read,
     bool? failed,
     required bool sent,
     required bool delivered,
@@ -481,7 +486,7 @@ class MessageModel {
     if (pending) {
       return MessageDeliveryStatus.pending;
     }
-    if (seen) {
+    if (seen || read) {
       return MessageDeliveryStatus.read;
     }
     if (delivered) {
@@ -561,16 +566,21 @@ class MessageModel {
       }
     }
 
+    final parsedIsRead = json['is_read'] as bool? ?? false;
+    final parsedIsSeen = (json['is_seen'] as bool? ?? false) || parsedIsRead;
+    final parsedIsDelivered =
+        (json['is_delivered'] as bool? ?? false) || parsedIsSeen;
+
     return MessageModel(
       id: json['id'],
       conversationId: conversationId,
       senderId: json['sender_id'] as String,
       content: json['content'] as String,
       createdAt: DateTime.parse(json['created_at'] as String),
-      isRead: json['is_read'] as bool? ?? false,
+      isRead: parsedIsRead,
       isSent: json['is_sent'] ?? true,
-      isDelivered: json['is_delivered'] as bool? ?? false,
-      isSeen: json['is_seen'] as bool? ?? false,
+      isDelivered: parsedIsDelivered,
+      isSeen: parsedIsSeen,
       attachmentUrl: json['attachment_url'],
       audioUrl: json['audio_url'],
       attachmentType: json['attachment_type'],
@@ -580,6 +590,7 @@ class MessageModel {
       audioTitle: json['audio_title'] as String?,
       audioArtist: json['audio_artist'] as String?,
       audioAlbum: json['audio_album'] as String?,
+      mediaGroupId: json['media_group_id'] as String?,
       duration: json['duration'] as int?,
       senderName: (json['sender_name'] as String?)?.trim().isNotEmpty == true
           ? (json['sender_name'] as String?)?.trim()
@@ -642,6 +653,7 @@ class MessageModel {
     String? audioTitle,
     String? audioArtist,
     String? audioAlbum,
+    String? mediaGroupId,
     int? duration,
     String? replyToMessageId,
     String? replyToContent,
@@ -674,6 +686,7 @@ class MessageModel {
       audioTitle: audioTitle,
       audioArtist: audioArtist,
       audioAlbum: audioAlbum,
+      mediaGroupId: mediaGroupId,
       duration: duration,
       isRead: false,
       isSent: false,
@@ -712,6 +725,7 @@ class MessageModel {
     String? audioTitle,
     String? audioArtist,
     String? audioAlbum,
+    String? mediaGroupId,
     int? duration,
     bool? isRead,
     bool? isSent,
@@ -760,6 +774,7 @@ class MessageModel {
       audioTitle: audioTitle ?? this.audioTitle,
       audioArtist: audioArtist ?? this.audioArtist,
       audioAlbum: audioAlbum ?? this.audioAlbum,
+      mediaGroupId: mediaGroupId ?? this.mediaGroupId,
       duration: duration ?? this.duration,
       isRead: isRead ?? this.isRead,
       isSent: isSent ?? this.isSent,
@@ -802,12 +817,14 @@ class MessageModel {
     // ✅ اگر status fields تغییر کرده، آپدیت کن
     if (isPending != null ||
         isSeen != null ||
+        isRead != null ||
         isFailed != null ||
         isSent != null ||
         isDelivered != null) {
       newModel.updateStatus(
         pending: isPending ?? this.isPending,
         seen: isSeen ?? this.isSeen,
+        read: isRead ?? this.isRead,
         failed: isFailed ?? this.isFailed,
         sent: isSent ?? this.isSent,
         delivered: isDelivered ?? this.isDelivered,
@@ -838,6 +855,7 @@ class MessageModel {
       'audio_title': audioTitle,
       'audio_artist': audioArtist,
       'audio_album': audioAlbum,
+      'media_group_id': mediaGroupId,
       'duration': duration,
       'is_read': isRead,
       'is_sent': isSent,

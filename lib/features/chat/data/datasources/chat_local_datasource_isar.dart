@@ -2,7 +2,7 @@ import 'package:isar/isar.dart';
 import '../../../../model/message_model.dart';
 import '../../../../model/conversation_model.dart';
 import '../../../../DB/isar_database_manager.dart';
-import '../entities/message_entity.dart';
+import '../entities/message_entity.dart' hide fastHash;
 import '../entities/conversation_entity.dart';
 
 class ChatLocalDataSourceIsar {
@@ -36,14 +36,25 @@ class ChatLocalDataSourceIsar {
     if (messages.isEmpty) return;
     final isar = await _dbManager.instance;
     await isar.writeTxn(() async {
+      final existingById = await _loadExistingMessagesById(
+        isar,
+        messages.map((m) => m.id),
+      );
+      final touchedConversationIds = <String>{};
       for (final message in messages) {
-        final existing = await isar.messageEntitys
-            .filter()
-            .idEqualTo(message.id)
-            .findFirst();
+        final existingModel = existingById[message.id];
         final merged =
-            _mergeWithExistingLocalFields(message, existing?.toModel());
+            _mergeWithExistingLocalFields(message, existingModel);
+        if (existingModel != null &&
+            _isMessageEffectivelySame(existingModel, merged)) {
+          continue;
+        }
         await isar.messageEntitys.put(MessageEntity.fromModel(merged));
+        touchedConversationIds.add(merged.conversationId);
+      }
+
+      for (final conversationId in touchedConversationIds) {
+        await _rebuildConversationMetadataInTxn(isar, conversationId);
       }
     });
   }
@@ -53,54 +64,105 @@ class ChatLocalDataSourceIsar {
     await isar.writeTxn(() async {
       final existing =
           await isar.messageEntitys.filter().idEqualTo(message.id).findFirst();
-      final merged =
-          _mergeWithExistingLocalFields(message, existing?.toModel());
+      final existingModel = existing?.toModel();
+      final merged = _mergeWithExistingLocalFields(message, existingModel);
+      final existingMessage = existingModel;
+      final hadIncomingUnseenBefore = existingMessage != null &&
+          existingMessage.isMe == false &&
+          existingMessage.isSeen == false &&
+          existingMessage.isRead == false;
+      final shouldIncrementUnread = merged.isMe == false &&
+          merged.isSeen == false &&
+          merged.isRead == false &&
+          !hadIncomingUnseenBefore;
+      final shouldRecountUnread = existingMessage != null &&
+          existingMessage.isMe == false &&
+          existingMessage.isSeen == false &&
+          existingMessage.isRead == false &&
+          (merged.isSeen == true || merged.isRead == true);
+
+      final conversation = await isar.conversationEntitys
+          .filter()
+          .idEqualTo(message.conversationId)
+          .findFirst();
+      if (existingModel != null &&
+          conversation != null &&
+          _isMessageEffectivelySame(existingModel, merged)) {
+        return;
+      }
 
       // 1. Save Message
       await isar.messageEntitys.put(MessageEntity.fromModel(merged));
 
       // 2. Update Conversation Metadata (Last Message & Unread Count)
-      final conversation = await isar.conversationEntitys
-          .filter()
-          .idEqualTo(message.conversationId)
-          .findFirst();
-
       if (conversation != null) {
-        conversation.lastMessage = merged.content;
-        conversation.lastMessageTime = merged.createdAt;
-        conversation.updatedAt = merged.createdAt;
+        final isLatestMessage = conversation.lastMessageTime == null ||
+            !merged.createdAt.isBefore(conversation.lastMessageTime!);
 
-        // ذخیره جزییات آخرین پیام برای نمایش بهتر بج‌ها و وضعیت پیام
-        conversation.lastMessageType = merged.attachmentType ?? 'text';
-        conversation.isLastMessageFromMe = merged.isMe;
-        conversation.lastMessageSenderId = merged.senderId;
+        if (isLatestMessage) {
+          conversation.lastMessage = merged.content;
+          conversation.lastMessageTime = merged.createdAt;
 
-        // تنظیم وضعیت تحویل آخرین پیام
-        if (merged.isPending == true) {
-          conversation.lastMessageDeliveryStatus = 'pending';
-        } else if (merged.isFailed == true) {
-          conversation.lastMessageDeliveryStatus = 'failed';
-        } else if (merged.isSeen == true) {
-          conversation.lastMessageDeliveryStatus = 'seen';
-        } else if (merged.isDelivered == true) {
-          conversation.lastMessageDeliveryStatus = 'delivered';
-        } else if (merged.isSent == true) {
-          conversation.lastMessageDeliveryStatus = 'sent';
-        } else {
-          conversation.lastMessageDeliveryStatus = 'sent';
+          if (merged.createdAt.isAfter(conversation.updatedAt)) {
+            conversation.updatedAt = merged.createdAt;
+          }
+
+          // ذخیره جزییات آخرین پیام برای نمایش بهتر بج‌ها و وضعیت پیام
+          conversation.lastMessageType = merged.attachmentType ?? 'text';
+          conversation.isLastMessageFromMe = merged.isMe;
+          conversation.lastMessageSenderId = merged.senderId;
+
+          // تنظیم وضعیت تحویل آخرین پیام
+          if (merged.isPending == true) {
+            conversation.lastMessageDeliveryStatus = 'pending';
+          } else if (merged.isFailed == true) {
+            conversation.lastMessageDeliveryStatus = 'failed';
+          } else if (merged.isSeen == true || merged.isRead == true) {
+            conversation.lastMessageDeliveryStatus = 'read';
+          } else if (merged.isDelivered == true) {
+            conversation.lastMessageDeliveryStatus = 'delivered';
+          } else if (merged.isSent == true) {
+            conversation.lastMessageDeliveryStatus = 'sent';
+          } else {
+            conversation.lastMessageDeliveryStatus = 'sent';
+          }
         }
 
-        // اگر پیام از طرف من نیست و دیده نشده، شمارنده اضافه شود
-        if (merged.isMe == false && merged.isSeen == false) {
+        if (shouldIncrementUnread) {
           conversation.unreadCount += 1;
-          conversation.hasUnreadMessages = true;
         }
+        if (shouldRecountUnread) {
+          conversation.unreadCount = await isar.messageEntitys
+              .filter()
+              .conversationIdEqualTo(message.conversationId)
+              .isMeEqualTo(false)
+              .isSeenEqualTo(false)
+              .isReadEqualTo(false)
+              .count();
+        }
+        if (conversation.unreadCount < 0) {
+          conversation.unreadCount = 0;
+        }
+        conversation.hasUnreadMessages = conversation.unreadCount > 0;
 
         await isar.conversationEntitys.put(conversation);
       } else {
-        // If conversation doesn't exist locally, we might want to create a ghost one?
-        // Or wait for 'getConversations'.
-        // For now, let's assume it exists or will be fetched.
+        final placeholder = ConversationEntity()
+          ..isarId = fastHash(message.conversationId)
+          ..id = message.conversationId
+          ..createdAt = merged.createdAt
+          ..updatedAt = merged.createdAt
+          ..lastMessage = merged.content
+          ..lastMessageTime = merged.createdAt
+          ..lastMessageType = merged.attachmentType ?? 'text'
+          ..isLastMessageFromMe = merged.isMe
+          ..lastMessageSenderId = merged.senderId
+          ..lastMessageDeliveryStatus = _messageDeliveryStatusToString(merged)
+          ..otherUserName = 'VISTA USER'
+          ..unreadCount = shouldIncrementUnread ? 1 : 0
+          ..hasUnreadMessages = shouldIncrementUnread
+          ..type = 'private';
+        await isar.conversationEntitys.put(placeholder);
       }
     });
   }
@@ -112,6 +174,21 @@ class ChatLocalDataSourceIsar {
     if (existing == null) return incoming;
 
     return incoming.copyWith(
+      // Never regress delivery state due to stale sync snapshots.
+      isSent: incoming.isSent || existing.isSent,
+      isDelivered: incoming.isDelivered || existing.isDelivered,
+      isSeen: incoming.isSeen || existing.isSeen,
+      isRead: incoming.isRead || existing.isRead,
+      // Pending can only stay true if neither sent nor seen yet.
+      isPending: incoming.isPending &&
+          !(incoming.isSent ||
+              incoming.isDelivered ||
+              incoming.isSeen ||
+              incoming.isRead ||
+              existing.isSent ||
+              existing.isDelivered ||
+              existing.isSeen ||
+              existing.isRead),
       attachmentFileName:
           incoming.attachmentFileName ?? existing.attachmentFileName,
       attachmentMimeType:
@@ -121,10 +198,82 @@ class ChatLocalDataSourceIsar {
       audioTitle: incoming.audioTitle ?? existing.audioTitle,
       audioArtist: incoming.audioArtist ?? existing.audioArtist,
       audioAlbum: incoming.audioAlbum ?? existing.audioAlbum,
+      mediaGroupId: incoming.mediaGroupId ?? existing.mediaGroupId,
       duration: incoming.duration ?? existing.duration,
       localImagePath: incoming.localImagePath ?? existing.localImagePath,
       localFilePath: incoming.localFilePath ?? existing.localFilePath,
     );
+  }
+
+  Future<void> _rebuildConversationMetadataInTxn(
+    Isar isar,
+    String conversationId,
+  ) async {
+    final normalizedConversationId = conversationId.trim();
+    if (normalizedConversationId.isEmpty) return;
+
+    final latestMessageEntity = await isar.messageEntitys
+        .filter()
+        .conversationIdEqualTo(normalizedConversationId)
+        .sortByCreatedAtDesc()
+        .findFirst();
+
+    var conversation = await isar.conversationEntitys
+        .filter()
+        .idEqualTo(normalizedConversationId)
+        .findFirst();
+
+    if (conversation == null && latestMessageEntity == null) {
+      return;
+    }
+
+    if (conversation == null && latestMessageEntity != null) {
+      final latestMessage = latestMessageEntity.toModel();
+      conversation = ConversationEntity()
+        ..isarId = fastHash(normalizedConversationId)
+        ..id = normalizedConversationId
+        ..createdAt = latestMessage.createdAt
+        ..updatedAt = latestMessage.createdAt
+        ..otherUserName = 'VISTA USER'
+        ..type = 'private';
+    }
+
+    if (conversation == null) return;
+
+    if (latestMessageEntity != null) {
+      final latestMessage = latestMessageEntity.toModel();
+      conversation
+        ..lastMessage = latestMessage.content
+        ..lastMessageTime = latestMessage.createdAt
+        ..lastMessageType = latestMessage.attachmentType ?? 'text'
+        ..isLastMessageFromMe = latestMessage.isMe
+        ..lastMessageSenderId = latestMessage.senderId
+        ..lastMessageDeliveryStatus = _messageDeliveryStatusToString(latestMessage);
+
+      if (latestMessage.createdAt.isAfter(conversation.updatedAt)) {
+        conversation.updatedAt = latestMessage.createdAt;
+      }
+    } else {
+      conversation
+        ..lastMessage = null
+        ..lastMessageTime = null
+        ..lastMessageType = null
+        ..isLastMessageFromMe = false
+        ..lastMessageSenderId = null
+        ..lastMessageDeliveryStatus = null;
+    }
+
+    final unreadCount = await isar.messageEntitys
+        .filter()
+        .conversationIdEqualTo(normalizedConversationId)
+        .isMeEqualTo(false)
+        .isSeenEqualTo(false)
+        .isReadEqualTo(false)
+        .count();
+    conversation.unreadCount = unreadCount;
+    conversation.hasUnreadMessages = unreadCount > 0;
+
+    await isar.conversationEntitys.put(conversation);
   }
 
   Future<void> resetUnreadCount(String conversationId) async {
@@ -136,6 +285,9 @@ class ChatLocalDataSourceIsar {
           .findFirst();
 
       if (conversation != null) {
+        if (conversation.unreadCount == 0 && !conversation.hasUnreadMessages) {
+          return;
+        }
         conversation.unreadCount = 0;
         conversation.hasUnreadMessages = false;
         await isar.conversationEntitys.put(conversation);
@@ -154,9 +306,13 @@ class ChatLocalDataSourceIsar {
           .isMeEqualTo(false) // That are not mine (I see others' messages)
           .findAll();
 
-      for (var msg in messages) {
+      for (final msg in messages) {
         msg.isSeen = true;
-        await isar.messageEntitys.put(msg);
+        msg.isRead = true;
+        msg.isDelivered = true;
+      }
+      if (messages.isNotEmpty) {
+        await isar.messageEntitys.putAll(messages);
       }
 
       // 2. Reset Unread Count (just to be safe)
@@ -166,6 +322,9 @@ class ChatLocalDataSourceIsar {
           .findFirst();
 
       if (conversation != null) {
+        if (conversation.unreadCount == 0 && !conversation.hasUnreadMessages) {
+          return;
+        }
         conversation.unreadCount = 0;
         conversation.hasUnreadMessages = false;
         await isar.conversationEntitys.put(conversation);
@@ -246,14 +405,76 @@ class ChatLocalDataSourceIsar {
   Future<void> deleteMessage(String messageId) async {
     final isar = await _dbManager.instance;
     await isar.writeTxn(() async {
+      final messageToDelete =
+          await isar.messageEntitys.filter().idEqualTo(messageId).findFirst();
+      if (messageToDelete == null) return;
+
+      final conversationId = messageToDelete.conversationId;
       await isar.messageEntitys.filter().idEqualTo(messageId).deleteAll();
+
+      final conversation = await isar.conversationEntitys
+          .filter()
+          .idEqualTo(conversationId)
+          .findFirst();
+      if (conversation == null) return;
+
+      final latestMessageEntity = await isar.messageEntitys
+          .filter()
+          .conversationIdEqualTo(conversationId)
+          .sortByCreatedAtDesc()
+          .findFirst();
+
+      if (latestMessageEntity != null) {
+        final latestMessage = latestMessageEntity.toModel();
+        conversation
+          ..lastMessage = latestMessage.content
+          ..lastMessageTime = latestMessage.createdAt
+          ..lastMessageType = latestMessage.attachmentType ?? 'text'
+          ..isLastMessageFromMe = latestMessage.isMe
+          ..lastMessageSenderId = latestMessage.senderId
+          ..lastMessageDeliveryStatus =
+              _messageDeliveryStatusToString(latestMessage)
+          ..updatedAt = latestMessage.createdAt;
+      } else {
+        conversation
+          ..lastMessage = null
+          ..lastMessageTime = null
+          ..lastMessageType = null
+          ..isLastMessageFromMe = false
+          ..lastMessageSenderId = null
+          ..lastMessageDeliveryStatus = null;
+      }
+
+      final unreadCount = await isar.messageEntitys
+          .filter()
+          .conversationIdEqualTo(conversationId)
+          .isMeEqualTo(false)
+          .isSeenEqualTo(false)
+          .isReadEqualTo(false)
+          .count();
+
+      conversation.unreadCount = unreadCount;
+      conversation.hasUnreadMessages = unreadCount > 0;
+
+      await isar.conversationEntitys.put(conversation);
     });
   }
 
   Future<void> reconcileMessages(
       String conversationId, List<MessageModel> serverMessages) async {
-    if (serverMessages.isEmpty) return;
     final isar = await _dbManager.instance;
+    if (serverMessages.isEmpty) {
+      await isar.writeTxn(() async {
+        await isar.messageEntitys
+            .filter()
+            .conversationIdEqualTo(conversationId)
+            .isPendingEqualTo(false)
+            .isFailedEqualTo(false)
+            .deleteAll();
+        await _rebuildConversationMetadataInTxn(isar, conversationId);
+      });
+      return;
+    }
 
     // 1. Get date range
     final sortedServer = List<MessageModel>.from(serverMessages)
@@ -278,10 +499,10 @@ class ChatLocalDataSourceIsar {
 
     if (idsToDelete.isNotEmpty) {
       await isar.writeTxn(() async {
-        // Delete ghost messages
-        for (var id in idsToDelete) {
-          await isar.messageEntitys.filter().idEqualTo(id).deleteAll();
-        }
+        await isar.messageEntitys
+            .filter()
+            .anyOf(idsToDelete, (q, id) => q.idEqualTo(id))
+            .deleteAll();
       });
     }
 
@@ -323,27 +544,18 @@ class ChatLocalDataSourceIsar {
     if (conversations.isEmpty) return;
     final isar = await _dbManager.instance;
     await isar.writeTxn(() async {
+      final existingById = await _loadExistingConversationsById(
+        isar,
+        conversations.map((c) => c.id),
+      );
       for (final conv in conversations) {
-        final existing = await isar.conversationEntitys
-            .filter()
-            .idEqualTo(conv.id)
-            .findFirst();
-        if (existing != null && existing.updatedAt.isAfter(conv.updatedAt)) {
-          // حفظ دیتای لوکال چون جدیدتر از دیتای سرور است
-          final updatedEntity = ConversationEntity.fromModel(conv)
-            ..lastMessage = existing.lastMessage
-            ..lastMessageTime = existing.lastMessageTime
-            ..lastMessageType = existing.lastMessageType
-            ..lastMessageDeliveryStatus = existing.lastMessageDeliveryStatus
-            ..isLastMessageFromMe = existing.isLastMessageFromMe
-            ..lastMessageSenderId = existing.lastMessageSenderId
-            ..unreadCount = existing.unreadCount
-            ..hasUnreadMessages = existing.hasUnreadMessages
-            ..updatedAt = existing.updatedAt;
-          await isar.conversationEntitys.put(updatedEntity);
-          continue;
-        }
-        await isar.conversationEntitys.put(ConversationEntity.fromModel(conv));
+        final existing = existingById[conv.id];
+        await isar.conversationEntitys
+            .putIfChanged(_mergeConversationEntity(
+          conv,
+          existing,
+          preserveLocalUnread: true,
+        ), existing);
       }
     });
   }
@@ -355,24 +567,90 @@ class ChatLocalDataSourceIsar {
           .filter()
           .idEqualTo(conversation.id)
           .findFirst();
-      if (existing != null &&
-          existing.updatedAt.isAfter(conversation.updatedAt)) {
-        final updatedEntity = ConversationEntity.fromModel(conversation)
-          ..lastMessage = existing.lastMessage
-          ..lastMessageTime = existing.lastMessageTime
-          ..lastMessageType = existing.lastMessageType
-          ..lastMessageDeliveryStatus = existing.lastMessageDeliveryStatus
-          ..isLastMessageFromMe = existing.isLastMessageFromMe
-          ..lastMessageSenderId = existing.lastMessageSenderId
-          ..unreadCount = existing.unreadCount
-          ..hasUnreadMessages = existing.hasUnreadMessages
-          ..updatedAt = existing.updatedAt;
-        await isar.conversationEntitys.put(updatedEntity);
-        return;
-      }
       await isar.conversationEntitys
-          .put(ConversationEntity.fromModel(conversation));
+          .putIfChanged(_mergeConversationEntity(
+        conversation,
+        existing,
+        preserveLocalUnread: false,
+      ), existing);
     });
+  }
+
+  ConversationEntity _mergeConversationEntity(
+    ConversationModel incoming,
+    ConversationEntity? existing,
+    {required bool preserveLocalUnread}
+  ) {
+    final merged = ConversationEntity.fromModel(incoming);
+    if (existing == null) return merged;
+
+    if (preserveLocalUnread) {
+      // unread state is maintained locally by message updates / participant realtime.
+      // Prevent stale conversation snapshots from overriding badge counts.
+      merged
+        ..unreadCount = existing.unreadCount
+        ..hasUnreadMessages = existing.hasUnreadMessages;
+    }
+
+    // Keep updated_at monotonic in local DB.
+    if (existing.updatedAt.isAfter(merged.updatedAt)) {
+      merged.updatedAt = existing.updatedAt;
+    }
+
+    final existingLast = existing.lastMessageTime;
+    final incomingLast = merged.lastMessageTime;
+    final incomingHasSender = merged.lastMessageSenderId?.isNotEmpty ?? false;
+    final incomingHasStatus =
+        merged.lastMessageDeliveryStatus?.isNotEmpty ?? false;
+    final incomingStatusRank =
+        _deliveryStatusRank(merged.lastMessageDeliveryStatus);
+    final existingStatusRank =
+        _deliveryStatusRank(existing.lastMessageDeliveryStatus);
+
+    final shouldKeepLocalLastMessage = (existingLast != null &&
+            (incomingLast == null || incomingLast.isBefore(existingLast))) ||
+        (existingLast != null &&
+            incomingLast != null &&
+            incomingLast.isAtSameMomentAs(existingLast) &&
+            ((!incomingHasSender || !incomingHasStatus) ||
+                incomingStatusRank < existingStatusRank));
+
+    if (shouldKeepLocalLastMessage) {
+      merged
+        ..lastMessage = existing.lastMessage
+        ..lastMessageTime = existing.lastMessageTime
+        ..lastMessageType = existing.lastMessageType
+        ..lastMessageDeliveryStatus = existing.lastMessageDeliveryStatus
+        ..isLastMessageFromMe = existing.isLastMessageFromMe
+        ..lastMessageSenderId = existing.lastMessageSenderId;
+    }
+
+    return merged;
+  }
+
+  int _deliveryStatusRank(String? status) {
+    switch (status) {
+      case 'read':
+      case 'seen':
+        return 3;
+      case 'delivered':
+        return 2;
+      case 'sent':
+        return 1;
+      case 'pending':
+      case 'failed':
+      default:
+        return 0;
+    }
+  }
+
+  String _messageDeliveryStatusToString(MessageModel message) {
+    if (message.isPending == true) return 'pending';
+    if (message.isFailed == true) return 'failed';
+    if (message.isSeen == true || message.isRead == true) return 'read';
+    if (message.isDelivered == true) return 'delivered';
+    if (message.isSent == true) return 'sent';
+    return 'sent';
   }
 
   Future<ConversationModel?> getConversation(
@@ -403,4 +681,136 @@ class ChatLocalDataSourceIsar {
       await isar.conversationEntitys.clear();
     });
   }
+
+  Future<Map<String, MessageModel>> _loadExistingMessagesById(
+    Isar isar,
+    Iterable<String> ids,
+  ) async {
+    final normalizedIds = ids
+        .map((id) => id.trim())
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList(growable: false);
+    if (normalizedIds.isEmpty) return const <String, MessageModel>{};
+
+    final entities = await isar.messageEntitys
+        .filter()
+        .anyOf(normalizedIds, (q, id) => q.idEqualTo(id))
+        .findAll();
+    return <String, MessageModel>{
+      for (final entity in entities) entity.id: entity.toModel(),
+    };
+  }
+
+  Future<Map<String, ConversationEntity>> _loadExistingConversationsById(
+    Isar isar,
+    Iterable<String> ids,
+  ) async {
+    final normalizedIds = ids
+        .map((id) => id.trim())
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList(growable: false);
+    if (normalizedIds.isEmpty) return const <String, ConversationEntity>{};
+
+    final entities = await isar.conversationEntitys
+        .filter()
+        .anyOf(normalizedIds, (q, id) => q.idEqualTo(id))
+        .findAll();
+    return <String, ConversationEntity>{
+      for (final entity in entities) entity.id: entity,
+    };
+  }
+}
+
+extension on IsarCollection<ConversationEntity> {
+  Future<void> putIfChanged(
+    ConversationEntity merged,
+    ConversationEntity? existing,
+  ) async {
+    if (existing != null && _isConversationEffectivelySame(existing, merged)) {
+      return;
+    }
+    await put(merged);
+  }
+}
+
+bool _isConversationEffectivelySame(
+  ConversationEntity a,
+  ConversationEntity b,
+) {
+  return a.id == b.id &&
+      a.createdAt == b.createdAt &&
+      a.updatedAt == b.updatedAt &&
+      a.lastMessage == b.lastMessage &&
+      a.lastMessageTime == b.lastMessageTime &&
+      a.otherUserName == b.otherUserName &&
+      a.otherUserAvatar == b.otherUserAvatar &&
+      a.otherUserId == b.otherUserId &&
+      a.hasUnreadMessages == b.hasUnreadMessages &&
+      a.unreadCount == b.unreadCount &&
+      a.isPinned == b.isPinned &&
+      a.isMuted == b.isMuted &&
+      a.isArchived == b.isArchived &&
+      a.lastMessageType == b.lastMessageType &&
+      a.isLastMessageFromMe == b.isLastMessageFromMe &&
+      a.lastMessageSenderId == b.lastMessageSenderId &&
+      a.lastMessageDeliveryStatus == b.lastMessageDeliveryStatus &&
+      a.type == b.type &&
+      a.allowProfileZoom == b.allowProfileZoom &&
+      a.otherUserBio == b.otherUserBio &&
+      a.otherUserCreatedAt == b.otherUserCreatedAt &&
+      a.isBlocked == b.isBlocked &&
+      a.isVerified == b.isVerified;
+}
+
+bool _isMessageEffectivelySame(MessageModel a, MessageModel b) {
+  return a.id == b.id &&
+      a.conversationId == b.conversationId &&
+      a.senderId == b.senderId &&
+      a.content == b.content &&
+      a.createdAt == b.createdAt &&
+      a.attachmentUrl == b.attachmentUrl &&
+      a.attachmentType == b.attachmentType &&
+      a.attachmentFileName == b.attachmentFileName &&
+      a.attachmentMimeType == b.attachmentMimeType &&
+      a.attachmentSizeBytes == b.attachmentSizeBytes &&
+      a.audioUrl == b.audioUrl &&
+      a.audioTitle == b.audioTitle &&
+      a.audioArtist == b.audioArtist &&
+      a.audioAlbum == b.audioAlbum &&
+      a.mediaGroupId == b.mediaGroupId &&
+      a.duration == b.duration &&
+      a.isRead == b.isRead &&
+      a.isSent == b.isSent &&
+      a.isDelivered == b.isDelivered &&
+      a.isSeen == b.isSeen &&
+      a.isPending == b.isPending &&
+      a.isFailed == b.isFailed &&
+      a.errorMessage == b.errorMessage &&
+      a.senderName == b.senderName &&
+      a.senderAvatar == b.senderAvatar &&
+      a.isMe == b.isMe &&
+      a.replyToMessageId == b.replyToMessageId &&
+      a.replyToContent == b.replyToContent &&
+      a.replyToSenderName == b.replyToSenderName &&
+      a.localId == b.localId &&
+      a.retryCount == b.retryCount &&
+      a.lastRetryTime == b.lastRetryTime &&
+      a.messageType == b.messageType &&
+      a.deletedGlobally == b.deletedGlobally &&
+      _stringListsEqual(a.deletedForUserIds, b.deletedForUserIds) &&
+      a.localImagePath == b.localImagePath &&
+      a.localFilePath == b.localFilePath &&
+      a.uploadProgress == b.uploadProgress &&
+      a.isUploading == b.isUploading;
+}
+
+bool _stringListsEqual(List<String> a, List<String> b) {
+  if (identical(a, b)) return true;
+  if (a.length != b.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    if (a[i] != b[i]) return false;
+  }
+  return true;
 }

@@ -2,9 +2,11 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../model/conversation_model.dart';
 import '../../services/telegram_read_receipt_service.dart';
 import '../../features/chat/widgets/telegram_message_status.dart';
+import '../provider/typing_provider.dart';
 import 'package:Vista/utils/const.dart';
 
 /// 🚀 ویجت Swipeable برای آیتم مکالمه (مثل ویستا)
@@ -14,7 +16,7 @@ import 'package:Vista/utils/const.dart';
 /// - Swipe چپ: Archive/Delete
 /// - طراحی مدرن و روان
 
-class SwipeableConversationItem extends StatelessWidget {
+class SwipeableConversationItem extends ConsumerWidget {
   final ConversationModel conversation;
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
@@ -22,6 +24,7 @@ class SwipeableConversationItem extends StatelessWidget {
   final VoidCallback? onArchive;
   final VoidCallback? onDelete;
   final VoidCallback? onMute;
+  final VoidCallback? onBlock;
 
   /// ارتفاع ثابت برای بهینه‌سازی ListView
   static const double itemHeight = 76.0;
@@ -35,10 +38,23 @@ class SwipeableConversationItem extends StatelessWidget {
     this.onArchive,
     this.onDelete,
     this.onMute,
+    this.onBlock,
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final canBlock =
+        (conversation.otherUserId?.isNotEmpty ?? false) && onBlock != null;
+    final typingUsersAsync = ref.watch(typingUsersProvider(conversation.id));
+    final typingUsers = typingUsersAsync.maybeWhen(
+      data: (users) => users,
+      orElse: () => conversation.typingUsers.toSet(),
+    );
+    final otherUserId = conversation.otherUserId;
+    final isOtherUserTyping = otherUserId != null &&
+        otherUserId.isNotEmpty &&
+        typingUsers.contains(otherUserId);
+
     return Slidable(
       key: ValueKey(conversation.id),
       // ✅ Swipe از راست (RTL) - Pin/Mute
@@ -78,7 +94,7 @@ class SwipeableConversationItem extends StatelessWidget {
       // ✅ Swipe از چپ - Archive/Delete
       endActionPane: ActionPane(
         motion: const BehindMotion(),
-        extentRatio: 0.5,
+        extentRatio: canBlock ? 0.75 : 0.5,
         children: [
           // Archive Action
           CustomSlidableAction(
@@ -100,6 +116,26 @@ class SwipeableConversationItem extends StatelessWidget {
               ],
             ),
           ),
+          if (canBlock)
+            CustomSlidableAction(
+              onPressed: (_) {
+                HapticFeedback.mediumImpact();
+                onBlock?.call();
+              },
+              backgroundColor: Colors.deepOrange.shade700,
+              foregroundColor: Colors.white,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: const [
+                  Icon(Icons.block_rounded, size: 24),
+                  SizedBox(height: 4),
+                  Text(
+                    'مسدود',
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500),
+                  ),
+                ],
+              ),
+            ),
           // Delete Action
           CustomSlidableAction(
             onPressed: (_) {
@@ -126,6 +162,7 @@ class SwipeableConversationItem extends StatelessWidget {
         conversation: conversation,
         onTap: onTap,
         onLongPress: onLongPress,
+        isOtherUserTyping: isOtherUserTyping,
       ),
     );
   }
@@ -136,11 +173,13 @@ class _ConversationContent extends StatelessWidget {
   final ConversationModel conversation;
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
+  final bool isOtherUserTyping;
 
   const _ConversationContent({
     required this.conversation,
     this.onTap,
     this.onLongPress,
+    this.isOtherUserTyping = false,
   });
 
   @override
@@ -179,6 +218,7 @@ class _ConversationContent extends StatelessWidget {
                     // ✅ وضعیت تحویل پیام - هماهنگ با صفحه چت
                     lastMessageDeliveryStatus:
                         conversation.lastMessageDeliveryStatus,
+                    isTyping: isOtherUserTyping,
                   ),
                 ),
               ],
@@ -422,6 +462,7 @@ class _ContentWidget extends StatelessWidget {
   final bool isLastMessageFromMe;
   final String? lastMessageType;
   final MessageDeliveryStatus lastMessageDeliveryStatus;
+  final bool isTyping;
 
   const _ContentWidget({
     required this.displayName,
@@ -433,6 +474,7 @@ class _ContentWidget extends StatelessWidget {
     this.isLastMessageFromMe = false,
     this.lastMessageType,
     this.lastMessageDeliveryStatus = MessageDeliveryStatus.sent,
+    this.isTyping = false,
   });
 
   @override
@@ -499,31 +541,52 @@ class _ContentWidget extends StatelessWidget {
         // ردیف دوم: tick + آیکون نوع پیام + آخرین پیام + badge
         Row(
           children: [
-            // ✅ Tick وضعیت پیام - هماهنگ با صفحه چت (اگر پیام از من باشه)
-            if (isLastMessageFromMe) ...[
-              TelegramMessageStatus(
-                status: lastMessageDeliveryStatus,
-                size: 15,
-              ),
-              const SizedBox(width: 4),
-            ],
-            // ✅ آیکون نوع پیام (اگر متنی نباشه)
-            if (lastMessageType != null && lastMessageType != 'text') ...[
-              _MessageTypeIcon(type: lastMessageType!),
-              const SizedBox(width: 4),
-            ],
             Expanded(
-              child: Text(
-                lastMessage,
-                style: TextStyle(
-                  fontSize: 13,
-                  color: hasUnread
-                      ? theme.textTheme.bodyMedium?.color
-                      : theme.hintColor,
-                  fontWeight: hasUnread ? FontWeight.w500 : FontWeight.normal,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+              child: Row(
+                children: [
+                  if (isLastMessageFromMe) ...[
+                    TelegramMessageStatus(
+                      status: lastMessageDeliveryStatus,
+                      size: 15,
+                    ),
+                    const SizedBox(width: 4),
+                  ],
+                  if (!isTyping &&
+                      lastMessageType != null &&
+                      lastMessageType != 'text') ...[
+                    _MessageTypeIcon(type: lastMessageType!),
+                    const SizedBox(width: 4),
+                  ],
+                  if (isTyping) ...[
+                    Icon(
+                      Icons.edit_rounded,
+                      size: 14,
+                      color: theme.colorScheme.primary,
+                    ),
+                    const SizedBox(width: 4),
+                  ],
+                  Expanded(
+                    child: Text(
+                      isTyping ? 'در حال نوشتن...' : lastMessage,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: isTyping
+                            ? theme.colorScheme.primary
+                            : (hasUnread
+                                ? theme.textTheme.bodyMedium?.color
+                                : theme.hintColor),
+                        fontWeight: isTyping
+                            ? FontWeight.w600
+                            : (hasUnread
+                                ? FontWeight.w500
+                                : FontWeight.normal),
+                        fontStyle: isTyping ? FontStyle.italic : FontStyle.normal,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
               ),
             ),
             if (hasUnread) ...[
@@ -644,43 +707,26 @@ class _UnreadBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    // رنگ‌بندی بر اساس وضعیت
-    final Color badgeColor;
-    if (isMuted) {
-      badgeColor = theme.hintColor;
-    } else if (count > 99) {
-      badgeColor = Colors.red;
-    } else if (count > 9) {
-      badgeColor = Colors.orange;
-    } else {
-      badgeColor = theme.primaryColor;
-    }
+    const Color badgeColor = Color(0xFF1E88E5);
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
       constraints: const BoxConstraints(minWidth: 22, minHeight: 22),
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
       decoration: BoxDecoration(
-        gradient: isMuted
-            ? null
-            : LinearGradient(
-                colors: [badgeColor, badgeColor.withValues(alpha: 0.8)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-        color: isMuted ? badgeColor : null,
+        gradient: LinearGradient(
+          colors: [badgeColor, badgeColor.withValues(alpha: 0.86)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
         borderRadius: BorderRadius.circular(11),
-        boxShadow: isMuted
-            ? null
-            : [
-                BoxShadow(
-                  color: badgeColor.withValues(alpha: 0.4),
-                  blurRadius: 6,
-                  offset: const Offset(0, 2),
-                ),
-              ],
+        boxShadow: [
+          BoxShadow(
+            color: badgeColor.withValues(alpha: 0.35),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Center(
         child: Text(

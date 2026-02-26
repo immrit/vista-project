@@ -1,5 +1,6 @@
 ﻿import '../security/logging_utility.dart';
 import 'dart:async';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../utils/const.dart';
 
 /// سرویس مدیریت نشانگر تایپ کردن مانند شبکه
@@ -25,6 +26,8 @@ class TypingService {
 
   // Stream controllers برای real-time updates
   final Map<String, StreamController<Set<String>>> _typingStreams = {};
+  final Map<String, RealtimeChannel> _typingChannels = {};
+  final Map<String, int> _streamListenersCount = {};
 
   /// شروع تایپ کردن در یک مکالمه
   Future<void> startTyping(String conversationId, String userId) async {
@@ -96,7 +99,6 @@ class TypingService {
 
     await supabase.from('conversations').update({
       'typing_users': payload,
-      'updated_at': DateTime.now().toIso8601String(),
     }).eq('id', conversationId);
 
     _lastSyncedPayload[conversationId] = payloadKey;
@@ -110,17 +112,127 @@ class TypingService {
   /// دریافت stream تایپ کردن برای یک مکالمه
   Stream<Set<String>> getTypingStream(String conversationId) {
     if (!_typingStreams.containsKey(conversationId)) {
-      _typingStreams[conversationId] =
-          StreamController<Set<String>>.broadcast();
+      late final StreamController<Set<String>> controller;
+      controller = StreamController<Set<String>>.broadcast(
+        onListen: () {
+          _streamListenersCount[conversationId] =
+              (_streamListenersCount[conversationId] ?? 0) + 1;
+          _subscribeToConversationTyping(conversationId);
+          _notifyTypingUpdate(conversationId);
+          if (!_typingUsers.containsKey(conversationId)) {
+            unawaited(_fetchInitialTypingUsers(conversationId));
+          }
+        },
+        onCancel: () async {
+          final listeners = (_streamListenersCount[conversationId] ?? 1) - 1;
+          if (listeners <= 0) {
+            _streamListenersCount.remove(conversationId);
+            await _unsubscribeFromConversationTyping(conversationId);
+          } else {
+            _streamListenersCount[conversationId] = listeners;
+          }
+        },
+      );
+      _typingStreams[conversationId] = controller;
     }
     return _typingStreams[conversationId]!.stream;
   }
 
+  Future<void> _fetchInitialTypingUsers(String conversationId) async {
+    try {
+      final response = await supabase
+          .from('conversations')
+          .select('typing_users')
+          .eq('id', conversationId)
+          .maybeSingle();
+      final typingUsers = _normalizeTypingUsers(response?['typing_users']);
+      if (typingUsers.isEmpty) {
+        _typingUsers.remove(conversationId);
+      } else {
+        _typingUsers[conversationId] = typingUsers;
+      }
+      _notifyTypingUpdate(conversationId);
+    } catch (e) {
+      logInfo('Error fetching initial typing users: $e');
+    }
+  }
+
+  void _subscribeToConversationTyping(String conversationId) {
+    if (_typingChannels.containsKey(conversationId)) return;
+
+    final channel = supabase
+        .channel('typing_users:$conversationId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'conversations',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'id',
+            value: conversationId,
+          ),
+          callback: (payload) {
+            final typingUsers =
+                _normalizeTypingUsers(payload.newRecord['typing_users']);
+            if (typingUsers.isEmpty) {
+              _typingUsers.remove(conversationId);
+            } else {
+              _typingUsers[conversationId] = typingUsers;
+            }
+            _notifyTypingUpdate(conversationId);
+          },
+        )
+        .subscribe();
+
+    _typingChannels[conversationId] = channel;
+  }
+
+  Future<void> _unsubscribeFromConversationTyping(String conversationId) async {
+    final channel = _typingChannels.remove(conversationId);
+    if (channel == null) return;
+    await supabase.removeChannel(channel);
+  }
+
+  Set<String> _normalizeTypingUsers(dynamic rawValue) {
+    if (rawValue == null) return <String>{};
+
+    if (rawValue is List) {
+      return rawValue
+          .map((item) => item?.toString() ?? '')
+          .where((id) => id.isNotEmpty)
+          .toSet();
+    }
+
+    // Handle Postgres array/string payloads from realtime like:
+    // "{id1,id2}" or "[\"id1\",\"id2\"]"
+    if (rawValue is String) {
+      final trimmed = rawValue.trim();
+      if (trimmed.isEmpty) return <String>{};
+
+      String body = trimmed;
+      if (body.startsWith('{') && body.endsWith('}')) {
+        body = body.substring(1, body.length - 1);
+      } else if (body.startsWith('[') && body.endsWith(']')) {
+        body = body.substring(1, body.length - 1);
+      }
+      if (body.trim().isEmpty) return <String>{};
+
+      return body
+          .split(',')
+          .map((part) => part.replaceAll('"', '').trim())
+          .where((id) => id.isNotEmpty)
+          .toSet();
+    }
+
+    return <String>{};
+  }
+
   /// بروزرسانی stream محلی
   void _notifyTypingUpdate(String conversationId) {
-    if (_typingStreams.containsKey(conversationId)) {
-      _typingStreams[conversationId]!.add(_typingUsers[conversationId] ?? {});
-    }
+    final controller = _typingStreams[conversationId];
+    if (controller == null || controller.isClosed) return;
+    final users = Set<String>.from(_typingUsers[conversationId] ?? {});
+    controller.add(users);
   }
 
   /// پاکسازی تایمرها و streamها
@@ -131,6 +243,11 @@ class TypingService {
     _typingTimers.clear();
     _lastTypingSyncAt.clear();
     _lastSyncedPayload.clear();
+    for (final channel in _typingChannels.values) {
+      unawaited(supabase.removeChannel(channel));
+    }
+    _typingChannels.clear();
+    _streamListenersCount.clear();
     for (var controller in _typingStreams.values) {
       controller.close();
     }

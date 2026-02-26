@@ -105,6 +105,7 @@ class ConversationEntity {
 
   MessageDeliveryStatus _parseStatus(String? status) {
     if (status == null) return MessageDeliveryStatus.sent;
+    if (status == 'seen') return MessageDeliveryStatus.read;
     return MessageDeliveryStatus.values.firstWhere(
       (e) => e.name == status,
       orElse: () => MessageDeliveryStatus.sent,

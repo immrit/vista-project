@@ -19,6 +19,7 @@ part 'chat_providers.g.dart';
 
 @riverpod
 ChatRepository chatRepository(ChatRepositoryRef ref) {
+  ref.keepAlive();
   final supabase = Supabase.instance.client;
   final localDataSource = ChatLocalDataSourceIsar();
 

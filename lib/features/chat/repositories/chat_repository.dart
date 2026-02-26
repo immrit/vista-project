@@ -139,6 +139,7 @@ abstract class ChatRepository {
     String? audioAlbum,
     String? localFilePath,
     int? duration,
+    String? mediaGroupId,
   });
 
   /// Update upload progress for a pending local message.

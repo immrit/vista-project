@@ -6,8 +6,8 @@ class AppInfoService {
   static const String _bazaarWebUrl = 'https://cafebazaar.ir/app/$_bazaarAppId';
 
   // اطلاعات واقعی از کافه‌بازار
-  static const String _currentVersion = '1.2.8';
-  static const String _buildNumber = '26';
+  static const String _currentVersion = '2.1.0';
+  static const String _buildNumber = '36';
   static const String _lastUpdateDate = '۱۳ مرداد ۱۴۰۴';
   static const String _appSize = '۷۷ مگابایت';
   static const String _installCount = '+۲ هزار';

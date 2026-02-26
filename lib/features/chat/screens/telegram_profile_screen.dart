@@ -842,65 +842,116 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
     return 2;
   }
 
-  Widget _buildSharedPostGridTile(_SharedPostGridItemData post, bool isDark) {
-    final cardColor = isDark ? const Color(0xFF2A3646) : Colors.white;
-    final subtitleColor = isDark ? Colors.white70 : Colors.black54;
+  bool _isVisualSharedPost(_SharedPostKind kind) {
+    return kind == _SharedPostKind.image || kind == _SharedPostKind.video;
+  }
 
+  Widget _buildSharedPostGridTile(_SharedPostGridItemData post, bool isDark) {
     return Material(
-      color: cardColor,
+      color: isDark ? const Color(0xFF2A3646) : Colors.white,
       borderRadius: BorderRadius.circular(14),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: () => _openSharedPostById(post.postId),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Expanded(child: _buildSharedPostGridPreview(post, isDark)),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(10, 9, 10, 10),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    post.author.isNotEmpty ? post.author : 'پست اشتراک‌گذاری‌شده',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 13,
-                      color: isDark ? Colors.white : Colors.black87,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    post.preview,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 11.5,
-                      height: 1.25,
-                      color: subtitleColor,
-                    ),
-                  ),
-                  const SizedBox(height: 7),
-                  Row(
-                    children: [
-                      _buildSharedPostTypeChip(post.kind, isDark),
-                      const Spacer(),
-                      Text(
-                        _formatDate(post.createdAt),
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: isDark ? Colors.white38 : Colors.grey[600],
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
+        child: _isVisualSharedPost(post.kind)
+            ? _buildSharedPostMediaThumbnailTile(post, isDark)
+            : _buildSharedPostTextCardTile(post, isDark),
+      ),
+    );
+  }
+
+  Widget _buildSharedPostMediaThumbnailTile(
+      _SharedPostGridItemData post, bool isDark) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        _buildSharedPostGridPreview(post, isDark),
+        Positioned(
+          top: 8,
+          left: 8,
+          child: _buildSharedPostTypeChip(post.kind, true),
+        ),
+        Positioned(
+          right: 8,
+          bottom: 8,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+            decoration: BoxDecoration(
+              color: Colors.black.withOpacity(0.45),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              _formatDate(post.createdAt),
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
               ),
             ),
-          ],
+          ),
         ),
+      ],
+    );
+  }
+
+  Widget _buildSharedPostTextCardTile(_SharedPostGridItemData post, bool isDark) {
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final subtleColor = isDark ? Colors.white70 : Colors.black54;
+    final quoteBg = isDark ? Colors.white.withOpacity(0.08) : Colors.black.withOpacity(0.04);
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  post.author.isNotEmpty ? post.author : 'پست اشتراک‌گذاری‌شده',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                    color: textColor,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              _buildSharedPostTypeChip(post.kind, isDark),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Expanded(
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: quoteBg,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                post.preview,
+                maxLines: 6,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 12,
+                  height: 1.35,
+                  color: subtleColor,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _formatDate(post.createdAt),
+            style: TextStyle(
+              fontSize: 10,
+              color: isDark ? Colors.white38 : Colors.grey[600],
+            ),
+          ),
+        ],
       ),
     );
   }

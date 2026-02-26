@@ -177,15 +177,27 @@ class UserPresenceService with WidgetsBindingObserver {
     }
 
     // ایجاد استریم جدید
-    final controller = StreamController<UserPresenceState>.broadcast(
-      onListen: () => _subscribeToUser(userId),
+    late final StreamController<UserPresenceState> controller;
+    controller = StreamController<UserPresenceState>.broadcast(
+      onListen: () {
+        final cached = _presenceCache[userId];
+        if (cached != null) {
+          controller.add(cached);
+        } else {
+          controller.add(UserPresenceState(
+            userId: userId,
+            status: UserPresenceStatus.offline,
+            updatedAt: DateTime.now(),
+          ));
+        }
+
+        _subscribeToUser(userId);
+        unawaited(_fetchInitialPresence(userId));
+      },
       onCancel: () => _unsubscribeFromUser(userId),
     );
 
     _presenceStreams[userId] = controller;
-
-    // دریافت وضعیت اولیه
-    _fetchInitialPresence(userId);
 
     return controller.stream;
   }
@@ -194,10 +206,13 @@ class UserPresenceService with WidgetsBindingObserver {
   Future<void> _fetchInitialPresence(String userId) async {
     try {
       final currentUserId = _currentUserId;
-      if (currentUserId == null) return;
+      if (currentUserId == null) {
+        _emitFallbackPresence(userId);
+        return;
+      }
 
       // دریافت پروفایل و تنظیمات
-      final responses = await Future.wait([
+      final responses = await Future.wait<dynamic>([
         _supabase
             .from('profiles')
             .select('is_online, last_online, last_seen_status')
@@ -208,12 +223,18 @@ class UserPresenceService with WidgetsBindingObserver {
             .select('last_seen_visibility')
             .eq('user_id', userId)
             .maybeSingle(),
-      ]);
+      ]).timeout(
+        const Duration(seconds: 4),
+        onTimeout: () => [null, null],
+      );
 
       final profileData = responses[0];
       final settingsData = responses[1];
 
-      if (profileData == null) return;
+      if (profileData == null) {
+        _emitFallbackPresence(userId);
+        return;
+      }
 
       // بررسی اجازه نمایش
       final visibility = _parseVisibility(
@@ -252,7 +273,19 @@ class UserPresenceService with WidgetsBindingObserver {
       _presenceStreams[userId]?.add(state);
     } catch (e) {
       debugPrint('❌ Error fetching presence for $userId: $e');
+      _emitFallbackPresence(userId);
     }
+  }
+
+  void _emitFallbackPresence(String userId) {
+    final fallback = _presenceCache[userId] ??
+        UserPresenceState(
+          userId: userId,
+          status: UserPresenceStatus.offline,
+          updatedAt: DateTime.now(),
+        );
+    _presenceCache[userId] = fallback;
+    _presenceStreams[userId]?.add(fallback);
   }
 
   /// اشتراک در تغییرات وضعیت یک کاربر
@@ -410,7 +443,10 @@ class UserPresenceService with WidgetsBindingObserver {
             .eq('follower_id', userId)
             .eq('following_id', currentUserId)
             .maybeSingle(),
-      ]);
+      ]).timeout(
+        const Duration(seconds: 3),
+        onTimeout: () => [null, null],
+      );
 
       return results[0] != null && results[1] != null;
     } catch (e) {

@@ -1,4 +1,6 @@
 import 'dart:io';
+import 'dart:async';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -106,6 +108,7 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
 
   bool _showGallery = true;
   double _sheetHeight = 0.55;
+  bool _isPreparingPreview = false;
 
   @override
   void initState() {
@@ -225,12 +228,11 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
     });
   }
 
-  Future<void> _sendSelected() async {
-    if (_selectedAssets.isEmpty) return;
-    HapticFeedback.mediumImpact();
-
+  Future<List<SelectedAttachmentFile>> _resolveSelectedAssetFiles(
+    Iterable<AssetEntity> assets,
+  ) async {
     final files = <SelectedAttachmentFile>[];
-    for (final asset in _selectedAssets) {
+    for (final asset in assets) {
       final file = await asset.file;
       if (file != null) {
         final displayName = await _resolveAssetDisplayFileName(asset, file);
@@ -242,22 +244,69 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
         );
       }
     }
-    if (files.isEmpty) return;
+    return files;
+  }
 
-    widget.onSelected(
-      AttachmentSelection(
-        type: ChatAttachmentType.gallery,
-        files: files,
-        caption: _captionController.text.trim().isEmpty
-            ? null
-            : _captionController.text.trim(),
+  Future<void> _onGalleryItemTap(AssetEntity asset) async {
+    if (_selectedAssets.isNotEmpty) {
+      _toggleSelection(asset);
+      return;
+    }
+    await _openAssetPreviewFlow(assets: [asset], initialIndex: 0);
+  }
+
+  void _onGalleryItemLongPress(AssetEntity asset) {
+    _toggleSelection(asset);
+  }
+
+  Future<void> _openSelectedAssetsPreview() async {
+    if (_selectedAssets.isEmpty) return;
+    final ordered = _selectedAssets.toList(growable: false);
+    await _openAssetPreviewFlow(assets: ordered, initialIndex: 0);
+  }
+
+  Future<void> _openAssetPreviewFlow({
+    required List<AssetEntity> assets,
+    required int initialIndex,
+  }) async {
+    if (assets.isEmpty || !mounted) return;
+
+    HapticFeedback.lightImpact();
+    setState(() => _isPreparingPreview = true);
+    List<SelectedAttachmentFile> files;
+    try {
+      files = await _resolveSelectedAssetFiles(assets);
+    } catch (_) {
+      files = const [];
+    }
+    if (!mounted) return;
+    setState(() => _isPreparingPreview = false);
+
+    if (files.isEmpty) {
+      UserFriendlyErrorUtils.showErrorSnackBar(
+        context,
+        'فایل تصویری قابل استفاده پیدا نشد',
+      );
+      return;
+    }
+
+    final result = await Navigator.of(context).push<AttachmentSelection>(
+      MaterialPageRoute(
+        builder: (_) => _ChatImagePreviewScreen(
+          type: ChatAttachmentType.gallery,
+          files: files,
+          initialIndex: initialIndex.clamp(0, files.length - 1).toInt(),
+          initialCaption: _captionController.text.trim(),
+        ),
       ),
     );
-    if (mounted) Navigator.pop(context);
+
+    if (result == null || !mounted) return;
+    widget.onSelected(result);
+    Navigator.pop(context);
   }
 
   Future<void> _pickFromCamera() async {
-    Navigator.pop(context);
     final picker = ImagePicker();
     final image = await picker.pickImage(
       source: ImageSource.camera,
@@ -266,19 +315,26 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
       maxHeight: 1920,
     );
     if (image == null) return;
-    widget.onSelected(
-      AttachmentSelection(
-        type: ChatAttachmentType.camera,
-        files: [
-          SelectedAttachmentFile(
-            file: File(image.path),
-            displayFileName: image.name.trim().isNotEmpty
-                ? image.name
-                : p.basename(image.path),
-          ),
-        ],
+    if (!mounted) return;
+
+    final result = await Navigator.of(context).push<AttachmentSelection>(
+      MaterialPageRoute(
+        builder: (_) => _ChatImagePreviewScreen(
+          type: ChatAttachmentType.camera,
+          files: [
+            SelectedAttachmentFile(
+              file: File(image.path),
+              displayFileName: image.name.trim().isNotEmpty
+                  ? image.name
+                  : p.basename(image.path),
+            ),
+          ],
+        ),
       ),
     );
+    if (result == null || !mounted) return;
+    widget.onSelected(result);
+    Navigator.pop(context);
   }
 
   Future<String> _resolveAssetDisplayFileName(
@@ -370,6 +426,8 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
             children: [
               _buildHandle(theme),
               _buildOptionsRow(theme),
+              if (_isPreparingPreview)
+                const LinearProgressIndicator(minHeight: 2),
               Expanded(
                 child: _showGallery
                     ? _buildGalleryGrid(theme)
@@ -575,8 +633,10 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
           return _GalleryItem(
             asset: asset,
             isSelected: selected,
+            isSelectionMode: _selectedAssets.isNotEmpty,
             selectionIndex: selectionIndex,
-            onTap: () => _toggleSelection(asset),
+            onTap: () => unawaited(_onGalleryItemTap(asset)),
+            onLongPress: () => _onGalleryItemLongPress(asset),
           );
         },
       ),
@@ -652,6 +712,7 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
   }
 
   Widget _buildSelectedPreview(ChatTheme theme) {
+    final selectedCount = _selectedAssets.length;
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -679,33 +740,35 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
                   ),
                 ),
                 const SizedBox(width: 12),
-                _buildSendButton(theme),
+                _buildOpenPreviewButton(theme, selectedCount),
               ],
             ),
           ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _captionController,
-            style: TextStyle(color: theme.textColor),
-            decoration: InputDecoration(
-              hintText: 'افزودن توضیح...',
-              hintStyle: TextStyle(color: theme.inputHintColor),
-              filled: true,
-              fillColor: theme.backgroundColor,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: theme.dividerColor),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Icon(Icons.touch_app_rounded,
+                  size: 14, color: theme.secondaryTextColor),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  'نگه‌داشتن طولانی روی عکس = انتخاب چندتایی، لمس عادی = پیش‌نمایش',
+                  style: TextStyle(
+                    color: theme.secondaryTextColor,
+                    fontSize: 11,
+                  ),
+                ),
               ),
-            ),
+            ],
           ),
         ],
       ),
     );
   }
 
-  Widget _buildSendButton(ChatTheme theme) {
+  Widget _buildOpenPreviewButton(ChatTheme theme, int selectedCount) {
     return GestureDetector(
-      onTap: _sendSelected,
+      onTap: _openSelectedAssetsPreview,
       child: Container(
         width: 56,
         height: 56,
@@ -716,7 +779,7 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
         child: Stack(
           alignment: Alignment.center,
           children: [
-            const Icon(Icons.send_rounded, color: Colors.white, size: 24),
+            const Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 24),
             Positioned(
               top: 4,
               right: 4,
@@ -725,7 +788,7 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
                 decoration: const BoxDecoration(
                     color: Colors.white, shape: BoxShape.circle),
                 child: Text(
-                  '${_selectedAssets.length}',
+                  '$selectedCount',
                   style: TextStyle(
                     color: theme.sendButtonColor,
                     fontSize: 10,
@@ -799,14 +862,18 @@ class _OptionChip extends StatelessWidget {
 class _GalleryItem extends StatelessWidget {
   final AssetEntity asset;
   final bool isSelected;
+  final bool isSelectionMode;
   final int selectionIndex;
   final VoidCallback onTap;
+  final VoidCallback onLongPress;
 
   const _GalleryItem({
     required this.asset,
     required this.isSelected,
+    required this.isSelectionMode,
     required this.selectionIndex,
     required this.onTap,
+    required this.onLongPress,
   });
 
   Future<Widget> _buildThumbnail(ChatTheme theme) async {
@@ -826,6 +893,7 @@ class _GalleryItem extends StatelessWidget {
     final theme = context.chatTheme;
     return GestureDetector(
       onTap: onTap,
+      onLongPress: onLongPress,
       child: Stack(
         fit: StackFit.expand,
         children: [
@@ -842,13 +910,17 @@ class _GalleryItem extends StatelessWidget {
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(4),
               border: Border.all(
-                color: isSelected ? theme.sendButtonColor : Colors.transparent,
-                width: 3,
+                color: isSelectionMode
+                    ? (isSelected ? theme.sendButtonColor : Colors.white30)
+                    : Colors.transparent,
+                width: isSelectionMode ? 2.5 : 0,
               ),
-              color: isSelected ? Colors.black26 : Colors.transparent,
+              color: isSelected
+                  ? Colors.black26
+                  : (isSelectionMode ? Colors.black12 : Colors.transparent),
             ),
           ),
-          if (isSelected)
+          if (isSelectionMode)
             Positioned(
               top: 6,
               right: 6,
@@ -856,19 +928,25 @@ class _GalleryItem extends StatelessWidget {
                 width: 24,
                 height: 24,
                 decoration: BoxDecoration(
-                  color: theme.sendButtonColor,
+                  color: isSelected ? theme.sendButtonColor : Colors.black45,
                   shape: BoxShape.circle,
                   border: Border.all(color: Colors.white, width: 2),
                 ),
                 child: Center(
-                  child: Text(
-                    '${selectionIndex + 1}',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
+                  child: isSelected
+                      ? Text(
+                          '${selectionIndex + 1}',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        )
+                      : const Icon(
+                          Icons.circle_outlined,
+                          color: Colors.white,
+                          size: 12,
+                        ),
                 ),
               ),
             ),
@@ -925,6 +1003,292 @@ class _SelectedThumbnail extends StatelessWidget {
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(Icons.close, color: Colors.white, size: 12),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ChatImagePreviewScreen extends StatefulWidget {
+  final ChatAttachmentType type;
+  final List<SelectedAttachmentFile> files;
+  final int initialIndex;
+  final String? initialCaption;
+
+  const _ChatImagePreviewScreen({
+    required this.type,
+    required this.files,
+    this.initialIndex = 0,
+    this.initialCaption,
+  });
+
+  @override
+  State<_ChatImagePreviewScreen> createState() => _ChatImagePreviewScreenState();
+}
+
+class _ChatImagePreviewScreenState extends State<_ChatImagePreviewScreen> {
+  late final PageController _pageController;
+  late final TextEditingController _captionController;
+  late int _currentIndex;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentIndex = widget.initialIndex.clamp(0, widget.files.length - 1).toInt();
+    _pageController = PageController(initialPage: _currentIndex);
+    _captionController = TextEditingController(text: widget.initialCaption ?? '');
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    _captionController.dispose();
+    super.dispose();
+  }
+
+  void _send() {
+    final caption = _captionController.text.trim();
+    Navigator.of(context).pop(
+      AttachmentSelection(
+        type: widget.type,
+        files: widget.files,
+        caption: caption.isEmpty ? null : caption,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = context.chatTheme;
+    final isAlbum = widget.files.length > 1;
+    final mediaQuery = MediaQuery.of(context);
+    final keyboardInset = mediaQuery.viewInsets.bottom;
+    final bottomSafeArea = mediaQuery.padding.bottom;
+    final isKeyboardVisible = keyboardInset > 0;
+    final showAlbumStrip = isAlbum && keyboardInset <= 0;
+    final composerBottomPadding = isKeyboardVisible ? keyboardInset : bottomSafeArea;
+    const composerEstimatedHeight = 92.0;
+
+    return Scaffold(
+      backgroundColor: Colors.black,
+      resizeToAvoidBottomInset: false,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        elevation: 0,
+        title: Text(
+          isAlbum ? 'آلبوم • ${widget.files.length} عکس' : 'پیش‌نمایش عکس',
+          style: const TextStyle(color: Colors.white),
+        ),
+        iconTheme: const IconThemeData(color: Colors.white),
+        actions: [
+          IconButton(
+            tooltip: 'ارسال',
+            onPressed: _send,
+            icon: const Icon(Icons.send_rounded, color: Colors.white),
+          ),
+        ],
+      ),
+      body: Stack(
+        children: [
+          Positioned.fill(
+            child: PageView.builder(
+              controller: _pageController,
+              itemCount: widget.files.length,
+              onPageChanged: (index) => setState(() => _currentIndex = index),
+              itemBuilder: (_, index) {
+                final file = widget.files[index].file;
+                return InteractiveViewer(
+                  minScale: 0.8,
+                  maxScale: 4.0,
+                  child: Center(
+                    child: Image.file(
+                      file,
+                      fit: BoxFit.contain,
+                      filterQuality: FilterQuality.low,
+                      errorBuilder: (_, __, ___) => const Icon(
+                        Icons.broken_image_rounded,
+                        color: Colors.white70,
+                        size: 48,
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          if (showAlbumStrip)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: composerEstimatedHeight + bottomSafeArea,
+              child: SizedBox(
+                height: 78,
+                child: ListView.builder(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  scrollDirection: Axis.horizontal,
+                  itemCount: widget.files.length,
+                  itemBuilder: (_, index) {
+                    final isActive = index == _currentIndex;
+                    final file = widget.files[index].file;
+                    return GestureDetector(
+                      onTap: () {
+                        _pageController.animateToPage(
+                          index,
+                          duration: const Duration(milliseconds: 220),
+                          curve: Curves.easeOutCubic,
+                        );
+                      },
+                      child: Container(
+                        width: 62,
+                        margin: const EdgeInsets.symmetric(horizontal: 4),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: isActive ? theme.sendButtonColor : Colors.white24,
+                            width: isActive ? 2 : 1,
+                          ),
+                        ),
+                        clipBehavior: Clip.antiAlias,
+                        child: Image.file(
+                          file,
+                          fit: BoxFit.cover,
+                          filterQuality: FilterQuality.low,
+                          cacheWidth: 220,
+                          cacheHeight: 220,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: ClipRect(
+              child: Stack(
+                children: [
+                  if (!isKeyboardVisible)
+                    Positioned.fill(
+                      child: ShaderMask(
+                        blendMode: BlendMode.dstIn,
+                        shaderCallback: (rect) => LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: const [
+                            Colors.transparent,
+                            Colors.white,
+                            Colors.white,
+                          ],
+                          stops: const [0.0, 0.52, 1.0],
+                        ).createShader(rect),
+                        child: BackdropFilter(
+                          // Blur only when keyboard is hidden to keep keyboard transition smooth.
+                          filter: ui.ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                          child: Container(
+                            color: Colors.black.withOpacity(0.40),
+                          ),
+                        ),
+                      ),
+                    ),
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Colors.transparent,
+                              Colors.black.withOpacity(0.05),
+                              Colors.black.withOpacity(0.18),
+                              Colors.black.withOpacity(0.38),
+                            ],
+                            stops: const [0.0, 0.42, 0.72, 1.0],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      12,
+                      18,
+                      12,
+                      10 + composerBottomPadding,
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Expanded(
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF5F6169).withOpacity(0.68),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: Colors.white.withOpacity(0.28),
+                                width: 0.8,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.18),
+                                  blurRadius: 6,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: TextField(
+                              controller: _captionController,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w400,
+                              ),
+                              cursorColor: Colors.white,
+                              maxLines: 3,
+                              minLines: 1,
+                              textInputAction: TextInputAction.newline,
+                              decoration: InputDecoration(
+                                hintText: isAlbum
+                                    ? 'برای آلبوم کپشن بنویس...'
+                                    : 'برای عکس کپشن بنویس...',
+                                hintStyle: TextStyle(
+                                  color: Colors.white.withOpacity(0.78),
+                                ),
+                                filled: false,
+                                border: InputBorder.none,
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 10,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        SizedBox(
+                          width: 52,
+                          height: 52,
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: theme.sendButtonColor,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              padding: EdgeInsets.zero,
+                            ),
+                            onPressed: _send,
+                            child: const Icon(Icons.send_rounded),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
           ),

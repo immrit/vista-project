@@ -15,6 +15,8 @@ import '../../../features/chat/screens/modern_chat_screen.dart';
 import '../../../features/chat/screens/new_message_screen.dart';
 import '../../../DB/database_file_utils.dart';
 import '../../../utils/user_friendly_error_utils.dart';
+import '../../../features/chat/widgets/block_report_bottom_sheet.dart';
+import '../../../features/chat/services/user_moderation_service.dart';
 // ✅ ویجت Swipeable برای آیتم مکالمه
 import 'package:Vista/widgets/swipeable_conversation_item.dart';
 // ✅ نشانگر وضعیت شبکه
@@ -32,6 +34,7 @@ class _ChatConversationsScreenState
     extends ConsumerState<ChatConversationsScreen>
     with SingleTickerProviderStateMixin {
   final TextEditingController _searchController = TextEditingController();
+  final UserModerationService _moderationService = UserModerationService();
   late final AnimationController _searchAnimController;
   String _searchQuery = '';
   bool _isSearchVisible = false;
@@ -332,38 +335,38 @@ class _ChatConversationsScreenState
     );
   }
 
-  // ✅ لیست بهینه‌شده مکالمات با StreamProvider جدید و استفاده از Consumer برای جلوگیری از رندر کل صفحه
+  // ✅ لیست مکالمات بر پایه Optimized Provider (منبع واحد برای badge + ترتیب)
   Widget _buildUnifiedList(ThemeData theme) {
     return Consumer(
       builder: (context, ref, child) {
-        final conversationsAsync = ref.watch(conversationsStreamProvider);
+        final conversationsState = ref.watch(optimizedConversationsProvider);
+        final conversations = conversationsState.conversations;
 
-        return conversationsAsync.when(
-          data: (conversations) {
-            if (conversations.isEmpty) {
-              return _buildEmptyState(
-                theme,
-                'هیچ گفتگویی وجود ندارد',
-                Icons.chat_bubble_outline_rounded,
-              );
-            }
+        final isInitialLoading =
+            (conversationsState.status == ConversationsStatus.loading ||
+                    conversationsState.status == ConversationsStatus.initial) &&
+                conversations.isEmpty;
+        if (isInitialLoading) {
+          return _buildLoadingState(theme);
+        }
 
-            // ✅ مرتب‌سازی محلی
-            final sortedConversations =
-                List<ConversationModel>.from(conversations)
-                  ..sort((a, b) {
-                    final aTime = a.lastMessageTime ?? a.updatedAt;
-                    final bTime = b.lastMessageTime ?? b.updatedAt;
-                    return bTime.compareTo(aTime);
-                  });
+        if (conversationsState.status == ConversationsStatus.error &&
+            conversations.isEmpty) {
+          return _buildErrorState(
+            theme,
+            conversationsState.errorMessage ?? 'خطا در بارگذاری گفتگوها',
+          );
+        }
 
-            return _buildOptimizedConversationsList(
-                theme, sortedConversations, ref);
-          },
-          loading: () => _buildLoadingState(theme),
-          error: (error, stack) =>
-              _buildErrorState(theme, 'خطا در بارگذاری: $error'),
-        );
+        if (conversations.isEmpty) {
+          return _buildEmptyState(
+            theme,
+            'هیچ گفتگویی وجود ندارد',
+            Icons.chat_bubble_outline_rounded,
+          );
+        }
+
+        return _buildOptimizedConversationsList(theme, conversations, ref);
       },
     );
   }
@@ -494,6 +497,7 @@ class _ChatConversationsScreenState
           onArchive: () => _archiveConversation(conversation),
           onDelete: () => _showDeleteConfirmation(conversation),
           onMute: () => _toggleMuteConversation(conversation),
+          onBlock: () => _handleConversationBlock(conversation),
         ),
         // Divider
         if (index < totalCount - 1)
@@ -864,6 +868,7 @@ class _ChatConversationsScreenState
   Widget _buildConversationOptionsSheet(ConversationModel conversation) {
     final theme = Theme.of(context);
     final displayName = conversation.otherUserName ?? 'VISTA USER';
+    final canModerateUser = conversation.otherUserId?.isNotEmpty ?? false;
 
     return Container(
       decoration: BoxDecoration(
@@ -920,6 +925,17 @@ class _ChatConversationsScreenState
                 _archiveConversation(conversation);
               },
             ),
+            if (canModerateUser)
+              _buildOptionTile(
+                theme,
+                icon: Icons.block_rounded,
+                title: 'مسدود/رفع مسدودیت',
+                isDestructive: true,
+                onTap: () {
+                  Navigator.pop(context);
+                  _handleConversationBlock(conversation);
+                },
+              ),
             _buildOptionTile(
               theme,
               icon: Icons.delete_outline_rounded,
@@ -1046,6 +1062,36 @@ class _ChatConversationsScreenState
           const SnackBar(
               content: Text('درخواست بایگانی/خروج از بایگانی انجام شد.')),
         );
+      }
+    }
+  }
+
+  Future<void> _handleConversationBlock(ConversationModel conversation) async {
+    final userId = conversation.otherUserId;
+    if (userId == null || userId.isEmpty) return;
+
+    final displayName = conversation.otherUserName ?? 'VISTA USER';
+    try {
+      final status =
+          await _moderationService.getBlockStatus(userId, useCache: false);
+      if (!mounted) return;
+
+      final actionType =
+          status.isBlocked ? ModerationType.unblock : ModerationType.block;
+      final result = await BlockReportBottomSheet.show(
+        context: context,
+        userId: userId,
+        userName: displayName,
+        isCurrentlyBlocked: status.isBlocked,
+        type: actionType,
+      );
+
+      if (result == true && mounted) {
+        await ref.read(optimizedConversationsProvider.notifier).refresh();
+      }
+    } catch (e) {
+      if (mounted) {
+        UserFriendlyErrorUtils.showErrorSnackBar(context, e);
       }
     }
   }

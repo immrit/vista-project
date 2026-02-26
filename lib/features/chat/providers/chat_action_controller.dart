@@ -77,6 +77,7 @@ class ChatActionController extends _$ChatActionController {
     String? replyToMessageId,
     String? replyToContent,
     String? replyToSenderName,
+    String? mediaGroupId,
   }) async {
     // استفاده مستقیم از Supabase به جای provider
     final currentUser = Supabase.instance.client.auth.currentUser;
@@ -105,6 +106,7 @@ class ChatActionController extends _$ChatActionController {
         replyToMessageId: replyToMessageId ?? state.replyMessage?.id,
         replyToContent: replyToContent ?? state.replyMessage?.content,
         replyToSenderName: replyToSenderName ?? state.replyMessage?.senderName,
+        mediaGroupId: mediaGroupId,
       );
 
       final result = await repository.sendMessage(payload);

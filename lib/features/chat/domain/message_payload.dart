@@ -16,6 +16,7 @@ class MessagePayload {
   final String? replyToMessageId;
   final String? replyToContent;
   final String? replyToSenderName;
+  final String? mediaGroupId;
 
   MessagePayload({
     required this.conversationId,
@@ -33,5 +34,6 @@ class MessagePayload {
     this.replyToMessageId,
     this.replyToContent,
     this.replyToSenderName,
+    this.mediaGroupId,
   });
 }

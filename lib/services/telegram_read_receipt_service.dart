@@ -142,8 +142,9 @@ class TelegramReadReceiptService {
       if (senderId != _currentUserId) return;
 
       final isSent = data['is_sent'] as bool? ?? false;
-      final isDelivered = data['is_delivered'] as bool? ?? false;
-      final isSeen = data['is_seen'] as bool? ?? false;
+      final isRead = data['is_read'] as bool? ?? false;
+      final isSeen = (data['is_seen'] as bool? ?? false) || isRead;
+      final isDelivered = (data['is_delivered'] as bool? ?? false) || isSeen;
 
       final deliveredAtStr = data['delivered_at'] as String?;
       final seenAtStr = data['seen_at'] as String?;
@@ -323,12 +324,13 @@ class TelegramReadReceiptService {
           .update({
             'is_delivered': true,
             'is_seen': true,
+            'is_read': true,
             'delivered_at': now,
             'seen_at': now,
           })
           .inFilter('id', messageIds)
           .neq('sender_id', userId)
-          .eq('is_seen', false);
+          .or('is_seen.eq.false,is_seen.is.null');
 
       debugPrint('✅ Batch marked as read: ${messageIds.length} messages');
 
@@ -363,12 +365,13 @@ class TelegramReadReceiptService {
           .update({
             'is_delivered': true,
             'is_seen': true,
+            'is_read': true,
             'delivered_at': now,
             'seen_at': now,
           })
           .eq('conversation_id', conversationId)
           .neq('sender_id', userId)
-          .eq('is_seen', false);
+          .or('is_seen.eq.false,is_seen.is.null');
 
       debugPrint('✅ All messages marked as read in $conversationId');
     } catch (e) {
@@ -403,7 +406,7 @@ class TelegramReadReceiptService {
       final response = await _supabase
           .from('messages')
           .select(
-              'id, is_sent, is_delivered, is_seen, created_at, delivered_at, seen_at')
+              'id, is_sent, is_read, is_delivered, is_seen, created_at, delivered_at, seen_at')
           .eq('id', messageId)
           .maybeSingle();
 
@@ -442,7 +445,7 @@ class TelegramReadReceiptService {
         final response = await _supabase
             .from('messages')
             .select(
-                'id, is_sent, is_delivered, is_seen, created_at, delivered_at, seen_at')
+                'id, is_sent, is_read, is_delivered, is_seen, created_at, delivered_at, seen_at')
             .inFilter('id', uncachedIds);
 
         for (final data in response as List) {
@@ -461,8 +464,9 @@ class TelegramReadReceiptService {
   MessageStatusInfo _parseStatusFromData(Map<String, dynamic> data) {
     final messageId = data['id'] as String;
     final isSent = data['is_sent'] as bool? ?? false;
-    final isDelivered = data['is_delivered'] as bool? ?? false;
-    final isSeen = data['is_seen'] as bool? ?? false;
+    final isRead = data['is_read'] as bool? ?? false;
+    final isSeen = (data['is_seen'] as bool? ?? false) || isRead;
+    final isDelivered = (data['is_delivered'] as bool? ?? false) || isSeen;
 
     MessageDeliveryStatus status;
     if (isSeen) {
@@ -506,7 +510,7 @@ class TelegramReadReceiptService {
           .select('id')
           .eq('conversation_id', conversationId)
           .neq('sender_id', userId)
-          .eq('is_seen', false);
+          .or('is_seen.eq.false,is_seen.is.null');
 
       return (response as List).length;
     } catch (e) {

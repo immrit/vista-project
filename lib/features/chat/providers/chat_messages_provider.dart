@@ -11,14 +11,17 @@ part 'chat_messages_provider.g.dart';
 
 @riverpod
 class ChatMessages extends _$ChatMessages {
-  late final ChatRepository _chatRepository;
+  ChatRepository? _chatRepository;
   StreamSubscription? _realtimeSubscription;
   static const int _pageSize = 20;
   bool _hasMore = true;
 
   @override
   FutureOr<List<MessageModel>> build(String conversationId) async {
-    _chatRepository = ref.read(chatRepositoryProvider);
+    final repository = ref.watch(chatRepositoryProvider);
+    _chatRepository = repository;
+
+    _realtimeSubscription?.cancel();
 
     // Cleanup on dispose
     ref.onDispose(() {
@@ -27,27 +30,39 @@ class ChatMessages extends _$ChatMessages {
 
     // Return the stream from repository directly.
     // This is the SINGLE SOURCE OF TRUTH.
-    _realtimeSubscription =
-        _chatRepository.watchMessages(conversationId).listen((messages) {
-      state = AsyncValue.data(messages);
-    });
+    _realtimeSubscription = repository.watchMessages(conversationId).listen(
+      (messages) {
+        state = AsyncValue.data(messages);
+      },
+      onError: (Object error, StackTrace stackTrace) {
+        logError(
+          'watchMessages stream failed',
+          error: error,
+          stackTrace: stackTrace,
+        );
+        state = AsyncValue.error(error, stackTrace);
+      },
+    );
 
     // Initial value while stream connects (Isar usually fires immediately)
-    return [];
+    return state.valueOrNull ?? const [];
   }
 
   Future<void> loadMore() async {
     try {
+      final repository = _chatRepository ?? ref.read(chatRepositoryProvider);
+      _chatRepository = repository;
       if (!_hasMore || state.isLoading) return;
 
       final currentMessages = state.value ?? [];
-      final oldestMessage =
-          currentMessages.isNotEmpty ? currentMessages.last : null;
+      final oldestMessage = currentMessages.isNotEmpty
+          ? currentMessages.last
+          : null;
 
       if (oldestMessage == null) return;
 
       // Correctly load older messages using the repository
-      final result = await _chatRepository.loadMoreMessages(
+      final result = await repository!.loadMoreMessages(
         conversationId: conversationId,
         oldestMessageDate: oldestMessage.createdAt,
         limit: _pageSize,

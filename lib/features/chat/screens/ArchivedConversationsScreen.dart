@@ -441,7 +441,7 @@ class _ArchivedConversationItem extends StatelessWidget {
             constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
             decoration: BoxDecoration(
-              color: theme.primaryColor,
+              color: const Color(0xFF1E88E5),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Center(

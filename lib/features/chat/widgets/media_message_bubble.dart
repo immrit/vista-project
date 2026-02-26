@@ -41,6 +41,8 @@ class MediaMessageBubble extends ConsumerStatefulWidget {
   final int? videoDuration;
   final ChatEffectsLevel effectsLevel;
   final bool allowHeavyEffects;
+  final List<GalleryItem>? conversationGalleryItems;
+  final int? initialGalleryIndex;
 
   const MediaMessageBubble({
     super.key,
@@ -58,6 +60,8 @@ class MediaMessageBubble extends ConsumerStatefulWidget {
     this.videoDuration,
     this.effectsLevel = ChatEffectsLevel.high,
     this.allowHeavyEffects = true,
+    this.conversationGalleryItems,
+    this.initialGalleryIndex,
   });
 
   @override
@@ -229,19 +233,36 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
 
   void _openFullScreenViewer(String heroTag) {
     if (widget.mediaType == MediaType.image) {
+      final providedGallery = widget.conversationGalleryItems;
+      final hasProvidedGallery =
+          providedGallery != null && providedGallery.isNotEmpty;
+      final galleryItems = hasProvidedGallery
+          ? providedGallery
+          : <GalleryItem>[
+              GalleryItem(
+                imageUrl: widget.mediaUrl,
+                cachedFile: _cachedFile,
+                caption: widget.caption,
+                heroTag: heroTag,
+              ),
+            ];
+
+      int initialIndex = widget.initialGalleryIndex ?? -1;
+      if (initialIndex < 0 || initialIndex >= galleryItems.length) {
+        initialIndex =
+            galleryItems.indexWhere((item) => item.heroTag == heroTag);
+      }
+      if (initialIndex < 0 || initialIndex >= galleryItems.length) {
+        initialIndex = 0;
+      }
+
       Navigator.push(
         context,
         PageRouteBuilder(
           opaque: false,
           pageBuilder: (_, __, ___) => FullScreenImageViewer(
-            galleryItems: [
-              GalleryItem(
-                  imageUrl: widget.mediaUrl,
-                  cachedFile: _cachedFile,
-                  caption: widget.caption,
-                  heroTag: heroTag),
-            ],
-            initialIndex: 0,
+            galleryItems: galleryItems,
+            initialIndex: initialIndex,
             onForward: () {
               // اینجا می‌توانید متد فوروارد ویستا را صدا بزنید
               // مثلا: ForwardMessageSheet.show(...)

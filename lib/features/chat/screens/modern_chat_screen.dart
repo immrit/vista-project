@@ -16,6 +16,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
@@ -46,6 +47,8 @@ import '../widgets/animated_chat_input.dart';
 import '../widgets/instagram_style_post_card.dart';
 import '../widgets/date_divider.dart' as date_divider;
 import '../widgets/swipe_to_reply_wrapper.dart';
+import '../widgets/full_screen_image_viewer.dart';
+import '../widgets/telegram_message_status.dart';
 
 // ✅ Providers
 import '../../../provider/typing_provider.dart';
@@ -77,6 +80,9 @@ import '../widgets/block_report_bottom_sheet.dart';
 import '../services/user_moderation_service.dart';
 import '../services/voice_duration_service.dart';
 import '../services/message_reactions_service.dart';
+import '../../emoji/domain/emoji_render_policy.dart';
+import '../../emoji/widgets/telegram_emoji_text.dart';
+import '../../emoji/widgets/telegram_emoji_text_editing_controller.dart';
 import '../../../utils/user_friendly_error_utils.dart';
 import '../../../security/logging_utility.dart';
 import '../models/message_reaction.dart' as reaction_models;
@@ -133,7 +139,9 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   // 🎮 CONTROLLERS
   // ═══════════════════════════════════════════════════════════════════════════
 
-  final _messageController = TextEditingController();
+  final _messageController = TelegramEmojiTextEditingController(
+    useTelegramEmoji: EmojiRenderPolicy.useTelegramEmojiRenderer(),
+  );
   final _scrollController = ScrollController();
   final _focusNode = FocusNode();
 
@@ -174,6 +182,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
   // ✅ برای جلوگیری از اجرای منطق در build
   String? _lastFirstMessageId;
+  List<MessageModel> _latestVisibleMessages = const [];
 
   // Unread messages
   String? _lastReadMessageId;
@@ -229,6 +238,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   // ═══════════════════════════════════════════════════════════════════════════
 
   Timer? _pollingTimer;
+  bool _isPollingRefreshInFlight = false;
   Timer? _floatingDateHideTimer;
   Timer? _activeConversationHeartbeatTimer;
   Timer? _typingDebounceTimer;
@@ -288,9 +298,10 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
   void _initTypingListeners() {
     final currentUserId = Supabase.instance.client.auth.currentUser?.id;
+    _typingSubscription?.cancel();
 
     // Listen to typing updates
-    _typingSubscription = TypingService()
+    _typingSubscription = _typingService
         .getTypingStream(widget.args.conversationId)
         .listen((typingUsers) {
       if (currentUserId == null) return;
@@ -305,6 +316,16 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         });
       }
     });
+
+    final initialTypingUsers =
+        _typingService.getTypingUsers(widget.args.conversationId);
+    final initialIsTyping =
+        initialTypingUsers.any((id) => id != currentUserId && id.isNotEmpty);
+    if (_isOtherUserTyping != initialIsTyping) {
+      setState(() {
+        _isOtherUserTyping = initialIsTyping;
+      });
+    }
   }
 
   void _setupMessageSideEffectsListener() {
@@ -357,10 +378,12 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
             !_hiddenMessageIds.contains(m.id) ||
             _deletingMessageIds.contains(m.id))
         .toList();
+    _latestVisibleMessages = visibleMessages;
 
     _calculateUnreadCount(visibleMessages);
 
     if (visibleMessages.isEmpty) {
+      _latestVisibleMessages = const [];
       _lastFirstMessageId = null;
       if (_currentVisibleDate != null || _isScrolling) {
         setState(() {
@@ -433,17 +456,30 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   void _registerLastMessage() {
     if (!mounted) return;
 
-    final messagesAsync =
-        ref.read(chatMessagesProvider(widget.args.conversationId));
-    messagesAsync.whenData((messages) {
-      if (messages.isEmpty) return;
-
-      // پیدا کردن آخرین پیام من (برای نمایش تیک)
+    final messages =
+        _latestVisibleMessages.isNotEmpty ? _latestVisibleMessages : null;
+    if (messages != null && messages.isNotEmpty) {
       final myLastMessage = messages.firstWhere(
         (m) => m.senderId == _currentUserId,
         orElse: () => messages.first,
       );
 
+      TelegramReadReceiptService().setLastMessageId(
+        widget.args.conversationId,
+        myLastMessage.id,
+      );
+      return;
+    }
+
+    final messagesAsync =
+        ref.read(chatMessagesProvider(widget.args.conversationId));
+    messagesAsync.whenData((messagesFromProvider) {
+      if (messagesFromProvider.isEmpty) return;
+
+      final myLastMessage = messagesFromProvider.firstWhere(
+        (m) => m.senderId == _currentUserId,
+        orElse: () => messagesFromProvider.first,
+      );
       TelegramReadReceiptService().setLastMessageId(
         widget.args.conversationId,
         myLastMessage.id,
@@ -713,40 +749,29 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     unawaited(_setServerActiveConversation(isActive: false));
   }
 
+  Future<void> _triggerPollingRefresh() async {
+    if (!mounted || _isPollingRefreshInFlight) return;
+    _isPollingRefreshInFlight = true;
+    try {
+      await ref
+          .read(chatRepositoryProvider)
+          .refreshMessages(widget.args.conversationId);
+    } finally {
+      _isPollingRefreshInFlight = false;
+    }
+  }
+
   void _startPolling() {
-    // ✅ Smart Polling: گوش دادن به وضعیت اتصال ریل‌تایم
+    // Smart fallback: repository handles periodic polling when realtime is down.
+    // Screen only triggers an immediate catch-up on disconnect events.
     final repo = _chatRepository;
 
     _realtimeSubscription = repo.realtimeStatus.listen((status) {
       if (status == RealtimeSubscribeStatus.subscribed) {
-        debugPrint('🔌 Realtime Connected: Stopping Polling 🛑');
         _pollingTimer?.cancel();
         _pollingTimer = null;
       } else {
-        debugPrint('🔌 Realtime Disconnected ($status): Starting Polling 🔄');
-        // اگر قبلاً تایمر نداشتم، بسازم
-        if (_pollingTimer == null || !_pollingTimer!.isActive) {
-          _pollingTimer = Timer.periodic(const Duration(seconds: 15), (timer) {
-            if (!mounted) {
-              timer.cancel();
-              return;
-            }
-            debugPrint('🔄 Smart Polling Check...');
-            ref
-                .read(chatRepositoryProvider)
-                .refreshMessages(widget.args.conversationId);
-          });
-        }
-      }
-    });
-
-    // حالت اولیه: اگر وضعیت هنوز نیامده، فرض کنیم قطع است و پولیگ را شروع کنیم (بعداً با اولین استاتوس اصلاح میشه)
-    // اما چون استریم broadcast است، ممکن است آخرین مقدار را نداشته باشد
-    // برای همین بهتر است یک تایمر اولیه با تاخیر بگذاریم که اگر وصل نشد شروع شود
-    Future.delayed(const Duration(seconds: 5), () {
-      if (_pollingTimer == null && mounted) {
-        // اگر بعد از 5 ثانیه هنوز وصل نشده (تایمر کنسل نشده)، یه چک بکنیم
-        // البته لیسنر بالا اگر ایونت بیاد کار میکنه.
+        unawaited(_triggerPollingRefresh());
       }
     });
   }
@@ -853,39 +878,34 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     _lastVisibleDateUpdateAt = now;
 
     try {
-      final messagesAsync =
-          ref.read(chatMessagesProvider(widget.args.conversationId));
-      messagesAsync.whenData((messages) {
-        if (!mounted) return;
-
-        if (messages.isEmpty) {
-          if (_currentVisibleDate != null) {
-            setState(() {
-              _currentVisibleDate = null;
-            });
-          }
-          return;
-        }
-
-        final scrollOffset = _scrollController.offset;
-        const itemHeight = 70.0;
-        var visibleIndex = (scrollOffset / itemHeight).floor();
-        visibleIndex = visibleIndex.clamp(0, messages.length - 1);
-
-        if (visibleIndex >= 0 && visibleIndex < messages.length) {
-          final newDate = messages[visibleIndex].createdAt;
-          if (_currentVisibleDate == null ||
-              !_isSameDay(_currentVisibleDate!, newDate)) {
-            setState(() {
-              _currentVisibleDate = newDate;
-            });
-          }
-        } else if (_currentVisibleDate != null) {
+      final messages = _latestVisibleMessages;
+      if (messages.isEmpty) {
+        if (_currentVisibleDate != null) {
           setState(() {
             _currentVisibleDate = null;
           });
         }
-      });
+        return;
+      }
+
+      final scrollOffset = _scrollController.offset;
+      const itemHeight = 70.0;
+      var visibleIndex = (scrollOffset / itemHeight).floor();
+      visibleIndex = visibleIndex.clamp(0, messages.length - 1);
+
+      if (visibleIndex >= 0 && visibleIndex < messages.length) {
+        final newDate = messages[visibleIndex].createdAt;
+        if (_currentVisibleDate == null ||
+            !_isSameDay(_currentVisibleDate!, newDate)) {
+          setState(() {
+            _currentVisibleDate = newDate;
+          });
+        }
+      } else if (_currentVisibleDate != null) {
+        setState(() {
+          _currentVisibleDate = null;
+        });
+      }
     } catch (e) {
       debugPrint('Error in _updateVisibleDate: $e');
     }
@@ -909,10 +929,9 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       _setupReactionsStream(messages);
       return;
     }
-
-    final messagesAsync =
-        ref.read(chatMessagesProvider(widget.args.conversationId));
-    messagesAsync.whenData(_setupReactionsStream);
+    if (_latestVisibleMessages.isNotEmpty) {
+      _setupReactionsStream(_latestVisibleMessages);
+    }
   }
 
   List<MessageModel> _selectReactionWindow(List<MessageModel> messages) {
@@ -945,20 +964,158 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     return a.year == b.year && a.month == b.month && a.day == b.day;
   }
 
-  /// بررسی نمایش unread divider
-  bool _shouldShowUnreadDivider(
-      MessageModel message, int index, List<MessageModel> messages) {
-    // اگه آخرین پیام خونده شده تنظیم نشده، نشون نده
+  bool _shouldShowUnreadDividerForRenderItem(
+    _ChatRenderItem renderItem,
+    int index,
+    List<_ChatRenderItem> renderItems,
+  ) {
     if (_lastReadMessageId == null) return false;
+    final hasBoundaryMessage =
+        renderItem.messages.any((m) => m.id == _lastReadMessageId);
+    return hasBoundaryMessage && index < renderItems.length - 1;
+  }
 
-    // اگه این پیام همون آخرین پیام خونده شده هست
-    if (message.id == _lastReadMessageId) {
-      // و پیام بعدی (قدیمی‌تر) وجود داره
-      if (index < messages.length - 1) {
-        return true;
+  List<_ChatRenderItem> _buildRenderItems(List<MessageModel> messages) {
+    if (messages.isEmpty) return const <_ChatRenderItem>[];
+
+    final renderItems = <_ChatRenderItem>[];
+    var index = 0;
+
+    while (index < messages.length) {
+      final current = messages[index];
+
+      if (_isAlbumImageMessage(current)) {
+        final grouped = <MessageModel>[current];
+        var lookAhead = index + 1;
+        final currentGroupId = current.mediaGroupId?.trim();
+        final hasExplicitGroupId =
+            currentGroupId != null && currentGroupId.isNotEmpty;
+
+        while (lookAhead < messages.length && grouped.length < 10) {
+          final candidate = messages[lookAhead];
+          if (hasExplicitGroupId) {
+            final candidateGroupId = candidate.mediaGroupId?.trim();
+            if (!_isAlbumImageMessage(candidate) ||
+                candidate.senderId != current.senderId ||
+                candidateGroupId != currentGroupId) {
+              break;
+            }
+          } else if (!_canAppendToAlbum(grouped.last, candidate, current)) {
+            break;
+          }
+          grouped.add(candidate);
+          lookAhead++;
+        }
+
+        if (grouped.length > 1) {
+          renderItems.add(
+            _ChatRenderItem(
+              primaryIndex: index,
+              messages: grouped,
+            ),
+          );
+          index = lookAhead;
+          continue;
+        }
       }
+
+      renderItems.add(
+        _ChatRenderItem(
+          primaryIndex: index,
+          messages: [current],
+        ),
+      );
+      index++;
     }
-    return false;
+
+    return renderItems;
+  }
+
+  bool _isAlbumImageMessage(MessageModel message) {
+    final hasMediaSource =
+        (message.attachmentUrl?.trim().isNotEmpty ?? false) ||
+            (message.localFilePath?.trim().isNotEmpty ?? false) ||
+            (message.localImagePath?.trim().isNotEmpty ?? false);
+    return hasMediaSource && message.isImage;
+  }
+
+  bool _canAppendToAlbum(
+    MessageModel previousMessage,
+    MessageModel candidate,
+    MessageModel anchor,
+  ) {
+    if (!_isAlbumImageMessage(candidate)) return false;
+    if (candidate.senderId != anchor.senderId) return false;
+
+    final diffWithPrevious =
+        previousMessage.createdAt.difference(candidate.createdAt).abs();
+    if (diffWithPrevious > const Duration(seconds: 25)) return false;
+
+    final diffWithAnchor =
+        anchor.createdAt.difference(candidate.createdAt).abs();
+    return diffWithAnchor <= const Duration(seconds: 60);
+  }
+
+  String _resolveAlbumMediaSource(MessageModel message) {
+    final remote = message.attachmentUrl?.trim() ?? '';
+    if (remote.isNotEmpty) return remote;
+
+    final localFile = message.localFilePath?.trim() ?? '';
+    if (localFile.isNotEmpty) return localFile;
+
+    final localImage = message.localImagePath?.trim() ?? '';
+    return localImage;
+  }
+
+  List<_AlbumMediaItem> _extractAlbumMediaItems(List<MessageModel> messages) {
+    final items = <_AlbumMediaItem>[];
+    for (final message in messages) {
+      final source = _resolveAlbumMediaSource(message);
+      if (source.isEmpty) continue;
+      items.add(_AlbumMediaItem(message: message, source: source));
+    }
+    return items;
+  }
+
+  bool _isNetworkMediaSource(String source) {
+    final normalized = source.trim().toLowerCase();
+    return normalized.startsWith('http://') ||
+        normalized.startsWith('https://');
+  }
+
+  _ConversationImageGalleryBundle _buildConversationImageGallery(
+    List<MessageModel> messages,
+  ) {
+    if (messages.isEmpty) return const _ConversationImageGalleryBundle.empty();
+
+    final galleryItems = <GalleryItem>[];
+    final indexByMessageId = <String, int>{};
+
+    for (final message in messages.reversed) {
+      final id = message.id.trim();
+      if (id.isEmpty || indexByMessageId.containsKey(id)) continue;
+      if (!_isAlbumImageMessage(message)) continue;
+
+      final source = _resolveAlbumMediaSource(message);
+      if (source.isEmpty) continue;
+
+      final caption = message.content.trim();
+      final isNetwork = _isNetworkMediaSource(source);
+      galleryItems.add(
+        GalleryItem(
+          imageUrl: source,
+          cachedFile: isNetwork ? null : File(source),
+          caption: caption.isEmpty ? null : caption,
+          heroTag: '${message.id}_$source',
+        ),
+      );
+      indexByMessageId[id] = galleryItems.length - 1;
+    }
+
+    return _ConversationImageGalleryBundle(
+      items: galleryItems,
+      indexByMessageId: indexByMessageId,
+    );
   }
 
   /// محاسبه تعداد پیام‌های خوانده نشده
@@ -979,28 +1136,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   }
 
   void _loadMoreMessages() {
-    // ✅ FIX: بررسی mounted قبل از استفاده از ref
     if (!mounted) return;
-
-    try {
-      final messagesAsync = ref.read(
-        chatMessagesProvider(widget.args.conversationId),
-      );
-
-      messagesAsync.whenData((messages) {
-        if (!mounted) return;
-        if (messages.isEmpty) return;
-
-        if (mounted) {
-          ref
-              .read(chatMessagesProvider(widget.args.conversationId).notifier)
-              .loadMore();
-        }
-      });
-    } catch (e) {
-      // Ignore errors if widget is disposed
-      debugPrint('Error in _loadMoreMessages: $e');
-    }
+    ref.read(chatMessagesProvider(widget.args.conversationId).notifier).loadMore();
   }
 
   void _scrollToBottom() {
@@ -1025,29 +1162,24 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     if (!mounted) return;
 
     try {
-      final messagesAsync =
-          ref.read(chatMessagesProvider(widget.args.conversationId));
-      messagesAsync.whenData((messages) {
-        if (!mounted) return;
-
-        if (messages.isEmpty) {
-          if (_currentVisibleDate != null || _isScrolling) {
-            setState(() {
-              _currentVisibleDate = null;
-              _isScrolling = false;
-            });
-          }
-          return;
+      final messages = _latestVisibleMessages;
+      if (messages.isEmpty) {
+        if (_currentVisibleDate != null || _isScrolling) {
+          setState(() {
+            _currentVisibleDate = null;
+            _isScrolling = false;
+          });
         }
+        return;
+      }
 
-        final newestMessage = messages.first;
-        final newDate = newestMessage.createdAt;
+      final newestMessage = messages.first;
+      final newDate = newestMessage.createdAt;
 
-        if (_currentVisibleDate == null ||
-            !_isSameDay(_currentVisibleDate!, newDate)) {
-          _showFloatingDateTemporarily(newDate);
-        }
-      });
+      if (_currentVisibleDate == null ||
+          !_isSameDay(_currentVisibleDate!, newDate)) {
+        _showFloatingDateTemporarily(newDate);
+      }
     } catch (e) {
       debugPrint('Error in _updateDateForBottom: $e');
     }
@@ -1267,6 +1399,16 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     });
   }
 
+  void _enterSelectionModeForMessages(Iterable<String> messageIds) {
+    final ids = messageIds.where((id) => id.trim().isNotEmpty).toSet();
+    if (ids.isEmpty) return;
+    HapticFeedback.mediumImpact();
+    setState(() {
+      _isSelectionMode = true;
+      _selectedMessageIds.addAll(ids);
+    });
+  }
+
   void _exitSelectionMode() {
     setState(() {
       _isSelectionMode = false;
@@ -1288,6 +1430,30 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     });
   }
 
+  bool _isRenderItemSelected(_ChatRenderItem renderItem) {
+    if (renderItem.messages.isEmpty) return false;
+    return renderItem.messages
+        .every((message) => _selectedMessageIds.contains(message.id));
+  }
+
+  void _toggleRenderItemSelection(_ChatRenderItem renderItem) {
+    final ids = renderItem.messages.map((m) => m.id).toSet();
+    if (ids.isEmpty) return;
+
+    HapticFeedback.selectionClick();
+    setState(() {
+      final allSelected = ids.every(_selectedMessageIds.contains);
+      if (allSelected) {
+        _selectedMessageIds.removeAll(ids);
+        if (_selectedMessageIds.isEmpty) {
+          _isSelectionMode = false;
+        }
+      } else {
+        _selectedMessageIds.addAll(ids);
+      }
+    });
+  }
+
   /// ✅ توابع کمکی یکپارچه برای هندل کردن کلیک و لانگ پرس
   void _handleMessageTap(BuildContext itemContext, MessageModel message) {
     if (_isSelectionMode) {
@@ -1296,9 +1462,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     }
 
     // Tap معمولی فقط برای باز کردن جزئیات/پیش‌نمایش مدیا استفاده می‌شود.
-    final hasAttachment =
-        (message.attachmentUrl?.isNotEmpty ?? false) ||
-            _isSharedPostMessage(message);
+    final hasAttachment = (message.attachmentUrl?.isNotEmpty ?? false) ||
+        _isSharedPostMessage(message);
     if (hasAttachment) {
       _showMessageDetails(message);
     }
@@ -1384,27 +1549,11 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
     if (selectedMessagesList.isEmpty) return;
 
-    // نمایش دیالوگ
-    final result = await DeleteMessageDialog.show(
-      context,
-      isMyMessage: allMyMessages,
-      messageCount: selectedMessagesList.length,
+    await _confirmAndDeleteMessages(
+      selectedMessagesList,
+      allMyMessagesOverride: allMyMessages,
+      exitSelectionModeOnSuccess: true,
     );
-
-    if (!result.confirmed) return;
-
-    final messagesToDelete = List<String>.from(_selectedMessageIds);
-    _exitSelectionMode();
-    _startDeleteAnimation(messagesToDelete);
-    logInfo('message_delete_requested: ${messagesToDelete.join(",")}');
-    unawaited(_persistDeleteAfterAnimation(
-      messageIds: messagesToDelete,
-      deleteForEveryone: result.deleteForEveryone,
-    ));
-
-    final suffix = result.deleteForEveryone ? ' برای همه' : '';
-    _showSuccessSnackBar(
-        '${messagesToDelete.length} پیام حذف شد$suffix'.toPersianDigit());
   }
 
   void _startDeleteAnimation(List<String> messageIds) {
@@ -1424,8 +1573,6 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     required List<String> messageIds,
     required bool deleteForEveryone,
   }) async {
-    final wait = 260 + (messageIds.length * 36);
-    await Future.delayed(Duration(milliseconds: wait));
     try {
       await _tombstoneService.markDeletedLocallyBatch(
         messageIds: messageIds,
@@ -1435,10 +1582,56 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     } catch (e, s) {
       logError('Failed to persist message tombstones', error: e, stackTrace: s);
     }
+    final wait = 260 + (messageIds.length * 36);
+    await Future.delayed(Duration(milliseconds: wait));
     if (!mounted) return;
     setState(() {
       _deletingMessageIds.removeAll(messageIds);
     });
+  }
+
+  Future<void> _confirmAndDeleteMessages(
+    List<MessageModel> messages, {
+    bool? allMyMessagesOverride,
+    bool exitSelectionModeOnSuccess = false,
+  }) async {
+    final messageMap = <String, MessageModel>{};
+    for (final message in messages) {
+      if (message.id.trim().isEmpty) continue;
+      messageMap[message.id] = message;
+    }
+    final normalizedMessages = messageMap.values.toList(growable: false);
+    if (normalizedMessages.isEmpty) return;
+
+    final currentUserId = Supabase.instance.client.auth.currentUser?.id;
+    final allMyMessages = allMyMessagesOverride ??
+        normalizedMessages.every((m) => m.senderId == currentUserId);
+
+    final result = await DeleteMessageDialog.show(
+      context,
+      isMyMessage: allMyMessages,
+      messageCount: normalizedMessages.length,
+    );
+
+    if (!result.confirmed) return;
+
+    final messageIds =
+        normalizedMessages.map((message) => message.id).toList(growable: false);
+    if (exitSelectionModeOnSuccess) {
+      _exitSelectionMode();
+    }
+
+    _startDeleteAnimation(messageIds);
+    logInfo('message_delete_requested: ${messageIds.join(",")}');
+    unawaited(_persistDeleteAfterAnimation(
+      messageIds: messageIds,
+      deleteForEveryone: result.deleteForEveryone,
+    ));
+
+    final suffix = result.deleteForEveryone ? ' برای همه' : '';
+    _showSuccessSnackBar(
+      '${messageIds.length} پیام حذف شد$suffix'.toPersianDigit(),
+    );
   }
 
   PreferredSizeWidget _buildAppBar(ChatTheme theme) {
@@ -1767,8 +1960,11 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
         // Isar query is already sorted (newest first).
         final messages = filteredMessages;
+        final renderItems = _buildRenderItems(messages);
+        final conversationImageGallery =
+            _buildConversationImageGallery(messages);
 
-        if (messages.isEmpty) {
+        if (renderItems.isEmpty) {
           return _buildEmptyState(theme);
         }
 
@@ -1795,18 +1991,19 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                 (context, index) {
                   // Loading indicator در بالا
                   if (paginationState.isLoadingMore &&
-                      index == messages.length) {
+                      index == renderItems.length) {
                     return _buildLoadingIndicator(theme);
                   }
 
-                  final message = messages[index];
+                  final renderItem = renderItems[index];
+                  final message = renderItem.primaryMessage;
                   final isMe = message.senderId == _currentUserId;
 
                   // گروه‌بندی پیام‌ها
                   final (isFirstInGroup, isLastInGroup) =
                       _getMessageGroupPosition(
                     messages,
-                    index,
+                    renderItem.primaryIndex,
                   );
 
                   // Date Divider - منطق صحیح برای لیست reverse:
@@ -1814,15 +2011,17 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                   // - اگر تاریخ فرق داشت، divider نشون بده
                   // - divider باید بالای پیام فعلی باشه (قبل از پیام در Column)
                   // - برای قدیمی‌ترین پیام هم divider نشون بده (وقتی nextMessage null هست)
-                  final nextMessage =
-                      index < messages.length - 1 ? messages[index + 1] : null;
+                  final nextMessage = index < renderItems.length - 1
+                      ? renderItems[index + 1].primaryMessage
+                      : null;
                   final showDateDivider = date_divider.shouldShowDateDivider(
-                    message.createdAt,
+                    renderItem.oldestMessage.createdAt,
                     nextMessage?.createdAt,
                   );
 
                   // ✅ درست: فقط اگر پیام در حال حذف شدن است انیمیشن را اعمال کن
-                  final isDeleting = _deletingMessageIds.contains(message.id);
+                  final isDeleting = renderItem.messages
+                      .any((m) => _deletingMessageIds.contains(m.id));
 
                   // ساخت ویجت پیام (DateDivider + Bubble + Unread)
                   Widget messageWidget = Column(
@@ -1830,7 +2029,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                     children: [
                       // Date Divider
                       if (showDateDivider)
-                        date_divider.DateDivider(date: message.createdAt),
+                        date_divider.DateDivider(
+                            date: renderItem.oldestMessage.createdAt),
 
                       // ✅ استفاده از Builder برای گرفتن کانتکست RenderBox
                       Builder(
@@ -1840,17 +2040,23 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                                 .translucent, // کلیک روی فضای خالی
                             onTap: () {
                               if (_isSelectionMode) {
-                                _toggleMessageSelection(message.id);
+                                _toggleRenderItemSelection(renderItem);
                               }
                             },
                             onLongPress: () {
                               HapticFeedback.mediumImpact();
                               if (_isSelectionMode) {
-                                _toggleMessageSelection(message.id);
+                                _toggleRenderItemSelection(renderItem);
                               } else {
                                 // ✅ حالا itemContext یک RenderBox است (چون دور Row پیچیده شده)
                                 // و دیگر خطای RenderSliverList نمی‌دهد.
-                                _showTelegramContextMenu(itemContext, message);
+                                _showTelegramContextMenu(
+                                  itemContext,
+                                  message,
+                                  groupedMessagesOverride: renderItem.isAlbum
+                                      ? renderItem.messages
+                                      : null,
+                                );
                               }
                             },
                             child: Padding(
@@ -1873,21 +2079,21 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                                               const Duration(milliseconds: 200),
                                           child: GestureDetector(
                                             onTap: () =>
-                                                _toggleMessageSelection(
-                                                    message.id),
+                                                _toggleRenderItemSelection(
+                                                    renderItem),
                                             child: Container(
                                               width: 24,
                                               height: 24,
                                               decoration: BoxDecoration(
                                                 shape: BoxShape.circle,
-                                                color: _selectedMessageIds
-                                                        .contains(message.id)
+                                                color: _isRenderItemSelected(
+                                                        renderItem)
                                                     ? context.chatTheme
                                                         .sendButtonColor
                                                     : Colors.transparent,
                                                 border: Border.all(
-                                                  color: _selectedMessageIds
-                                                          .contains(message.id)
+                                                  color: _isRenderItemSelected(
+                                                          renderItem)
                                                       ? context.chatTheme
                                                           .sendButtonColor
                                                       : context.chatTheme
@@ -1895,8 +2101,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                                                   width: 2,
                                                 ),
                                               ),
-                                              child: _selectedMessageIds
-                                                      .contains(message.id)
+                                              child: _isRenderItemSelected(
+                                                      renderItem)
                                                   ? const Icon(
                                                       Icons.check,
                                                       color: Colors.white,
@@ -1911,11 +2117,13 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                                     // پیام
                                     Flexible(
                                       child: Opacity(
-                                        opacity: _temporarilyHiddenMessages
-                                                .contains(message.id)
+                                        opacity: renderItem.messages.any((m) =>
+                                                _temporarilyHiddenMessages
+                                                    .contains(m.id))
                                             ? 0.0
                                             : 1.0,
-                                        child: (!_isSelectionMode)
+                                        child: (!_isSelectionMode &&
+                                                !renderItem.isAlbum)
                                             ? SwipeToReplyWrapper(
                                                 isMe: isMe,
                                                 onReply: () {
@@ -1925,20 +2133,46 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                                                   _focusNode.requestFocus();
                                                 },
                                                 child: _buildBubbleContent(
+                                                  message,
+                                                  isMe,
+                                                  renderItem.primaryIndex,
+                                                  isFirstInGroup,
+                                                  isLastInGroup,
+                                                  adaptiveEffects,
+                                                  conversationGalleryItems:
+                                                      conversationImageGallery
+                                                          .items,
+                                                  conversationGalleryIndexByMessageId:
+                                                      conversationImageGallery
+                                                          .indexByMessageId,
+                                                ),
+                                              )
+                                            : (renderItem.isAlbum
+                                                ? _buildAlbumBubbleContent(
+                                                    renderItem,
+                                                    isMe,
+                                                    adaptiveEffects,
+                                                    conversationGalleryItems:
+                                                        conversationImageGallery
+                                                            .items,
+                                                    conversationGalleryIndexByMessageId:
+                                                        conversationImageGallery
+                                                            .indexByMessageId,
+                                                  )
+                                                : _buildBubbleContent(
                                                     message,
                                                     isMe,
-                                                    index,
+                                                    renderItem.primaryIndex,
                                                     isFirstInGroup,
                                                     isLastInGroup,
-                                                    adaptiveEffects),
-                                              )
-                                            : _buildBubbleContent(
-                                                message,
-                                                isMe,
-                                                index,
-                                                isFirstInGroup,
-                                                isLastInGroup,
-                                                adaptiveEffects),
+                                                    adaptiveEffects,
+                                                    conversationGalleryItems:
+                                                        conversationImageGallery
+                                                            .items,
+                                                    conversationGalleryIndexByMessageId:
+                                                        conversationImageGallery
+                                                            .indexByMessageId,
+                                                  )),
                                       ),
                                     ),
                                   ],
@@ -1950,7 +2184,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                       ),
 
                       // Unread Divider
-                      if (_shouldShowUnreadDivider(message, index, messages))
+                      if (_shouldShowUnreadDividerForRenderItem(
+                          renderItem, index, renderItems))
                         UnreadMessagesDivider(
                           unreadCount: _unreadCount,
                           onTap: _scrollToBottom,
@@ -1964,15 +2199,17 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                     onAnimationComplete: () {
                       if (mounted) {
                         setState(() {
-                          _deletingMessageIds.remove(message.id);
+                          for (final deletingMessage in renderItem.messages) {
+                            _deletingMessageIds.remove(deletingMessage.id);
+                          }
                         });
                       }
                     },
                     child: messageWidget,
                   );
                 },
-                childCount:
-                    messages.length + (paginationState.isLoadingMore ? 1 : 0),
+                childCount: renderItems.length +
+                    (paginationState.isLoadingMore ? 1 : 0),
                 addAutomaticKeepAlives: false,
                 addRepaintBoundaries: true,
               ),
@@ -2031,7 +2268,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   MessageStatus _getMessageStatus(MessageModel message) {
     if (message.isPending) return MessageStatus.pending;
     if (message.isFailed == true) return MessageStatus.failed;
-    if (message.isSeen) return MessageStatus.read;
+    if (message.isSeen || message.isRead) return MessageStatus.read;
     if (message.isDelivered) return MessageStatus.delivered;
     if (message.isSent) return MessageStatus.sent;
     return MessageStatus.pending;
@@ -2482,25 +2719,19 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
     if (!hasText) {
       try {
-        ref
-            .read(typingServiceProvider)
-            .stopTyping(widget.args.conversationId, userId);
+        _typingService.stopTyping(widget.args.conversationId, userId);
       } catch (e) {
         debugPrint('Error stopping typing: $e');
       }
       return;
     }
 
-    _typingDebounceTimer = Timer(const Duration(milliseconds: 220), () {
-      if (!mounted) return;
-      try {
-        ref
-            .read(typingServiceProvider)
-            .startTyping(widget.args.conversationId, userId);
-      } catch (e) {
-        debugPrint('Error starting typing: $e');
-      }
-    });
+    // Start typing immediately for responsive indicator on the other side.
+    try {
+      _typingService.startTyping(widget.args.conversationId, userId);
+    } catch (e) {
+      debugPrint('Error starting typing: $e');
+    }
   }
 
   /// Handle autocomplete triggers (@mention or #hashtag)
@@ -2599,9 +2830,16 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       return;
     }
 
-    for (final selected in selection.files) {
+    final isAlbumSend =
+        sendMode == ChatSendMode.gallery && selection.files.length > 1;
+    final baseCaption = selection.caption ?? '';
+    final mediaGroupId = isAlbumSend ? const Uuid().v4() : null;
+
+    for (var index = 0; index < selection.files.length; index++) {
+      final selected = selection.files[index];
       if (!mounted) break;
       final file = selected.file;
+      final messageCaption = (isAlbumSend && index > 0) ? '' : baseCaption;
 
       final validation = _uploadPolicyService.validateFile(
         file: file,
@@ -2653,7 +2891,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
       final pending = await chatRepository.createPendingMessage(
         conversationId: widget.args.conversationId,
-        content: selection.caption ?? '',
+        content: messageCaption,
         localId: localId,
         attachmentType: attachmentType,
         attachmentFileName: fileName,
@@ -2664,6 +2902,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         audioAlbum: audioAlbum,
         localFilePath: file.path,
         duration: durationSeconds,
+        mediaGroupId: mediaGroupId,
       );
       if (!pending.isSuccess) {
         _showErrorSnackBar(pending.error ?? 'Failed to create pending message');
@@ -2698,7 +2937,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
           await ref.read(chatActionControllerProvider.notifier).sendMessage(
                 id: localId,
                 conversationId: widget.args.conversationId,
-                content: selection.caption ?? '',
+                content: messageCaption,
                 attachmentUrl: uploadResult.url,
                 attachmentType: attachmentType,
                 attachmentFileName: fileName,
@@ -2708,6 +2947,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                 audioArtist: audioArtist,
                 audioAlbum: audioAlbum,
                 duration: durationSeconds,
+                mediaGroupId: mediaGroupId,
               );
       if (!result.isSuccess) {
         await chatRepository.markUploadFailed(
@@ -2806,6 +3046,39 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     _showErrorSnackBar('برای ضبط صدا، دکمه میکروفون را نگه دارید');
   }
 
+  Future<void> _retryFailedMessage(MessageModel message) async {
+    if (message.isFailed != true) return;
+
+    final hasAttachmentData = (message.attachmentType?.trim().isNotEmpty ?? false) ||
+        (message.localFilePath?.isNotEmpty ?? false) ||
+        (message.attachmentUrl?.isNotEmpty ?? false);
+
+    if (hasAttachmentData) {
+      await _retryFailedUpload(message);
+      return;
+    }
+
+    final chatRepository = ref.read(chatRepositoryProvider);
+    final resend = await ref.read(chatActionControllerProvider.notifier).sendMessage(
+          id: message.id,
+          conversationId: message.conversationId,
+          content: message.content,
+          replyToMessageId: message.replyToMessageId,
+          replyToContent: message.replyToContent,
+          replyToSenderName: message.replyToSenderName,
+        );
+
+    if (!resend.isSuccess) {
+      await chatRepository.markUploadFailed(
+        message.id,
+        errorMessage: resend.error ?? 'Message resend failed',
+      );
+      if (mounted) {
+        _showErrorSnackBar('ارسال مجدد ناموفق بود');
+      }
+    }
+  }
+
   Future<void> _retryFailedUpload(MessageModel message) async {
     final chatRepository = ref.read(chatRepositoryProvider);
     final hasCanonicalType =
@@ -2833,6 +3106,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                 audioArtist: message.audioArtist,
                 audioAlbum: message.audioAlbum,
                 duration: message.duration,
+                mediaGroupId: message.mediaGroupId,
                 replyToMessageId: message.replyToMessageId,
                 replyToContent: message.replyToContent,
                 replyToSenderName: message.replyToSenderName,
@@ -2917,6 +3191,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
               audioArtist: message.audioArtist,
               audioAlbum: message.audioAlbum,
               duration: message.duration,
+              mediaGroupId: message.mediaGroupId,
               replyToMessageId: message.replyToMessageId,
               replyToContent: message.replyToContent,
               replyToSenderName: message.replyToSenderName,
@@ -3098,7 +3373,10 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
   /// ✅ تابع جدید: نمایش Context Menu به سبک ویستا
   void _showTelegramContextMenu(
-      BuildContext bubbleContext, MessageModel message) async {
+    BuildContext bubbleContext,
+    MessageModel message, {
+    List<MessageModel>? groupedMessagesOverride,
+  }) async {
     // برای باز شدن منو، فقط فوکوس را آزاد می‌کنیم و از hide اجباری کیبورد اجتناب می‌کنیم.
     FocusManager.instance.primaryFocus?.unfocus();
     await Future.delayed(const Duration(milliseconds: 60));
@@ -3106,10 +3384,31 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     // چک کردن mounted بعد از delay
     if (!mounted) return;
 
+    final groupedMessages = <MessageModel>[
+      if (groupedMessagesOverride != null)
+        ...groupedMessagesOverride
+      else
+        message,
+    ];
+    final groupedMap = <String, MessageModel>{};
+    for (final groupedMessage in groupedMessages) {
+      if (groupedMessage.id.trim().isEmpty) continue;
+      groupedMap[groupedMessage.id] = groupedMessage;
+    }
+    final normalizedGroup =
+        groupedMap.isNotEmpty ? groupedMap.values.toList() : [message];
+    final groupedIds =
+        normalizedGroup.map((groupedMessage) => groupedMessage.id).toList();
+    final isAlbumContext = groupedIds.length > 1;
+
     // 2. گرفتن مختصات دقیق حباب پیام از روی Context
     final RenderBox? renderBox = bubbleContext.findRenderObject() as RenderBox?;
     if (renderBox == null) {
       // fallback به BottomSheet قدیمی
+      if (isAlbumContext) {
+        _enterSelectionModeForMessages(groupedIds);
+        return;
+      }
       _showMessageOptions(message);
       return;
     }
@@ -3127,6 +3426,11 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     final isVoice =
         message.attachmentType == 'voice' || message.attachmentType == 'audio';
     final isSharedPost = _isSharedPostMessage(message);
+    final albumImageMessages = isAlbumContext
+        ? normalizedGroup.where(_isAlbumImageMessage).toList(growable: false)
+        : const <MessageModel>[];
+    final albumHasOnlyImages =
+        isAlbumContext && albumImageMessages.length == normalizedGroup.length;
     final isDocument = message.attachmentType != null &&
         ![
           'gif',
@@ -3191,8 +3495,15 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         const TelegramContextMenuItem.divider(),
       ],
 
-      // گزینه‌های مخصوص عکس
-      if (isImage) ...[
+      // گزینه‌های مخصوص عکس/آلبوم
+      if (albumHasOnlyImages) ...[
+        TelegramContextMenuItem(
+          icon: Icons.collections_rounded,
+          label: 'ذخیره آلبوم',
+          onTap: () => _saveImageAlbum(albumImageMessages),
+        ),
+        const TelegramContextMenuItem.divider(),
+      ] else if (isImage) ...[
         TelegramContextMenuItem(
           icon: Icons.download_rounded,
           label: 'ذخیره عکس',
@@ -3249,7 +3560,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       TelegramContextMenuItem(
         icon: Icons.forward_rounded,
         label: 'فوروارد',
-        onTap: () => _forwardMessage(message),
+        onTap: () => _forwardMessagesByIds(groupedIds),
       ),
 
       // ✅ جزئیات پیام (گزینه جدید)
@@ -3285,7 +3596,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       TelegramContextMenuItem(
         icon: Icons.check_circle_outline_rounded,
         label: 'انتخاب چندتایی',
-        onTap: () => _enterSelectionMode(message.id),
+        onTap: () => _enterSelectionModeForMessages(groupedIds),
       ),
 
       // Delete
@@ -3293,7 +3604,13 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         icon: Icons.delete_outline_rounded,
         label: 'حذف',
         color: theme.errorColor,
-        onTap: () => _deleteMessage(message),
+        onTap: () => isAlbumContext
+            ? _confirmAndDeleteMessages(
+                normalizedGroup,
+                allMyMessagesOverride:
+                    normalizedGroup.every((m) => m.senderId == _currentUserId),
+              )
+            : _deleteMessage(message),
       ),
     ];
 
@@ -3306,8 +3623,9 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       items: items,
       // ✅ استفاده از لیست کامل ایموجی‌ها (از kDefaultReactions)
       // برای GIF، صدا و فایل ری‌اکشن نمایش داده نمی‌شود
-      quickReactions:
-          (isGif || isVoice || isDocument) ? null : kDefaultReactions,
+      quickReactions: (isGif || isVoice || isDocument || isAlbumContext)
+          ? null
+          : kDefaultReactions,
       onReactionSelected: (emoji) => _onAddReaction(message, emoji),
       onDismiss: () {
         // 6. وقتی منو بسته شد، پیام اصلی را برگردان
@@ -3710,25 +4028,10 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   }
 
   Future<void> _deleteMessage(MessageModel message) async {
-    final isMe = message.senderId == _currentUserId;
-
-    final result = await DeleteMessageDialog.show(
-      context,
-      isMyMessage: isMe,
-      messageCount: 1,
+    await _confirmAndDeleteMessages(
+      [message],
+      allMyMessagesOverride: message.senderId == _currentUserId,
     );
-
-    if (!result.confirmed) return;
-
-    _startDeleteAnimation([message.id]);
-    logInfo('message_delete_requested: ${message.id}');
-    unawaited(_persistDeleteAfterAnimation(
-      messageIds: [message.id],
-      deleteForEveryone: result.deleteForEveryone,
-    ));
-
-    final suffix = result.deleteForEveryone ? ' برای همه' : '';
-    _showSuccessSnackBar('پیام حذف شد$suffix');
   }
 
   /// ویرایش پیام
@@ -3748,13 +4051,26 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
   /// فوروارد پیام
   Future<void> _forwardMessage(MessageModel message) async {
+    await _forwardMessagesByIds([message.id]);
+  }
+
+  Future<void> _forwardMessagesByIds(List<String> messageIds) async {
+    final ids = messageIds
+        .map((id) => id.trim())
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList(growable: false);
+    if (ids.isEmpty) return;
+
     final result = await ForwardMessageSheet.show(
       context,
-      messageIds: [message.id],
+      messageIds: ids,
     );
 
     if (result == true) {
-      _showSuccessSnackBar('پیام فوروارد شد');
+      _showSuccessSnackBar(
+        ids.length > 1 ? 'پیام‌ها فوروارد شدند' : 'پیام فوروارد شد',
+      );
     }
   }
 
@@ -3843,6 +4159,92 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   // ═══════════════════════════════════════════════════════════════════════════
   // 💾 SAVE MEDIA (متدهای کمکی)
   // ═══════════════════════════════════════════════════════════════════════════
+
+  Future<void> _saveImageAlbum(List<MessageModel> messages) async {
+    if (messages.isEmpty) {
+      _showErrorSnackBar('عکسی برای ذخیره یافت نشد');
+      return;
+    }
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Row(
+            children: [
+              SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                    strokeWidth: 2, color: Colors.white),
+              ),
+              SizedBox(width: 12),
+              Text('در حال آماده‌سازی آلبوم...'),
+            ],
+          ),
+          duration: Duration(seconds: 30),
+        ),
+      );
+    }
+
+    var savedCount = 0;
+    var failedCount = 0;
+
+    for (final message in messages) {
+      final source = _resolveAlbumMediaSource(message);
+      if (source.isEmpty) {
+        failedCount++;
+        continue;
+      }
+
+      try {
+        final file = await _resolveImageFileForGallerySave(source);
+        if (file == null) {
+          failedCount++;
+          continue;
+        }
+
+        await Gal.putImage(file.path);
+        savedCount++;
+      } catch (_) {
+        failedCount++;
+      }
+    }
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      if (savedCount > 0) {
+        _showSuccessSnackBar(
+          failedCount > 0
+              ? '$savedCount عکس ذخیره شد، $failedCount مورد ناموفق بود'
+              : '$savedCount عکس در گالری ذخیره شد',
+        );
+      } else {
+        _showErrorSnackBar('ذخیره آلبوم انجام نشد');
+      }
+    }
+  }
+
+  Future<File?> _resolveImageFileForGallerySave(String source) async {
+    if (!_isNetworkMediaSource(source)) {
+      final localFile = File(source);
+      if (await localFile.exists()) return localFile;
+      return null;
+    }
+
+    final response = await Dio().get(
+      source,
+      options: Options(responseType: ResponseType.bytes),
+    );
+
+    final tempDir = await getTemporaryDirectory();
+    final ext = p.extension(source).replaceFirst('.', '').toLowerCase();
+    final normalizedExt = ext.isEmpty ? 'jpg' : ext;
+    final fileName =
+        'album_${DateTime.now().microsecondsSinceEpoch}.$normalizedExt';
+    final tempFile = File('${tempDir.path}/$fileName');
+    await tempFile.writeAsBytes(Uint8List.fromList(response.data));
+    return tempFile;
+  }
 
   /// ذخیره عکس
   Future<void> _saveImage(MessageModel message) async {
@@ -4184,21 +4586,22 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       final isVerified = postData.isVerified;
       final role = postData.role;
       final hashtags = null; // SharedPostData فعلاً hashtags ندارد
-      final handlePostTap = () {
+      void handlePostTap() {
         if (_isSelectionMode) {
           _toggleMessageSelection(message.id);
         } else {
           _navigateToPostScreen(postId);
         }
-      };
-      final handlePostLongPress = () {
+      }
+
+      void handlePostLongPress() {
         HapticFeedback.mediumImpact();
         if (_isSelectionMode) {
           _toggleMessageSelection(message.id);
         } else {
           _showTelegramContextMenu(context, message);
         }
-      };
+      }
 
       // ✅ ساختار جدید برای کنترل کامل کلیک‌ها
       return Stack(
@@ -4336,8 +4739,10 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     int index,
     bool isFirstInGroup,
     bool isLastInGroup,
-    AdaptiveEffectsState adaptiveEffects,
-  ) {
+    AdaptiveEffectsState adaptiveEffects, {
+    List<GalleryItem>? conversationGalleryItems,
+    Map<String, int>? conversationGalleryIndexByMessageId,
+  }) {
     final isHighlighted = _highlightedMessageId == message.id;
     final isSelected = _selectedMessageIds.contains(message.id);
     final bubbleEffectsLevel = adaptiveEffects.motionTokensEnabled
@@ -4386,11 +4791,12 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                 isLastInGroup: isLastInGroup,
                 isForwarded: message.isForwarded,
                 forwardedFrom: message.forwardedFromSenderName,
-                onRetryUpload: (message.isFailed == true &&
-                        ((message.localFilePath?.isNotEmpty ?? false) ||
-                            (message.attachmentUrl?.isNotEmpty ?? false)))
-                    ? () => _retryFailedUpload(message)
+                onRetryUpload: message.isFailed == true
+                    ? () => _retryFailedMessage(message)
                     : null,
+                conversationGalleryItems: conversationGalleryItems,
+                initialGalleryIndex:
+                    conversationGalleryIndexByMessageId?[message.id],
                 message: message,
               );
             },
@@ -4410,6 +4816,136 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         borderRadius: BorderRadius.circular(12),
       ),
       child: bubbleContent,
+    );
+  }
+
+  Widget _buildAlbumBubbleContent(
+    _ChatRenderItem renderItem,
+    bool isMe,
+    AdaptiveEffectsState adaptiveEffects, {
+    List<GalleryItem>? conversationGalleryItems,
+    Map<String, int>? conversationGalleryIndexByMessageId,
+  }) {
+    final primaryMessage = renderItem.primaryMessage;
+    final albumItems = _extractAlbumMediaItems(renderItem.messages);
+    if (albumItems.length < 2) {
+      return _buildBubbleContent(
+        primaryMessage,
+        isMe,
+        renderItem.primaryIndex,
+        true,
+        true,
+        adaptiveEffects,
+        conversationGalleryItems: conversationGalleryItems,
+        conversationGalleryIndexByMessageId:
+            conversationGalleryIndexByMessageId,
+      );
+    }
+
+    final captionMessage = renderItem.messages.firstWhere(
+      (m) => m.content.trim().isNotEmpty,
+      orElse: () => primaryMessage,
+    );
+    final hasHighlightedMessage = _highlightedMessageId != null &&
+        renderItem.messages.any((m) => m.id == _highlightedMessageId);
+    final isSelected = _isSelectionMode && _isRenderItemSelected(renderItem);
+    final albumKey = _messageKeys[primaryMessage.id] ??= GlobalKey();
+    for (final item in renderItem.messages) {
+      _messageKeys[item.id] ??= albumKey;
+    }
+
+    final bubble = _ChatMediaAlbumBubble(
+      key: albumKey,
+      albumItems: albumItems,
+      statusMessage: primaryMessage,
+      isMe: isMe,
+      caption: captionMessage.content.trim().isNotEmpty
+          ? captionMessage.content.trim()
+          : null,
+      onImageTap: (index) {
+        if (_isSelectionMode) {
+          _toggleRenderItemSelection(renderItem);
+          return;
+        }
+        _openAlbumViewer(
+          albumItems,
+          index,
+          conversationGalleryItems: conversationGalleryItems,
+          conversationGalleryIndexByMessageId:
+              conversationGalleryIndexByMessageId,
+        );
+      },
+    );
+
+    if (!hasHighlightedMessage && !isSelected) {
+      return bubble;
+    }
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+      decoration: BoxDecoration(
+        color: hasHighlightedMessage
+            ? context.chatTheme.sendButtonColor.withOpacity(0.2)
+            : context.chatTheme.sendButtonColor.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: bubble,
+    );
+  }
+
+  void _openAlbumViewer(
+    List<_AlbumMediaItem> albumItems,
+    int initialIndex, {
+    List<GalleryItem>? conversationGalleryItems,
+    Map<String, int>? conversationGalleryIndexByMessageId,
+  }) {
+    if (!mounted || albumItems.isEmpty) return;
+
+    final albumGalleryItems = albumItems
+        .map(
+          (item) => GalleryItem(
+            imageUrl: item.source,
+            caption: item.message.content.trim().isNotEmpty
+                ? item.message.content
+                : null,
+            heroTag: '${item.message.id}_${item.source}',
+          ),
+        )
+        .toList(growable: false);
+    if (albumGalleryItems.isEmpty) return;
+
+    final safeAlbumIndex = initialIndex < 0
+        ? 0
+        : (initialIndex >= albumGalleryItems.length
+            ? albumGalleryItems.length - 1
+            : initialIndex);
+
+    final selectedMessageId = albumItems[safeAlbumIndex].message.id;
+    final canUseConversationGallery = conversationGalleryItems != null &&
+        conversationGalleryItems.isNotEmpty &&
+        conversationGalleryIndexByMessageId != null &&
+        conversationGalleryIndexByMessageId.containsKey(selectedMessageId);
+
+    final galleryItems = canUseConversationGallery
+        ? conversationGalleryItems
+        : albumGalleryItems;
+    final safeInitialIndex = canUseConversationGallery
+        ? conversationGalleryIndexByMessageId[selectedMessageId]!
+        : safeAlbumIndex;
+
+    Navigator.push(
+      context,
+      PageRouteBuilder(
+        opaque: false,
+        pageBuilder: (_, __, ___) => FullScreenImageViewer(
+          galleryItems: galleryItems,
+          initialIndex: safeInitialIndex,
+        ),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          return FadeTransition(opacity: animation, child: child);
+        },
+      ),
     );
   }
 
@@ -4440,7 +4976,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     try {
       final decoded = jsonDecode(raw);
       if (decoded is! Map) return null;
-      final map = Map<String, dynamic>.from(decoded as Map);
+      final map = Map<String, dynamic>.from(decoded);
 
       final postId =
           (map['postId'] ?? map['post_id'] ?? map['id'] ?? '').toString();
@@ -4537,7 +5073,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       try {
         final decoded = jsonDecode(raw);
         if (decoded is Map) {
-          final map = Map<String, dynamic>.from(decoded as Map);
+          final map = Map<String, dynamic>.from(decoded);
           final mediaRaw = map['mediaUrls'] ?? map['media_urls'];
           if (mediaRaw is List) {
             for (final item in mediaRaw) {
@@ -4568,5 +5104,423 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         builder: (context) => PostDetailsPage(postId: postId),
       ),
     );
+  }
+}
+
+class _ChatRenderItem {
+  final int primaryIndex;
+  final List<MessageModel> messages;
+
+  const _ChatRenderItem({
+    required this.primaryIndex,
+    required this.messages,
+  });
+
+  bool get isAlbum => messages.length > 1;
+  MessageModel get primaryMessage => messages.first;
+  MessageModel get oldestMessage => messages.last;
+}
+
+class _AlbumMediaItem {
+  final MessageModel message;
+  final String source;
+
+  const _AlbumMediaItem({
+    required this.message,
+    required this.source,
+  });
+}
+
+class _ConversationImageGalleryBundle {
+  final List<GalleryItem> items;
+  final Map<String, int> indexByMessageId;
+
+  const _ConversationImageGalleryBundle({
+    required this.items,
+    required this.indexByMessageId,
+  });
+
+  const _ConversationImageGalleryBundle.empty()
+      : items = const [],
+        indexByMessageId = const {};
+}
+
+class _ChatMediaAlbumBubble extends StatelessWidget {
+  final List<_AlbumMediaItem> albumItems;
+  final MessageModel statusMessage;
+  final bool isMe;
+  final String? caption;
+  final ValueChanged<int> onImageTap;
+
+  const _ChatMediaAlbumBubble({
+    super.key,
+    required this.albumItems,
+    required this.statusMessage,
+    required this.isMe,
+    required this.onImageTap,
+    this.caption,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = context.chatTheme;
+    final hasCaption = caption != null && caption!.trim().isNotEmpty;
+
+    return ConstrainedBox(
+      constraints: BoxConstraints(
+        maxWidth: MediaQuery.of(context).size.width * 0.74,
+        minWidth: 140,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Stack(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: _buildGridLayout(context),
+              ),
+              if (!hasCaption)
+                Positioned(
+                  right: 6,
+                  bottom: 6,
+                  child: _buildTimeAndStatus(
+                    theme,
+                    overlayMode: true,
+                  ),
+                ),
+            ],
+          ),
+          if (hasCaption) ...[
+            const SizedBox(height: 4),
+            Container(
+              padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+              decoration: BoxDecoration(
+                color: isMe ? theme.myBubbleColor : theme.otherBubbleColor,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Expanded(
+                    child: TelegramEmojiText(
+                      caption!.trim(),
+                      maxLines: 4,
+                      overflow: TextOverflow.ellipsis,
+                      textDirection: TextDirection.rtl,
+                      textAlign: TextAlign.right,
+                      useTelegramEmoji:
+                          EmojiRenderPolicy.useTelegramEmojiRenderer(),
+                      style: TextStyle(
+                        color: isMe
+                            ? theme.myBubbleTextColor
+                            : theme.otherBubbleTextColor,
+                        fontSize: 14,
+                        height: 1.35,
+                        fontFamily: 'Vazir',
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  _buildTimeAndStatus(theme),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGridLayout(BuildContext context) {
+    final visibleItems = albumItems.take(10).toList(growable: false);
+    final count = visibleItems.length;
+
+    if (count == 2) {
+      return AspectRatio(
+        aspectRatio: 1.75,
+        child: Row(
+          children: [
+            Expanded(
+              child: _buildTile(
+                visibleItems[0],
+                0,
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(12),
+                  bottomLeft: Radius.circular(12),
+                ),
+              ),
+            ),
+            const SizedBox(width: 2),
+            Expanded(
+              child: _buildTile(
+                visibleItems[1],
+                1,
+                borderRadius: const BorderRadius.only(
+                  topRight: Radius.circular(12),
+                  bottomRight: Radius.circular(12),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (count == 3) {
+      return AspectRatio(
+        aspectRatio: 1.5,
+        child: Row(
+          children: [
+            Expanded(
+              flex: 2,
+              child: _buildTile(
+                visibleItems[0],
+                0,
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(12),
+                  bottomLeft: Radius.circular(12),
+                ),
+              ),
+            ),
+            const SizedBox(width: 2),
+            Expanded(
+              child: Column(
+                children: [
+                  Expanded(
+                    child: _buildTile(
+                      visibleItems[1],
+                      1,
+                      borderRadius: const BorderRadius.only(
+                        topRight: Radius.circular(12),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Expanded(
+                    child: _buildTile(
+                      visibleItems[2],
+                      2,
+                      borderRadius: const BorderRadius.only(
+                        bottomRight: Radius.circular(12),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (count == 4) {
+      return AspectRatio(
+        aspectRatio: 1,
+        child: Column(
+          children: [
+            Expanded(
+              child: Row(
+                children: [
+                  Expanded(
+                    child: _buildTile(
+                      visibleItems[0],
+                      0,
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(12),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 2),
+                  Expanded(
+                    child: _buildTile(
+                      visibleItems[1],
+                      1,
+                      borderRadius: const BorderRadius.only(
+                        topRight: Radius.circular(12),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 2),
+            Expanded(
+              child: Row(
+                children: [
+                  Expanded(
+                    child: _buildTile(
+                      visibleItems[2],
+                      2,
+                      borderRadius: const BorderRadius.only(
+                        bottomLeft: Radius.circular(12),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 2),
+                  Expanded(
+                    child: _buildTile(
+                      visibleItems[3],
+                      3,
+                      borderRadius: const BorderRadius.only(
+                        bottomRight: Radius.circular(12),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: count,
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        crossAxisSpacing: 2,
+        mainAxisSpacing: 2,
+        childAspectRatio: 1,
+      ),
+      itemBuilder: (context, index) => _buildTile(
+        visibleItems[index],
+        index,
+        borderRadius: _gridTileRadius(
+          index: index,
+          itemCount: count,
+          crossAxisCount: 3,
+        ),
+      ),
+    );
+  }
+
+  BorderRadius _gridTileRadius({
+    required int index,
+    required int itemCount,
+    required int crossAxisCount,
+  }) {
+    final row = index ~/ crossAxisCount;
+    final col = index % crossAxisCount;
+    final lastRow = (itemCount - 1) ~/ crossAxisCount;
+    final lastCol = (itemCount - 1) % crossAxisCount;
+
+    final radius = BorderRadius.only(
+      topLeft: row == 0 && col == 0 ? const Radius.circular(12) : Radius.zero,
+      topRight: row == 0 && col == crossAxisCount - 1
+          ? const Radius.circular(12)
+          : Radius.zero,
+      bottomLeft:
+          row == lastRow && col == 0 ? const Radius.circular(12) : Radius.zero,
+      bottomRight: row == lastRow && col == lastCol
+          ? const Radius.circular(12)
+          : Radius.zero,
+    );
+
+    return radius;
+  }
+
+  Widget _buildTile(
+    _AlbumMediaItem item,
+    int index, {
+    required BorderRadius borderRadius,
+  }) {
+    return GestureDetector(
+      onTap: () => onImageTap(index),
+      child: Hero(
+        tag: '${item.message.id}_${item.source}',
+        child: ClipRRect(
+          borderRadius: borderRadius,
+          child: _isNetworkUrl(item.source)
+              ? CachedNetworkImage(
+                  imageUrl: item.source,
+                  fit: BoxFit.cover,
+                  placeholder: (context, url) => _buildTilePlaceholder(),
+                  errorWidget: (context, url, error) => _buildTilePlaceholder(),
+                )
+              : Image.file(
+                  File(item.source),
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) =>
+                      _buildTilePlaceholder(),
+                ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTilePlaceholder() {
+    return Container(
+      color: Colors.black12,
+      child: const Center(
+        child: Icon(
+          Icons.image_not_supported_outlined,
+          color: Colors.white70,
+          size: 22,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTimeAndStatus(
+    ChatTheme theme, {
+    bool overlayMode = false,
+  }) {
+    final textColor = overlayMode
+        ? Colors.white
+        : (isMe
+            ? theme.myBubbleTextColor.withOpacity(0.75)
+            : theme.otherBubbleTextColor.withOpacity(0.75));
+
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: 6,
+        vertical: overlayMode ? 2 : 0,
+      ),
+      decoration: overlayMode
+          ? BoxDecoration(
+              color: Colors.black.withOpacity(0.4),
+              borderRadius: BorderRadius.circular(10),
+            )
+          : null,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (isMe) ...[
+            ValueListenableBuilder<MessageDeliveryStatus>(
+              valueListenable: statusMessage.statusNotifier,
+              builder: (context, status, _) {
+                return TelegramMessageStatus(
+                  status: status,
+                  size: 14,
+                  customColor: textColor,
+                );
+              },
+            ),
+            const SizedBox(width: 3),
+          ],
+          Text(
+            _formatTime(statusMessage.createdAt),
+            style: TextStyle(
+              color: textColor,
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  bool _isNetworkUrl(String value) {
+    final url = value.trim().toLowerCase();
+    return url.startsWith('http://') || url.startsWith('https://');
+  }
+
+  String _formatTime(DateTime time) {
+    return '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
   }
 }

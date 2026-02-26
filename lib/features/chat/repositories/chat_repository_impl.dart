@@ -25,16 +25,23 @@ class ChatRepositoryImpl implements ChatRepository {
   final SupabaseClient _supabase;
   final String? _injectedCurrentUserId;
   final RealtimeChannel _messagesChannel;
+  final Map<String, RealtimeChannel> _priorityMessageChannels = {};
+  final Map<String, int> _priorityMessageChannelRefs = {};
+  final Map<String, bool> _priorityMessageChannelReady = {};
   late final MessageReactionsService _reactionService;
   final IsarDatabaseManager _dbManager = IsarDatabaseManager();
 
   // ✅ Controller for Realtime Status
   final _realtimeStatusController =
       StreamController<RealtimeSubscribeStatus>.broadcast();
+  RealtimeSubscribeStatus _latestRealtimeStatus =
+      RealtimeSubscribeStatus.closed;
 
   @override
-  Stream<RealtimeSubscribeStatus> get realtimeStatus =>
-      _realtimeStatusController.stream;
+  Stream<RealtimeSubscribeStatus> get realtimeStatus async* {
+    yield _latestRealtimeStatus;
+    yield* _realtimeStatusController.stream;
+  }
 
   ChatRepositoryImpl({
     required ChatLocalDataSourceIsar localDataSource,
@@ -56,12 +63,19 @@ class ChatRepositoryImpl implements ChatRepository {
       await _localDataSource.markMessagesAsSeenLocally(conversationId);
 
       // 1. آپدیت کردن همه پیام‌های طرف مقابل که دیده نشده‌اند
+      final nowIso = DateTime.now().toUtc().toIso8601String();
       await _supabase
           .from('messages')
-          .update({'is_seen': true})
+          .update({
+            'is_seen': true,
+            'is_read': true,
+            'is_delivered': true,
+            'seen_at': nowIso,
+            'delivered_at': nowIso,
+          })
           .eq('conversation_id', conversationId)
           .neq('sender_id', userId) // فقط پیام‌های طرف مقابل
-          .eq('is_seen', false); // فقط آنهایی که هنوز دیده نشده‌اند
+          .or('is_seen.eq.false,is_seen.is.null'); // فقط دیده‌نشده‌ها
 
       // 2. ریست کردن شمارنده پیام‌های ناخوانده (کد قبلی شما)
       await resetUnreadCount(conversationId);
@@ -81,6 +95,340 @@ class ChatRepositoryImpl implements ChatRepository {
   String? get _currentUserId =>
       _injectedCurrentUserId ?? _supabase.auth.currentUser?.id;
 
+  final Map<String, int> _lastConversationCatchupAtMs = <String, int>{};
+  final Map<String, bool> _conversationSyncInFlight = <String, bool>{};
+  final Map<String, int> _lastSeenSyncAtMs = <String, int>{};
+  final Map<String, int> _lastRealtimeHealthSyncAtMs = <String, int>{};
+  final Map<String, DateTime> _lastMessageSyncCursor = <String, DateTime>{};
+  final Map<String, int> _lastFullMessageSyncAtMs = <String, int>{};
+  final Map<String, Set<String>> _hiddenIdsCache = <String, Set<String>>{};
+  final Map<String, int> _hiddenIdsCacheAtMs = <String, int>{};
+  int _lastConversationsCatchupAtMs = 0;
+  bool _conversationsSyncInFlight = false;
+  static const Duration _fallbackConversationSyncInterval =
+      Duration(seconds: 2);
+  static const Duration _fallbackMessageSyncInterval = Duration(seconds: 1);
+  static const Duration _realtimeCatchupMessageInterval =
+      Duration(milliseconds: 1200);
+  static const Duration _realtimeCatchupConversationsInterval =
+      Duration(milliseconds: 2500);
+  static const Duration _hiddenIdsCacheTtl = Duration(seconds: 10);
+  static const Duration _realtimeHealthCatchupInterval = Duration(seconds: 2);
+  static const Duration _fullMessageReconcileInterval = Duration(seconds: 8);
+  static const Duration _deltaMessageWindow = Duration(minutes: 2);
+  static const int _fullMessageSnapshotLimit = 80;
+  static const int _deltaMessageSnapshotLimit = 100;
+  static const String _conversationHealthKey = '__conversations__';
+
+  void _scheduleRealtimeCatchup(
+    String conversationId, {
+    bool includeConversations = true,
+  }) {
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    final messageCatchupIntervalMs =
+        (_latestRealtimeStatus == RealtimeSubscribeStatus.subscribed
+                ? _realtimeCatchupMessageInterval
+                : _fallbackMessageSyncInterval)
+            .inMilliseconds;
+    final lastMessagesSync = _lastConversationCatchupAtMs[conversationId] ?? 0;
+    if (nowMs - lastMessagesSync > messageCatchupIntervalMs) {
+      _lastConversationCatchupAtMs[conversationId] = nowMs;
+      unawaited(_syncMessages(conversationId));
+    }
+
+    if (!includeConversations) return;
+    final conversationCatchupIntervalMs =
+        (_latestRealtimeStatus == RealtimeSubscribeStatus.subscribed
+                ? _realtimeCatchupConversationsInterval
+                : _fallbackConversationSyncInterval)
+            .inMilliseconds;
+    if (nowMs - _lastConversationsCatchupAtMs > conversationCatchupIntervalMs) {
+      _lastConversationsCatchupAtMs = nowMs;
+      unawaited(_syncConversations());
+    }
+  }
+
+  bool _isPriorityMessageChannelActive(String conversationId) {
+    final key = conversationId.trim();
+    return _priorityMessageChannels.containsKey(key) &&
+        (_priorityMessageChannelReady[key] ?? false);
+  }
+
+  void _ensurePriorityMessageChannel(String conversationId) {
+    final normalizedConversationId = conversationId.trim();
+    if (normalizedConversationId.isEmpty) return;
+
+    final refs = (_priorityMessageChannelRefs[normalizedConversationId] ?? 0) + 1;
+    _priorityMessageChannelRefs[normalizedConversationId] = refs;
+    if (_priorityMessageChannels.containsKey(normalizedConversationId)) {
+      return;
+    }
+    _priorityMessageChannelReady[normalizedConversationId] = false;
+
+    final channel = _supabase
+        .channel('priority:messages:$normalizedConversationId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'messages',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'conversation_id',
+            value: normalizedConversationId,
+          ),
+          callback: (payload) async {
+            try {
+              final userId = _currentUserId;
+              if (userId == null) return;
+              await _handleRealtimeInsertRecord(
+                userId: userId,
+                conversationId: normalizedConversationId,
+                newRecord: payload.newRecord,
+                includeConversationSync: false,
+              );
+            } catch (e, stack) {
+              logError(
+                'Priority realtime insert failed',
+                error: e,
+                stackTrace: stack,
+              );
+              _scheduleRealtimeCatchup(
+                normalizedConversationId,
+                includeConversations: true,
+              );
+            }
+          },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'messages',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'conversation_id',
+            value: normalizedConversationId,
+          ),
+          callback: (payload) async {
+            try {
+              final userId = _currentUserId;
+              if (userId == null) return;
+              await _handleRealtimeUpdateRecord(
+                userId: userId,
+                conversationId: normalizedConversationId,
+                newRecord: payload.newRecord,
+                includeConversationSync: false,
+              );
+            } catch (e, stack) {
+              logError(
+                'Priority realtime update failed',
+                error: e,
+                stackTrace: stack,
+              );
+              _scheduleRealtimeCatchup(
+                normalizedConversationId,
+                includeConversations: true,
+              );
+            }
+          },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.delete,
+          schema: 'public',
+          table: 'messages',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'conversation_id',
+            value: normalizedConversationId,
+          ),
+          callback: (payload) async {
+            try {
+              await _handleRealtimeDeleteRecord(
+                oldRecord: payload.oldRecord,
+                includeConversationSync: false,
+              );
+            } catch (e, stack) {
+              logError(
+                'Priority realtime delete failed',
+                error: e,
+                stackTrace: stack,
+              );
+              _scheduleRealtimeCatchup(
+                normalizedConversationId,
+                includeConversations: true,
+              );
+            }
+          },
+        )
+        .subscribe((status, error) {
+      logDebug(
+          'Priority realtime [$normalizedConversationId] status: $status');
+      _priorityMessageChannelReady[normalizedConversationId] =
+          status == RealtimeSubscribeStatus.subscribed;
+      if (error != null) {
+        logError(
+          'Priority realtime [$normalizedConversationId] error',
+          error: error,
+        );
+      }
+    });
+
+    _priorityMessageChannels[normalizedConversationId] = channel;
+  }
+
+  Future<void> _releasePriorityMessageChannel(String conversationId) async {
+    final normalizedConversationId = conversationId.trim();
+    if (normalizedConversationId.isEmpty) return;
+
+    final nextRefs = (_priorityMessageChannelRefs[normalizedConversationId] ?? 1) - 1;
+    if (nextRefs > 0) {
+      _priorityMessageChannelRefs[normalizedConversationId] = nextRefs;
+      return;
+    }
+
+    _priorityMessageChannelRefs.remove(normalizedConversationId);
+    _priorityMessageChannelReady.remove(normalizedConversationId);
+    final channel = _priorityMessageChannels.remove(normalizedConversationId);
+    if (channel != null) {
+      await _supabase.removeChannel(channel);
+    }
+  }
+
+  Future<void> _handleRealtimeInsertRecord({
+    required String userId,
+    required String conversationId,
+    required Map<String, dynamic> newRecord,
+    bool includeConversationSync = true,
+  }) async {
+    if (newRecord.isEmpty) return;
+
+    final newMessage = MessageModel.fromJson(newRecord, currentUserId: userId);
+
+    if (await _isMessageTombstoned(
+      conversationId: conversationId,
+      messageId: newMessage.id,
+    )) {
+      return;
+    }
+
+    final existingMessage = await _localDataSource.getMessage(newMessage.id, userId);
+    if (existingMessage != null) {
+      final updatedMessage = existingMessage.copyWith(
+        isSent: true,
+        isPending: false,
+        createdAt: newMessage.createdAt,
+        attachmentUrl: newMessage.attachmentUrl ?? existingMessage.attachmentUrl,
+        isDelivered: existingMessage.isDelivered || newMessage.isDelivered,
+        isSeen: existingMessage.isSeen || newMessage.isSeen,
+        isRead: existingMessage.isRead || newMessage.isRead,
+        content: newMessage.content.isNotEmpty
+            ? newMessage.content
+            : existingMessage.content,
+      );
+      await _localDataSource.saveMessage(updatedMessage);
+    } else {
+      await _localDataSource.saveMessage(newMessage);
+    }
+
+    if (newMessage.senderId != userId &&
+        newMessage.isDelivered == false &&
+        newMessage.isSeen == false) {
+      unawaited(_markMessageDelivered(newMessage.id));
+    }
+
+    if (conversationId == _activeConversationId) {
+      await _localDataSource.resetUnreadCount(conversationId);
+      if (newMessage.senderId != userId) {
+        unawaited(markMessagesAsSeen(conversationId));
+      }
+    } else {
+      final existingConvForUpdate =
+          await _localDataSource.getConversation(conversationId, userId);
+      if (existingConvForUpdate == null) {
+        unawaited(_fetchAndSaveConversation(conversationId));
+      }
+    }
+
+    _scheduleRealtimeCatchup(
+      conversationId,
+      includeConversations: includeConversationSync,
+    );
+  }
+
+  Future<void> _markMessageDelivered(String messageId) async {
+    try {
+      final nowIso = DateTime.now().toUtc().toIso8601String();
+      await _supabase
+          .from('messages')
+          .update({'is_delivered': true, 'delivered_at': nowIso})
+          .eq('id', messageId)
+          .eq('is_delivered', false);
+    } catch (e) {
+      logDebug('mark_delivered_failed: $messageId -> $e');
+    }
+  }
+
+  Future<void> _handleRealtimeUpdateRecord({
+    required String userId,
+    required String conversationId,
+    required Map<String, dynamic> newRecord,
+    bool includeConversationSync = true,
+  }) async {
+    final messageId = newRecord['id'] as String?;
+    if (messageId == null || messageId.isEmpty) return;
+
+    final isRead = newRecord['is_read'] as bool? ?? false;
+    final isSeen = (newRecord['is_seen'] as bool? ?? false) || isRead;
+    final isDelivered = (newRecord['is_delivered'] as bool? ?? false) || isSeen;
+    final isSent = newRecord['is_sent'] as bool? ?? false;
+    final isEdited = newRecord['is_edited'] as bool? ?? false;
+    final newContent = newRecord['content'] as String?;
+
+    final existingMessage = await _localDataSource.getMessage(messageId, userId);
+    if (existingMessage == null) {
+      _scheduleRealtimeCatchup(
+        conversationId,
+        includeConversations: includeConversationSync,
+      );
+      return;
+    }
+
+    if (existingMessage.isSeen != isSeen ||
+        existingMessage.isRead != isRead ||
+        existingMessage.isDelivered != isDelivered ||
+        existingMessage.isSent != isSent ||
+        (isEdited && existingMessage.content != newContent)) {
+      final updatedMessage = existingMessage.copyWith(
+        isRead: isRead,
+        isSeen: isSeen,
+        content:
+            isEdited && newContent != null ? newContent : existingMessage.content,
+        isSent: isSent || existingMessage.isSent,
+        isDelivered: isDelivered,
+      );
+      await _localDataSource.saveMessage(updatedMessage);
+    }
+  }
+
+  Future<void> _handleRealtimeDeleteRecord({
+    required Map<String, dynamic> oldRecord,
+    bool includeConversationSync = true,
+  }) async {
+    if (oldRecord.isEmpty) return;
+    final messageId = oldRecord['id'] as String?;
+    if (messageId == null || messageId.isEmpty) return;
+
+    await _localDataSource.deleteMessage(messageId);
+    logDebug('Realtime message deleted: $messageId');
+
+    final conversationId = oldRecord['conversation_id'] as String?;
+    if (conversationId != null && conversationId.isNotEmpty) {
+      _scheduleRealtimeCatchup(
+        conversationId,
+        includeConversations: includeConversationSync,
+      );
+    }
+  }
+
   /// بررسی اعتبار جلسه کاری
   /// تضمین می‌کند که توکن منقضی نشده است
   Future<void> _ensureAuth() async {
@@ -98,26 +446,6 @@ class ChatRepositoryImpl implements ChatRepository {
     }
   }
 
-  Future<bool> _isConversationParticipant(
-      String conversationId, String userId) async {
-    try {
-      final response = await _supabase
-          .from('conversation_participants')
-          .select('id')
-          .eq('conversation_id', conversationId)
-          .eq('user_id', userId)
-          .limit(1);
-      return response.isNotEmpty;
-    } catch (e, stack) {
-      logWarning(
-        'Failed to verify conversation participant for $conversationId',
-        error: e,
-        stackTrace: stack,
-      );
-      return false;
-    }
-  }
-
   // CONVERSATIONS
   @override
   Future<ChatResult<List<ConversationModel>>> getConversations() async {
@@ -125,6 +453,12 @@ class ChatRepositoryImpl implements ChatRepository {
     if (userId == null) return ChatResult.failure('کاربر وارد نشده است');
 
     try {
+      final localConversations = await _localDataSource.getConversations();
+      if (localConversations.isNotEmpty) {
+        unawaited(_syncConversations());
+        return ChatResult.success(localConversations);
+      }
+
       // Fetch from server and store locally
       final response = await _supabase
           .from('conversations')
@@ -142,7 +476,7 @@ class ChatRepositoryImpl implements ChatRepository {
     } catch (e) {
       // fallback to local DB
       try {
-        final local = await _localDataSource.watchConversations(userId).first;
+        final local = await _localDataSource.getConversations();
         return ChatResult.success(local);
       } catch (err) {
         return ChatResult.failure(e.toString());
@@ -193,69 +527,31 @@ class ChatRepositoryImpl implements ChatRepository {
                 return;
               }
 
-              final existingConv = await _localDataSource.getConversation(
-                  conversationId, userId);
-              if (existingConv == null) {
-                final isParticipant =
-                    await _isConversationParticipant(conversationId, userId);
-                if (!isParticipant) {
-                  logWarning(
-                      'Skipping realtime message for non-member conversation: $conversationId');
-                  return;
-                }
-              }
-
-              final newMessage =
-                  MessageModel.fromJson(newRecord, currentUserId: userId);
-
-              if (await _isMessageTombstoned(
-                conversationId: conversationId,
-                messageId: newMessage.id,
-              )) {
+              // Active conversation channel handles this path with lower latency.
+              if (_isPriorityMessageChannelActive(conversationId)) {
                 return;
               }
 
-              logDebug('Realtime message parsed: ${newMessage.id}');
-
-              // ✅ Check if message already exists locally (by ID)
-              final existingMessage =
-                  await _localDataSource.getMessage(newMessage.id, userId);
-
-              if (existingMessage != null) {
-                // MERGE: Keep local data, update status to 'sent'
-                logDebug('Merging existing message: ${newMessage.id}');
-                final updatedMessage = existingMessage.copyWith(
-                  isSent: true,
-                  isPending: false, // Confirmed on server
-                  createdAt: newMessage.createdAt,
-                  attachmentUrl: newMessage.attachmentUrl, // Ensure url sync
-                );
-                await _localDataSource.saveMessage(updatedMessage);
-              } else {
-                // INSERT: New message from others
-                logDebug('New message from others: ${newMessage.id}');
-                await _localDataSource.saveMessage(newMessage);
-              }
-
-              // 2. Update Conversation Metadata (Unread Count, Last Message)
-              final existingConvForUpdate = existingConv ??
-                  await _localDataSource.getConversation(
-                      conversationId, userId);
-
-              if (existingConvForUpdate != null) {
-                // ✅ Active Chat Logic: Reset unread if user is currently looking at this chat
-                if (conversationId == _activeConversationId) {
-                  await _localDataSource.resetUnreadCount(conversationId);
-                }
-              } else {
-                // If conversation doesn't exist locally, fetch it
-                logInfo(
-                    'Conversation not found locally, fetching: $conversationId');
-                _fetchAndSaveConversation(conversationId);
-              }
+              await _handleRealtimeInsertRecord(
+                userId: userId,
+                conversationId: conversationId,
+                newRecord: newRecord,
+                includeConversationSync: false,
+              );
             } catch (e, stack) {
               logError('Error in realtime message callback',
                   error: e, stackTrace: stack);
+              final fallbackConversationId =
+                  payload.newRecord['conversation_id'] as String?;
+              if (fallbackConversationId != null &&
+                  fallbackConversationId.isNotEmpty) {
+                _scheduleRealtimeCatchup(
+                  fallbackConversationId,
+                  includeConversations: true,
+                );
+              } else {
+                unawaited(_syncConversations());
+              }
             }
           },
         )
@@ -278,52 +574,77 @@ class ChatRepositoryImpl implements ChatRepository {
                 return;
               }
 
-              final existingConv = await _localDataSource.getConversation(
-                  conversationId, userId);
-              if (existingConv == null) {
-                final isParticipant =
-                    await _isConversationParticipant(conversationId, userId);
-                if (!isParticipant) {
-                  logWarning(
-                      'Skipping realtime update for non-member conversation: $conversationId');
-                  return;
-                }
+              // Active conversation channel handles this path with lower latency.
+              if (_isPriorityMessageChannelActive(conversationId)) {
+                return;
               }
 
-              final isSeen = newRecord['is_seen'] as bool? ?? false;
-              final isEdited = newRecord['is_edited'] as bool? ?? false;
-              final newContent = newRecord['content'] as String?;
-
-              // Update Local DB
-              final existingMessage =
-                  await _localDataSource.getMessage(messageId, userId);
-
-              if (existingMessage != null) {
-                // Only update if something changed
-                if (existingMessage.isSeen != isSeen ||
-                    (isEdited && existingMessage.content != newContent)) {
-                  final updatedMessage = existingMessage.copyWith(
-                    isSeen: isSeen,
-                    // If edited, update content too
-                    content: isEdited && newContent != null
-                        ? newContent
-                        : existingMessage.content,
-                    isSent: true, // If updated on server, it must be sent
-                    isDelivered: true, // Likely delivered too if seen/updated
-                  );
-
-                  await _localDataSource.saveMessage(updatedMessage);
-
-                  logDebug('Message updated: $messageId (Seen: $isSeen)');
-                }
-              }
+              await _handleRealtimeUpdateRecord(
+                userId: userId,
+                conversationId: conversationId,
+                newRecord: newRecord,
+                includeConversationSync: false,
+              );
             } catch (e) {
               logError('Error in realtime update callback', error: e);
+              final fallbackConversationId =
+                  payload.newRecord['conversation_id'] as String?;
+              if (fallbackConversationId != null &&
+                  fallbackConversationId.isNotEmpty) {
+                _scheduleRealtimeCatchup(
+                  fallbackConversationId,
+                  includeConversations: true,
+                );
+              } else {
+                unawaited(_syncConversations());
+              }
+            }
+          },
+        )
+        // 3. ✅ Listen for MESSAGE DELETES (Delete for everyone)
+        .onPostgresChanges(
+          event: PostgresChangeEvent.delete,
+          schema: 'public',
+          table: 'messages',
+          callback: (payload) async {
+            try {
+              final oldRecord = payload.oldRecord;
+              if (oldRecord.isEmpty) return;
+
+              final conversationId = oldRecord['conversation_id'] as String?;
+              if (conversationId != null &&
+                  conversationId.isNotEmpty &&
+                  _isPriorityMessageChannelActive(conversationId)) {
+                return;
+              }
+
+              await _handleRealtimeDeleteRecord(
+                oldRecord: oldRecord,
+                includeConversationSync: false,
+              );
+            } catch (e, stack) {
+              logError(
+                'Error in realtime delete callback',
+                error: e,
+                stackTrace: stack,
+              );
+              final fallbackConversationId =
+                  payload.oldRecord['conversation_id'] as String?;
+              if (fallbackConversationId != null &&
+                  fallbackConversationId.isNotEmpty) {
+                _scheduleRealtimeCatchup(
+                  fallbackConversationId,
+                  includeConversations: true,
+                );
+              } else {
+                unawaited(_syncConversations());
+              }
             }
           },
         )
         .subscribe((status, error) {
       logInfo('Realtime subscription status: $status');
+      _latestRealtimeStatus = status;
       // ✅ Update status stream
       _realtimeStatusController.add(status);
 
@@ -354,7 +675,8 @@ class ChatRepositoryImpl implements ChatRepository {
 
                 final newRecord = payload.newRecord;
                 final conversationId = newRecord['conversation_id'] as String;
-                final serverUnreadCount = newRecord['unread_count'] as int;
+                final serverUnreadCount =
+                    (newRecord['unread_count'] as num?)?.toInt() ?? 0;
 
                 // ✅ Active Chat Logic: If active, force logic 0 logic
                 if (conversationId == _activeConversationId &&
@@ -375,6 +697,8 @@ class ChatRepositoryImpl implements ChatRepository {
                   await _localDataSource.saveConversation(updatedConv);
                   logDebug(
                       'Synced unread count for $conversationId: $serverUnreadCount');
+                } else {
+                  unawaited(_fetchAndSaveConversation(conversationId));
                 }
               } catch (e) {
                 logError('Error in realtime unread callback', error: e);
@@ -407,28 +731,120 @@ class ChatRepositoryImpl implements ChatRepository {
   }
 
   @override
-  Stream<List<ConversationModel>> watchConversations() async* {
+  Stream<List<ConversationModel>> watchConversations() {
     final userId = _currentUserId;
     logDebug('watchConversations called. userId: $userId');
     if (userId == null) {
       logWarning('watchConversations: userId is null');
-      return;
+      return const Stream.empty();
     }
 
-    // Kick off background sync, but immediately return local stream
-    logDebug('Triggering _syncConversations');
-    _syncConversations();
-    yield* _localDataSource.watchConversations(userId);
+    StreamSubscription<List<ConversationModel>>? localSub;
+    Timer? periodicSyncTimer;
+    late final StreamController<List<ConversationModel>> controller;
+
+    controller = StreamController<List<ConversationModel>>(
+      onListen: () {
+        unawaited(_syncConversations());
+        periodicSyncTimer =
+            Timer.periodic(_fallbackConversationSyncInterval, (timer) {
+          if (controller.isClosed) {
+            timer.cancel();
+            return;
+          }
+
+          final nowMs = DateTime.now().millisecondsSinceEpoch;
+          if (_latestRealtimeStatus == RealtimeSubscribeStatus.subscribed) {
+            final lastHealth =
+                _lastRealtimeHealthSyncAtMs[_conversationHealthKey] ?? 0;
+            if (nowMs - lastHealth <
+                _realtimeHealthCatchupInterval.inMilliseconds) {
+              return;
+            }
+            _lastRealtimeHealthSyncAtMs[_conversationHealthKey] = nowMs;
+          }
+
+          unawaited(_syncConversations());
+        });
+
+        localSub = _localDataSource.watchConversations(userId).listen(
+              controller.add,
+              onError: controller.addError,
+              onDone: () {
+                periodicSyncTimer?.cancel();
+                if (!controller.isClosed) {
+                  controller.close();
+                }
+              },
+            );
+      },
+      onCancel: () async {
+        periodicSyncTimer?.cancel();
+        await localSub?.cancel();
+        _lastRealtimeHealthSyncAtMs.remove(_conversationHealthKey);
+      },
+    );
+
+    return controller.stream;
   }
 
   // MESSAGES
   @override
-  Stream<List<MessageModel>> watchMessages(String conversationId) async* {
+  Stream<List<MessageModel>> watchMessages(String conversationId) {
     final userId = _currentUserId;
-    if (userId == null) return;
+    if (userId == null) return const Stream.empty();
+    final normalizedConversationId = conversationId.trim();
+    if (normalizedConversationId.isEmpty) return const Stream.empty();
 
-    _syncMessages(conversationId);
-    yield* _localDataSource.watchMessages(conversationId, userId);
+    StreamSubscription<List<MessageModel>>? localSub;
+    Timer? periodicSyncTimer;
+    late final StreamController<List<MessageModel>> controller;
+
+    controller = StreamController<List<MessageModel>>(
+      onListen: () {
+        unawaited(_syncMessages(normalizedConversationId));
+        _ensurePriorityMessageChannel(normalizedConversationId);
+        periodicSyncTimer =
+            Timer.periodic(_fallbackMessageSyncInterval, (timer) {
+          if (controller.isClosed) {
+            timer.cancel();
+            return;
+          }
+          if (_latestRealtimeStatus == RealtimeSubscribeStatus.subscribed) {
+            final nowMs = DateTime.now().millisecondsSinceEpoch;
+            final lastHealth =
+                _lastRealtimeHealthSyncAtMs[normalizedConversationId] ?? 0;
+            if (nowMs - lastHealth <
+                _realtimeHealthCatchupInterval.inMilliseconds) {
+              return;
+            }
+            _lastRealtimeHealthSyncAtMs[normalizedConversationId] = nowMs;
+          }
+          unawaited(_syncMessages(normalizedConversationId));
+        });
+        localSub = _localDataSource
+            .watchMessages(normalizedConversationId, userId)
+            .listen(
+          controller.add,
+          onError: controller.addError,
+          onDone: () {
+            periodicSyncTimer?.cancel();
+            unawaited(_releasePriorityMessageChannel(normalizedConversationId));
+            if (!controller.isClosed) {
+              controller.close();
+            }
+          },
+        );
+      },
+      onCancel: () async {
+        periodicSyncTimer?.cancel();
+        await localSub?.cancel();
+        await _releasePriorityMessageChannel(normalizedConversationId);
+        _lastRealtimeHealthSyncAtMs.remove(normalizedConversationId);
+      },
+    );
+
+    return controller.stream;
   }
 
   @override
@@ -456,6 +872,7 @@ class ChatRepositoryImpl implements ChatRepository {
     final audioTitle = payload.audioTitle;
     final audioArtist = payload.audioArtist;
     final audioAlbum = payload.audioAlbum;
+    final mediaGroupId = payload.mediaGroupId;
     final duration = payload.duration;
     final replyToMessageId = payload.replyToMessageId;
     final replyToContent = payload.replyToContent;
@@ -496,6 +913,7 @@ class ChatRepositoryImpl implements ChatRepository {
       audioTitle: audioTitle ?? existingLocalMessage?.audioTitle,
       audioArtist: audioArtist ?? existingLocalMessage?.audioArtist,
       audioAlbum: audioAlbum ?? existingLocalMessage?.audioAlbum,
+      mediaGroupId: mediaGroupId ?? existingLocalMessage?.mediaGroupId,
       duration: duration ?? existingLocalMessage?.duration,
       localFilePath: existingLocalMessage?.localFilePath,
       localImagePath: existingLocalMessage?.localImagePath,
@@ -524,6 +942,7 @@ class ChatRepositoryImpl implements ChatRepository {
         'audio_title': messageModel.audioTitle,
         'audio_artist': messageModel.audioArtist,
         'audio_album': messageModel.audioAlbum,
+        'media_group_id': messageModel.mediaGroupId,
         'duration': messageModel.duration,
         'is_sent': true,
         'is_pending': false,
@@ -546,10 +965,10 @@ class ChatRepositoryImpl implements ChatRepository {
       return ChatResult.success(mergedServerMessage);
     } catch (e) {
       // On Failure: Mark as failed in DB
-      final failedMessage =
-          messageModel.copyWith(isPending: false, isFailed: true);
-      await _localDataSource.saveMessage(failedMessage);
       final err = e.toString();
+      final failedMessage =
+          messageModel.copyWith(isPending: false, isFailed: true, errorMessage: err);
+      await _localDataSource.saveMessage(failedMessage);
       final isPrivacyDenied =
           err.contains('messages_insert_respect_message_privacy') ||
               err.contains('row-level security') ||
@@ -574,6 +993,7 @@ class ChatRepositoryImpl implements ChatRepository {
     String? audioAlbum,
     String? localFilePath,
     int? duration,
+    String? mediaGroupId,
   }) async {
     final userId = _currentUserId;
     if (userId == null) {
@@ -593,6 +1013,7 @@ class ChatRepositoryImpl implements ChatRepository {
         audioTitle: audioTitle,
         audioArtist: audioArtist,
         audioAlbum: audioAlbum,
+        mediaGroupId: mediaGroupId,
         localFilePath: localFilePath,
         duration: duration,
         uploadProgress: 0.0,
@@ -672,6 +1093,7 @@ class ChatRepositoryImpl implements ChatRepository {
       audioAlbum: (serverMessage.audioAlbum?.isNotEmpty ?? false)
           ? serverMessage.audioAlbum
           : localMessage.audioAlbum,
+      mediaGroupId: serverMessage.mediaGroupId ?? localMessage.mediaGroupId,
       duration: serverMessage.duration ?? localMessage.duration,
       localFilePath: localMessage.localFilePath,
       localImagePath: localMessage.localImagePath,
@@ -698,7 +1120,8 @@ class ChatRepositoryImpl implements ChatRepository {
           details.contains('attachment_size_bytes') ||
           details.contains('audio_title') ||
           details.contains('audio_artist') ||
-          details.contains('audio_album');
+          details.contains('audio_album') ||
+          details.contains('media_group_id');
       if (!missingMetadataColumn) rethrow;
 
       final fallbackPayload = Map<String, dynamic>.from(payload)
@@ -706,7 +1129,8 @@ class ChatRepositoryImpl implements ChatRepository {
         ..remove('attachment_size_bytes')
         ..remove('audio_title')
         ..remove('audio_artist')
-        ..remove('audio_album');
+        ..remove('audio_album')
+        ..remove('media_group_id');
 
       logWarning(
         'messages metadata columns are missing on server, retrying legacy insert',
@@ -738,50 +1162,142 @@ class ChatRepositoryImpl implements ChatRepository {
 
   // SYNC
   Future<void> _syncMessages(String conversationId) async {
+    final normalizedConversationId = conversationId.trim();
+    if (normalizedConversationId.isEmpty) return;
+    if (_conversationSyncInFlight[normalizedConversationId] == true) return;
+    _conversationSyncInFlight[normalizedConversationId] = true;
     try {
       final userId = _currentUserId;
       if (userId == null) return;
 
-      // 1. دریافت آخرین 50 پیام از سرور
-      // ویستا هم همیشه یک "Snapshot" از آخرین وضعیت می‌گیرد.
-      final response = await _supabase
-          .from('messages')
-          .select(_messageSelectWithProfiles)
-          .eq('conversation_id', conversationId)
-          .order('created_at', ascending: false)
-          .limit(50);
+      final nowMs = DateTime.now().millisecondsSinceEpoch;
+      final lastCursor = _lastMessageSyncCursor[normalizedConversationId];
+      final lastFullSyncAtMs =
+          _lastFullMessageSyncAtMs[normalizedConversationId] ?? 0;
+      final isRealtimeSubscribed =
+          _latestRealtimeStatus == RealtimeSubscribeStatus.subscribed;
 
-      // 2. اگر جدول hidden_messages دارید، باید چک کنید که این پیام‌ها برای یوزر فعلی مخفی نشده باشند.
-      // روش کلاینت-ساید (سریع برای اجرا):
-      // ابتدا شناسه پیام‌های مخفی شده خودتان را بگیرید
-      final hiddenResponse = await _supabase
-          .from('hidden_messages')
-          .select('message_id')
-          .eq('user_id', userId);
+      // Telegram-style: realtime + periodic reconcile.
+      // Use lightweight deltas most of the time, and periodic full snapshots
+      // to heal missed deletes/updates.
+      final shouldRunFullReconcile = !isRealtimeSubscribed ||
+          lastCursor == null ||
+          nowMs - lastFullSyncAtMs >=
+              _fullMessageReconcileInterval.inMilliseconds;
 
-      final hiddenIds = (hiddenResponse as List)
-          .map((e) => e['message_id'] as String)
-          .toSet();
-      final tombstoneIds = await _getTombstoneIds(conversationId);
+      final dynamic response;
+      if (shouldRunFullReconcile) {
+        response = await _supabase
+            .from('messages')
+            .select(_messageSelectWithProfiles)
+            .eq('conversation_id', normalizedConversationId)
+            .order('created_at', ascending: false)
+            .limit(_fullMessageSnapshotLimit);
+      } else {
+        final since = lastCursor
+            .subtract(_deltaMessageWindow)
+            .toUtc()
+            .toIso8601String();
+        response = await _supabase
+            .from('messages')
+            .select(_messageSelectWithProfiles)
+            .eq('conversation_id', normalizedConversationId)
+            .gte('created_at', since)
+            .order('created_at', ascending: false)
+            .limit(_deltaMessageSnapshotLimit);
+      }
+
+      // 2. hidden_messages best-effort + short TTL cache
+      final hiddenIds = await _getHiddenIds(
+        userId: userId,
+        conversationId: normalizedConversationId,
+      );
+
+      final tombstoneIds = await _getTombstoneIds(normalizedConversationId);
       final blockedIds = {...hiddenIds, ...tombstoneIds};
 
       final filteredData = (response as List)
           .where((json) => !blockedIds.contains(json['id'] as String))
           .toList();
 
-      final serverMessages = await compute(
-          _parseMessagesIsolate, {'data': filteredData, 'userId': userId});
+      List<MessageModel> serverMessages;
+      try {
+        serverMessages = await compute(
+          _parseMessagesIsolate,
+          {'data': filteredData, 'userId': userId},
+        );
+      } catch (e, stack) {
+        logWarning(
+          'Background parse failed in syncMessages, fallback to main isolate',
+          error: e,
+          stackTrace: stack,
+        );
+        serverMessages = _parseMessagesIsolate(
+          {'data': filteredData, 'userId': userId},
+        );
+      }
 
-      // 3. استفاده از Reconciliation به جای saveMessages خالی
-      // این خط باعث می‌شود پیام‌هایی که در سرور نیستند، از لوکال هم پاک شوند.
-      await _localDataSource.reconcileMessages(conversationId, serverMessages);
+      if (serverMessages.isNotEmpty) {
+        DateTime latestCreatedAt = serverMessages.first.createdAt;
+        for (final message in serverMessages.skip(1)) {
+          if (message.createdAt.isAfter(latestCreatedAt)) {
+            latestCreatedAt = message.createdAt;
+          }
+        }
+
+        final existingCursor = _lastMessageSyncCursor[normalizedConversationId];
+        if (existingCursor == null || latestCreatedAt.isAfter(existingCursor)) {
+          _lastMessageSyncCursor[normalizedConversationId] = latestCreatedAt;
+        }
+      }
+
+      // اگر پیام از مسیر sync کشف شد (و realtime miss شده بود)، delivered را همگام کن.
+      for (final message in serverMessages) {
+        if (message.senderId != userId &&
+            message.isDelivered == false &&
+            message.isSeen == false) {
+          unawaited(_markMessageDelivered(message.id));
+        }
+      }
+
+      if (shouldRunFullReconcile) {
+        _lastFullMessageSyncAtMs[normalizedConversationId] = nowMs;
+        await _localDataSource.reconcileMessages(
+          normalizedConversationId,
+          serverMessages,
+        );
+      } else {
+        await _localDataSource.saveMessages(serverMessages);
+      }
+
+      // اگر این چت فعال است، seen/unread را با تأخیر کم و throttled همگام نگه دار.
+      if (normalizedConversationId == _activeConversationId) {
+        final nowMs = DateTime.now().millisecondsSinceEpoch;
+        final lastSeenSync = _lastSeenSyncAtMs[normalizedConversationId] ?? 0;
+        if (nowMs - lastSeenSync > 1200) {
+          _lastSeenSyncAtMs[normalizedConversationId] = nowMs;
+          unawaited(markMessagesAsSeen(normalizedConversationId));
+        }
+      }
     } catch (e) {
       logError('Sync messages error', error: e);
       // در صورت خطای شبکه، دیتای لوکال دست نخورده باقی می‌ماند (Offline First)
+    } finally {
+      _conversationSyncInFlight.remove(normalizedConversationId);
     }
   }
 
   Future<void> _syncConversations() async {
+    if (_conversationsSyncInFlight) return;
+    if (_latestRealtimeStatus == RealtimeSubscribeStatus.subscribed) {
+      final nowMs = DateTime.now().millisecondsSinceEpoch;
+      if (nowMs - _lastConversationsCatchupAtMs <
+          _fallbackConversationSyncInterval.inMilliseconds) {
+        return;
+      }
+      _lastConversationsCatchupAtMs = nowMs;
+    }
+    _conversationsSyncInFlight = true;
     try {
       final response = await _supabase
           .from('conversations')
@@ -790,12 +1306,116 @@ class ChatRepositoryImpl implements ChatRepository {
           .order('updated_at', ascending: false)
           .limit(50);
 
-      final conversations = await compute(_parseConversationsIsolate,
-          {'data': response, 'userId': _currentUserId ?? ''});
+      List<ConversationModel> conversations;
+      try {
+        conversations = await compute(
+          _parseConversationsIsolate,
+          {'data': response, 'userId': _currentUserId ?? ''},
+        );
+      } catch (e, stack) {
+        logWarning(
+          'Background parse failed in syncConversations, fallback to main isolate',
+          error: e,
+          stackTrace: stack,
+        );
+        conversations = _parseConversationsIsolate(
+          {'data': response, 'userId': _currentUserId ?? ''},
+        );
+      }
 
       await _localDataSource.saveConversations(conversations);
     } catch (e) {
       logError('Sync conversations error', error: e);
+    } finally {
+      _conversationsSyncInFlight = false;
+    }
+  }
+
+  Future<void> _persistConversationFlag({
+    required String conversationId,
+    required String fieldName,
+    required bool value,
+    bool preferParticipantTable = false,
+  }) async {
+    final userId = _currentUserId;
+    final attempts = <Future<void> Function()>[];
+
+    Future<void> updateConversationsTable() async {
+      await _supabase
+          .from('conversations')
+          .update({fieldName: value}).eq('id', conversationId);
+    }
+
+    Future<void> updateParticipantsTable() async {
+      if (userId == null || userId.isEmpty) {
+        throw Exception('User ID is required for participant-level update');
+      }
+      await _supabase
+          .from('conversation_participants')
+          .update({fieldName: value})
+          .eq('conversation_id', conversationId)
+          .eq('user_id', userId);
+    }
+
+    if (preferParticipantTable) {
+      attempts
+        ..add(updateParticipantsTable)
+        ..add(updateConversationsTable);
+    } else {
+      attempts
+        ..add(updateConversationsTable)
+        ..add(updateParticipantsTable);
+    }
+
+    Object? lastError;
+    StackTrace? lastStackTrace;
+    for (final attempt in attempts) {
+      try {
+        await attempt();
+        return;
+      } catch (e, stack) {
+        lastError = e;
+        lastStackTrace = stack;
+      }
+    }
+
+    if (lastError != null && lastStackTrace != null) {
+      Error.throwWithStackTrace(lastError, lastStackTrace);
+    }
+    throw Exception('Failed to persist conversation flag: $fieldName');
+  }
+
+  Future<Set<String>> _getHiddenIds({
+    required String userId,
+    required String conversationId,
+  }) async {
+    if (userId.trim().isEmpty) return <String>{};
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    final lastFetchedAtMs = _hiddenIdsCacheAtMs[conversationId] ?? 0;
+    final cached = _hiddenIdsCache[conversationId];
+    if (cached != null &&
+        nowMs - lastFetchedAtMs <= _hiddenIdsCacheTtl.inMilliseconds) {
+      return cached;
+    }
+
+    try {
+      final hiddenResponse = await _supabase
+          .from('hidden_messages')
+          .select('message_id')
+          .eq('user_id', userId)
+          .eq('conversation_id', conversationId);
+      final hiddenIds = (hiddenResponse as List)
+          .map((e) => e['message_id'] as String)
+          .toSet();
+      _hiddenIdsCache[conversationId] = hiddenIds;
+      _hiddenIdsCacheAtMs[conversationId] = nowMs;
+      return hiddenIds;
+    } catch (e) {
+      logWarning(
+        'hidden_messages lookup failed; continuing sync without hidden filter',
+        error: e,
+      );
+      return cached ?? <String>{};
     }
   }
 
@@ -860,18 +1480,95 @@ class ChatRepositoryImpl implements ChatRepository {
 
   @override
   Future<ChatResult<void>> deleteConversation(String conversationId) async {
+    final userId = _currentUserId;
+    if (userId == null) return ChatResult.failure('کاربر وارد نشده است');
+
+    ConversationModel? backupConversation;
+    List<MessageModel> backupMessages = const [];
+
     try {
-      // 1️⃣ ابتدا از Isar حذف کن (UI فوراً آپدیت میشه چون Stream گوش میده)
+      backupConversation =
+          await _localDataSource.getConversation(conversationId, userId);
+      backupMessages =
+          await _localDataSource.watchMessages(conversationId, userId).first;
+
+      // 1️⃣ حذف optimistic لوکال
       await _localDataSource.deleteConversation(conversationId);
       await _localDataSource.clearMessages(conversationId);
+      _hiddenIdsCache.remove(conversationId);
+      _hiddenIdsCacheAtMs.remove(conversationId);
+      _lastConversationCatchupAtMs.remove(conversationId);
+      _lastRealtimeHealthSyncAtMs.remove(conversationId);
+      _lastMessageSyncCursor.remove(conversationId);
+      _lastFullMessageSyncAtMs.remove(conversationId);
+      _lastSeenSyncAtMs.remove(conversationId);
 
-      // 2️⃣ سپس از Supabase حذف کن (در background - بدون بلاک کردن UI)
-      _supabase.from('conversations').delete().eq('id', conversationId).then(
-            (_) => null,
-            onError: (e) =>
-                logWarning('Server delete failed (non-blocking)', error: e),
-          );
+      // 2️⃣ سپس حذف سمت سرور (blocking برای اطمینان از صحت عملیات)
+      await _supabase.from('conversations').delete().eq('id', conversationId);
 
+      return ChatResult.success(null);
+    } catch (e, stack) {
+      // 3️⃣ rollback در صورت خطا برای جلوگیری از وضعیت ناسازگار
+      try {
+        if (backupConversation != null) {
+          await _localDataSource.saveConversation(backupConversation);
+        }
+        if (backupMessages.isNotEmpty) {
+          await _localDataSource.saveMessages(backupMessages);
+        }
+      } catch (rollbackError, rollbackStack) {
+        logError(
+          'Failed to rollback deleteConversation',
+          error: rollbackError,
+          stackTrace: rollbackStack,
+        );
+      }
+
+      logError(
+        'deleteConversation failed',
+        error: e,
+        stackTrace: stack,
+      );
+      return ChatResult.failure(
+        'حذف گفتگو انجام نشد. لطفاً اتصال اینترنت را بررسی و دوباره تلاش کنید.',
+      );
+    }
+  }
+
+  @override
+  Future<ChatResult<void>> toggleArchiveConversation(
+      String conversationId) async {
+    final userId = _currentUserId;
+    if (userId == null) return ChatResult.failure('کاربر وارد نشده است');
+    try {
+      final localConversation =
+          await _localDataSource.getConversation(conversationId, userId);
+      if (localConversation == null) {
+        return ChatResult.failure('گفتگو یافت نشد');
+      }
+
+      final archivedValue = !localConversation.isArchived;
+      final optimistic = localConversation.copyWith(isArchived: archivedValue);
+      await _localDataSource.saveConversation(optimistic);
+
+      try {
+        await _persistConversationFlag(
+          conversationId: conversationId,
+          fieldName: 'is_archived',
+          value: archivedValue,
+          preferParticipantTable: true,
+        );
+      } catch (e, stack) {
+        await _localDataSource.saveConversation(localConversation);
+        logError(
+          'toggleArchiveConversation remote sync failed',
+          error: e,
+          stackTrace: stack,
+        );
+        return ChatResult.failure('بایگانی گفتگو انجام نشد');
+      }
+
+      unawaited(_syncConversations());
       return ChatResult.success(null);
     } catch (e) {
       return ChatResult.failure(e.toString());
@@ -879,19 +1576,81 @@ class ChatRepositoryImpl implements ChatRepository {
   }
 
   @override
-  Future<ChatResult<void>> toggleArchiveConversation(
-      String conversationId) async {
-    return ChatResult.failure('Not implemented');
-  }
-
-  @override
   Future<ChatResult<void>> togglePinConversation(String conversationId) async {
-    return ChatResult.failure('Not implemented');
+    final userId = _currentUserId;
+    if (userId == null) return ChatResult.failure('کاربر وارد نشده است');
+    try {
+      final localConversation =
+          await _localDataSource.getConversation(conversationId, userId);
+      if (localConversation == null) {
+        return ChatResult.failure('گفتگو یافت نشد');
+      }
+
+      final pinnedValue = !localConversation.isPinned;
+      final optimistic = localConversation.copyWith(isPinned: pinnedValue);
+      await _localDataSource.saveConversation(optimistic);
+
+      try {
+        await _persistConversationFlag(
+          conversationId: conversationId,
+          fieldName: 'is_pinned',
+          value: pinnedValue,
+          preferParticipantTable: true,
+        );
+      } catch (e, stack) {
+        await _localDataSource.saveConversation(localConversation);
+        logError(
+          'togglePinConversation remote sync failed',
+          error: e,
+          stackTrace: stack,
+        );
+        return ChatResult.failure('سنجاق گفتگو انجام نشد');
+      }
+
+      unawaited(_syncConversations());
+      return ChatResult.success(null);
+    } catch (e) {
+      return ChatResult.failure(e.toString());
+    }
   }
 
   @override
   Future<ChatResult<void>> toggleMuteConversation(String conversationId) async {
-    return ChatResult.failure('Not implemented');
+    final userId = _currentUserId;
+    if (userId == null) return ChatResult.failure('کاربر وارد نشده است');
+    try {
+      final localConversation =
+          await _localDataSource.getConversation(conversationId, userId);
+      if (localConversation == null) {
+        return ChatResult.failure('گفتگو یافت نشد');
+      }
+
+      final mutedValue = !localConversation.isMuted;
+      final optimistic = localConversation.copyWith(isMuted: mutedValue);
+      await _localDataSource.saveConversation(optimistic);
+
+      try {
+        await _persistConversationFlag(
+          conversationId: conversationId,
+          fieldName: 'is_muted',
+          value: mutedValue,
+          preferParticipantTable: true,
+        );
+      } catch (e, stack) {
+        await _localDataSource.saveConversation(localConversation);
+        logError(
+          'toggleMuteConversation remote sync failed',
+          error: e,
+          stackTrace: stack,
+        );
+        return ChatResult.failure('بی‌صدا کردن گفتگو انجام نشد');
+      }
+
+      unawaited(_syncConversations());
+      return ChatResult.success(null);
+    } catch (e) {
+      return ChatResult.failure(e.toString());
+    }
   }
 
   @override
@@ -903,6 +1662,13 @@ class ChatRepositoryImpl implements ChatRepository {
 
       // ✅ 1. ابتدا پاکسازی فوری لوکال (Sembast) - UI فوراً خالی می‌شود
       await _localDataSource.clearMessages(conversationId);
+      _hiddenIdsCache.remove(conversationId);
+      _hiddenIdsCacheAtMs.remove(conversationId);
+      _lastConversationCatchupAtMs.remove(conversationId);
+      _lastRealtimeHealthSyncAtMs.remove(conversationId);
+      _lastMessageSyncCursor.remove(conversationId);
+      _lastFullMessageSyncAtMs.remove(conversationId);
+      _lastSeenSyncAtMs.remove(conversationId);
 
       // ✅ 2. عملیات سمت سرور
       if (forEveryone) {
@@ -959,6 +1725,8 @@ class ChatRepositoryImpl implements ChatRepository {
 
       final userId = _currentUserId;
       if (userId == null) return ChatResult.failure('کاربر وارد نشده است');
+      final localMessage = await _localDataSource.getMessage(messageId, userId);
+      final localConversationId = localMessage?.conversationId;
 
       // 1. دریافت conversationId برای پاکسازی کش (اگر نیاز بود)
       // در حال حاضر با حذف UnifiedMessageCacheService نیازی به conversationId نیست
@@ -966,8 +1734,12 @@ class ChatRepositoryImpl implements ChatRepository {
 
       // 2. ارسال به سرور (سرور خودش S3 و DB را مدیریت می‌کند)
       if (forEveryone) {
-        logInfo('Calling node service for deletion');
-        await VistaNodeService.deleteMessage(messageId);
+        try {
+          await _supabase.from('messages').delete().eq('id', messageId);
+        } catch (_) {
+          logInfo('Fallback to node service for deletion');
+          await VistaNodeService.deleteMessage(messageId);
+        }
         logInfo('Server deletion successful');
       } else {
         // حذف یک‌طرفه: فقط در hidden_messages ذخیره کن
@@ -976,6 +1748,14 @@ class ChatRepositoryImpl implements ChatRepository {
           'user_id': userId,
           'hidden_at': DateTime.now().toUtc().toIso8601String(),
         });
+        if (localConversationId != null && localConversationId.isNotEmpty) {
+          final cached = _hiddenIdsCache[localConversationId];
+          if (cached != null) {
+            cached.add(messageId);
+            _hiddenIdsCacheAtMs[localConversationId] =
+                DateTime.now().millisecondsSinceEpoch;
+          }
+        }
         logInfo('Message hidden for user');
       }
 
@@ -1023,8 +1803,6 @@ class ChatRepositoryImpl implements ChatRepository {
           content: newContent,
         );
         await _localDataSource.saveMessage(updatedMessage);
-
-        await _localDataSource.saveMessage(updatedMessage);
       }
 
       return ChatResult.success(null);
@@ -1069,14 +1847,10 @@ class ChatRepositoryImpl implements ChatRepository {
           .order('created_at', ascending: false)
           .limit(limit);
 
-      final hiddenResponse = await _supabase
-          .from('hidden_messages')
-          .select('message_id')
-          .eq('user_id', userId)
-          .eq('conversation_id', conversationId);
-      final hiddenIds = (hiddenResponse as List)
-          .map((e) => e['message_id'] as String)
-          .toSet();
+      final hiddenIds = await _getHiddenIds(
+        userId: userId,
+        conversationId: conversationId,
+      );
       final tombstoneIds = await _getTombstoneIds(conversationId);
       final blockedIds = {...hiddenIds, ...tombstoneIds};
 
@@ -1167,18 +1941,6 @@ class ChatRepositoryImpl implements ChatRepository {
         return;
       }
 
-      final existingConvForNotification =
-          await _localDataSource.getConversation(conversationId, userId);
-      if (existingConvForNotification == null) {
-        final isParticipant =
-            await _isConversationParticipant(conversationId, userId);
-        if (!isParticipant) {
-          logWarning(
-              'Skipping notification for non-member conversation: $conversationId');
-          return;
-        }
-      }
-
       // تولید ID موقت اگر در پیلود نبود (که معمولاً هست)
       messageId ??= const Uuid().v4();
 
@@ -1251,6 +2013,8 @@ class ChatRepositoryImpl implements ChatRepository {
         // متد _fetchAndSaveConversation می‌تواند صدا زده شود.
         _fetchAndSaveConversation(conversationId);
       }
+
+      _scheduleRealtimeCatchup(conversationId);
     } catch (e) {
       logError('Optimistic save failed', error: e);
     }
@@ -1295,6 +2059,13 @@ class ChatRepositoryImpl implements ChatRepository {
     try {
       await _localDataSource.clearMessages(conversationId);
       await _localDataSource.deleteConversation(conversationId);
+      _hiddenIdsCache.remove(conversationId);
+      _hiddenIdsCacheAtMs.remove(conversationId);
+      _lastConversationCatchupAtMs.remove(conversationId);
+      _lastRealtimeHealthSyncAtMs.remove(conversationId);
+      _lastMessageSyncCursor.remove(conversationId);
+      _lastFullMessageSyncAtMs.remove(conversationId);
+      _lastSeenSyncAtMs.remove(conversationId);
     } catch (e) {
       logError('Failed to clear conversation cache', error: e);
     }
@@ -1304,6 +2075,8 @@ class ChatRepositoryImpl implements ChatRepository {
   Future<void> clearAllCache() async {
     try {
       await _localDataSource.clearAllData();
+      _hiddenIdsCache.clear();
+      _hiddenIdsCacheAtMs.clear();
     } catch (e) {
       logError('Failed to clear all chat cache', error: e);
     }
@@ -1392,16 +2165,40 @@ class ChatRepositoryImpl implements ChatRepository {
       Map<String, dynamic> params) {
     final list = params['data'] as List;
     final userId = params['userId'] as String;
-    return list
-        .map((json) => ConversationModel.fromJson(json, currentUserId: userId))
-        .toList();
+    final parsed = <ConversationModel>[];
+    for (final item in list) {
+      if (item is! Map) continue;
+      try {
+        parsed.add(
+          ConversationModel.fromJson(
+            Map<String, dynamic>.from(item),
+            currentUserId: userId,
+          ),
+        );
+      } catch (_) {
+        // Skip malformed rows instead of failing the whole batch.
+      }
+    }
+    return parsed;
   }
 
   static List<MessageModel> _parseMessagesIsolate(Map<String, dynamic> params) {
     final list = params['data'] as List;
     final userId = params['userId'] as String;
-    return list
-        .map((json) => MessageModel.fromJson(json, currentUserId: userId))
-        .toList();
+    final parsed = <MessageModel>[];
+    for (final item in list) {
+      if (item is! Map) continue;
+      try {
+        parsed.add(
+          MessageModel.fromJson(
+            Map<String, dynamic>.from(item),
+            currentUserId: userId,
+          ),
+        );
+      } catch (_) {
+        // Skip malformed rows instead of failing the whole batch.
+      }
+    }
+    return parsed;
   }
 }

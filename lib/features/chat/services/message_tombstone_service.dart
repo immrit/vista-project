@@ -95,15 +95,86 @@ class MessageTombstoneService {
       await _localDataSource.deleteMessage(messageId);
     }
 
+    await _syncBatchImmediately(
+      messageIds: messageIds,
+      conversationId: conversationId,
+      deleteForEveryone: deleteForEveryone,
+    );
+
     _startSyncLoop();
     unawaited(syncPendingDeletes());
   }
 
   void _startSyncLoop() {
     _syncTimer ??= Timer.periodic(
-      const Duration(seconds: 20),
+      const Duration(seconds: 5),
       (_) => unawaited(syncPendingDeletes()),
     );
+  }
+
+  Future<void> _syncBatchImmediately({
+    required List<String> messageIds,
+    required String conversationId,
+    required bool deleteForEveryone,
+  }) async {
+    if (messageIds.isEmpty) return;
+    try {
+      if (deleteForEveryone) {
+        await _deleteForEveryoneServer(messageIds);
+      } else {
+        final userId = _supabase.auth.currentUser?.id;
+        if (userId == null) {
+          throw Exception('User not authenticated');
+        }
+        final now = DateTime.now().toUtc().toIso8601String();
+        final payload = messageIds
+            .map(
+              (messageId) => <String, dynamic>{
+                'user_id': userId,
+                'message_id': messageId,
+                'conversation_id': conversationId,
+                'hidden_at': now,
+              },
+            )
+            .toList(growable: false);
+        await _supabase.from('hidden_messages').upsert(payload);
+      }
+
+      await _markRowsSynced(messageIds);
+      logInfo('message_delete_batch_synced: ${messageIds.join(",")}');
+    } catch (e) {
+      logWarning('Immediate tombstone sync failed, falling back to queue', error: e);
+    }
+  }
+
+  Future<void> _deleteForEveryoneServer(List<String> messageIds) async {
+    if (messageIds.isEmpty) return;
+    try {
+      await _supabase.from('messages').delete().inFilter('id', messageIds);
+      return;
+    } catch (_) {
+      if (messageIds.length == 1) {
+        await VistaNodeService.deleteMessage(messageIds.first);
+      } else {
+        await VistaNodeService.deleteMessagesBatch(messageIds);
+      }
+    }
+  }
+
+  Future<void> _markRowsSynced(Iterable<String> messageIds) async {
+    final isar = await _dbManager.instance;
+    await isar.writeTxn(() async {
+      for (final messageId in messageIds) {
+        final row = await isar.deletionTaskEntitys
+            .filter()
+            .messageIdEqualTo(messageId)
+            .findFirst();
+        if (row == null) continue;
+        row.s3Key = _syncedMarker;
+        row.nextAttempt = 1 << 62;
+        await isar.deletionTaskEntitys.put(row);
+      }
+    });
   }
 
   Future<void> syncPendingDeletes() async {
@@ -139,7 +210,7 @@ class MessageTombstoneService {
     final isar = await _dbManager.instance;
     try {
       if (row.deletionMode == 1) {
-        await VistaNodeService.deleteMessage(row.messageId);
+        await _deleteForEveryoneServer([row.messageId]);
       } else {
         final userId = _supabase.auth.currentUser?.id;
         if (userId == null) throw Exception('User not authenticated');
@@ -174,8 +245,8 @@ class MessageTombstoneService {
 
   int _backoffMillis(int retryCount) {
     final clamped = retryCount > 10 ? 10 : retryCount;
-    final seconds = 5 * (1 << clamped);
-    final capped = seconds > 3600 ? 3600 : seconds;
+    final seconds = 2 * (1 << clamped);
+    final capped = seconds > 120 ? 120 : seconds;
     return capped * 1000;
   }
 

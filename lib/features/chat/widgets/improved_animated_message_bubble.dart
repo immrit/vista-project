@@ -12,6 +12,7 @@ import 'telegram_message_status.dart';
 import 'gif_message_bubble.dart';
 import 'media_message_bubble.dart';
 import 'file_message_bubble.dart';
+import 'full_screen_image_viewer.dart';
 import '../../../services/telegram_read_receipt_service.dart';
 import '../../../model/message_model.dart';
 import '../../../utils/navigation_helper.dart';
@@ -87,6 +88,8 @@ class ImprovedAnimatedMessageBubble extends StatefulWidget {
   final String? attachmentType;
   final String? attachmentFileName;
   final int? duration; // For voice messages
+  final List<GalleryItem>? conversationGalleryItems;
+  final int? initialGalleryIndex;
 
   // Forwarding
   final bool isForwarded;
@@ -126,6 +129,8 @@ class ImprovedAnimatedMessageBubble extends StatefulWidget {
     this.attachmentType,
     this.attachmentFileName,
     this.duration,
+    this.conversationGalleryItems,
+    this.initialGalleryIndex,
     this.isForwarded = false,
     this.forwardedFrom,
     this.onRetryUpload,
@@ -776,6 +781,8 @@ class _ImprovedAnimatedMessageBubbleState
             (widget.message?.isUploading ?? false),
         effectsLevel: widget.effectsLevel,
         allowHeavyEffects: widget.effectsLevel == ChatEffectsLevel.high,
+        conversationGalleryItems: widget.conversationGalleryItems,
+        initialGalleryIndex: widget.initialGalleryIndex,
       );
     }
 

@@ -52,6 +52,7 @@ class _FullScreenImageViewerState extends State<FullScreenImageViewer>
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
   late PageController _pageController;
+  late ScrollController _thumbnailScrollController;
   late int _currentIndex;
 
   // Vertical drag to dismiss variables
@@ -68,6 +69,7 @@ class _FullScreenImageViewerState extends State<FullScreenImageViewer>
     super.initState();
     _currentIndex = widget.initialIndex;
     _pageController = PageController(initialPage: widget.initialIndex);
+    _thumbnailScrollController = ScrollController();
 
     // تنظیم Status Bar به رنگ شفاف
     SystemChrome.setSystemUIOverlayStyle(
@@ -89,12 +91,16 @@ class _FullScreenImageViewerState extends State<FullScreenImageViewer>
     );
 
     _animationController.forward();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scrollThumbnailStripToCurrent(animated: false);
+    });
   }
 
   @override
   void dispose() {
     _animationController.dispose();
     _pageController.dispose();
+    _thumbnailScrollController.dispose();
     for (var controller in _photoControllers.values) {
       controller.dispose();
     }
@@ -342,6 +348,112 @@ class _FullScreenImageViewerState extends State<FullScreenImageViewer>
     Navigator.pop(context);
   }
 
+  void _handleThumbnailTap(int index) {
+    if (index == _currentIndex) return;
+    _pageController.animateToPage(
+      index,
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  void _scrollThumbnailStripToCurrent({bool animated = true}) {
+    if (!_thumbnailScrollController.hasClients ||
+        widget.galleryItems.length <= 1) {
+      return;
+    }
+
+    const itemWidth = 64.0;
+    const spacing = 6.0;
+    final viewport = _thumbnailScrollController.position.viewportDimension;
+    final target =
+        (_currentIndex * (itemWidth + spacing)) - ((viewport - itemWidth) / 2);
+    final clamped = target
+        .clamp(
+      0.0,
+      _thumbnailScrollController.position.maxScrollExtent,
+    )
+        .toDouble();
+
+    if (animated) {
+      _thumbnailScrollController.animateTo(
+        clamped,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+      );
+    } else {
+      _thumbnailScrollController.jumpTo(clamped);
+    }
+  }
+
+  Widget _buildThumbnailStrip() {
+    if (widget.galleryItems.length <= 1) return const SizedBox.shrink();
+
+    return SizedBox(
+      height: 72,
+      child: ListView.separated(
+        controller: _thumbnailScrollController,
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        itemCount: widget.galleryItems.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 6),
+        itemBuilder: (context, index) {
+          final item = widget.galleryItems[index];
+          final isActive = index == _currentIndex;
+          return GestureDetector(
+            onTap: () => _handleThumbnailTap(index),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              width: 64,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: isActive ? Colors.white : Colors.white24,
+                  width: isActive ? 2 : 1,
+                ),
+                boxShadow: isActive
+                    ? [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.35),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ]
+                    : null,
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: _isNetworkUrl(item.imageUrl)
+                  ? CachedNetworkImage(
+                      imageUrl: item.imageUrl,
+                      fit: BoxFit.cover,
+                      errorWidget: (_, __, ___) => Container(
+                        color: Colors.white10,
+                        child: const Icon(
+                          Icons.image_not_supported_outlined,
+                          color: Colors.white70,
+                          size: 18,
+                        ),
+                      ),
+                    )
+                  : Image.file(
+                      item.cachedFile ?? File(item.imageUrl),
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => Container(
+                        color: Colors.white10,
+                        child: const Icon(
+                          Icons.image_not_supported_outlined,
+                          color: Colors.white70,
+                          size: 18,
+                        ),
+                      ),
+                    ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -359,6 +471,10 @@ class _FullScreenImageViewerState extends State<FullScreenImageViewer>
               onPageChanged: (index) {
                 setState(() {
                   _currentIndex = index;
+                  _captionExpanded = false;
+                });
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  _scrollThumbnailStripToCurrent();
                 });
               },
               itemBuilder: (context, index) {
@@ -555,6 +671,7 @@ class _FullScreenImageViewerState extends State<FullScreenImageViewer>
                               ),
                             ),
                           ),
+                        _buildThumbnailStrip(),
                       ],
                     ),
                   ),

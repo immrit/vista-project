@@ -86,6 +86,14 @@ class ConversationModel {
       String? otherUserName;
       String? otherUserAvatar;
       String? otherUserId;
+      int unreadCount = _toInt(
+        json['unreadCount'] ?? json['unread_count'],
+        fallback: 0,
+      );
+      bool hasUnreadMessages =
+          (json['hasUnreadMessages'] as bool?) ??
+              (json['has_unread_messages'] as bool?) ??
+              false;
 
       final participantsData =
           json['conversation_participants'] ?? json['participants'];
@@ -97,28 +105,37 @@ class ConversationModel {
         if (currentUserId != null) {
           for (final participantData in participantsData) {
             final participantUserId = participantData['user_id'] as String?;
-            if (participantUserId != null &&
-                participantUserId != currentUserId) {
-              otherUserId = participantUserId;
+            if (participantUserId == null) continue;
 
-              // Extract profile info if available - prioritize cached data
-              final profiles = participantData['profiles'];
-              if (profiles != null) {
-                if (profiles is List && profiles.isNotEmpty) {
-                  // If profiles is a list, take the first one
-                  otherUserName = profiles[0]['username'] as String?;
-                  otherUserAvatar = profiles[0]['avatar_url'] as String?;
-                } else if (profiles is Map) {
-                  // If profiles is a single object
-                  otherUserName = profiles['username'] as String?;
-                  otherUserAvatar = profiles['avatar_url'] as String?;
-                }
-              } else {
-                // No profile info available - will be enriched by ProfileService later
-                otherUserName = null;
-                otherUserAvatar = null;
+            if (participantUserId == currentUserId) {
+              // Prefer server unread_count from current participant row.
+              unreadCount = _toInt(
+                participantData['unread_count'] ?? participantData['unreadCount'],
+                fallback: unreadCount,
+              );
+              hasUnreadMessages = unreadCount > 0;
+              continue;
+            }
+
+            if (otherUserId != null) continue;
+            otherUserId = participantUserId;
+
+            // Extract profile info if available - prioritize cached data
+            final profiles = participantData['profiles'];
+            if (profiles != null) {
+              if (profiles is List && profiles.isNotEmpty) {
+                // If profiles is a list, take the first one
+                otherUserName = profiles[0]['username'] as String?;
+                otherUserAvatar = profiles[0]['avatar_url'] as String?;
+              } else if (profiles is Map) {
+                // If profiles is a single object
+                otherUserName = profiles['username'] as String?;
+                otherUserAvatar = profiles['avatar_url'] as String?;
               }
-              break;
+            } else {
+              // No profile info available - will be enriched by ProfileService later
+              otherUserName = null;
+              otherUserAvatar = null;
             }
           }
         }
@@ -129,6 +146,17 @@ class ConversationModel {
         otherUserName = (json['name'] as String?) ?? 'گروه';
         otherUserAvatar = json['image'] as String?;
         otherUserId = null;
+      }
+
+      final lastMessageSenderId = json['last_message_sender_id'] as String?;
+      final bool isLastMessageFromMe = json['is_last_message_from_me'] is bool
+          ? (json['is_last_message_from_me'] as bool)
+          : (currentUserId != null &&
+              lastMessageSenderId != null &&
+              lastMessageSenderId == currentUserId);
+
+      if (!hasUnreadMessages && unreadCount > 0) {
+        hasUnreadMessages = true;
       }
 
       return ConversationModel(
@@ -144,14 +172,14 @@ class ConversationModel {
             otherUserName ?? json['otherUserName'] as String? ?? 'کاربر ناشناس',
         otherUserAvatar: otherUserAvatar ?? json['otherUserAvatar'] as String?,
         otherUserId: otherUserId ?? json['otherUserId'] as String?,
-        hasUnreadMessages: json['hasUnreadMessages'] ?? false,
-        unreadCount: json['unreadCount'] ?? 0,
+        hasUnreadMessages: hasUnreadMessages,
+        unreadCount: unreadCount,
         isPinned: json['is_pinned'] ?? false,
         isMuted: json['is_muted'] ?? false,
         isArchived: json['is_archived'] ?? false,
         lastMessageType: json['last_message_type'] as String?,
-        isLastMessageFromMe: json['is_last_message_from_me'] ?? false,
-        lastMessageSenderId: json['last_message_sender_id'] as String?,
+        isLastMessageFromMe: isLastMessageFromMe,
+        lastMessageSenderId: lastMessageSenderId,
         lastMessageDeliveryStatus: _parseDeliveryStatus(json),
         allowProfileZoom: json['allow_profile_zoom'] as bool?,
         otherUserBio: json['other_user_bio'] as String?,
@@ -185,6 +213,7 @@ class ConversationModel {
           return MessageDeliveryStatus.sent;
         case 'delivered':
           return MessageDeliveryStatus.delivered;
+        case 'seen':
         case 'read':
           return MessageDeliveryStatus.read;
         case 'failed':
@@ -193,14 +222,26 @@ class ConversationModel {
     }
 
     // بررسی فیلدهای is_sent، is_delivered، is_seen از آخرین پیام
-    final isSeen = json['last_message_is_seen'] as bool? ?? false;
-    final isDelivered = json['last_message_is_delivered'] as bool? ?? false;
+    final isRead = json['last_message_is_read'] as bool? ?? false;
+    final isSeen = (json['last_message_is_seen'] as bool? ?? false) || isRead;
+    final isDelivered =
+        (json['last_message_is_delivered'] as bool? ?? false) || isSeen;
     final isSent = json['last_message_is_sent'] as bool? ?? true;
 
     if (isSeen) return MessageDeliveryStatus.read;
     if (isDelivered) return MessageDeliveryStatus.delivered;
     if (isSent) return MessageDeliveryStatus.sent;
     return MessageDeliveryStatus.pending;
+  }
+
+  static int _toInt(dynamic value, {int fallback = 0}) {
+    if (value == null) return fallback;
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    if (value is String) {
+      return int.tryParse(value) ?? fallback;
+    }
+    return fallback;
   }
 
   Map<String, dynamic> toJson() {

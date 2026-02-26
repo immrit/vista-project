@@ -222,44 +222,19 @@ class _StatusPainter extends CustomPainter {
   }
 
   void _drawDoubleCheck(Canvas canvas, Size size, Paint paint, double s) {
-    // تیک اول (سمت چپ/عقب) - شبیه SingleCheck اما کمی چپ‌تر
-    final path1 = Path();
+    // تیک عقب (کامل) + تیک جلو (کامل) با فاصله مناسب تا همیشه واضح دیده شوند.
+    final back = Path()
+      ..moveTo(s * 0.10, s * 0.56)
+      ..lineTo(s * 0.28, s * 0.74)
+      ..lineTo(s * 0.56, s * 0.36);
 
-    // افست برای تیک دوم
-    final secondCheckOffset = s * 0.25; // فاصله بین دو تیک
+    final front = Path()
+      ..moveTo(s * 0.34, s * 0.56)
+      ..lineTo(s * 0.52, s * 0.74)
+      ..lineTo(s * 0.86, s * 0.30);
 
-    // تیک کامل (جلو)
-    final startX = s * 0.25 + (secondCheckOffset / 2);
-    final startY = s * 0.55;
-    final midX = s * 0.45 + (secondCheckOffset / 2);
-    final midY = s * 0.75;
-    final endX = s * 0.80 + (secondCheckOffset / 2);
-    final endY = s * 0.30;
-
-    path1.moveTo(startX, startY);
-    path1.lineTo(midX, midY);
-    path1.lineTo(endX, endY);
-    canvas.drawPath(path1, paint);
-
-    // تیک دوم (فقط قسمت بالایی که دیده می‌شود) - یا تیک کامل عقب
-    // در ویستا تیک عقب کامل رسم نمی‌شود، فقط بخشی از آن
-    final path2 = Path();
-
-    // تیک عقب
-    final backStartX = s * 0.10 + (secondCheckOffset / 2);
-    final backStartY = s * 0.55;
-    final backMidX = s * 0.30 + (secondCheckOffset / 2); // پایین تیک عقب
-    final backMidY = s * 0.75;
-
-    // فقط تا پایین رسم می‌کنیم و کمی بالا می‌آییم (چون بقیش زیر تیک جلویی است)
-    // اما برای سادگی و زیبایی مشابه ویستا، معمولا یک تیک کوچک سمت چپ است
-
-    path2.moveTo(backStartX, backStartY);
-    path2.lineTo(backMidX, backMidY);
-    // ادامه خط به سمت بالا تا جایی که به تیک جلو برسد
-    path2.lineTo(s * 0.42 + (secondCheckOffset / 2), s * 0.62);
-
-    canvas.drawPath(path2, paint);
+    canvas.drawPath(back, paint);
+    canvas.drawPath(front, paint);
   }
 
   void _drawFailed(Canvas canvas, Size size, Paint paint, double s) {

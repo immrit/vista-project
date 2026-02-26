@@ -345,11 +345,16 @@ class TelegramOnlineStatus extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     // ✅ استفاده مستقیم از Provider - بدون StreamSubscription اضافی
     final presenceAsync = ref.watch(userPresenceStreamProvider(userId));
+    final cachedPresence = ref.watch(cachedPresenceProvider(userId));
 
     return presenceAsync.when(
       data: (presence) => _buildContent(context, presence),
-      loading: () => _buildLoading(context),
-      error: (_, __) => _buildError(context),
+      loading: () => cachedPresence != null
+          ? _buildContent(context, cachedPresence)
+          : _buildLoading(context),
+      error: (_, __) => cachedPresence != null
+          ? _buildContent(context, cachedPresence)
+          : _buildError(context),
     );
   }
 
@@ -386,7 +391,7 @@ class TelegramOnlineStatus extends ConsumerWidget {
   Widget _buildLoading(BuildContext context) {
     final theme = Theme.of(context);
     return Text(
-      'در حال بررسی...',
+      'آفلاین',
       style: textStyle ?? TextStyle(
         fontSize: 12,
         color: theme.textTheme.bodySmall?.color,

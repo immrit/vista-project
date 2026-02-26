@@ -105,6 +105,7 @@ class RetryQueueItem extends Equatable {
         'audio_title': payload.audioTitle,
         'audio_artist': payload.audioArtist,
         'audio_album': payload.audioAlbum,
+        'media_group_id': payload.mediaGroupId,
         'duration': payload.duration,
         'reply_to_message_id': payload.replyToMessageId,
         'reply_to_content': payload.replyToContent,
