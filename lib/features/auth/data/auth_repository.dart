@@ -1,5 +1,183 @@
 import 'package:dio/dio.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../../../security/logging_utility.dart';
+
+// ══════════════════════════════════════════════════════════════
+// مدل‌های پاسخ بک‌اند Go
+// ══════════════════════════════════════════════════════════════
+
+class AuthUserResponse {
+  final String id;
+  final String? username;
+  final String fullName;
+  final String? email;
+  final String? phoneNumber;
+  final String accountStatus;
+  final bool profileCompleted;
+  final DateTime? phoneVerifiedAt;
+  final DateTime? emailVerifiedAt;
+  final DateTime createdAt;
+
+  const AuthUserResponse({
+    required this.id,
+    this.username,
+    required this.fullName,
+    this.email,
+    this.phoneNumber,
+    required this.accountStatus,
+    required this.profileCompleted,
+    this.phoneVerifiedAt,
+    this.emailVerifiedAt,
+    required this.createdAt,
+  });
+
+  factory AuthUserResponse.fromJson(Map<String, dynamic> json) {
+    return AuthUserResponse(
+      id: json['id'] as String? ?? '',
+      username: json['username'] as String?,
+      fullName: json['full_name'] as String? ?? '',
+      email: json['email'] as String?,
+      phoneNumber: json['phone_number'] as String?,
+      accountStatus: json['account_status'] as String? ?? 'active',
+      profileCompleted: json['profile_completed'] as bool? ?? false,
+      phoneVerifiedAt: json['phone_verified_at'] != null
+          ? DateTime.tryParse(json['phone_verified_at'] as String)
+          : null,
+      emailVerifiedAt: json['email_verified_at'] != null
+          ? DateTime.tryParse(json['email_verified_at'] as String)
+          : null,
+      createdAt: DateTime.tryParse(json['created_at'] as String? ?? '') ??
+          DateTime.now(),
+    );
+  }
+}
+
+class AuthSessionResponse {
+  final String accessToken;
+  final String refreshToken;
+  final String tokenType;
+  final DateTime expiresAt;
+
+  const AuthSessionResponse({
+    required this.accessToken,
+    required this.refreshToken,
+    required this.tokenType,
+    required this.expiresAt,
+  });
+
+  factory AuthSessionResponse.fromJson(Map<String, dynamic> json) {
+    return AuthSessionResponse(
+      accessToken: json['access_token'] as String? ?? '',
+      refreshToken: json['refresh_token'] as String? ?? '',
+      tokenType: json['token_type'] as String? ?? 'Bearer',
+      expiresAt: DateTime.tryParse(json['expires_at'] as String? ?? '') ??
+          DateTime.now().add(const Duration(minutes: 15)),
+    );
+  }
+}
+
+class AuthResponse {
+  final AuthUserResponse user;
+  final AuthSessionResponse session;
+  final bool isNewUser;
+
+  const AuthResponse({
+    required this.user,
+    required this.session,
+    required this.isNewUser,
+  });
+
+  factory AuthResponse.fromJson(Map<String, dynamic> json) {
+    return AuthResponse(
+      user: AuthUserResponse.fromJson(
+          json['user'] as Map<String, dynamic>? ?? {}),
+      session: AuthSessionResponse.fromJson(
+          json['session'] as Map<String, dynamic>? ?? {}),
+      isNewUser: json['is_new_user'] as bool? ?? false,
+    );
+  }
+}
+
+class LookupIdentifierResponse {
+  final bool success;
+  final bool exists;
+  final bool isPhone;
+  final String? normalizedIdentifier;
+  final String? authFlow;
+  final String? accountStatus;
+
+  const LookupIdentifierResponse({
+    required this.success,
+    required this.exists,
+    required this.isPhone,
+    this.normalizedIdentifier,
+    this.authFlow,
+    this.accountStatus,
+  });
+
+  factory LookupIdentifierResponse.fromJson(Map<String, dynamic> json) {
+    return LookupIdentifierResponse(
+      success: json['success'] as bool? ?? false,
+      exists: json['exists'] as bool? ?? false,
+      isPhone: json['is_phone'] as bool? ?? false,
+      normalizedIdentifier: json['normalized_identifier'] as String?,
+      authFlow: json['auth_flow'] as String?,
+      accountStatus: json['account_status'] as String?,
+    );
+  }
+}
+
+class SendOtpResponse {
+  final bool success;
+  final String message;
+  final int expiresInSeconds;
+  final int? retryAfterSeconds;
+  final String? debugCode;
+
+  const SendOtpResponse({
+    required this.success,
+    required this.message,
+    required this.expiresInSeconds,
+    this.retryAfterSeconds,
+    this.debugCode,
+  });
+
+  factory SendOtpResponse.fromJson(Map<String, dynamic> json) {
+    return SendOtpResponse(
+      success: json['success'] as bool? ?? false,
+      message: json['message'] as String? ?? '',
+      expiresInSeconds: json['expires_in_seconds'] as int? ?? 300,
+      retryAfterSeconds: json['retry_after_seconds'] as int?,
+      debugCode: json['debug_code'] as String?,
+    );
+  }
+}
+
+class SendEmailVerificationResponse {
+  final bool success;
+  final String message;
+  final String sessionId;
+  final int expiresInSeconds;
+  final String? debugCode;
+
+  const SendEmailVerificationResponse({
+    required this.success,
+    required this.message,
+    required this.sessionId,
+    required this.expiresInSeconds,
+    this.debugCode,
+  });
+
+  factory SendEmailVerificationResponse.fromJson(Map<String, dynamic> json) {
+    return SendEmailVerificationResponse(
+      success: json['success'] as bool? ?? false,
+      message: json['message'] as String? ?? '',
+      sessionId: json['session_id'] as String? ?? '',
+      expiresInSeconds: json['expires_in_seconds'] as int? ?? 0,
+      debugCode: json['debug_code'] as String?,
+    );
+  }
+}
 
 class RecoveryOption {
   final String id;
@@ -21,52 +199,215 @@ class RecoveryOption {
   }
 }
 
+// ══════════════════════════════════════════════════════════════
+// AuthRepository — متصل به بک‌اند Go
+// ══════════════════════════════════════════════════════════════
+
 class AuthRepository {
-  // آدرس سرور نود جی‌اس
-  static const String _baseUrl = 'https://function-vista.chbk.dev/api/auth';
+  /// آدرس بک‌اند Go — از .env خوانده می‌شود
+  static String get _backendUrl =>
+      dotenv.env['BACKEND_URL'] ?? 'http://10.0.2.2:8080';
 
-  final Dio _dio = Dio(BaseOptions(
-    baseUrl: _baseUrl,
-    connectTimeout: const Duration(seconds: 15),
-    headers: {'Content-Type': 'application/json'},
-  ));
+  late final Dio _dio;
 
-  // ارسال کد تایید
-  Future<bool> sendOtp(String phoneNumber) async {
+  AuthRepository() {
+    _dio = Dio(BaseOptions(
+      baseUrl: '$_backendUrl/v1/auth',
+      connectTimeout: const Duration(seconds: 15),
+      receiveTimeout: const Duration(seconds: 15),
+      headers: {'Content-Type': 'application/json'},
+    ));
+
+    // لاگ درخواست‌ها در محیط توسعه
+    _dio.interceptors.add(LogInterceptor(
+      requestBody: true,
+      responseBody: true,
+      logPrint: (obj) => logInfo('[API] $obj'),
+    ));
+  }
+
+  // ─── ثبت‌نام با ایمیل/شماره/رمز عبور ───
+  Future<AuthResponse> register({
+    String? username,
+    required String fullName,
+    String? email,
+    String? phoneNumber,
+    required String password,
+  }) async {
+    try {
+      final response = await _dio.post('/register', data: {
+        if (username != null && username.isNotEmpty) 'username': username,
+        'full_name': fullName,
+        if (email != null && email.isNotEmpty) 'email': email,
+        if (phoneNumber != null && phoneNumber.isNotEmpty)
+          'phone_number': phoneNumber,
+        'password': password,
+      });
+
+      return AuthResponse.fromJson(response.data as Map<String, dynamic>);
+    } on DioException catch (e) {
+      throw _handleDioError(e, 'ثبت‌نام');
+    } catch (e) {
+      logError('Register Error', error: e);
+      rethrow;
+    }
+  }
+
+  // ─── ورود با ایمیل / شماره موبایل / نام کاربری ───
+  Future<AuthResponse> login({
+    required String identifier,
+    required String password,
+  }) async {
+    try {
+      final response = await _dio.post('/login', data: {
+        'identifier': identifier,
+        'password': password,
+      });
+
+      return AuthResponse.fromJson(response.data as Map<String, dynamic>);
+    } on DioException catch (e) {
+      throw _handleDioError(e, 'ورود');
+    } catch (e) {
+      logError('Login Error', error: e);
+      rethrow;
+    }
+  }
+
+  // ─── تمدید توکن با Refresh Token ───
+  Future<AuthResponse> refreshToken(String refreshToken) async {
+    try {
+      final response = await _dio.post('/refresh', data: {
+        'refresh_token': refreshToken,
+      });
+
+      return AuthResponse.fromJson(response.data as Map<String, dynamic>);
+    } on DioException catch (e) {
+      throw _handleDioError(e, 'تمدید نشست');
+    } catch (e) {
+      logError('Refresh Token Error', error: e);
+      rethrow;
+    }
+  }
+
+  Future<AuthUserResponse> me(String accessToken) async {
+    try {
+      final response = await _dio.get('/me',
+          options: Options(headers: {
+            'Authorization': 'Bearer $accessToken',
+          }));
+
+      return AuthUserResponse.fromJson(response.data as Map<String, dynamic>);
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 401) {
+        throw 'unauthorized';
+      }
+      throw _handleDioError(e, 'بررسی نشست');
+    } catch (e) {
+      logError('Me Error', error: e);
+      rethrow;
+    }
+  }
+
+  Future<LookupIdentifierResponse> lookupIdentifier(String identifier) async {
+    try {
+      final response = await _dio.post('/lookup', data: {
+        'identifier': identifier,
+      });
+
+      return LookupIdentifierResponse.fromJson(
+        response.data as Map<String, dynamic>,
+      );
+    } on DioException catch (e) {
+      throw _handleDioError(e, 'بررسی شناسه ورود');
+    } catch (e) {
+      logError('Lookup Identifier Error', error: e);
+      rethrow;
+    }
+  }
+
+  // ─── ارسال کد تایید OTP ───
+  Future<SendOtpResponse> sendOtp(String phoneNumber) async {
     try {
       final response = await _dio.post('/send-otp', data: {
         'phone_number': phoneNumber,
       });
-      return response.data['success'] == true;
+
+      return SendOtpResponse.fromJson(response.data as Map<String, dynamic>);
+    } on DioException catch (e) {
+      throw _handleDioError(e, 'ارسال کد تایید');
     } catch (e) {
       logError('Send OTP Error', error: e);
-      throw 'خطا در ارسال پیامک. لطفا اتصال اینترنت خود را بررسی کنید.';
+      rethrow;
     }
   }
 
-  // بررسی کد تایید
-  Future<dynamic> verifyOtp(String phoneNumber, String code,
-      {bool isUpdateMode = false}) async {
+  // ─── بررسی کد تایید OTP ───
+  Future<AuthResponse> verifyOtp({
+    required String phoneNumber,
+    required String code,
+  }) async {
     try {
       final response = await _dio.post('/verify-otp', data: {
         'phone_number': phoneNumber,
         'code': code,
-        'is_update_mode': isUpdateMode,
       });
 
-      if (response.data['success'] == true) {
-        return response.data['user'];
-      } else {
-        throw response.data['message'] ?? 'کد وارد شده صحیح نیست';
-      }
+      return AuthResponse.fromJson(response.data as Map<String, dynamic>);
     } on DioException catch (e) {
-      if (e.response != null) {
-        throw e.response?.data['message'] ?? 'خطای سمت سرور';
-      }
-      throw 'خطا در برقراری ارتباط با سرور';
+      throw _handleDioError(e, 'تایید کد');
+    } catch (e) {
+      logError('Verify OTP Error', error: e);
+      rethrow;
     }
   }
 
+  Future<SendEmailVerificationResponse> sendEmailVerification({
+    required String accessToken,
+    required String email,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/send-email-verification',
+        data: {'email': email},
+        options: Options(headers: {'Authorization': 'Bearer $accessToken'}),
+      );
+
+      return SendEmailVerificationResponse.fromJson(
+        response.data as Map<String, dynamic>,
+      );
+    } on DioException catch (e) {
+      throw _handleDioError(e, 'ارسال کد تأیید ایمیل');
+    } catch (e) {
+      logError('Send Email Verification Error', error: e);
+      rethrow;
+    }
+  }
+
+  Future<AuthUserResponse> verifyEmail({
+    required String accessToken,
+    required String sessionId,
+    required String code,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/verify-email',
+        data: {
+          'session_id': sessionId,
+          'code': code,
+        },
+        options: Options(headers: {'Authorization': 'Bearer $accessToken'}),
+      );
+
+      return AuthUserResponse.fromJson(response.data as Map<String, dynamic>);
+    } on DioException catch (e) {
+      throw _handleDioError(e, 'تأیید ایمیل');
+    } catch (e) {
+      logError('Verify Email Error', error: e);
+      rethrow;
+    }
+  }
+
+  // ─── بازنشانی رمز عبور با SMS ───
   Future<void> resetPasswordSms({
     required String phoneNumber,
     required String code,
@@ -86,21 +427,14 @@ class AuthRepository {
           ? (response.data['message'] as String? ?? 'خطای نامشخص')
           : 'خطای نامشخص';
     } on DioException catch (e) {
-      final status = e.response?.statusCode;
-      if (status == 401) {
-        throw 'کد نامعتبر است';
-      }
-      if (status == 429) {
-        throw 'تلاش‌های زیادی انجام شده است. لطفاً چند دقیقه دیگر دوباره تلاش کنید';
-      }
-      logError('Reset Password SMS Error', error: e);
-      throw 'خطا در بازنشانی رمز عبور. لطفاً دوباره تلاش کنید';
+      throw _handleDioError(e, 'بازنشانی رمز عبور');
     } catch (e) {
       logError('Reset Password SMS Error', error: e);
       rethrow;
     }
   }
 
+  // ─── دریافت گزینه‌های بازیابی ───
   Future<List<RecoveryOption>> getRecoveryOptions(String identifier) async {
     try {
       final response = await _dio.post('/recovery-options', data: {
@@ -122,21 +456,14 @@ class AuthRepository {
       }
       return const [];
     } on DioException catch (e) {
-      final status = e.response?.statusCode;
-      if (status == 503) {
-        throw 'سرویس بازیابی موقتاً در دسترس نیست. لطفاً کمی بعد دوباره تلاش کنید';
-      }
-      if (status == 429) {
-        throw 'تلاش‌های زیادی انجام شده است. لطفاً چند دقیقه دیگر دوباره تلاش کنید';
-      }
-      logError('Get Recovery Options Error', error: e);
-      throw 'خطا در دریافت گزینه‌های بازیابی';
+      throw _handleDioError(e, 'دریافت گزینه‌های بازیابی');
     } catch (e) {
       logError('Get Recovery Options Error', error: e);
       rethrow;
     }
   }
 
+  // ─── ارسال کد بازیابی ───
   Future<void> sendRecoveryCode(String optionId) async {
     try {
       final response = await _dio.post('/recovery-send', data: {
@@ -148,21 +475,14 @@ class AuthRepository {
         throw 'خطا در ارسال کد';
       }
     } on DioException catch (e) {
-      final status = e.response?.statusCode;
-      if (status == 429) {
-        throw 'لطفاً کمی بعد دوباره تلاش کنید';
-      }
-      if (status == 503) {
-        throw 'سرویس بازیابی موقتاً در دسترس نیست. لطفاً کمی بعد دوباره تلاش کنید';
-      }
-      logError('Send Recovery Code Error', error: e);
-      throw 'خطا در ارسال کد';
+      throw _handleDioError(e, 'ارسال کد بازیابی');
     } catch (e) {
       logError('Send Recovery Code Error', error: e);
       rethrow;
     }
   }
 
+  // ─── تکمیل بازیابی ───
   Future<void> completeRecovery({
     required String optionId,
     required String code,
@@ -180,25 +500,64 @@ class AuthRepository {
         throw 'خطا در تغییر رمز عبور';
       }
     } on DioException catch (e) {
-      final status = e.response?.statusCode;
-      final data = e.response?.data;
-      if (status == 400 && data is Map && data['message'] == 'WEAK_PASSWORD') {
-        throw 'رمز عبور ضعیف است';
-      }
-      if (status == 401) {
-        throw 'کد نامعتبر است';
-      }
-      if (status == 429) {
-        throw 'تلاش‌های زیادی انجام شده است. لطفاً چند دقیقه دیگر دوباره تلاش کنید';
-      }
-      if (status == 503) {
-        throw 'سرویس بازیابی موقتاً در دسترس نیست. لطفاً کمی بعد دوباره تلاش کنید';
-      }
-      logError('Complete Recovery Error', error: e);
-      throw 'خطا در تغییر رمز عبور';
+      throw _handleDioError(e, 'تکمیل بازیابی');
     } catch (e) {
       logError('Complete Recovery Error', error: e);
       rethrow;
     }
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  // Error Handling — تبدیل خطاهای HTTP به پیام فارسی
+  // ══════════════════════════════════════════════════════════════
+
+  String _handleDioError(DioException e, String context) {
+    final status = e.response?.statusCode;
+    final data = e.response?.data;
+
+    // خطاهای بک‌اند Go — با فرمت {"code":"...", "message":"..."}
+    if (data is Map) {
+      final serverMessage = data['message'] as String?;
+      if (serverMessage != null && serverMessage.isNotEmpty) {
+        return serverMessage;
+      }
+      final errorField = data['error'] as String?;
+      if (errorField != null && errorField.isNotEmpty) {
+        return errorField;
+      }
+    }
+
+    // خطاهای HTTP استاندارد
+    switch (status) {
+      case 400:
+        return 'اطلاعات ارسالی نامعتبر است';
+      case 401:
+        return 'نام کاربری یا رمز عبور اشتباه است';
+      case 403:
+        return 'حساب کاربری غیرفعال است';
+      case 409:
+        return 'کاربر با این مشخصات قبلاً ثبت شده است';
+      case 429:
+        return 'تلاش‌های زیادی انجام شده است. لطفاً چند دقیقه دیگر دوباره تلاش کنید';
+      case 500:
+        return 'خطای سرور. لطفاً دوباره تلاش کنید';
+      case 503:
+        return 'سرور موقتاً در دسترس نیست. لطفاً کمی بعد دوباره تلاش کنید';
+      default:
+        break;
+    }
+
+    // خطاهای شبکه
+    if (e.type == DioExceptionType.connectionTimeout ||
+        e.type == DioExceptionType.receiveTimeout) {
+      return 'اتصال به سرور برقرار نشد. لطفاً اینترنت خود را بررسی کنید';
+    }
+
+    if (e.type == DioExceptionType.connectionError) {
+      return 'خطا در اتصال به سرور. لطفاً اینترنت خود را بررسی کنید';
+    }
+
+    logError('$context API Error', error: e);
+    return 'خطا در $context. لطفاً دوباره تلاش کنید';
   }
 }

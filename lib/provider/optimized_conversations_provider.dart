@@ -1,13 +1,13 @@
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../security/logging_utility.dart';
 import '../model/conversation_model.dart';
 import '../services/telegram_read_receipt_service.dart';
 
+import '../features/auth/providers/auth_controller.dart' show TokenStorage;
 import '../features/chat/providers/chat_providers.dart';
+import '../features/chat/services/sse_manager.dart';
 import '../services/user_profile_service.dart';
-import '../utils/const.dart';
 
 // ============================================
 // 1️⃣ State class برای مدیریت وضعیت مکالمات
@@ -61,17 +61,17 @@ class ConversationsState {
 
 class OptimizedConversationsNotifier extends StateNotifier<ConversationsState> {
   final Ref _ref;
-  final String? _userId;
+  String? _userId;
   final UserProfileService _profileService = UserProfileService();
 
   StreamSubscription<List<ConversationModel>>? _repoSubscription;
-  StreamSubscription<RealtimeSubscribeStatus>? _realtimeStatusSubscription;
+  StreamSubscription<SseConnectionState>? _sseStatusSubscription;
   Timer? _fallbackPollingTimer;
   bool _disposed = false;
   bool _isRefreshInFlight = false;
   int _lastRefreshStartedAtMs = 0;
   int _latestUpdateToken = 0;
-  bool _hasReceivedRealtimeStatusEvent = false;
+  bool _hasReceivedSseStatusEvent = false;
   String _lastConversationsFingerprint = '';
   final Set<String> _profilePreloadInFlight = <String>{};
   static const Duration _fallbackRefreshInterval = Duration(seconds: 2);
@@ -84,6 +84,8 @@ class OptimizedConversationsNotifier extends StateNotifier<ConversationsState> {
 
   Future<void> _initialize() async {
     if (_disposed) return;
+
+    _userId ??= await TokenStorage.getUserId();
 
     if (_userId == null) {
       state = const ConversationsState(
@@ -100,17 +102,14 @@ class OptimizedConversationsNotifier extends StateNotifier<ConversationsState> {
 
       // 1. Initial Load (Fast, from Isar)
       final result = await repo.getConversations();
-      result.fold(
-        (conversations) {
-          _updateConversations(conversations);
-          state = state.copyWith(status: ConversationsStatus.loaded);
-        },
-        (error) => logInfo('⚠️ Initial load warning: $error'),
-      );
+      result.fold((conversations) {
+        _updateConversations(conversations);
+        state = state.copyWith(status: ConversationsStatus.loaded);
+      }, (error) => logInfo('⚠️ Initial load warning: $error'));
 
-      // 2. Watch for Realtime Updates
+      // 2. Watch for SSE updates
       _subscribeToUpdates();
-      _subscribeToRealtimeStatus();
+      _subscribeToSseStatus();
 
       // 3. Refresh from Server (Background)
       _refreshFromServer();
@@ -129,16 +128,20 @@ class OptimizedConversationsNotifier extends StateNotifier<ConversationsState> {
     _repoSubscription?.cancel();
     final repo = _ref.read(chatRepositoryProvider);
 
-    _repoSubscription = repo.watchConversations().listen((conversations) {
-      if (_disposed) return;
-      _updateConversations(conversations);
-    }, onError: (e) {
-      logInfo('⚠️ Conversation stream error: $e');
-    });
+    _repoSubscription = repo.watchConversations().listen(
+      (conversations) {
+        if (_disposed) return;
+        _updateConversations(conversations);
+      },
+      onError: (e) {
+        logInfo('⚠️ Conversation stream error: $e');
+      },
+    );
   }
 
   Future<void> _updateConversations(
-      List<ConversationModel> conversations) async {
+    List<ConversationModel> conversations,
+  ) async {
     if (_disposed) return;
     final updateToken = ++_latestUpdateToken;
 
@@ -190,16 +193,16 @@ class OptimizedConversationsNotifier extends StateNotifier<ConversationsState> {
     }
   }
 
-  void _subscribeToRealtimeStatus() {
-    _realtimeStatusSubscription?.cancel();
+  void _subscribeToSseStatus() {
+    _sseStatusSubscription?.cancel();
     final repo = _ref.read(chatRepositoryProvider);
-    _hasReceivedRealtimeStatusEvent = false;
+    _hasReceivedSseStatusEvent = false;
 
-    _realtimeStatusSubscription = repo.realtimeStatus.listen(
+    _sseStatusSubscription = repo.realtimeStatus.listen(
       (status) {
         if (_disposed) return;
-        _hasReceivedRealtimeStatusEvent = true;
-        if (status == RealtimeSubscribeStatus.subscribed) {
+        _hasReceivedSseStatusEvent = true;
+        if (status == SseConnectionState.connected) {
           _stopFallbackPolling();
           return;
         }
@@ -208,13 +211,13 @@ class OptimizedConversationsNotifier extends StateNotifier<ConversationsState> {
         unawaited(_refreshFromServer());
       },
       onError: (Object error, StackTrace stackTrace) {
-        logInfo('⚠️ Realtime status stream error: $error');
+        logInfo('⚠️ SSE status stream error: $error');
         _startFallbackPolling();
       },
     );
 
     Future<void>.delayed(const Duration(seconds: 4), () {
-      if (_disposed || _hasReceivedRealtimeStatusEvent) return;
+      if (_disposed || _hasReceivedSseStatusEvent) return;
       _startFallbackPolling();
       unawaited(_refreshFromServer());
     });
@@ -224,8 +227,7 @@ class OptimizedConversationsNotifier extends StateNotifier<ConversationsState> {
     if (_disposed) return;
     if (_fallbackPollingTimer?.isActive ?? false) return;
 
-    _fallbackPollingTimer =
-        Timer.periodic(_fallbackRefreshInterval, (timer) {
+    _fallbackPollingTimer = Timer.periodic(_fallbackRefreshInterval, (timer) {
       if (_disposed) {
         timer.cancel();
         return;
@@ -252,8 +254,9 @@ class OptimizedConversationsNotifier extends StateNotifier<ConversationsState> {
     // اول از memory cache استفاده کن (خیلی سریع)
     for (final conversation in conversations) {
       if (_needsEnrichment(conversation) && conversation.otherUserId != null) {
-        final cached =
-            _profileService.getCachedProfile(conversation.otherUserId!);
+        final cached = _profileService.getCachedProfile(
+          conversation.otherUserId!,
+        );
         if (cached != null) {
           enriched.add(_applyProfile(conversation, cached));
         } else {
@@ -302,8 +305,9 @@ class OptimizedConversationsNotifier extends StateNotifier<ConversationsState> {
       final reEnriched = conversations.map((conversation) {
         if (_needsEnrichment(conversation) &&
             conversation.otherUserId != null) {
-          final cached =
-              _profileService.getCachedProfile(conversation.otherUserId!);
+          final cached = _profileService.getCachedProfile(
+            conversation.otherUserId!,
+          );
           if (cached != null) {
             return _applyProfile(conversation, cached);
           }
@@ -337,7 +341,9 @@ class OptimizedConversationsNotifier extends StateNotifier<ConversationsState> {
 
   /// اعمال پروفایل به مکالمه
   ConversationModel _applyProfile(
-      ConversationModel conversation, Map<String, String?> profile) {
+    ConversationModel conversation,
+    Map<String, String?> profile,
+  ) {
     return conversation.copyWith(
       otherUserName:
           profile['username'] ?? profile['full_name'] ?? 'VISTA USER',
@@ -347,7 +353,8 @@ class OptimizedConversationsNotifier extends StateNotifier<ConversationsState> {
 
   /// مرتب‌سازی مکالمات: pinned اول، بعد بر اساس آخرین پیام
   List<ConversationModel> _sortConversations(
-      List<ConversationModel> conversations) {
+    List<ConversationModel> conversations,
+  ) {
     final sorted = List<ConversationModel>.from(conversations);
     sorted.sort((a, b) {
       // پین شده‌ها اول
@@ -460,7 +467,7 @@ class OptimizedConversationsNotifier extends StateNotifier<ConversationsState> {
   void dispose() {
     _disposed = true;
     _repoSubscription?.cancel();
-    _realtimeStatusSubscription?.cancel();
+    _sseStatusSubscription?.cancel();
     _stopFallbackPolling();
     super.dispose();
   }
@@ -471,10 +478,10 @@ class OptimizedConversationsNotifier extends StateNotifier<ConversationsState> {
 // ============================================
 
 final optimizedConversationsProvider =
-    StateNotifierProvider<OptimizedConversationsNotifier, ConversationsState>(
-        (ref) {
-  final userId = supabase.auth.currentUser?.id;
-  return OptimizedConversationsNotifier(ref, userId);
+    StateNotifierProvider<OptimizedConversationsNotifier, ConversationsState>((
+  ref,
+) {
+  return OptimizedConversationsNotifier(ref, null);
 });
 
 // ============================================

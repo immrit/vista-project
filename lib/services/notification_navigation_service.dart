@@ -1,9 +1,11 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
-import '../utils/const.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:http/http.dart' as http;
 import '../model/notificationModel.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../features/auth/providers/auth_controller.dart' show TokenStorage;
 import '../features/chat/providers/chat_providers.dart';
 
 class NotificationNavigationService {
@@ -122,9 +124,15 @@ class NotificationNavigationService {
   /// علامت‌گذاری اعلان به عنوان خوانده شده
   static Future<void> _markAsRead(String notificationId) async {
     try {
-      await supabase
-          .from('notifications')
-          .update({'is_read': true}).eq('id', notificationId);
+      final token = await TokenStorage.getAccessToken();
+      if (token == null || token.isEmpty) return;
+      final baseUrl = dotenv.env['BACKEND_URL'] ?? 'http://10.0.2.2:8080';
+      await http.post(
+        Uri.parse(
+          '$baseUrl/v1/notifications/${Uri.encodeComponent(notificationId)}/read',
+        ),
+        headers: {'Authorization': 'Bearer $token'},
+      ).timeout(const Duration(seconds: 10));
     } catch (e) {
       print('⚠️ خطا در mark as read: $e');
     }
@@ -233,7 +241,7 @@ class NotificationNavigationService {
     }
 
     try {
-      final currentUserId = supabase.auth.currentUser?.id;
+      final currentUserId = await TokenStorage.getUserId();
       final currentRoute = ModalRoute.of(context)?.settings.name;
 
       if (currentRoute != '/home') {
@@ -310,14 +318,11 @@ class NotificationNavigationService {
         '🔄 ConversationID خالی است - تلاش برای یافتن conversation با sender_id...');
     try {
       // پیدا کردن conversationId از userId
-      final conversationResponse = await supabase
-          .from('conversations')
-          .select('id')
-          .or('user1_id.eq.$userId,user2_id.eq.$userId')
-          .limit(1)
-          .maybeSingle();
-
-      final conversationId = conversationResponse?['id'] as String?;
+      final container = ProviderScope.containerOf(context, listen: false);
+      final result = await container
+          .read(chatRepositoryProvider)
+          .createConversation(userId);
+      final conversationId = result.data?.id;
 
       if (conversationId == null || conversationId.isEmpty) {
         print('❌ Conversation یافت نشد برای userId: $userId');

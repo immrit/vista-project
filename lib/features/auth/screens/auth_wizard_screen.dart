@@ -4,7 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pinput/pinput.dart';
 import '../../../provider/provider.dart';
 import '../../../core/security/input_policy.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import '../data/auth_repository.dart';
+import '../providers/auth_controller.dart';
 import '../widgets/ribbon_background.dart';
 import '../widgets/blend_mask.dart';
 
@@ -50,42 +51,11 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
     return normalizeDigits(input).trim();
   }
 
-  // Check if user exists in DB (Real Supabase Call)
-  Future<bool> _checkUserExists(String input) async {
-    try {
-      if (input.isEmpty) return false;
-      final client = Supabase.instance.client;
-
-      final normalizedPhone = normalizePhone09(input);
-      if (normalizedPhone != null) {
-        final byPhone = await client
-            .from('profiles')
-            .select('id')
-            .eq('phone_number', normalizedPhone)
-            .maybeSingle();
-        return byPhone != null;
-      }
-
-      if (input.contains('@')) {
-        final byEmail = await client
-            .from('profiles')
-            .select('id')
-            .eq('email', input.toLowerCase())
-            .maybeSingle();
-        return byEmail != null;
-      }
-
-      final byUsername = await client
-          .from('profiles')
-          .select('id')
-          .eq('username', input.toLowerCase())
-          .maybeSingle();
-      return byUsername != null;
-    } catch (e) {
-      debugPrint('Error checking user existence: $e');
-      return false;
-    }
+  bool _isDisabledAccount(String? status) {
+    final normalized = status?.trim().toLowerCase();
+    return normalized == 'banned' || normalized == 'suspended';
   }
+
   // --- Navigation & State Machine ---
 
   void _nextPage(int page) {
@@ -111,29 +81,44 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
     _isPhoneInput = normalizedPhone != null;
 
     try {
-      final userExists =
-          await _checkUserExists(_isPhoneInput ? normalizedPhone! : input);
+      final lookup = await AuthRepository().lookupIdentifier(
+        _isPhoneInput ? normalizedPhone! : input,
+      );
 
       setState(() {
         _isLoading = false;
       });
 
+      if (_isDisabledAccount(lookup.accountStatus)) {
+        _showSnack('حساب کاربری شما غیرفعال شده است');
+        return;
+      }
+
       if (_isPhoneInput) {
-        if (userExists) {
-          _inputController.text = normalizedPhone!;
+        _inputController.text =
+            lookup.normalizedIdentifier?.trim().isNotEmpty == true
+                ? lookup.normalizedIdentifier!
+                : normalizedPhone!;
+        if (lookup.exists && lookup.authFlow == 'password') {
           _nextPage(1);
         } else {
-          _inputController.text = normalizedPhone!;
           _sendOtp(isResend: false);
         }
       } else {
-        if (userExists) {
+        if (lookup.exists) {
           _nextPage(1);
         } else {
           _showSnack('برای ثبت نام جدید لطفاً از شماره موبایل استفاده کنید');
         }
       }
     } catch (e) {
+      if (_isPhoneInput) {
+        setState(() => _isLoading = false);
+        _inputController.text = normalizedPhone!;
+        await _sendOtp(isResend: false);
+        return;
+      }
+
       setState(() => _isLoading = false);
       _showSnack('خطا در بررسی اطلاعات: $e');
     }
@@ -150,97 +135,33 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
 
     try {
       final input = _sanitizeInput(_inputController.text);
-      String? loginPhone;
-      String? loginEmail;
-      final client = Supabase.instance.client;
-
-      if (_isPhoneInput) {
-        final normalizedPhone = normalizePhone09(input);
-        if (normalizedPhone == null) {
-          throw 'شماره موبایل نامعتبر است';
-        }
-
-        final data = await client
-            .from('profiles')
-            .select('email, account_status')
-            .eq('phone_number', normalizedPhone)
-            .maybeSingle();
-
-        if (data != null) {
-          if (data['account_status'] == 'banned' ||
-              data['account_status'] == 'suspended') {
-            throw 'حساب کاربری شما غیرفعال شده است';
-          }
-          if (data['email'] != null) {
-            loginEmail = data['email'];
-          } else {
-            loginPhone = normalizedPhone;
-          }
-        } else {
-          loginPhone = normalizedPhone;
-        }
-      } else {
-        if (input.contains('@')) {
-          loginEmail = input.toLowerCase();
-        } else {
-          final data = await client
-              .from('profiles')
-              .select('email, account_status')
-              .eq('username', input.toLowerCase())
-              .maybeSingle();
-
-          if (data != null) {
-            if (data['account_status'] == 'banned' ||
-                data['account_status'] == 'suspended') {
-              throw 'حساب کاربری شما غیرفعال شده است';
-            }
-            if (data['email'] != null) {
-              loginEmail = data['email'];
-            } else {
-              throw 'ایمیل متصل به این نام کاربری یافت نشد';
-            }
-          } else {
-            throw 'نام کاربری یافت نشد';
-          }
-        }
+      final identifier = _isPhoneInput
+          ? normalizePhone09(input) ?? input
+          : input.toLowerCase();
+      final success = await ref.read(authControllerProvider.notifier).login(
+            identifier: identifier,
+            password: password,
+          );
+      if (!success) {
+        final error = ref.read(authControllerProvider).error;
+        throw error ?? 'ورود ناموفق بود';
       }
-
-      final emailForAuth = (loginEmail != null && loginEmail.trim().isNotEmpty)
-          ? loginEmail
-          : null;
-      final phoneForAuth = (loginPhone != null && loginPhone.trim().isNotEmpty)
-          ? loginPhone
-          : null;
-
-      if (emailForAuth == null && phoneForAuth == null) {
-        throw 'شناسه ورود معتبر یافت نشد';
-      }
-
-      final response = await client.auth.signInWithPassword(
-        email: emailForAuth,
-        phone: phoneForAuth,
-        password: password,
-      );
-      if (response.user == null) throw 'ورود ناموفق بود';
 
       setState(() => _isLoading = false);
 
-      final user = response.user!;
-      bool phoneNumberIsSet = user.phone != null && user.phone!.isNotEmpty;
-      if (!phoneNumberIsSet) {
-        final profile = await client
-            .from('profiles')
-            .select('phone_number')
-            .eq('id', user.id)
-            .maybeSingle();
-        if (profile != null && profile['phone_number'] != null) {
-          phoneNumberIsSet = true;
-        }
-      }
+      final authState = ref.read(authControllerProvider);
+      final currentUser = authState.currentUser;
+      final phoneNumberIsSet = currentUser?.phoneNumber != null &&
+          currentUser!.phoneNumber!.isNotEmpty;
 
       if (phoneNumberIsSet) {
+        if (!mounted) return;
         _showSnack('ورود موفقیت آمیز بود');
-        Navigator.pushReplacementNamed(context, '/home');
+        if (currentUser.profileCompleted == false) {
+          Navigator.pushReplacementNamed(context, '/profile-setup');
+        } else {
+          Navigator.pushReplacementNamed(context, '/home');
+        }
       } else {
         _showSnack('لطفاً شماره موبایل خود را تایید کنید');
         _inputController.clear();
@@ -251,10 +172,11 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
       setState(() => _isLoading = false);
       String msg = e.toString();
       if (msg.contains('Invalid login credentials') ||
-          msg.contains('invalid_credentials')) {
+          msg.contains('invalid_credentials') ||
+          msg.contains('AUTH_INVALID_CREDENTIALS')) {
         msg = 'نام کاربری یا رمز عبور اشتباه است';
-      } else if (msg.contains('Email not confirmed')) {
-        msg = 'ایمیل شما تایید نشده است';
+      } else if (msg.contains('AUTH_ACCOUNT_DISABLED')) {
+        msg = 'حساب کاربری شما غیرفعال شده است';
       }
       _showSnack('خطا در ورود: $msg');
     }
@@ -294,10 +216,15 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
       final success =
           await ref.read(authControllerProvider.notifier).sendOtp(phone);
 
+      if (!mounted) return;
       setState(() => _isLoading = false);
 
       if (success) {
+        final debugCode = ref.read(authControllerProvider).otpDebugCode;
         _otpController.clear();
+        if (debugCode != null && debugCode.isNotEmpty) {
+          _otpController.text = debugCode;
+        }
         _startTimer();
         if (!isResend) {
           _nextPage(2);
@@ -337,8 +264,16 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
 
       if (success) {
         timer?.cancel();
+        if (!mounted) return;
         _showSnack('خوش آمدید!');
-        Navigator.pushReplacementNamed(context, '/home');
+
+        final authState = ref.read(authControllerProvider);
+        if (authState.isNewUser ||
+            authState.currentUser?.profileCompleted == false) {
+          Navigator.pushReplacementNamed(context, '/profile-setup');
+        } else {
+          Navigator.pushReplacementNamed(context, '/home');
+        }
       } else {
         setState(() {
           _isLoading = false;
@@ -346,6 +281,7 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
         });
       }
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _isLoading = false;
         _otpError = e.toString().replaceAll('Exception:', '').trim();
@@ -562,6 +498,7 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
     // Pinput theme based on Monochrome
     // Pinput theme based on Monochrome
     final theme = Theme.of(context);
+    final debugCode = ref.watch(authControllerProvider).otpDebugCode;
     final defaultPinTheme = PinTheme(
       width: 56,
       height: 60,
@@ -619,6 +556,27 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
               ),
             ),
           ),
+          if (debugCode != null && debugCode.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primary.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: theme.colorScheme.primary.withValues(alpha: 0.2),
+                ),
+              ),
+              child: Text(
+                'Dev OTP: $debugCode',
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.primary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
           if (_otpError != null) ...[
             const SizedBox(height: 16),
             Text(_otpError!,

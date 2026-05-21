@@ -3,9 +3,10 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:path/path.dart' as path;
-import '../services/secure_upload_service.dart';
+import '../features/auth/data/auth_repository.dart';
+import '../features/auth/providers/auth_controller.dart';
+import '../services/backend_upload_service.dart';
 import '../services/user_friendly_error_handler.dart';
-import '../utils/const.dart';
 
 class ProfileImageUploadService {
   static Future<File?> convertPngToJpeg(File file) async {
@@ -84,20 +85,20 @@ class ProfileImageUploadService {
         }
       }
 
-      final currentUser = supabase.auth.currentUser;
+      final currentUser = _uploadUserFromId(await _currentUserId());
       if (currentUser == null) {
         throw Exception('کاربر وارد نشده است');
       }
 
       final fileName =
-          'avatars/${currentUser.id}_${DateTime.now().millisecondsSinceEpoch}_${path.basename(compressedFile.path)}';
+          'avatars/${currentUser.id}/${DateTime.now().millisecondsSinceEpoch}_${path.basename(compressedFile.path)}';
 
       final Uint8List fileBytes = await compressedFile.readAsBytes();
 
       const contentType = 'image/jpeg';
       logInfo('Content-Type: $contentType');
       logInfo('File size: ${fileBytes.length} bytes');
-      final uploadResult = await SecureUploadService.uploadBytes(
+      final uploadResult = await BackendUploadService.uploadBytes(
         bytes: fileBytes,
         objectKey: fileName,
         contentType: contentType,
@@ -148,14 +149,14 @@ class ProfileImageUploadService {
       }
 
       final fileName =
-          'avatars/${userId}_${DateTime.now().millisecondsSinceEpoch}_${path.basename(compressedFile.path)}';
+          'avatars/$userId/${DateTime.now().millisecondsSinceEpoch}_${path.basename(compressedFile.path)}';
 
       final Uint8List fileBytes = await compressedFile.readAsBytes();
 
       const contentType = 'image/jpeg';
       logInfo('Content-Type: $contentType');
       logInfo('File size: ${fileBytes.length} bytes');
-      final uploadResult = await SecureUploadService.uploadBytes(
+      final uploadResult = await BackendUploadService.uploadBytes(
         bytes: fileBytes,
         objectKey: fileName,
         contentType: contentType,
@@ -190,17 +191,17 @@ class ProfileImageUploadService {
       // همیشه با نوع 'image/jpeg' کار می‌کنیم
       const contentType = 'image/jpeg';
 
-      final currentUser = supabase.auth.currentUser;
+      final currentUser = _uploadUserFromId(await _currentUserId());
       if (currentUser == null) {
         throw Exception('کاربر وارد نشده است');
       }
 
       final s3FileName =
-          'avatars/${currentUser.id}_${DateTime.now().millisecondsSinceEpoch}_$fileName';
+          'avatars/${currentUser.id}/${DateTime.now().millisecondsSinceEpoch}_$fileName';
 
       logInfo('Content-Type: $contentType');
       logInfo('File size: ${fileBytes.length} bytes');
-      final uploadResult = await SecureUploadService.uploadBytes(
+      final uploadResult = await BackendUploadService.uploadBytes(
         bytes: fileBytes,
         objectKey: s3FileName,
         contentType: contentType,
@@ -220,7 +221,7 @@ class ProfileImageUploadService {
   /// حذف تصویر پروفایل
   static Future<bool> deleteImage(String fileUrl) async {
     try {
-      final deleted = await SecureUploadService.deleteByUrl(fileUrl);
+      final deleted = await BackendUploadService.deleteByUrl(fileUrl);
       if (!deleted) {
         throw Exception('Delete failed');
       }
@@ -230,4 +231,30 @@ class ProfileImageUploadService {
       return false;
     }
   }
+
+  static Future<String> _currentUserId() async {
+    final storedUserId = await TokenStorage.getUserId();
+    if (storedUserId != null && storedUserId.isNotEmpty) {
+      return storedUserId;
+    }
+
+    final accessToken = await TokenStorage.getAccessToken();
+    if (accessToken == null || accessToken.isEmpty) {
+      throw Exception('کاربر وارد نشده است');
+    }
+
+    final user = await AuthRepository().me(accessToken);
+    await TokenStorage.saveUserId(user.id);
+    return user.id;
+  }
+}
+
+class _UploadUser {
+  final String id;
+  const _UploadUser(this.id);
+}
+
+_UploadUser? _uploadUserFromId(String id) {
+  if (id.isEmpty) return null;
+  return _UploadUser(id);
 }

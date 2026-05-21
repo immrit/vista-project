@@ -1,12 +1,18 @@
 import 'dart:async';
+import 'package:dio/dio.dart';
 import 'package:flutter/services.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'vista_node_service.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'current_user_service.dart';
+import '../features/auth/providers/auth_controller.dart';
+import '../security/logging_utility.dart';
 
 class BazaarPaymentService {
   static const platform = MethodChannel('ir.coffevista.vista/bazaar_native');
 
   bool _isConnected = false;
+
+  static String get _backendUrl =>
+      dotenv.env['BACKEND_URL'] ?? 'http://10.0.2.2:8080';
 
   Future<bool> init() async {
     print('🔄 [Flutter] Connecting to Native Poolakey...');
@@ -36,20 +42,21 @@ class BazaarPaymentService {
 
     try {
       // 1. انجام خرید و دریافت نتیجه کامل از کاتلین
+      final userId = await CurrentUserService.instance.resolveUserId();
       final Map<dynamic, dynamic> result =
           await platform.invokeMethod('subscribe', {
         'productId': productId,
-        'payload': 'user_${Supabase.instance.client.auth.currentUser?.id}',
+        'payload': 'user_$userId',
       });
 
       // 2. استخراج اطلاعات دقیق (شامل پکیج نیمی که واقعا خرید کرده)
       final String purchaseToken = result['purchaseToken'];
-      final String packageName = result['packageName']; // <--- این خیلی مهم است
+      final String packageName = result['packageName'];
 
       print("💎 [Flutter] Token: $purchaseToken");
       print("📦 [Flutter] Package: $packageName");
 
-      // 3. ارسال به سرور (پکیج نیم را هم می‌فرستیم)
+      // 3. ارسال به سرور Go
       return await _verifyOnServer(purchaseToken, productId, packageName);
     } catch (e) {
       if (e is PlatformException) {
@@ -65,19 +72,40 @@ class BazaarPaymentService {
     }
   }
 
-  // اضافه شدن پارامتر packageName به متد
+  /// ارسال درخواست تأیید به سرور Go
   Future<Map<String, dynamic>> _verifyOnServer(
       String token, String productId, String packageName) async {
-    final user = Supabase.instance.client.auth.currentUser;
-    if (user == null) return {'success': false, 'message': 'کاربر لاگین نیست.'};
+    final userId = await CurrentUserService.instance.resolveUserId();
+    if (userId == null) {
+      return {'success': false, 'message': 'کاربر لاگین نیست.'};
+    }
 
     try {
-      final data = await VistaNodeService.verifyBazaarPurchase(
-        purchaseToken: token,
-        productId: productId,
-        packageName: packageName,
+      final accessToken = await TokenStorage.getAccessToken();
+      if (accessToken == null || accessToken.isEmpty) {
+        return {'success': false, 'message': 'توکن احراز هویت یافت نشد.'};
+      }
+
+      final dio = Dio(BaseOptions(
+        baseUrl: '$_backendUrl/v1',
+        connectTimeout: const Duration(seconds: 15),
+        receiveTimeout: const Duration(seconds: 15),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $accessToken',
+        },
+      ));
+
+      final response = await dio.post(
+        '/payment/bazaar-verify',
+        data: {
+          'purchase_token': token,
+          'product_id': productId,
+          'package_name': packageName,
+        },
       );
 
+      final data = response.data as Map<String, dynamic>;
       if (data['success'] == true) {
         return {'success': true, 'message': 'اشتراک ویژه فعال شد! 🎉'};
       } else {
@@ -86,7 +114,14 @@ class BazaarPaymentService {
           'message': data['message'] ?? 'تایید خرید ناموفق بود.'
         };
       }
+    } on DioException catch (e) {
+      logWarning('Bazaar verify request failed', error: e);
+      final msg = (e.response?.data is Map)
+          ? (e.response!.data['message'] ?? 'در تایید خرید خطا رخ داد.')
+          : 'در تایید خرید خطا رخ داد. لطفا دوباره تلاش کنید.';
+      return {'success': false, 'message': msg};
     } catch (e) {
+      logWarning('Bazaar verify unexpected error', error: e);
       return {
         'success': false,
         'message': 'در تایید خرید خطا رخ داد. لطفا دوباره تلاش کنید.'

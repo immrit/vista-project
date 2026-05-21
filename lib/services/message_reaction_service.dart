@@ -1,280 +1,187 @@
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:async';
 
+import 'package:dio/dio.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+
+import '../features/auth/providers/auth_controller.dart' show TokenStorage;
+import '../features/chat/services/sse_manager.dart';
 import '../model/message_reaction.dart';
 import '../security/logging_utility.dart';
 
 class MessageReactionService {
-  final SupabaseClient _supabase = Supabase.instance.client;
+  MessageReactionService();
 
-  // Stream برای real-time updates
-  final Map<String, StreamSubscription> _reactionStreams = {};
+  static String get _backendUrl =>
+      dotenv.env['BACKEND_URL'] ?? 'http://10.0.2.2:8080';
 
-  /// اضافه کردن یا حذف reaction (Toggle)
+  late final Dio _dio = Dio(
+    BaseOptions(
+      baseUrl: '$_backendUrl/v1',
+      connectTimeout: const Duration(seconds: 10),
+      receiveTimeout: const Duration(seconds: 20),
+      headers: {'Content-Type': 'application/json'},
+    ),
+  );
+
+  final Map<String, StreamSubscription<Map<String, dynamic>>> _subscriptions =
+      {};
+
   Future<bool> toggleReaction({
     required String messageId,
     required String conversationId,
     required String emoji,
   }) async {
-    final userId = _supabase.auth.currentUser?.id;
-    if (userId == null) {
-      logInfo('❌ کاربر وارد نشده است');
+    final userId = await TokenStorage.getUserId();
+    if (userId == null || userId.isEmpty || messageId.startsWith('temp_')) {
       return false;
     }
 
     try {
-      logInfo('🔄 شروع toggle reaction: messageId=$messageId, emoji=$emoji, userId=$userId');
-      
-      // چک کردن آیا قبلاً این reaction را داده است
-      final existingReaction = await _supabase
-          .from('message_reactions')
-          .select()
-          .eq('message_id', messageId)
-          .eq('user_id', userId)
-          .eq('emoji', emoji)
-          .maybeSingle();
-
-      logInfo('🔍 بررسی reaction موجود: ${existingReaction != null ? "یافت شد" : "یافت نشد"}');
-
-      if (existingReaction != null) {
-        // اگر همان emoji بود، حذف کن (Toggle off)
-        logInfo('🗑️ حذف reaction موجود: $emoji');
-        final deleteResult = await _supabase
-            .from('message_reactions')
-            .delete()
-            .eq('message_id', messageId)
-            .eq('user_id', userId)
-            .eq('emoji', emoji);
-
-        logInfo('✅ Reaction حذف شد: $emoji, result: $deleteResult');
-        return false; // reaction حذف شد
-      } else {
-        // حذف reactions قبلی کاربر برای این پیام (یک کاربر فقط یک reaction)
-        logInfo('🗑️ حذف reactions قبلی کاربر برای این پیام');
-        final deleteResult = await _supabase
-            .from('message_reactions')
-            .delete()
-            .eq('message_id', messageId)
-            .eq('user_id', userId);
-        
-        logInfo('✅ Reactions قبلی حذف شد: $deleteResult');
-
-        // اضافه کردن reaction جدید
-        logInfo('➕ اضافه کردن reaction جدید: $emoji');
-        final insertData = {
-          'message_id': messageId,
-          'conversation_id': conversationId,
-          'user_id': userId,
-          'emoji': emoji,
-        };
-        
-        logInfo('📝 داده‌های insert: $insertData');
-        
-        // استفاده از insert ساده (چون قبلاً reactions قبلی را حذف کردیم)
-        // اگر constraint unique (message_id, user_id) مشکل ایجاد کند، از upsert استفاده می‌کنیم
-        try {
-          final insertResult = await _supabase
-              .from('message_reactions')
-              .insert(insertData)
-              .select();
-
-          logInfo('✅ Reaction جدید اضافه شد: $emoji, result: $insertResult');
-        } catch (insertError) {
-          // اگر خطای unique constraint رخ داد، از upsert استفاده کن
-          logInfo('⚠️ خطا در insert، تلاش با upsert: $insertError');
-          final upsertResult = await _supabase
-              .from('message_reactions')
-              .upsert(
-                insertData,
-                onConflict: 'message_id,user_id',
-              )
-              .select();
-          
-          logInfo('✅ Reaction با upsert اضافه شد: $emoji, result: $upsertResult');
-        }
-        return true; // reaction اضافه شد
-      }
+      final response = await _dio.post(
+        '/chat/messages/$messageId/reactions',
+        data: {'emoji': emoji},
+        options: await _authOptions(),
+      );
+      final reactions = _parseReactions(response.data);
+      return reactions.any(
+        (reaction) =>
+            reaction.userId == userId &&
+            reaction.messageId == messageId &&
+            reaction.emoji == emoji,
+      );
     } catch (e, stackTrace) {
-      logInfo('❌ خطا در toggle reaction: $e');
-      logInfo('❌ Stack trace: $stackTrace');
-      rethrow;
+      logError(
+        'Failed to toggle chat reaction',
+        error: e,
+        stackTrace: stackTrace,
+      );
+      return false;
     }
   }
 
-  /// افزودن reaction به پیام
   Future<bool> addReaction({
     required String messageId,
     required String conversationId,
     required String emoji,
-  }) async {
-    final userId = _supabase.auth.currentUser?.id;
-    if (userId == null) {
-      logInfo('❌ کاربر وارد نشده است');
-      return false;
-    }
-
-    try {
-      // چک کنیم که آیا قبلاً این reaction را داده یا نه
-      final existing = await _supabase
-          .from('message_reactions')
-          .select()
-          .eq('message_id', messageId)
-          .eq('user_id', userId)
-          .eq('emoji', emoji)
-          .maybeSingle();
-
-      if (existing != null) {
-        // اگر قبلاً داده، حذفش کن (toggle)
-        await removeReaction(
-          messageId: messageId,
-          conversationId: conversationId,
-          emoji: emoji,
-        );
-        return false;
-      }
-
-      // حذف reactions قبلی کاربر برای این پیام (یک کاربر فقط یک reaction)
-      await _supabase
-          .from('message_reactions')
-          .delete()
-          .eq('message_id', messageId)
-          .eq('user_id', userId);
-
-      // افزودن reaction جدید
-      await _supabase.from('message_reactions').insert({
-        'message_id': messageId,
-        'conversation_id': conversationId,
-        'user_id': userId,
-        'emoji': emoji,
-      });
-
-      logInfo('✅ ری‌اکشن $emoji به پیام $messageId اضافه شد');
-      return true;
-    } catch (e) {
-      logInfo('❌ خطا در افزودن ری‌اکشن: $e');
-      return false;
-    }
+  }) {
+    return toggleReaction(
+      messageId: messageId,
+      conversationId: conversationId,
+      emoji: emoji,
+    );
   }
 
-  /// حذف reaction از پیام
   Future<void> removeReaction({
     required String messageId,
     required String conversationId,
     required String emoji,
   }) async {
-    try {
-      final userId = _supabase.auth.currentUser?.id;
-      if (userId == null) return;
-
-      await _supabase
-          .from('message_reactions')
-          .delete()
-          .eq('message_id', messageId)
-          .eq('user_id', userId)
-          .eq('emoji', emoji);
-
-      logInfo('✅ ری‌اکشن $emoji از پیام $messageId حذف شد');
-    } catch (e) {
-      logInfo('❌ خطا در حذف ری‌اکشن: $e');
+    final userId = await TokenStorage.getUserId();
+    if (userId == null || userId.isEmpty || messageId.startsWith('temp_')) {
+      return;
     }
+
+    final reactions = await getMessageReactions(messageId);
+    final hasCurrentReaction = reactions.any(
+      (reaction) =>
+          reaction.userId == userId &&
+          reaction.messageId == messageId &&
+          reaction.emoji == emoji,
+    );
+    if (!hasCurrentReaction) return;
+
+    await toggleReaction(
+      messageId: messageId,
+      conversationId: conversationId,
+      emoji: emoji,
+    );
   }
 
-  /// دریافت reactions یک پیام به صورت Map<String, List<String>>
-  Future<Map<String, List<String>>> getMessageReactionsSummary(String messageId) async {
-    try {
-      final response = await _supabase
-          .from('message_reactions')
-          .select('emoji, user_id')
-          .eq('message_id', messageId);
-
-      final Map<String, List<String>> reactions = {};
-
-      for (var item in response) {
-        final emoji = item['emoji'] as String;
-        final userId = item['user_id'] as String;
-
-        reactions[emoji] ??= [];
-        reactions[emoji]!.add(userId);
-      }
-
-      return reactions;
-    } catch (e) {
-      logInfo('❌ خطا در دریافت reactions: $e');
-      return {};
+  Future<Map<String, List<String>>> getMessageReactionsSummary(
+    String messageId,
+  ) async {
+    final reactions = await getMessageReactions(messageId);
+    final grouped = <String, List<String>>{};
+    for (final reaction in reactions) {
+      grouped
+          .putIfAbsent(reaction.emoji, () => <String>[])
+          .add(reaction.userId);
     }
+    return grouped;
   }
 
-  /// دریافت تمام reactions یک پیام
   Future<List<MessageReaction>> getMessageReactions(String messageId) async {
+    if (messageId.startsWith('temp_')) return const [];
     try {
-      final response = await _supabase
-          .from('message_reactions')
-          .select()
-          .eq('message_id', messageId)
-          .order('created_at', ascending: true);
-
-      return (response as List)
-          .map((json) => MessageReaction.fromJson(json))
-          .toList();
-    } catch (e) {
-      logInfo('❌ خطا در دریافت reactions: $e');
-      return [];
+      final response = await _dio.get(
+        '/chat/messages/$messageId/reactions',
+        options: await _authOptions(),
+      );
+      return _parseReactions(response.data);
+    } catch (e, stackTrace) {
+      logError(
+        'Failed to load chat reactions',
+        error: e,
+        stackTrace: stackTrace,
+      );
+      return const [];
     }
   }
 
-  /// Stream برای تغییرات Realtime reactions یک مکالمه
-  Stream<List<MessageReaction>> watchConversationReactions(String conversationId) {
-    return _supabase
-        .from('message_reactions')
-        .stream(primaryKey: ['id'])
-        .eq('conversation_id', conversationId)
-        .map((data) => data
-            .map((json) => MessageReaction.fromJson(json))
-            .toList());
+  Stream<List<MessageReaction>> watchConversationReactions(
+    String conversationId,
+  ) {
+    SseManager.instance.start();
+    return SseManager.instance.events.where((event) {
+      if (event['type'] != 'reaction_updated') return false;
+      final data = event['data'];
+      return data is Map &&
+          data['conversation_id']?.toString() == conversationId;
+    }).map(
+      (event) => _parseReactionList((event['data'] as Map?)?['reactions']),
+    );
   }
 
-  /// شروع گوش دادن به تغییرات ری‌اکشن برای یک مکالمه
   void listenToReactions(String conversationId) {
-    // اگر قبلاً داریم گوش می‌دیم، دوباره نکن
-    if (_reactionStreams.containsKey(conversationId)) return;
-
-    final channel = _supabase.channel('reactions_$conversationId');
-
-    final subscription = channel
-        .onPostgresChanges(
-          event: PostgresChangeEvent.all,
-          schema: 'public',
-          table: 'message_reactions',
-          filter: PostgresChangeFilter(
-            type: PostgresChangeFilterType.eq,
-            column: 'conversation_id',
-            value: conversationId,
-          ),
-          callback: (payload) {
-            logInfo('🔔 تغییر ری‌اکشن دریافت شد: ${payload.eventType}');
-          },
-        )
-        .subscribe();
-
-    _reactionStreams[conversationId] = subscription as StreamSubscription;
-    logInfo('🎧 شروع گوش دادن به ری‌اکشن‌های مکالمه $conversationId');
+    if (_subscriptions.containsKey(conversationId)) return;
+    SseManager.instance.start();
+    _subscriptions[conversationId] = SseManager.instance.events.where((event) {
+      if (event['type'] != 'reaction_updated') return false;
+      final data = event['data'];
+      return data is Map &&
+          data['conversation_id']?.toString() == conversationId;
+    }).listen((_) {});
   }
 
-  /// توقف گوش دادن به تغییرات
   void stopListening(String conversationId) {
-    _reactionStreams[conversationId]?.cancel();
-    _reactionStreams.remove(conversationId);
-    logInfo('🔇 توقف گوش دادن به ری‌اکشن‌های مکالمه $conversationId');
+    unawaited(_subscriptions.remove(conversationId)?.cancel());
   }
 
-  /// پاکسازی تمام listener ها
   void dispose() {
-    for (var subscription in _reactionStreams.values) {
-      subscription.cancel();
+    for (final subscription in _subscriptions.values) {
+      unawaited(subscription.cancel());
     }
-    _reactionStreams.clear();
+    _subscriptions.clear();
+  }
+
+  Future<Options> _authOptions() async {
+    final token = await TokenStorage.getAccessToken();
+    if (token == null || token.isEmpty) {
+      throw StateError('User is not authenticated');
+    }
+    return Options(headers: {'Authorization': 'Bearer $token'});
+  }
+
+  List<MessageReaction> _parseReactions(dynamic payload) {
+    if (payload is Map) return _parseReactionList(payload['reactions']);
+    return const [];
+  }
+
+  List<MessageReaction> _parseReactionList(dynamic raw) {
+    if (raw is! List) return const [];
+    return raw
+        .whereType<Map>()
+        .map((item) => MessageReaction.fromJson(item.cast<String, dynamic>()))
+        .toList(growable: false);
   }
 }
-
-
-

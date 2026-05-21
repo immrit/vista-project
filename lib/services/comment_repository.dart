@@ -1,575 +1,358 @@
-import '../security/logging_utility.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:dio/dio.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+
+import '../features/auth/providers/auth_controller.dart';
 import '../model/CommentModel.dart';
 
+class CommentPage {
+  final List<CommentModel> comments;
+  final bool hasMore;
+
+  const CommentPage({
+    required this.comments,
+    required this.hasMore,
+  });
+}
+
 class CommentRepository {
-  final SupabaseClient _client;
+  final Map<String, String> _commentPostCache = {};
+  late final Dio _dio;
 
-  CommentRepository(this._client);
+  CommentRepository() {
+    _dio = Dio(BaseOptions(
+      baseUrl: '$_backendUrl/v1',
+      connectTimeout: const Duration(seconds: 15),
+      receiveTimeout: const Duration(seconds: 20),
+      headers: {'Content-Type': 'application/json'},
+    ));
+  }
 
-  // دریافت کامنت‌های یک پست
+  static String get _backendUrl =>
+      dotenv.env['BACKEND_URL'] ?? 'http://10.0.2.2:8080';
+
   Future<List<CommentModel>> getComments({
     required String postId,
     int page = 0,
     int limit = 20,
   }) async {
-    try {
-      final response = await _client
-          .from('comments')
-          .select('''
-            *,
-            profiles:user_id (
-              username,
-              avatar_url,
-              is_verified,
-              verification_type
-            )
-          ''')
-          .eq('post_id', postId)
-          .eq('parent_comment_id', 'null')
-          .order('created_at', ascending: false)
-          .range(page * limit, (page + 1) * limit - 1);
-
-      return (response as List)
-          .map((data) => CommentModel.fromMap(data))
-          .toList();
-    } catch (e) {
-      throw Exception('خطا در دریافت کامنت‌ها: $e');
-    }
+    final pageResult = await getCommentsWithPagination(
+      postId: postId,
+      page: page,
+      limit: limit,
+    );
+    return pageResult.comments
+        .where((comment) => comment.parentCommentId == null)
+        .toList(growable: false);
   }
 
-  // دریافت پاسخ‌های یک کامنت
   Future<List<CommentModel>> getReplies(String parentCommentId) async {
-    try {
-      // اول، دریافت همه پاسخ‌های مستقیم برای این کامنت
-      final response = await _client
-          .from('comments')
-          .select('''
-          *,
-          profiles:user_id (
-            username,
-            avatar_url,
-            is_verified,
-            verification_type
-          )
-        ''')
-          .eq('parent_comment_id', parentCommentId)
-          .order('created_at', ascending: true);
+    final postId = _commentPostCache[parentCommentId] ??
+        (await getCommentById(parentCommentId))?.postId;
+    if (postId == null || postId.isEmpty) return const [];
 
-      // تبدیل پاسخ‌ها به مدل CommentModel
-      List<CommentModel> replies =
-          (response as List).map((data) => CommentModel.fromMap(data)).toList();
-
-      // برای هر پاسخ، پاسخ‌های آن را نیز دریافت می‌کنیم (برای پاسخ‌های تو در تو)
-      for (int i = 0; i < replies.length; i++) {
-        final nestedReplies = await getReplies(replies[i].id);
-        if (nestedReplies.isNotEmpty) {
-          replies[i] = replies[i].copyWith(replies: nestedReplies);
-        }
-      }
-
-      return replies;
-    } catch (e) {
-      logInfo('Error fetching replies: $e');
-      throw Exception('خطا در دریافت پاسخ‌ها: $e');
-    }
+    final comments = await _fetchGoComments(postId: postId);
+    return comments
+        .where((comment) => comment.parentCommentId == parentCommentId)
+        .toList(growable: false);
   }
 
-  // اضافه کردن کامنت جدید
   Future<CommentModel> addComment({
     required String postId,
     required String content,
     String? parentCommentId,
   }) async {
-    try {
-      final userId = _client.auth.currentUser?.id;
-      if (userId == null) {
-        throw Exception('کاربر وارد نشده است');
-      }
-
-      final response = await _client.from('comments').insert({
+    final response = await _dio.post(
+      '/comments',
+      data: {
         'post_id': postId,
-        'user_id': userId,
-        'owner_id': userId,
         'content': content,
-        'parent_comment_id': parentCommentId,
-      }).select('''
-            *,
-            profiles:user_id (
-              username,
-              avatar_url,
-              is_verified,
-              verification_type
-            )
-          ''').single();
-
-      return CommentModel.fromMap(response);
-    } catch (e) {
-      throw Exception('خطا در ارسال کامنت: $e');
-    }
+        if (parentCommentId != null && parentCommentId.isNotEmpty)
+          'parent_comment_id': parentCommentId,
+      },
+      options: await _authOptions(),
+    );
+    return _cacheComment(CommentModel.fromMap(_asMap(response.data)));
   }
 
-  // حذف کامنت
   Future<void> deleteComment(String commentId) async {
-    try {
-      final userId = _client.auth.currentUser?.id;
-      if (userId == null) {
-        throw Exception('کاربر وارد نشده است');
-      }
-
-      await _client
-          .from('comments')
-          .delete()
-          .eq('id', commentId)
-          .eq('user_id', userId);
-    } catch (e) {
-      throw Exception('خطا در حذف کامنت: $e');
-    }
+    await _dio.delete('/comments/$commentId', options: await _authOptions());
   }
 
-  // ویرایش کامنت
   Future<CommentModel> updateComment({
     required String commentId,
     required String content,
   }) async {
-    try {
-      final userId = _client.auth.currentUser?.id;
-      if (userId == null) {
-        throw Exception('کاربر وارد نشده است');
-      }
-
-      final response = await _client
-          .from('comments')
-          .update({'content': content})
-          .eq('id', commentId)
-          .eq('user_id', userId)
-          .select('''
-            *,
-            profiles:user_id (
-              username,
-              avatar_url,
-              is_verified,
-              verification_type
-            )
-          ''')
-          .single();
-
-      return CommentModel.fromMap(response);
-    } catch (e) {
-      throw Exception('خطا در ویرایش کامنت: $e');
-    }
+    final response = await _dio.patch(
+      '/comments/$commentId',
+      data: {'content': content},
+      options: await _authOptions(),
+    );
+    return _cacheComment(CommentModel.fromMap(_asMap(response.data)));
   }
 
-  // شمارش کامنت‌های یک پست - ساده شده برای v2.9.0
+  Future<void> reportComment({
+    required String commentId,
+    required String reason,
+    String? additionalDetails,
+  }) async {
+    await _dio.post(
+      '/comments/$commentId/report',
+      data: {
+        'reason': reason,
+        if (additionalDetails != null && additionalDetails.trim().isNotEmpty)
+          'additional_details': additionalDetails.trim(),
+      },
+      options: await _authOptions(),
+    );
+  }
+
+  Future<void> addMentions({
+    required String commentId,
+    required List<String> userIds,
+  }) async {
+    final normalizedIds = userIds
+        .map((id) => id.trim())
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList(growable: false);
+
+    if (normalizedIds.isEmpty) return;
+
+    await _dio.post(
+      '/comments/$commentId/mentions',
+      data: {'user_ids': normalizedIds},
+      options: await _authOptions(),
+    );
+  }
+
   Future<int> getCommentsCount(String postId) async {
-    try {
-      final response =
-          await _client.from('comments').select('id').eq('post_id', postId);
-
-      return (response as List).length;
-    } catch (e) {
-      return 0;
-    }
+    final response = await _dio.get(
+      '/comments',
+      queryParameters: {'post_id': postId, 'count': 'true'},
+      options: await _authOptions(),
+    );
+    return (_asMap(response.data)['count'] as num?)?.toInt() ?? 0;
   }
 
-  // جستجو در کامنت‌ها
   Future<List<CommentModel>> searchComments({
     required String postId,
     required String query,
   }) async {
-    try {
-      final response = await _client
-          .from('comments')
-          .select('''
-            *,
-            profiles:user_id (
-              username,
-              avatar_url,
-              is_verified,
-              verification_type
-            )
-          ''')
-          .eq('post_id', postId)
-          .ilike('content', '%$query%')
-          .order('created_at', ascending: false);
-
-      return (response as List)
-          .map((data) => CommentModel.fromMap(data))
-          .toList();
-    } catch (e) {
-      throw Exception('خطا در جستجو: $e');
-    }
+    final normalized = query.toLowerCase();
+    final comments = await _fetchGoComments(postId: postId);
+    return comments
+        .where((comment) => comment.content.toLowerCase().contains(normalized))
+        .toList(growable: false);
   }
 
-  // دریافت کامنت‌های اخیر کاربر
   Future<List<CommentModel>> getUserRecentComments({
     required String userId,
     int limit = 10,
   }) async {
-    try {
-      final response = await _client
-          .from('comments')
-          .select('''
-            *,
-            profiles:user_id (
-              username,
-              avatar_url,
-              is_verified,
-              verification_type
-            )
-          ''')
-          .eq('user_id', userId)
-          .order('created_at', ascending: false)
-          .limit(limit);
-
-      return (response as List)
-          .map((data) => CommentModel.fromMap(data))
-          .toList();
-    } catch (e) {
-      throw Exception('خطا در دریافت کامنت‌های کاربر: $e');
-    }
+    return const [];
   }
 
-  // دریافت کامنت‌ها با pagination بهبود یافته
   Future<({List<CommentModel> comments, bool hasMore})>
       getCommentsWithPagination({
     required String postId,
     int page = 0,
     int limit = 20,
   }) async {
-    try {
-      // دریافت یک آیتم اضافی برای بررسی hasMore
-      final response = await _client
-          .from('comments')
-          .select('''
-            *,
-            profiles:user_id (
-              username,
-              avatar_url,
-              is_verified,
-              verification_type
-            )
-          ''')
-          .eq('post_id', postId)
-          .isFilter('parent_comment_id', null)
-          .order('created_at', ascending: false)
-          .range(page * limit, (page + 1) * limit); // یک آیتم اضافی
-
-      final allResults =
-          (response as List).map((data) => CommentModel.fromMap(data)).toList();
-
-      // بررسی hasMore
-      final hasMore = allResults.length > limit;
-      final comments = hasMore ? allResults.take(limit).toList() : allResults;
-
-      return (comments: comments, hasMore: hasMore);
-    } catch (e) {
-      throw Exception('خطا در دریافت کامنت‌ها: $e');
-    }
+    final result = await _fetchGoCommentsPage(
+      postId: postId,
+      limit: limit,
+      offset: page * limit,
+    );
+    return (comments: result.comments, hasMore: result.hasMore);
   }
 
-  // دریافت آخرین کامنت‌های یک پست
-  Future<List<CommentModel>> getLatestComments(String postId,
-      {int limit = 5}) async {
-    try {
-      final response = await _client
-          .from('comments')
-          .select('''
-            *,
-            profiles:user_id (
-              username,
-              avatar_url,
-              is_verified,
-              verification_type
-            )
-          ''')
-          .eq('post_id', postId)
-          .order('created_at', ascending: false)
-          .limit(limit);
-
-      return (response as List)
-          .map((data) => CommentModel.fromMap(data))
-          .toList();
-    } catch (e) {
-      throw Exception('خطا در دریافت آخرین کامنت‌ها: $e');
-    }
+  Future<List<CommentModel>> getLatestComments(
+    String postId, {
+    int limit = 5,
+  }) async {
+    final comments = await _fetchGoComments(postId: postId, limit: limit);
+    return comments.take(limit).toList(growable: false);
   }
 
-  // بررسی اینکه آیا کاربر کامنتی داده یا نه
   Future<bool> hasUserCommented({
     required String postId,
     required String userId,
   }) async {
-    try {
-      final response = await _client
-          .from('comments')
-          .select('id')
-          .eq('post_id', postId)
-          .eq('user_id', userId)
-          .limit(1);
-
-      return (response as List).isNotEmpty;
-    } catch (e) {
-      return false;
-    }
+    final comments = await _fetchGoComments(postId: postId);
+    return comments.any((comment) => comment.userId == userId);
   }
 
-  // دریافت کامنت با شناسه
   Future<CommentModel?> getCommentById(String commentId) async {
     try {
-      final response = await _client.from('comments').select('''
-            *,
-            profiles:user_id (
-              username,
-              avatar_url,
-              is_verified,
-              verification_type
-            )
-          ''').eq('id', commentId).single();
-
-      return CommentModel.fromMap(response);
-    } catch (e) {
-      return null;
+      final response = await _dio.get(
+        '/comments/$commentId',
+        options: await _authOptions(),
+      );
+      return _cacheComment(CommentModel.fromMap(_asMap(response.data)));
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404) return null;
+      rethrow;
     }
   }
 
-  // تبدیل کامنت به thread (اضافه کردن پاسخ‌ها)
   Future<List<CommentModel>> getCommentThread(String commentId) async {
-    try {
-      final response = await _client
-          .from('comments')
-          .select('''
-            *,
-            profiles:user_id (
-              username,
-              avatar_url,
-              is_verified,
-              verification_type
-            )
-          ''')
-          .or('id.eq.$commentId,parent_comment_id.eq.$commentId')
-          .order('created_at', ascending: true);
+    final comment = await getCommentById(commentId);
+    if (comment == null || comment.postId.isEmpty) return const [];
 
-      return (response as List)
-          .map((data) => CommentModel.fromMap(data))
-          .toList();
-    } catch (e) {
-      throw Exception('خطا در دریافت thread کامنت: $e');
+    final comments = await _fetchGoComments(postId: comment.postId);
+    final relatedIds = <String>{comment.id};
+    var parentId = comment.parentCommentId;
+    while (parentId != null && parentId.isNotEmpty) {
+      relatedIds.add(parentId);
+      String? nextParentId;
+      for (final item in comments) {
+        if (item.id == parentId) {
+          nextParentId = item.parentCommentId;
+          break;
+        }
+      }
+      parentId = nextParentId;
     }
+
+    var changed = true;
+    while (changed) {
+      changed = false;
+      for (final item in comments) {
+        if (item.parentCommentId != null &&
+            relatedIds.contains(item.parentCommentId) &&
+            relatedIds.add(item.id)) {
+          changed = true;
+        }
+      }
+    }
+
+    return comments
+        .where((item) => relatedIds.contains(item.id))
+        .toList(growable: false);
   }
 
   Future<List<CommentModel>> getCommentsWithReplies({
     required String postId,
     int page = 0,
-    int limit = 1000, // مقدار بزرگ برای گرفتن همه کامنت‌ها
+    int limit = 1000,
   }) async {
-    try {
-      final response = await _client.from('comments').select('''
-      *,
-      profiles:user_id (
-        username,
-        avatar_url,
-        is_verified,
-        verification_type
-      )
-    ''').eq('post_id', postId).order('created_at', ascending: false);
-
-      return (response as List)
-          .map((data) => CommentModel.fromMap(data))
-          .toList();
-    } catch (e) {
-      throw Exception('خطا در دریافت کامنت‌ها: $e');
-    }
+    return _fetchGoComments(
+      postId: postId,
+      limit: limit,
+      offset: page * limit,
+    );
   }
 
-  // دریافت کامنت‌های یک پست به همراه تعداد پاسخ‌ها
   Future<List<CommentModel>> getCommentsWithRepliesCount({
     required String postId,
     int page = 0,
     int limit = 20,
   }) async {
-    try {
-      // ابتدا کامنت‌های اصلی را دریافت کنیم
-      final mainComments = await getComments(
-        postId: postId,
-        page: page,
-        limit: limit,
-      );
-
-      // سپس برای هر کامنت، تعداد پاسخ‌ها را دریافت کنیم
-      for (int i = 0; i < mainComments.length; i++) {
-        await _getRepliesCount(mainComments[i].id);
-        // می‌توانید این اطلاعات را در مدل ذخیره کنید
-        // یا آن را به عنوان metadata نگه دارید
-      }
-
-      return mainComments;
-    } catch (e) {
-      throw Exception('خطا در دریافت کامنت‌ها همراه تعداد پاسخ: $e');
-    }
+    return getComments(postId: postId, page: page, limit: limit);
   }
 
-  // متد کمکی برای شمارش پاسخ‌ها
-  Future<int> _getRepliesCount(String commentId) async {
-    try {
-      final response = await _client
-          .from('comments')
-          .select('id')
-          .eq('parent_comment_id', commentId);
-
-      return (response as List).length;
-    } catch (e) {
-      return 0;
-    }
-  }
-
-  // دریافت کامنت‌های محبوب (اگر فیلد likes داشته باشید)
   Future<List<CommentModel>> getPopularComments({
     required String postId,
     int limit = 10,
   }) async {
-    try {
-      final response = await _client
-          .from('comments')
-          .select('''
-            *,
-            profiles:user_id (
-              username,
-              avatar_url,
-              is_verified,
-              verification_type
-            )
-          ''')
-          .eq('post_id', postId)
-          .isFilter('parent_comment_id', null)
-          // .order('likes_count', ascending: false) // اگر فیلد likes دارید
-          .order('created_at', ascending: false)
-          .limit(limit);
-
-      return (response as List)
-          .map((data) => CommentModel.fromMap(data))
-          .toList();
-    } catch (e) {
-      throw Exception('خطا در دریافت کامنت‌های محبوب: $e');
-    }
+    return getLatestComments(postId, limit: limit);
   }
 
-  // تنظیم وضعیت پین کامنت (اگر فیلد is_pinned داشته باشید)
   Future<bool> pinComment(String commentId, bool isPinned) async {
-    try {
-      final userId = _client.auth.currentUser?.id;
-      if (userId == null) {
-        throw Exception('کاربر وارد نشده است');
-      }
-
-      await _client
-          .from('comments')
-          .update({'is_pinned': isPinned}).eq('id', commentId);
-
-      return true;
-    } catch (e) {
-      return false;
-    }
+    return false;
   }
 
-  // دریافت کامنت‌های پین شده
   Future<List<CommentModel>> getPinnedComments(String postId) async {
-    try {
-      final response = await _client
-          .from('comments')
-          .select('''
-            *,
-            profiles:user_id (
-              username,
-              avatar_url,
-              is_verified,
-              verification_type
-            )
-          ''')
-          .eq('post_id', postId)
-          .eq('is_pinned', true)
-          .order('created_at', ascending: false);
-
-      return (response as List)
-          .map((data) => CommentModel.fromMap(data))
-          .toList();
-    } catch (e) {
-      throw Exception('خطا در دریافت کامنت‌های پین شده: $e');
-    }
+    return const [];
   }
 
-  // دریافت کامنت‌های تو در تو
   Future<List<CommentModel>> getNestedComments(String postId) async {
-    try {
-      final response = await _client
-          .from('comments')
-          .select('''
-            *,
-            profiles:user_id (
-              username,
-              avatar_url,
-              is_verified,
-              verification_type
-            )
-          ''')
-          .eq('post_id', postId)
-          .neq('parent_comment_id', 'null')
-          .order('created_at', ascending: true);
-
-      return (response as List)
-          .map((data) => CommentModel.fromMap(data))
-          .toList();
-    } catch (e) {
-      throw Exception('خطا در دریافت کامنت‌های تو در تو: $e');
-    }
+    final comments = await _fetchGoComments(postId: postId);
+    return comments
+        .where((comment) => comment.parentCommentId != null)
+        .toList(growable: false);
   }
 
-  // دریافت کامنت‌ها بر اساس بازه زمانی
   Future<List<CommentModel>> getCommentsByDateRange({
     required String postId,
     required DateTime startDate,
     required DateTime endDate,
   }) async {
-    try {
-      final response = await _client
-          .from('comments')
-          .select('''
-            *,
-            profiles:user_id (
-              username,
-              avatar_url,
-              is_verified,
-              verification_type
-            )
-          ''')
-          .eq('post_id', postId)
-          .gte('created_at', startDate.toIso8601String())
-          .lte('created_at', endDate.toIso8601String())
-          .order('created_at', ascending: true);
-
-      return (response as List)
-          .map((data) => CommentModel.fromMap(data))
-          .toList();
-    } catch (e) {
-      throw Exception('خطا در دریافت کامنت‌ها بر اساس بازه زمانی: $e');
-    }
+    final comments = await _fetchGoComments(postId: postId);
+    return comments.where((comment) {
+      return !comment.createdAt.isBefore(startDate) &&
+          !comment.createdAt.isAfter(endDate);
+    }).toList(growable: false);
   }
 
   Future<CommentModel?> getCurrentUserProfile() async {
-    try {
-      final userId = _client.auth.currentUser?.id;
-      if (userId == null) return null;
+    return null;
+  }
 
-      final response = await _client
-          .from('profiles')
-          .select('*, verification_type, is_verified')
-          .eq('id', userId)
-          .single();
+  Future<List<CommentModel>> _fetchGoComments({
+    required String postId,
+    int limit = 1000,
+    int offset = 0,
+  }) async {
+    final page = await _fetchGoCommentsPage(
+      postId: postId,
+      limit: limit,
+      offset: offset,
+    );
+    return page.comments;
+  }
 
-      return CommentModel.fromMap(response);
-    } catch (e) {
-      logInfo('Error getting current user profile: $e');
-      return null;
+  Future<CommentPage> _fetchGoCommentsPage({
+    required String postId,
+    int limit = 1000,
+    int offset = 0,
+  }) async {
+    final response = await _dio.get(
+      '/comments',
+      queryParameters: {
+        'post_id': postId,
+        'limit': limit,
+        'offset': offset,
+      },
+      options: await _authOptions(),
+    );
+    final data = _asMap(response.data);
+    final rawComments = data['comments'];
+    if (rawComments is! List) {
+      return const CommentPage(comments: [], hasMore: false);
     }
+
+    final comments = rawComments
+        .whereType<Map>()
+        .map((item) => _cacheComment(
+              CommentModel.fromMap(item.cast<String, dynamic>()),
+            ))
+        .toList(growable: false);
+
+    return CommentPage(
+      comments: comments,
+      hasMore: data['has_more'] as bool? ?? false,
+    );
+  }
+
+  CommentModel _cacheComment(CommentModel comment) {
+    if (comment.id.isNotEmpty && comment.postId.isNotEmpty) {
+      _commentPostCache[comment.id] = comment.postId;
+    }
+    return comment;
+  }
+
+  Future<Options> _authOptions() async {
+    final token = await TokenStorage.getAccessToken();
+    if (token == null || token.isEmpty) {
+      throw StateError('User is not authenticated');
+    }
+    return Options(headers: {'Authorization': 'Bearer $token'});
+  }
+
+  Map<String, dynamic> _asMap(dynamic data) {
+    if (data is Map<String, dynamic>) return data;
+    if (data is Map) return data.cast<String, dynamic>();
+    return <String, dynamic>{};
   }
 }

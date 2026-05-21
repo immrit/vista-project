@@ -2,7 +2,6 @@ import '../security/logging_utility.dart';
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:http/http.dart' as http;
 
 /// انواع خطاهای سیستم
@@ -30,35 +29,28 @@ class ImprovedErrorHandler {
       return ErrorType.network;
     }
 
-    if (error is AuthException) {
+    final text = error.toString().toLowerCase();
+    if (text.contains('401') || text.contains('unauthorized')) {
       return ErrorType.authentication;
     }
-
-    if (error is PostgrestException) {
-      final code = error.code;
-      if (code == '42501' || code == '42P01') {
-        return ErrorType.permission;
-      }
-      if (code == '23505') {
-        return ErrorType.clientError; // Duplicate key
-      }
-      if (code == 'PGRST116') {
-        return ErrorType.clientError; // No rows returned - پیام وجود ندارد
-      }
-      if (code?.startsWith('5') == true) {
-        return ErrorType.serverError;
-      }
-      return ErrorType.clientError;
+    if (text.contains('403') || text.contains('forbidden')) {
+      return ErrorType.permission;
     }
-
-    // خطاهای real-time
-    if (error is RealtimeSubscribeException) {
-      if (error.status == RealtimeSubscribeStatus.timedOut) {
-        return ErrorType.network;
-      }
+    if (text.contains('429') || text.contains('rate limit')) {
+      return ErrorType.rateLimit;
+    }
+    if (text.contains('500') ||
+        text.contains('502') ||
+        text.contains('503') ||
+        text.contains('internal server')) {
       return ErrorType.serverError;
     }
-
+    if (text.contains('400') ||
+        text.contains('404') ||
+        text.contains('409') ||
+        text.contains('invalid')) {
+      return ErrorType.clientError;
+    }
     if (error.toString().contains('rate limit')) {
       return ErrorType.rateLimit;
     }

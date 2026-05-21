@@ -1,8 +1,11 @@
-﻿import '../security/logging_utility.dart';
+import '../security/logging_utility.dart';
 import 'dart:async';
 import 'dart:convert';
+import 'package:dio/dio.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../utils/const.dart';
+import '../features/auth/providers/auth_controller.dart';
+import '../features/profile/data/profile_repository.dart';
 
 /// سرویس کش برای تنظیمات کاربر
 /// این سرویس تمام تنظیمات کاربر را کش می‌کند تا در حالت آفلاین نیز قابل دسترسی باشد
@@ -28,6 +31,14 @@ class SettingsCacheService {
   final Map<String, dynamic> _privacySettingsCache = {};
   final Map<String, dynamic> _notificationSettingsCache = {};
   final Map<String, DateTime> _lastFetch = {};
+  late final Dio _dio = Dio(
+    BaseOptions(
+      baseUrl: '${dotenv.env['BACKEND_URL'] ?? 'http://10.0.2.2:8080'}/v1',
+      connectTimeout: const Duration(seconds: 15),
+      receiveTimeout: const Duration(seconds: 15),
+      headers: {'Content-Type': 'application/json'},
+    ),
+  );
 
   /// مقداردهی اولیه سرویس کش
   Future<void> initialize() async {
@@ -118,21 +129,89 @@ class SettingsCacheService {
     return now.difference(lastFetch) < cacheValidityDuration;
   }
 
+  Future<Options> _authOptions() async {
+    final token = await TokenStorage.getAccessToken();
+    if (token == null || token.isEmpty) {
+      throw StateError('User is not authenticated');
+    }
+    return Options(headers: {'Authorization': 'Bearer $token'});
+  }
+
+  Map<String, dynamic> _asMap(dynamic data) {
+    if (data is Map<String, dynamic>) return data;
+    if (data is Map) {
+      return data.map((key, value) => MapEntry(key.toString(), value));
+    }
+    return <String, dynamic>{};
+  }
+
+  Map<String, dynamic> _defaultUserSettings() => {
+        'is_private': false,
+        'allow_profile_zoom': true,
+        'show_online_status': true,
+        'allow_message_requests': true,
+        'allow_follow_requests': true,
+      };
+
+  Map<String, dynamic> _defaultPrivacySettings() => {
+        'is_private': false,
+        'show_online_status': true,
+        'allow_message_requests': true,
+        'allow_follow_requests': true,
+        'show_last_seen': true,
+        'allow_profile_views': true,
+        'group_add_privacy': 'everyone',
+        'blocked_users': <String>[],
+        'restricted_users': <String>[],
+      };
+
+  Map<String, dynamic> _defaultNotificationSettings() => {
+        'push_notifications': true,
+        'message_notifications': true,
+        'like_notifications': true,
+        'comment_notifications': true,
+        'follow_notifications': true,
+        'mention_notifications': true,
+        'story_notifications': true,
+        'sound_enabled': true,
+        'vibration_enabled': true,
+        'quiet_hours_enabled': false,
+        'quiet_hours_start': '22:00',
+        'quiet_hours_end': '08:00',
+      };
+
   /// کش کردن تنظیمات کاربر
   Future<void> cacheUserSettings(String userId) async {
     try {
-      final response = await supabase
-          .from('user_settings')
-          .select('*')
-          .eq('user_id', userId)
-          .maybeSingle();
-
-      if (response != null) {
-        _userSettingsCache[userId] = response;
-        _lastFetch['user_settings'] = DateTime.now();
+      final currentUserId = await TokenStorage.getUserId();
+      if (currentUserId != userId) {
+        final settings = _defaultUserSettings();
+        try {
+          final profile = await ProfileRepository().fetchProfileById(userId);
+          settings['is_private'] = profile['is_private'] as bool? ?? false;
+          settings['allow_profile_zoom'] =
+              profile['allow_profile_zoom'] as bool? ?? true;
+        } catch (_) {
+          // Public profile settings can still fall back to safe defaults.
+        }
+        _userSettingsCache[userId] = settings;
+        _lastFetch['user_settings:$userId'] = DateTime.now();
         await _saveToDisk();
-        logInfo('✅ Cached user settings for user: $userId');
+        logInfo('✅ Cached public user settings for user: $userId');
+        return;
       }
+
+      final response = await _dio.get(
+        '/me/settings',
+        options: await _authOptions(),
+      );
+      _userSettingsCache[userId] = {
+        ..._defaultUserSettings(),
+        ..._asMap(response.data),
+      };
+      _lastFetch['user_settings:$userId'] = DateTime.now();
+      await _saveToDisk();
+      logInfo('✅ Cached user settings for user: $userId');
     } catch (e) {
       logInfo('❌ Failed to cache user settings for user $userId: $e');
     }
@@ -178,34 +257,17 @@ class SettingsCacheService {
   /// کش کردن تنظیمات حریم خصوصی
   Future<void> cachePrivacySettings(String userId) async {
     try {
-      final response = await supabase
-          .from('privacy_settings')
-          .select('*')
-          .eq('user_id', userId)
-          .maybeSingle();
-
-      if (response != null) {
-        _privacySettingsCache[userId] = response;
-        _lastFetch['privacy_settings'] = DateTime.now();
-        await _saveToDisk();
-        logInfo('✅ Cached privacy settings for user: $userId');
-      } else {
-        // تنظیمات پیش‌فرض حریم خصوصی
-        final defaultPrivacySettings = {
-          'is_private': false,
-          'show_online_status': true,
-          'allow_message_requests': true,
-          'allow_follow_requests': true,
-          'show_last_seen': true,
-          'allow_profile_views': true,
-          'group_add_privacy': 'everyone',
-          'blocked_users': [],
-          'restricted_users': [],
-        };
-        _privacySettingsCache[userId] = defaultPrivacySettings;
-        _lastFetch['privacy_settings'] = DateTime.now();
-        await _saveToDisk();
-      }
+      final response = await _dio.get(
+        '/me/privacy',
+        options: await _authOptions(),
+      );
+      _privacySettingsCache[userId] = {
+        ..._defaultPrivacySettings(),
+        ..._asMap(response.data),
+      };
+      _lastFetch['privacy_settings:$userId'] = DateTime.now();
+      await _saveToDisk();
+      logInfo('✅ Cached privacy settings for user: $userId');
     } catch (e) {
       logInfo('❌ Failed to cache privacy settings for user $userId: $e');
     }
@@ -214,37 +276,17 @@ class SettingsCacheService {
   /// کش کردن تنظیمات اعلان‌ها
   Future<void> cacheNotificationSettings(String userId) async {
     try {
-      final response = await supabase
-          .from('notification_settings')
-          .select('*')
-          .eq('user_id', userId)
-          .maybeSingle();
-
-      if (response != null) {
-        _notificationSettingsCache[userId] = response;
-        _lastFetch['notification_settings'] = DateTime.now();
-        await _saveToDisk();
-        logInfo('✅ Cached notification settings for user: $userId');
-      } else {
-        // تنظیمات پیش‌فرض اعلان‌ها
-        final defaultNotificationSettings = {
-          'push_notifications': true,
-          'message_notifications': true,
-          'like_notifications': true,
-          'comment_notifications': true,
-          'follow_notifications': true,
-          'mention_notifications': true,
-          'story_notifications': true,
-          'sound_enabled': true,
-          'vibration_enabled': true,
-          'quiet_hours_enabled': false,
-          'quiet_hours_start': '22:00',
-          'quiet_hours_end': '08:00',
-        };
-        _notificationSettingsCache[userId] = defaultNotificationSettings;
-        _lastFetch['notification_settings'] = DateTime.now();
-        await _saveToDisk();
-      }
+      final response = await _dio.get(
+        '/me/notification-settings',
+        options: await _authOptions(),
+      );
+      _notificationSettingsCache[userId] = {
+        ..._defaultNotificationSettings(),
+        ..._asMap(response.data),
+      };
+      _lastFetch['notification_settings:$userId'] = DateTime.now();
+      await _saveToDisk();
+      logInfo('✅ Cached notification settings for user: $userId');
     } catch (e) {
       logInfo('❌ Failed to cache notification settings for user $userId: $e');
     }
@@ -273,7 +315,7 @@ class SettingsCacheService {
   /// دریافت تنظیمات کاربر (اول از کش، سپس از سرور)
   Future<Map<String, dynamic>?> getUserSettings(String userId) async {
     // بررسی کش
-    if (_isCacheValid('user_settings')) {
+    if (_isCacheValid('user_settings:$userId')) {
       final cachedSettings = getCachedUserSettings(userId);
       if (cachedSettings != null) {
         logInfo('📱 Using cached user settings for user: $userId');
@@ -307,7 +349,7 @@ class SettingsCacheService {
   /// دریافت تنظیمات حریم خصوصی (اول از کش، سپس از سرور)
   Future<Map<String, dynamic>?> getPrivacySettings(String userId) async {
     // بررسی کش
-    if (_isCacheValid('privacy_settings')) {
+    if (_isCacheValid('privacy_settings:$userId')) {
       final cachedSettings = getCachedPrivacySettings(userId);
       if (cachedSettings != null) {
         logInfo('📱 Using cached privacy settings for user: $userId');
@@ -324,7 +366,7 @@ class SettingsCacheService {
   /// دریافت تنظیمات اعلان‌ها (اول از کش، سپس از سرور)
   Future<Map<String, dynamic>?> getNotificationSettings(String userId) async {
     // بررسی کش
-    if (_isCacheValid('notification_settings')) {
+    if (_isCacheValid('notification_settings:$userId')) {
       final cachedSettings = getCachedNotificationSettings(userId);
       if (cachedSettings != null) {
         logInfo('📱 Using cached notification settings for user: $userId');
@@ -342,8 +384,22 @@ class SettingsCacheService {
   Future<void> updateUserSettings(
       String userId, Map<String, dynamic> settings) async {
     _userSettingsCache[userId] = settings;
-    _lastFetch['user_settings'] = DateTime.now();
+    _lastFetch['user_settings:$userId'] = DateTime.now();
     await _saveToDisk();
+    try {
+      final currentUserId = await TokenStorage.getUserId();
+      if (currentUserId != userId) {
+        logInfo('⚠️ Skipped syncing settings for non-current user: $userId');
+        return;
+      }
+      await _dio.post(
+        '/me/settings',
+        data: settings,
+        options: await _authOptions(),
+      );
+    } catch (e) {
+      logInfo('⚠️ Failed syncing user settings to Go backend: $e');
+    }
     logInfo('✅ Updated cached user settings for user: $userId');
   }
 
@@ -359,8 +415,17 @@ class SettingsCacheService {
   Future<void> updatePrivacySettings(
       String userId, Map<String, dynamic> settings) async {
     _privacySettingsCache[userId] = settings;
-    _lastFetch['privacy_settings'] = DateTime.now();
+    _lastFetch['privacy_settings:$userId'] = DateTime.now();
     await _saveToDisk();
+    try {
+      await _dio.post(
+        '/me/privacy',
+        data: settings,
+        options: await _authOptions(),
+      );
+    } catch (e) {
+      logInfo('⚠️ Failed syncing privacy settings to Go backend: $e');
+    }
     logInfo('✅ Updated cached privacy settings for user: $userId');
   }
 
@@ -368,8 +433,17 @@ class SettingsCacheService {
   Future<void> updateNotificationSettings(
       String userId, Map<String, dynamic> settings) async {
     _notificationSettingsCache[userId] = settings;
-    _lastFetch['notification_settings'] = DateTime.now();
+    _lastFetch['notification_settings:$userId'] = DateTime.now();
     await _saveToDisk();
+    try {
+      await _dio.post(
+        '/me/notification-settings',
+        data: settings,
+        options: await _authOptions(),
+      );
+    } catch (e) {
+      logInfo('⚠️ Failed syncing notification settings to Go backend: $e');
+    }
     logInfo('✅ Updated cached notification settings for user: $userId');
   }
 

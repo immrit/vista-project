@@ -1,50 +1,50 @@
-import '../security/logging_utility.dart';
 import 'dart:io';
+
+import 'package:dio/dio.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:path/path.dart';
-import '../utils/const.dart';
-import '/model/MusicModel.dart';
+
+import '../features/auth/data/auth_repository.dart';
+import '../features/auth/providers/auth_controller.dart';
+import '../model/MusicModel.dart';
+import 'backend_upload_service.dart';
 
 class MusicService {
-  static const _bucketName = 'music-files';
-  static const _coverBucketName = 'music-covers';
+  late final Dio _dio = Dio(BaseOptions(
+    baseUrl: '${dotenv.env['BACKEND_URL'] ?? 'http://10.0.2.2:8080'}/v1',
+    connectTimeout: const Duration(seconds: 15),
+    receiveTimeout: const Duration(seconds: 15),
+    headers: {'Content-Type': 'application/json'},
+  ));
 
-  // آپلود فایل موزیک
   Future<String> uploadMusic(File file) async {
-    try {
-      final String fileName =
-          '${DateTime.now().millisecondsSinceEpoch}_${basename(file.path)}';
-      await supabase.storage.from(_bucketName).upload('public/$fileName', file);
+    final userId = await _currentUserId();
+    final extension = extensionFromPath(file.path);
+    final fileName =
+        'music/$userId/${DateTime.now().millisecondsSinceEpoch}_${basename(file.path)}';
 
-      final String musicUrl =
-          supabase.storage.from(_bucketName).getPublicUrl('public/$fileName');
-
-      return musicUrl;
-    } catch (e) {
-      throw Exception('خطا در آپلود موزیک: $e');
-    }
+    final upload = await BackendUploadService.uploadFile(
+      file: file,
+      objectKey: fileName,
+      contentType: _audioContentType(extension),
+    );
+    return upload.url;
   }
 
-  // آپلود کاور موزیک
   Future<String?> uploadCover(File file) async {
-    try {
-      final String fileName =
-          '${DateTime.now().millisecondsSinceEpoch}_${basename(file.path)}';
-      await supabase.storage
-          .from(_coverBucketName)
-          .upload('public/$fileName', file);
+    final userId = await _currentUserId();
+    final extension = extensionFromPath(file.path);
+    final fileName =
+        'music/$userId/covers/${DateTime.now().millisecondsSinceEpoch}_${basename(file.path)}';
 
-      final String coverUrl = supabase.storage
-          .from(_coverBucketName)
-          .getPublicUrl('public/$fileName');
-
-      return coverUrl;
-    } catch (e) {
-      logInfo('خطا در آپلود کاور: $e');
-      return null;
-    }
+    final upload = await BackendUploadService.uploadFile(
+      file: file,
+      objectKey: fileName,
+      contentType: _imageContentType(extension),
+    );
+    return upload.url;
   }
 
-  // انتشار موزیک جدید
   Future<MusicModel> publishMusic({
     required String title,
     required String artist,
@@ -52,56 +52,88 @@ class MusicService {
     String? coverUrl,
     required List<String> genres,
   }) async {
-    try {
-      final userId = supabase.auth.currentUser!.id;
-
-      final response = await supabase
-          .from('music')
-          .insert({
-            'user_id': userId,
-            'title': title,
-            'artist': artist,
-            'music_url': musicUrl,
-            'cover_url': coverUrl,
-            'genres': genres,
-            'created_at': DateTime.now().toIso8601String(),
-          })
-          .select('*, profiles(*)')
-          .single();
-
-      return MusicModel.fromMap(response);
-    } catch (e) {
-      throw Exception('خطا در انتشار موزیک: $e');
-    }
+    final response = await _dio.post(
+      '/music',
+      data: {
+        'title': title,
+        'artist': artist,
+        'music_url': musicUrl,
+        if (coverUrl != null && coverUrl.isNotEmpty) 'cover_url': coverUrl,
+        'genres': genres,
+      },
+      options: await _authOptions(),
+    );
+    return MusicModel.fromMap(Map<String, dynamic>.from(response.data as Map));
   }
 
-  // دریافت لیست موزیک‌ها
   Future<List<MusicModel>> fetchMusics({int limit = 20, int offset = 0}) async {
-    try {
-      final response = await supabase
-          .from('music')
-          .select('*, profiles(*)')
-          .order('created_at', ascending: false)
-          .range(offset, offset + limit - 1);
+    final response = await _dio.get(
+      '/music',
+      queryParameters: {'limit': limit, 'offset': offset},
+    );
+    final data = Map<String, dynamic>.from(response.data as Map);
+    final rows = data['music'] as List? ?? const [];
+    return rows
+        .map((item) =>
+            MusicModel.fromMap(Map<String, dynamic>.from(item as Map)))
+        .toList(growable: false);
+  }
 
-      return (response as List)
-          .map((data) => MusicModel.fromMap(data))
-          .toList();
-    } catch (e) {
-      throw Exception('خطا در دریافت موزیک‌ها: $e');
+  Future<void> incrementPlayCount(String musicId) async {
+    if (musicId.isEmpty) return;
+    await _dio.post('/music/$musicId/play', options: await _authOptions());
+  }
+
+  Future<Options> _authOptions() async {
+    final token = await TokenStorage.getAccessToken();
+    if (token == null || token.isEmpty) {
+      throw Exception('User not authenticated');
+    }
+    return Options(headers: {'Authorization': 'Bearer $token'});
+  }
+
+  Future<String> _currentUserId() async {
+    final storedUserId = await TokenStorage.getUserId();
+    if (storedUserId != null && storedUserId.isNotEmpty) {
+      return storedUserId;
+    }
+
+    final accessToken = await TokenStorage.getAccessToken();
+    if (accessToken == null || accessToken.isEmpty) {
+      throw Exception('User not authenticated');
+    }
+
+    final user = await AuthRepository().me(accessToken);
+    await TokenStorage.saveUserId(user.id);
+    return user.id;
+  }
+
+  String extensionFromPath(String filePath) =>
+      extension(filePath).toLowerCase();
+
+  String _audioContentType(String extension) {
+    switch (extension) {
+      case '.m4a':
+        return 'audio/mp4';
+      case '.aac':
+        return 'audio/aac';
+      case '.wav':
+        return 'audio/wav';
+      case '.ogg':
+        return 'audio/ogg';
+      default:
+        return 'audio/mpeg';
     }
   }
 
-  // افزایش تعداد پخش
-  Future<void> incrementPlayCount(String musicId) async {
-    try {
-      // تغییر از rpc به update مستقیم
-      await supabase
-          .from('music')
-          .update({'play_count': supabase.rpc('increment')}).eq('id', musicId);
-    } catch (e) {
-      logInfo('خطا در افزایش تعداد پخش: $e');
-      // عدم throw خطا برای جلوگیری از توقف پخش موزیک
+  String _imageContentType(String extension) {
+    switch (extension) {
+      case '.png':
+        return 'image/png';
+      case '.webp':
+        return 'image/webp';
+      default:
+        return 'image/jpeg';
     }
   }
 }

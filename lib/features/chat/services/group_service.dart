@@ -1,115 +1,89 @@
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:dio/dio.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
-import '../models/group_user_item.dart';
+import '../../auth/providers/auth_controller.dart';
 import '../models/group_member_item.dart';
-import '../../../security/logging_utility.dart';
+import '../models/group_user_item.dart';
 
 class GroupService {
-  final SupabaseClient _supabase = Supabase.instance.client;
+  late final Dio _dio;
 
-  String? get _currentUserId => _supabase.auth.currentUser?.id;
+  static String get _backendUrl =>
+      dotenv.env['BACKEND_URL'] ?? 'http://10.0.2.2:8080';
 
-  Map<String, dynamic>? _extractProfile(dynamic profileRaw) {
-    if (profileRaw is Map<String, dynamic>) {
-      return profileRaw;
+  GroupService() {
+    _dio = Dio(
+      BaseOptions(
+        baseUrl: '$_backendUrl/v1',
+        connectTimeout: const Duration(seconds: 10),
+        receiveTimeout: const Duration(seconds: 20),
+        headers: {'Content-Type': 'application/json'},
+      ),
+    );
+  }
+
+  Future<Options> _authOptions() async {
+    final token = await TokenStorage.getAccessToken();
+    if (token == null || token.isEmpty) {
+      throw StateError('User not authenticated');
     }
-    if (profileRaw is List && profileRaw.isNotEmpty) {
-      final first = profileRaw.first;
-      if (first is Map<String, dynamic>) {
-        return first;
-      }
-    }
-    return null;
+    return Options(headers: {'Authorization': 'Bearer $token'});
   }
 
   Future<List<GroupUserItem>> getInteractionUsers({int limit = 100}) async {
-    final userId = _currentUserId;
-    if (userId == null) return [];
+    final response = await _dio.get(
+      '/chat/conversations',
+      queryParameters: {'limit': limit},
+      options: await _authOptions(),
+    );
+    final conversations = _asList(_asMap(response.data)['conversations']);
+    final userIds = conversations
+        .whereType<Map>()
+        .map((row) => row['peer_id']?.toString() ?? '')
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList(growable: false);
+    final profiles = await _loadProfiles(userIds);
 
-    final conversations = await _supabase
-        .from('conversations')
-        .select(
-            'id, type, last_message_time, conversation_participants(user_id, profiles!user_id(username, full_name, avatar_url))')
-        .eq('type', 'private')
-        .order('last_message_time', ascending: false)
-        .limit(limit);
-
-    final convIds = <String>[];
-    final items = <GroupUserItem>[];
-
-    for (final raw in conversations as List) {
-      final convId = raw['id'] as String?;
-      final participants = (raw['conversation_participants'] as List?) ?? [];
-      final other = participants.firstWhere(
-        (p) => p['user_id'] != userId,
-        orElse: () => null,
-      );
-      if (convId == null || other == null) continue;
-      convIds.add(convId);
-      final profile = _extractProfile(other['profiles']);
-      items.add(
-        GroupUserItem(
-          id: other['user_id'] as String,
-          username: profile?['username'] as String? ?? '',
-          fullName: profile?['full_name'] as String?,
-          avatarUrl: profile?['avatar_url'] as String?,
-          messageCount: 0,
-          conversationId: convId,
-        ),
-      );
-    }
-
-    if (convIds.isNotEmpty) {
-      final stats = await _supabase
-          .from('chat_statistics')
-          .select('conversation_id, total_messages')
-          .inFilter('conversation_id', convIds);
-      final counts = <String, int>{};
-      for (final row in stats as List) {
-        final id = row['conversation_id'] as String?;
-        if (id == null) continue;
-        counts[id] = row['total_messages'] as int? ?? 0;
-      }
-
-      final updated = items
-          .map((item) => GroupUserItem(
-                id: item.id,
-                username: item.username,
-                fullName: item.fullName,
-                avatarUrl: item.avatarUrl,
-                messageCount: counts[item.conversationId] ?? 0,
-                conversationId: item.conversationId,
-              ))
-          .toList();
-      updated.sort((a, b) => b.messageCount.compareTo(a.messageCount));
-      return updated;
-    }
-
-    return items;
+    return conversations
+        .whereType<Map>()
+        .where((row) => row['conversation_type']?.toString() == 'direct')
+        .map((row) {
+          final peerId = row['peer_id']?.toString() ?? '';
+          final profile = profiles[peerId] ?? const <String, dynamic>{};
+          return GroupUserItem(
+            id: peerId,
+            username: profile['username']?.toString() ?? '',
+            fullName: profile['full_name']?.toString(),
+            avatarUrl: profile['avatar_url']?.toString(),
+            conversationId: row['id']?.toString(),
+          );
+        })
+        .where((item) => item.id.isNotEmpty)
+        .toList(growable: false);
   }
 
   Future<List<GroupUserItem>> searchUsers(String query,
       {int limit = 50}) async {
-    final userId = _currentUserId;
-    if (userId == null) return [];
     final q = query.trim();
     if (q.isEmpty) return [];
-
-    final response = await _supabase
-        .from('profiles')
-        .select('id, username, full_name, avatar_url')
-        .or('username.ilike.%$q%,full_name.ilike.%$q%')
-        .limit(limit);
-
-    return (response as List)
-        .where((row) => row['id'] != userId)
-        .map((row) => GroupUserItem(
-              id: row['id'] as String,
-              username: row['username'] as String? ?? '',
-              fullName: row['full_name'] as String?,
-              avatarUrl: row['avatar_url'] as String?,
-            ))
-        .toList();
+    final response = await _dio.get(
+      '/profiles/search',
+      queryParameters: {'q': q, 'limit': limit},
+      options: await _authOptions(),
+    );
+    final profiles = _asList(_asMap(response.data)['profiles']);
+    final currentUserId = await TokenStorage.getUserId();
+    return profiles.whereType<Map>().map((row) {
+      return GroupUserItem(
+        id: row['user_id']?.toString() ?? '',
+        username: row['username']?.toString() ?? '',
+        fullName: row['full_name']?.toString(),
+        avatarUrl: row['avatar_url']?.toString(),
+      );
+    }).where((item) {
+      return item.id.isNotEmpty && item.id != currentUserId;
+    }).toList(growable: false);
   }
 
   Future<String> createGroup({
@@ -117,81 +91,74 @@ class GroupService {
     required List<String> memberIds,
     String? imageUrl,
   }) async {
-    try {
-      final result = await _supabase.rpc(
-        'create_group_conversation',
-        params: {
-          'group_name': name,
-          'member_ids': memberIds,
-          'group_image': imageUrl,
-        },
-      );
-      return result.toString();
-    } catch (e, stack) {
-      logError('Create group RPC failed', error: e, stackTrace: stack);
-      rethrow;
-    }
+    final response = await _dio.post(
+      '/chat/groups',
+      data: {
+        'name': name,
+        'member_ids': memberIds,
+        if (imageUrl != null) 'image_url': imageUrl,
+      },
+      options: await _authOptions(),
+    );
+    return _asMap(response.data)['id']?.toString() ?? '';
   }
 
   Future<Map<String, dynamic>?> fetchGroupInfo(String conversationId) async {
-    final response = await _supabase
-        .from('conversations')
-        .select(
-            'id, name, image, invite_code, invite_enabled, created_by, max_members, type')
-        .eq('id', conversationId)
-        .maybeSingle();
-    return response;
+    final response = await _dio.get(
+      '/chat/groups/$conversationId',
+      options: await _authOptions(),
+    );
+    return _asMap(response.data);
   }
 
   Future<List<GroupMemberItem>> fetchGroupMembers(String conversationId) async {
-    final response = await _supabase
-        .from('conversation_participants')
-        .select(
-            'user_id, is_admin, created_at, profiles!user_id(username, full_name, avatar_url)')
-        .eq('conversation_id', conversationId)
-        .order('created_at', ascending: true);
-
-    return (response as List).map((row) {
-      final profile = _extractProfile(row['profiles']);
-
+    final response = await _dio.get(
+      '/chat/groups/$conversationId/members',
+      options: await _authOptions(),
+    );
+    final rows = _asList(_asMap(response.data)['members']);
+    final userIds = rows
+        .whereType<Map>()
+        .map((row) => row['user_id']?.toString() ?? '')
+        .where((id) => id.isNotEmpty)
+        .toList(growable: false);
+    final profiles = await _loadProfiles(userIds);
+    return rows.whereType<Map>().map((row) {
+      final userId = row['user_id']?.toString() ?? '';
+      final profile = profiles[userId] ?? const <String, dynamic>{};
       return GroupMemberItem(
-        userId: row['user_id'] as String,
-        username: profile?['username'] as String? ?? '',
-        fullName: profile?['full_name'] as String?,
-        avatarUrl: profile?['avatar_url'] as String?,
-        isAdmin: row['is_admin'] as bool? ?? false,
-        joinedAt: row['created_at'] != null
-            ? DateTime.tryParse(row['created_at'].toString())
-            : null,
+        userId: userId,
+        username: profile['username']?.toString() ?? '',
+        fullName: profile['full_name']?.toString(),
+        avatarUrl: profile['avatar_url']?.toString(),
+        isAdmin: row['is_admin'] == true,
+        joinedAt: DateTime.tryParse(row['joined_at']?.toString() ?? ''),
       );
-    }).toList();
+    }).where((item) {
+      return item.userId.isNotEmpty;
+    }).toList(growable: false);
   }
 
   Future<int> addMembers(String conversationId, List<String> memberIds) async {
-    final result = await _supabase.rpc(
-      'add_group_members',
-      params: {
-        'conversation_id': conversationId,
-        'member_ids': memberIds,
-      },
+    final response = await _dio.post(
+      '/chat/groups/$conversationId/members',
+      data: {'member_ids': memberIds},
+      options: await _authOptions(),
     );
-    return int.tryParse(result.toString()) ?? 0;
+    return (_asMap(response.data)['added'] as num?)?.toInt() ?? 0;
   }
 
   Future<void> removeMember(String conversationId, String memberId) async {
-    await _supabase.rpc(
-      'remove_group_member',
-      params: {
-        'conversation_id': conversationId,
-        'member_id': memberId,
-      },
+    await _dio.delete(
+      '/chat/groups/$conversationId/members/$memberId',
+      options: await _authOptions(),
     );
   }
 
   Future<void> leaveGroup(String conversationId) async {
-    await _supabase.rpc(
-      'leave_group',
-      params: {'conversation_id': conversationId},
+    await _dio.post(
+      '/chat/groups/$conversationId/leave',
+      options: await _authOptions(),
     );
   }
 
@@ -200,13 +167,10 @@ class GroupService {
     String memberId, {
     required bool makeAdmin,
   }) async {
-    await _supabase.rpc(
-      'set_group_admin',
-      params: {
-        'conversation_id': conversationId,
-        'member_id': memberId,
-        'make_admin': makeAdmin,
-      },
+    await _dio.post(
+      '/chat/groups/$conversationId/members/$memberId/admin',
+      data: {'make_admin': makeAdmin},
+      options: await _authOptions(),
     );
   }
 
@@ -215,60 +179,81 @@ class GroupService {
     String? name,
     String? imageUrl,
   }) async {
-    await _supabase.rpc(
-      'update_group_info',
-      params: {
-        'conversation_id': conversationId,
-        'new_name': name,
-        'new_image': imageUrl,
+    await _dio.patch(
+      '/chat/groups/$conversationId',
+      data: {
+        if (name != null) 'name': name,
+        if (imageUrl != null) 'image_url': imageUrl,
       },
+      options: await _authOptions(),
     );
   }
 
   Future<Map<String, dynamic>> getInvite(String conversationId) async {
-    final result = await _supabase.rpc(
-      'get_group_invite',
-      params: {'conversation_id': conversationId},
+    final response = await _dio.get(
+      '/chat/groups/$conversationId/invite',
+      options: await _authOptions(),
     );
-    if (result is List && result.isNotEmpty) {
-      return Map<String, dynamic>.from(result.first as Map);
-    }
-    if (result is Map) {
-      return Map<String, dynamic>.from(result);
-    }
-    return {'invite_code': null, 'invite_enabled': false};
+    return _asMap(response.data);
   }
 
   Future<String> regenerateInvite(String conversationId) async {
-    final result = await _supabase.rpc(
-      'regenerate_group_invite',
-      params: {'conversation_id': conversationId},
+    final response = await _dio.post(
+      '/chat/groups/$conversationId/invite',
+      data: const <String, dynamic>{},
+      options: await _authOptions(),
     );
-    return result.toString();
+    return _asMap(response.data)['invite_code']?.toString() ?? '';
   }
 
   Future<void> setInviteEnabled(String conversationId, bool enabled) async {
-    await _supabase.rpc(
-      'set_group_invite_enabled',
-      params: {
-        'conversation_id': conversationId,
-        'enabled': enabled,
-      },
+    await _dio.post(
+      '/chat/groups/$conversationId/invite',
+      data: {'enabled': enabled},
+      options: await _authOptions(),
     );
   }
 
   Future<String> joinByInvite(String code) async {
-    final result = await _supabase.rpc(
-      'join_group_by_invite',
-      params: {'invite_code': code},
+    final response = await _dio.post(
+      '/chat/groups/join/$code',
+      options: await _authOptions(),
     );
-    return result.toString();
+    return _asMap(response.data)['id']?.toString() ?? '';
   }
 
   Future<void> deleteGroup(String conversationId) async {
-    await _supabase.rpc(
-      'delete_group_conversation',
-      params: {'conversation_id': conversationId},
+    await _dio.delete(
+      '/chat/groups/$conversationId',
+      options: await _authOptions(),
     );
+  }
+
+  Future<Map<String, Map<String, dynamic>>> _loadProfiles(
+    List<String> userIds,
+  ) async {
+    if (userIds.isEmpty) return const {};
+    final response = await _dio.post(
+      '/profiles/batch',
+      data: {'user_ids': userIds},
+      options: await _authOptions(),
+    );
+    final rows = _asList(_asMap(response.data)['profiles']);
+    return <String, Map<String, dynamic>>{
+      for (final row in rows.whereType<Map>())
+        if ((row['user_id']?.toString() ?? '').isNotEmpty)
+          row['user_id'].toString(): row.cast<String, dynamic>(),
+    };
+  }
+
+  Map<String, dynamic> _asMap(dynamic data) {
+    if (data is Map<String, dynamic>) return data;
+    if (data is Map) return data.cast<String, dynamic>();
+    return <String, dynamic>{};
+  }
+
+  List<dynamic> _asList(dynamic data) {
+    if (data is List) return data;
+    return const [];
   }
 }

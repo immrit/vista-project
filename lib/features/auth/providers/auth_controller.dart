@@ -1,47 +1,280 @@
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import '../data/auth_repository.dart';
+import 'dart:convert';
 
-// وضعیت (State) برای مدیریت لاگین و OTP
+import 'package:flutter/foundation.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+
+import '../data/auth_repository.dart';
+import '../../../services/current_user_service.dart';
+
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// Ø°Ø®ÛŒØ±Ù‡â€ŒØ³Ø§Ø²ÛŒ Ø§Ù…Ù† ØªÙˆÚ©Ù† â€” Ø¬Ø§ÛŒÚ¯Ø²ÛŒÙ† legacy auth
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+class TokenStorage {
+  static const _storage = FlutterSecureStorage(
+    aOptions: AndroidOptions(encryptedSharedPreferences: true),
+    iOptions: IOSOptions(accessibility: KeychainAccessibility.first_unlock),
+  );
+
+  static const _accessTokenKey = 'vista_access_token';
+  static const _refreshTokenKey = 'vista_refresh_token';
+  static const _userIdKey = 'vista_user_id';
+  static const _expiresAtKey = 'vista_expires_at';
+
+  static Future<void> saveTokens(AuthSessionResponse session) async {
+    await Future.wait([
+      _storage.write(key: _accessTokenKey, value: session.accessToken),
+      _storage.write(key: _refreshTokenKey, value: session.refreshToken),
+      _storage.write(
+        key: _expiresAtKey,
+        value: session.expiresAt.toIso8601String(),
+      ),
+    ]);
+  }
+
+  static Future<void> saveUserId(String userId) async {
+    await _storage.write(key: _userIdKey, value: userId);
+    CurrentUserService.setCachedUserId(userId);
+  }
+
+  static Future<String?> getAccessToken() async {
+    return _storage.read(key: _accessTokenKey);
+  }
+
+  static Future<String?> getRefreshToken() async {
+    return _storage.read(key: _refreshTokenKey);
+  }
+
+  static Future<String?> getUserId() async {
+    final stored = await _storage.read(key: _userIdKey);
+    if (stored != null && stored.isNotEmpty) {
+      CurrentUserService.setCachedUserId(stored);
+      return stored;
+    }
+
+    final token = await _storage.read(key: _accessTokenKey);
+    if (token == null || token.isEmpty) return null;
+
+    try {
+      final parts = token.split('.');
+      if (parts.length != 3) return null;
+
+      final payload =
+          utf8.decode(base64Url.decode(base64Url.normalize(parts[1])));
+      final decoded = jsonDecode(payload);
+      if (decoded is! Map<String, dynamic>) return null;
+
+      final sub = decoded['sub']?.toString();
+      if (sub == null || sub.isEmpty) return null;
+
+      await saveUserId(sub);
+      return sub;
+    } catch (e) {
+      debugPrint('Failed to derive user id from access token: $e');
+      return null;
+    }
+  }
+
+  static Future<bool> hasValidSession() async {
+    final token = await _storage.read(key: _accessTokenKey);
+    if (token == null || token.isEmpty) return false;
+
+    final expiresAtStr = await _storage.read(key: _expiresAtKey);
+    if (expiresAtStr == null) {
+      return false;
+    }
+
+    final expiresAt = DateTime.tryParse(expiresAtStr);
+    if (expiresAt == null) return false;
+
+    // Ø§Ú¯Ø± Ú©Ù…ØªØ± Ø§Ø² Ûµ Ø¯Ù‚ÛŒÙ‚Ù‡ ØªØ§ Ø§Ù†Ù‚Ø¶Ø§ Ù…Ø§Ù†Ø¯Ù‡ØŒ Ù†Ø´Ø³Øª Ù†Ø§Ù…Ø¹ØªØ¨Ø± Ø§Ø³Øª
+    return expiresAt.isAfter(DateTime.now().add(const Duration(minutes: 5)));
+  }
+
+  static Future<bool> hasRefreshToken() async {
+    final token = await _storage.read(key: _refreshTokenKey);
+    return token != null && token.isNotEmpty;
+  }
+
+  static Future<void> clearAll() async {
+    await Future.wait([
+      _storage.delete(key: _accessTokenKey),
+      _storage.delete(key: _refreshTokenKey),
+      _storage.delete(key: _userIdKey),
+      _storage.delete(key: _expiresAtKey),
+    ]);
+    CurrentUserService.clearCache();
+  }
+}
+
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// Auth State
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
 class AuthState {
   final bool isLoading;
   final String? error;
   final bool codeSent;
   final bool isLoggedIn;
+  final bool isNewUser;
+  final AuthUserResponse? currentUser;
+  final String? otpDebugCode;
 
   AuthState({
     this.isLoading = false,
     this.error,
     this.codeSent = false,
     this.isLoggedIn = false,
+    this.isNewUser = false,
+    this.currentUser,
+    this.otpDebugCode,
   });
 
-  AuthState copyWith(
-      {bool? isLoading, String? error, bool? codeSent, bool? isLoggedIn}) {
+  AuthState copyWith({
+    bool? isLoading,
+    String? error,
+    bool? codeSent,
+    bool? isLoggedIn,
+    bool? isNewUser,
+    AuthUserResponse? currentUser,
+    String? otpDebugCode,
+    bool clearOtpDebugCode = false,
+  }) {
     return AuthState(
       isLoading: isLoading ?? this.isLoading,
-      error: error, // اگر نال پاس داده شود، ارور پاک می‌شود
+      error:
+          error, // Ø§Ú¯Ø± Ù†Ø§Ù„ Ù¾Ø§Ø³ Ø¯Ø§Ø¯Ù‡ Ø´ÙˆØ¯ØŒ Ø§Ø±ÙˆØ± Ù¾Ø§Ú© Ù…ÛŒâ€ŒØ´ÙˆØ¯
       codeSent: codeSent ?? this.codeSent,
       isLoggedIn: isLoggedIn ?? this.isLoggedIn,
+      isNewUser: isNewUser ?? this.isNewUser,
+      currentUser: currentUser ?? this.currentUser,
+      otpDebugCode:
+          clearOtpDebugCode ? null : (otpDebugCode ?? this.otpDebugCode),
     );
   }
 }
 
-// کلاس Controller (Notifier) برای مدیریت منطق احراز هویت
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// Auth Controller â€” Ù…Ø³ØªÙ‚Ù„ Ø§Ø² legacy auth
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
 class AuthController extends StateNotifier<AuthState> {
   final AuthRepository _repository;
 
   AuthController(this._repository) : super(AuthState());
 
-  Future<bool> sendOtp(String phone) async {
+  // â”€â”€â”€ Ø¨Ø±Ø±Ø³ÛŒ Ù†Ø´Ø³Øª Ø°Ø®ÛŒØ±Ù‡ Ø´Ø¯Ù‡ Ù‡Ù†Ú¯Ø§Ù… Ø´Ø±ÙˆØ¹ Ø§Ù¾Ù„ÛŒÚ©ÛŒØ´Ù† â”€â”€â”€
+  Future<void> checkSavedSession() async {
+    try {
+      final hasSession = await TokenStorage.hasValidSession();
+      if (hasSession) {
+        final userId = await TokenStorage.getUserId();
+        state = state.copyWith(
+          isLoggedIn: true,
+          currentUser: userId != null
+              ? AuthUserResponse(
+                  id: userId,
+                  fullName: '',
+                  accountStatus: 'active',
+                  profileCompleted: false,
+                  createdAt: DateTime.now(),
+                )
+              : null,
+        );
+      }
+    } catch (e) {
+      debugPrint('âš ï¸ Error checking saved session: $e');
+    }
+  }
+
+  // â”€â”€â”€ Ø«Ø¨Øªâ€ŒÙ†Ø§Ù… â”€â”€â”€
+  Future<bool> register({
+    String? username,
+    required String fullName,
+    String? email,
+    String? phoneNumber,
+    required String password,
+  }) async {
+    state = state.copyWith(
+      isLoading: true,
+      error: null,
+      clearOtpDebugCode: true,
+    );
+    try {
+      final response = await _repository.register(
+        username: username,
+        fullName: fullName,
+        email: email,
+        phoneNumber: phoneNumber,
+        password: password,
+      );
+
+      // Ø°Ø®ÛŒØ±Ù‡ ØªÙˆÚ©Ù†â€ŒÙ‡Ø§
+      await TokenStorage.saveTokens(response.session);
+      await TokenStorage.saveUserId(response.user.id);
+
+      state = state.copyWith(
+        isLoading: false,
+        isLoggedIn: true,
+        isNewUser: response.isNewUser,
+        currentUser: response.user,
+      );
+      return true;
+    } catch (e) {
+      state = state.copyWith(isLoading: false, error: e.toString());
+      return false;
+    }
+  }
+
+  // â”€â”€â”€ ÙˆØ±ÙˆØ¯ Ø¨Ø§ Ø§ÛŒÙ…ÛŒÙ„/Ø´Ù…Ø§Ø±Ù‡/Ù†Ø§Ù… Ú©Ø§Ø±Ø¨Ø±ÛŒ â”€â”€â”€
+  Future<bool> login({
+    required String identifier,
+    required String password,
+  }) async {
     state = state.copyWith(isLoading: true, error: null);
     try {
-      final success = await _repository.sendOtp(phone);
-      if (success) {
-        state = state.copyWith(isLoading: false, codeSent: true);
+      final response = await _repository.login(
+        identifier: identifier,
+        password: password,
+      );
+
+      // Ø°Ø®ÛŒØ±Ù‡ ØªÙˆÚ©Ù†â€ŒÙ‡Ø§
+      await TokenStorage.saveTokens(response.session);
+      await TokenStorage.saveUserId(response.user.id);
+
+      state = state.copyWith(
+        isLoading: false,
+        isLoggedIn: true,
+        isNewUser: false,
+        currentUser: response.user,
+      );
+      return true;
+    } catch (e) {
+      state = state.copyWith(isLoading: false, error: e.toString());
+      return false;
+    }
+  }
+
+  // â”€â”€â”€ Ø§Ø±Ø³Ø§Ù„ OTP â”€â”€â”€
+  Future<bool> sendOtp(String phone) async {
+    state = state.copyWith(
+      isLoading: true,
+      error: null,
+      clearOtpDebugCode: true,
+    );
+    try {
+      final response = await _repository.sendOtp(phone);
+      if (response.success) {
+        state = state.copyWith(
+          isLoading: false,
+          codeSent: true,
+          otpDebugCode: response.debugCode,
+        );
         return true;
       } else {
-        state = state.copyWith(isLoading: false, error: 'ارسال ناموفق بود');
+        state = state.copyWith(
+            isLoading: false, error: 'Ø§Ø±Ø³Ø§Ù„ Ù†Ø§Ù…ÙˆÙÙ‚ Ø¨ÙˆØ¯');
         return false;
       }
     } catch (e) {
@@ -50,16 +283,30 @@ class AuthController extends StateNotifier<AuthState> {
     }
   }
 
-  Future<bool> verifyOtp(
-      {required String phone,
-      required String token,
-      bool isUpdateMode = false}) async {
+  // â”€â”€â”€ ØªØ§ÛŒÛŒØ¯ OTP â”€â”€â”€
+  Future<bool> verifyOtp({
+    required String phone,
+    required String token,
+    bool isUpdateMode = false,
+  }) async {
     state = state.copyWith(isLoading: true, error: null);
     try {
-      await _repository.verifyOtp(phone, token, isUpdateMode: isUpdateMode);
+      final response = await _repository.verifyOtp(
+        phoneNumber: phone,
+        code: token,
+      );
+
+      // Ø°Ø®ÛŒØ±Ù‡ ØªÙˆÚ©Ù†â€ŒÙ‡Ø§
+      await TokenStorage.saveTokens(response.session);
+      await TokenStorage.saveUserId(response.user.id);
 
       if (!isUpdateMode) {
-        state = state.copyWith(isLoading: false, isLoggedIn: true);
+        state = state.copyWith(
+          isLoading: false,
+          isLoggedIn: true,
+          isNewUser: response.isNewUser,
+          currentUser: response.user,
+        );
       } else {
         state = state.copyWith(isLoading: false);
       }
@@ -69,32 +316,104 @@ class AuthController extends StateNotifier<AuthState> {
       rethrow;
     }
   }
+
+  // â”€â”€â”€ Ø®Ø±ÙˆØ¬ â”€â”€â”€
+  Future<AuthUserResponse?> refreshCurrentUser() async {
+    try {
+      final accessToken = await TokenStorage.getAccessToken();
+      if (accessToken == null || accessToken.isEmpty) return null;
+
+      final user = await _repository.me(accessToken);
+      await TokenStorage.saveUserId(user.id);
+      state = state.copyWith(
+        isLoggedIn: true,
+        isNewUser: false,
+        currentUser: user,
+      );
+      return user;
+    } catch (e) {
+      debugPrint('Error refreshing current user: $e');
+      return null;
+    }
+  }
+
+  void acceptAuthenticatedUser(AuthUserResponse user) {
+    state = state.copyWith(
+      isLoading: false,
+      isLoggedIn: true,
+      isNewUser: false,
+      currentUser: user,
+    );
+  }
+
+  Future<void> logout() async {
+    await TokenStorage.clearAll();
+    state = AuthState(); // reset to initial state
+  }
+
+  // â”€â”€â”€ Ø±ÛŒØ³Øª Ø®Ø·Ø§ â”€â”€â”€
+  void clearError() {
+    state = state.copyWith(error: null);
+  }
+
+  // â”€â”€â”€ Ø±ÛŒØ³Øª codeSent â”€â”€â”€
+  void resetCodeSent() {
+    state = state.copyWith(codeSent: false);
+  }
 }
 
-// پروایدر اصلی کنترلر احراز هویت
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// Providers
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
 final authControllerProvider =
     StateNotifierProvider<AuthController, AuthState>((ref) {
   return AuthController(AuthRepository());
 });
 
-// پروایدرهای استریم و وضعیت فعلی کاربر (انتقال یافته از provider.dart)
-final userAuthStateProvider = StreamProvider<User?>((ref) {
-  return Supabase.instance.client.auth.onAuthStateChange
-      .map((event) => event.session?.user);
+/// Ø¢ÛŒØ§ Ú©Ø§Ø±Ø¨Ø± Ù„Ø§Ú¯ÛŒÙ† Ø§Ø³ØªØŸ
+final isLoggedInProvider = Provider<bool>((ref) {
+  return ref.watch(authControllerProvider).isLoggedIn;
 });
 
-// پروایدر تغییر رمزعبور
-final changePasswordProvider =
-    FutureProvider.family<void, String>((ref, newPassword) async {
-  try {
-    await Supabase.instance.client.auth.updateUser(
-      UserAttributes(password: newPassword),
-    );
-  } catch (e) {
-    throw 'خطا در تغییر رمز عبور';
+/// Ú©Ø§Ø±Ø¨Ø± Ù„Ø§Ú¯ÛŒÙ† Ø´Ø¯Ù‡
+final activeUserProvider = Provider<AuthUserResponse?>((ref) {
+  return ref.watch(authControllerProvider).currentUser;
+});
+
+/// ØªÙˆÚ©Ù† Ø¯Ø³ØªØ±Ø³ÛŒ ÙØ¹Ù„ÛŒ
+final accessTokenProvider = FutureProvider<String?>((ref) async {
+  return TokenStorage.getAccessToken();
+});
+
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// Ù¾Ø±ÙˆØ³Ø§ÛŒØ¯Ø±Ù‡Ø§ÛŒ Ø³Ø§Ø²Ú¯Ø§Ø±ÛŒ Ø¨Ø§ Ú©Ø¯Ù‡Ø§ÛŒ Ù‚Ø¨Ù„ÛŒ (Backward Compatibility)
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+class DummyUserModel {
+  final String id;
+  const DummyUserModel(this.id);
+}
+
+final authProvider = Provider<DummyUserModel?>((ref) {
+  final user = ref.watch(activeUserProvider);
+  if (user != null) {
+    return DummyUserModel(user.id);
+  }
+  return null;
+});
+
+final userAuthStateProvider = StreamProvider<DummyUserModel?>((ref) async* {
+  final user = ref.watch(activeUserProvider);
+  if (user != null) {
+    yield DummyUserModel(user.id);
+  } else {
+    yield null;
   }
 });
 
-final authProvider = Provider<User?>((ref) {
-  return Supabase.instance.client.auth.currentUser;
+final changePasswordProvider =
+    FutureProvider.family<void, String>((ref, newPassword) async {
+  // TODO: Implement change password with the Go backend API
+  throw UnimplementedError('Change password is not implemented yet.');
 });

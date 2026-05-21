@@ -4,9 +4,10 @@ import 'dart:typed_data';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:path/path.dart' as path;
 import 'cache_manager.dart';
-import 'secure_upload_service.dart';
 import 'user_friendly_error_handler.dart';
-import '../utils/const.dart';
+import 'backend_upload_service.dart';
+import '../features/auth/data/auth_repository.dart';
+import '../features/auth/providers/auth_controller.dart';
 
 class PostImageUploadService {
   static Future<File?> convertPngToJpeg(File file) async {
@@ -52,13 +53,14 @@ class PostImageUploadService {
       }
 
       // مسیر ذخیره‌سازی برای تصاویر پست‌ها
+      final userId = await _currentUserId();
       final fileName =
-          'posts/${supabase.auth.currentUser!.id}_${DateTime.now().millisecondsSinceEpoch}_${path.basename(compressedFile.path)}';
+          'posts/$userId/${DateTime.now().millisecondsSinceEpoch}_${path.basename(compressedFile.path)}';
 
       final Uint8List fileBytes = await compressedFile.readAsBytes();
       const contentType = 'image/jpeg';
 
-      final uploadResult = await SecureUploadService.uploadBytes(
+      final uploadResult = await BackendUploadService.uploadBytes(
         bytes: fileBytes,
         objectKey: fileName,
         contentType: contentType,
@@ -93,11 +95,11 @@ class PostImageUploadService {
       // همیشه با نوع 'image/jpeg' کار می‌کنیم
       const contentType = 'image/jpeg';
 
-      final userId = supabase.auth.currentUser!.id;
+      final userId = await _currentUserId();
       final s3FileName =
-          'posts/${userId}_${DateTime.now().millisecondsSinceEpoch}_$fileName';
+          'posts/$userId/${DateTime.now().millisecondsSinceEpoch}_$fileName';
 
-      final uploadResult = await SecureUploadService.uploadBytes(
+      final uploadResult = await BackendUploadService.uploadBytes(
         bytes: fileBytes,
         objectKey: s3FileName,
         contentType: contentType,
@@ -116,7 +118,7 @@ class PostImageUploadService {
 
   static Future<bool> deletePostImage(String fileUrl) async {
     try {
-      final deleted = await SecureUploadService.deleteByUrl(fileUrl);
+      final deleted = await BackendUploadService.deleteByUrl(fileUrl);
       if (!deleted) {
         throw Exception('Delete failed');
       }
@@ -129,7 +131,7 @@ class PostImageUploadService {
 
   static Future<bool> deleteMusicFile(String fileUrl) async {
     try {
-      final deleted = await SecureUploadService.deleteByUrl(fileUrl);
+      final deleted = await BackendUploadService.deleteByUrl(fileUrl);
       if (!deleted) {
         throw Exception('Delete failed');
       }
@@ -143,7 +145,7 @@ class PostImageUploadService {
 
   static Future<bool> deleteVideoFile(String fileUrl) async {
     try {
-      final deleted = await SecureUploadService.deleteByUrl(fileUrl);
+      final deleted = await BackendUploadService.deleteByUrl(fileUrl);
       if (!deleted) {
         throw Exception('Delete failed');
       }
@@ -268,9 +270,10 @@ class PostImageUploadService {
 
       final originalBaseName = path.basenameWithoutExtension(file.path);
       final safeBaseName = _sanitizeMusicFileName(originalBaseName);
-      final fileName = 'music/${supabase.auth.currentUser!.id}'
-          '_${DateTime.now().millisecondsSinceEpoch}_$safeBaseName$extension';
-      final uploadResult = await SecureUploadService.uploadFile(
+      final userId = await _currentUserId();
+      final fileName =
+          'music/$userId/${DateTime.now().millisecondsSinceEpoch}_$safeBaseName$extension';
+      final uploadResult = await BackendUploadService.uploadFile(
         file: file,
         objectKey: fileName,
         contentType: _getAudioContentType(extension),
@@ -336,9 +339,10 @@ class PostImageUploadService {
       }
 
       // ساخت نام منحصر به فرد برای فایل
-      final fileName = 'videos/${supabase.auth.currentUser!.id}'
-          '_${DateTime.now().millisecondsSinceEpoch}$extension';
-      final uploadResult = await SecureUploadService.uploadFile(
+      final userId = await _currentUserId();
+      final fileName =
+          'videos/$userId/${DateTime.now().millisecondsSinceEpoch}$extension';
+      final uploadResult = await BackendUploadService.uploadFile(
         file: file,
         objectKey: fileName,
         contentType: _getVideoContentType(extension),
@@ -370,11 +374,12 @@ class PostImageUploadService {
       }
 
       // ساخت نام منحصر به فرد برای فایل
-      final s3FileName = 'videos/${supabase.auth.currentUser!.id}'
-          '_${DateTime.now().millisecondsSinceEpoch}_$fileName';
+      final userId = await _currentUserId();
+      final s3FileName =
+          'videos/$userId/${DateTime.now().millisecondsSinceEpoch}_$fileName';
 
       // آپلود به آروان
-      final uploadResult = await SecureUploadService.uploadBytes(
+      final uploadResult = await BackendUploadService.uploadBytes(
         bytes: fileBytes,
         objectKey: s3FileName,
         contentType: _getVideoContentType(extension),
@@ -405,5 +410,21 @@ class PostImageUploadService {
       default:
         return 'video/mp4';
     }
+  }
+
+  static Future<String> _currentUserId() async {
+    final storedUserId = await TokenStorage.getUserId();
+    if (storedUserId != null && storedUserId.isNotEmpty) {
+      return storedUserId;
+    }
+
+    final accessToken = await TokenStorage.getAccessToken();
+    if (accessToken == null || accessToken.isEmpty) {
+      throw Exception('Ú©Ø§Ø±Ø¨Ø± ÙˆØ§Ø±Ø¯ Ù†Ø´Ø¯Ù‡ Ø§Ø³Øª');
+    }
+
+    final user = await AuthRepository().me(accessToken);
+    await TokenStorage.saveUserId(user.id);
+    return user.id;
   }
 }

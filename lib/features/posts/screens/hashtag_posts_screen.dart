@@ -8,70 +8,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
 import '../../../model/publicPostModel.dart';
-import '../../../utils/const.dart';
+import '../data/go_posts_repository.dart';
 
 /// Provider for fetching posts by hashtag
 final hashtagPostsProvider =
     FutureProvider.family<List<PublicPostModel>, String>((ref, hashtag) async {
-  // Normalize hashtag - remove # if present
-  final tag = hashtag.startsWith('#') ? hashtag.substring(1) : hashtag;
-
-  debugPrint('🔍 Searching posts with hashtag: $tag');
-
-  try {
-    // Option 1: Use contains operator for array
-    // The 'cs' (contains) operator should work with arrays
-    // Format: hashtags @> '["tag"]' (PostgreSQL array contains)
-    final response = await supabase
-        .from('posts')
-        .select('''
-          *,
-          profiles:user_id(
-            id,
-            username,
-            full_name,
-            avatar_url,
-            is_verified,
-            verification_type
-          )
-        ''')
-        .contains('hashtags', [tag]) // Use contains with array
-        .order('created_at', ascending: false)
-        .limit(50);
-
-    debugPrint('✅ Found ${(response as List).length} posts');
-    return response.map((e) => PublicPostModel.fromMap(e)).toList();
-  } catch (e, stack) {
-    debugPrint('❌ Error fetching hashtag posts: $e');
-    debugPrint('Stack: $stack');
-
-    // Try alternative: search in content for #tag
-    try {
-      debugPrint('🔄 Trying fallback: searching in content');
-      final fallbackResponse = await supabase
-          .from('posts')
-          .select('''
-            *,
-            profiles:user_id(
-              id,
-              username,
-              full_name,
-              avatar_url,
-              is_verified,
-              verification_type
-            )
-          ''')
-          .ilike('content', '%#$tag%')
-          .order('created_at', ascending: false)
-          .limit(50);
-
-      debugPrint('✅ Fallback found ${(fallbackResponse as List).length} posts');
-      return fallbackResponse.map((e) => PublicPostModel.fromMap(e)).toList();
-    } catch (fallbackError) {
-      debugPrint('❌ Fallback also failed: $fallbackError');
-      rethrow;
-    }
-  }
+  final repo = ref.read(goPostsRepositoryProvider);
+  return await repo.searchPostsByHashtag(hashtag: hashtag);
 });
 
 /// صفحه پست‌های هشتگ

@@ -272,7 +272,7 @@ class HighPerformanceCacheSystem {
     // Provider `advancedMessagesProvider` does: `return cache.watchMessages(conversationId);`
     // It doesn't pass userId.
 
-    // HACK: Pass a placeholder or get from Supabase static instance if available?
+    // HACK: Pass a placeholder until the local message watch no longer needs userId.
     // Better: Update UnifiedMessageCacheService to NOT require userId for watch if not needed for security (local db is trusted).
 
     yield* _diskCache.watchMessages(conversationId,

@@ -1,21 +1,12 @@
-// lib/features/chat/services/message_search_service.dart
-//
-// سرویس جستجو در پیام‌ها
-//
-// ویژگی‌ها:
-// ✅ جستجو در متن پیام‌ها
-// ✅ جستجوی محلی (کش) و سرور
-// ✅ Highlight نتایج
-// ✅ فیلتر بر اساس تاریخ/نوع
-// ✅ پیمایش بین نتایج
-//
-
 import 'dart:async';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import '../../../model/message_model.dart';
 
-/// نتیجه جستجو
+import 'package:dio/dio.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../model/message_model.dart';
+import '../../auth/providers/auth_controller.dart';
+
 class SearchResult {
   final MessageModel message;
   final String highlightedContent;
@@ -28,7 +19,6 @@ class SearchResult {
   });
 }
 
-/// موقعیت تطابق در متن
 class TextMatch {
   final int start;
   final int end;
@@ -36,7 +26,6 @@ class TextMatch {
   const TextMatch(this.start, this.end);
 }
 
-/// وضعیت جستجو
 class SearchState {
   final String query;
   final List<SearchResult> results;
@@ -77,14 +66,21 @@ class SearchState {
           : null;
 }
 
-/// سرویس جستجو در پیام‌ها
 class MessageSearchService {
-  final SupabaseClient _supabase;
+  late final Dio _dio;
   Timer? _debounceTimer;
 
-  MessageSearchService(this._supabase);
+  MessageSearchService() {
+    _dio = Dio(
+      BaseOptions(
+        baseUrl: '${dotenv.env['BACKEND_URL'] ?? 'http://10.0.2.2:8080'}/v1',
+        connectTimeout: const Duration(seconds: 10),
+        receiveTimeout: const Duration(seconds: 20),
+        headers: {'Content-Type': 'application/json'},
+      ),
+    );
+  }
 
-  /// جستجو در پیام‌های یک مکالمه
   Future<List<SearchResult>> searchInConversation({
     required String conversationId,
     required String query,
@@ -92,125 +88,83 @@ class MessageSearchService {
     int limit = 50,
   }) async {
     if (query.trim().isEmpty) return [];
+    final userId = currentUserId ?? await TokenStorage.getUserId() ?? '';
+    final response = await _dio.get(
+      '/chat/conversations/$conversationId/search',
+      queryParameters: {'q': query, 'limit': limit},
+      options: await _authOptions(),
+    );
+    final messages = _asList(_asMap(response.data)['messages'])
+        .whereType<Map>()
+        .map(
+          (json) => MessageModel.fromJson(
+            json.cast<String, dynamic>(),
+            currentUserId: userId,
+          ),
+        )
+        .toList(growable: false);
 
-    try {
-      final response = await _supabase
-          .from('messages')
-          .select()
-          .eq('conversation_id', conversationId)
-          .ilike('content', '%$query%')
-          .order('created_at', ascending: false)
-          .limit(limit);
-
-      final messages = (response as List).map((json) {
-        return MessageModel.fromJson(
-          json,
-          currentUserId: currentUserId ?? '',
-        );
-      }).toList();
-
-      return messages.map((message) {
-        final matches = _findMatches(message.content, query);
-        return SearchResult(
-          message: message,
-          highlightedContent: _highlightText(message.content, query),
-          matches: matches,
-        );
-      }).toList();
-    } catch (e) {
-      print('❌ Search error: $e');
-      return [];
-    }
+    return messages
+        .map(
+          (message) => SearchResult(
+            message: message,
+            highlightedContent: message.content,
+            matches: _findMatches(message.content, query),
+          ),
+        )
+        .toList(growable: false);
   }
 
-  /// جستجو در همه مکالمات
   Future<List<SearchResult>> searchGlobal({
     required String query,
     String? currentUserId,
     int limit = 100,
   }) async {
-    if (query.trim().isEmpty) return [];
-
-    try {
-      final userId = currentUserId ?? _supabase.auth.currentUser?.id;
-      if (userId == null) return [];
-
-      // جستجو در مکالماتی که کاربر عضوشونه
-      final response = await _supabase
-          .from('messages')
-          .select('''
-            *,
-            conversations!inner (
-              id,
-              conversation_participants!inner (
-                user_id
-              )
-            )
-          ''')
-          .eq('conversations.conversation_participants.user_id', userId)
-          .ilike('content', '%$query%')
-          .order('created_at', ascending: false)
-          .limit(limit);
-
-      final messages = (response as List).map((json) {
-        return MessageModel.fromJson(
-          json,
-          currentUserId: userId,
-        );
-      }).toList();
-
-      return messages.map((message) {
-        final matches = _findMatches(message.content, query);
-        return SearchResult(
-          message: message,
-          highlightedContent: _highlightText(message.content, query),
-          matches: matches,
-        );
-      }).toList();
-    } catch (e) {
-      print('❌ Global search error: $e');
-      return [];
-    }
+    return const [];
   }
 
-  /// پیدا کردن موقعیت‌های تطابق
   List<TextMatch> _findMatches(String text, String query) {
-    final List<TextMatch> matches = [];
+    final matches = <TextMatch>[];
     final lowerText = text.toLowerCase();
     final lowerQuery = query.toLowerCase();
-
-    int start = 0;
+    var start = 0;
     while (true) {
       final index = lowerText.indexOf(lowerQuery, start);
       if (index == -1) break;
       matches.add(TextMatch(index, index + query.length));
       start = index + 1;
     }
-
     return matches;
-  }
-
-  /// هایلایت متن (برای نمایش)
-  String _highlightText(String text, String query) {
-    // این متد برای UI استفاده میشه، فعلا همون متن رو برمی‌گردونیم
-    // UI میتونه از matches برای هایلایت استفاده کنه
-    return text;
   }
 
   void dispose() {
     _debounceTimer?.cancel();
   }
+
+  Future<Options> _authOptions() async {
+    final token = await TokenStorage.getAccessToken();
+    if (token == null || token.isEmpty) {
+      throw StateError('User not authenticated');
+    }
+    return Options(headers: {'Authorization': 'Bearer $token'});
+  }
+
+  Map<String, dynamic> _asMap(dynamic data) {
+    if (data is Map<String, dynamic>) return data;
+    if (data is Map) return data.cast<String, dynamic>();
+    return <String, dynamic>{};
+  }
+
+  List<dynamic> _asList(dynamic data) {
+    if (data is List) return data;
+    return const [];
+  }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// 🎯 PROVIDERS
-// ═══════════════════════════════════════════════════════════════════════════
-
 final messageSearchServiceProvider = Provider<MessageSearchService>((ref) {
-  return MessageSearchService(Supabase.instance.client);
+  return MessageSearchService();
 });
 
-/// State notifier برای جستجو
 class SearchStateNotifier extends StateNotifier<SearchState> {
   final MessageSearchService _searchService;
   final String conversationId;
@@ -219,56 +173,42 @@ class SearchStateNotifier extends StateNotifier<SearchState> {
   SearchStateNotifier(this._searchService, this.conversationId)
       : super(const SearchState());
 
-  /// جستجو با debounce
   void search(String query) {
     _debounceTimer?.cancel();
-
     if (query.trim().isEmpty) {
       state = const SearchState();
       return;
     }
-
-    state = state.copyWith(
-      query: query,
-      isSearching: true,
-    );
-
+    state = state.copyWith(query: query, isSearching: true);
     _debounceTimer = Timer(const Duration(milliseconds: 300), () async {
       try {
         final results = await _searchService.searchInConversation(
           conversationId: conversationId,
           query: query,
         );
-
         state = state.copyWith(
           results: results,
           isSearching: false,
           currentIndex: results.isNotEmpty ? 0 : -1,
         );
       } catch (e) {
-        state = state.copyWith(
-          isSearching: false,
-          error: e.toString(),
-        );
+        state = state.copyWith(isSearching: false, error: e.toString());
       }
     });
   }
 
-  /// رفتن به نتیجه بعدی
   void nextResult() {
     if (state.canGoNext) {
       state = state.copyWith(currentIndex: state.currentIndex + 1);
     }
   }
 
-  /// رفتن به نتیجه قبلی
   void previousResult() {
     if (state.canGoPrevious) {
       state = state.copyWith(currentIndex: state.currentIndex - 1);
     }
   }
 
-  /// پاک کردن جستجو
   void clear() {
     _debounceTimer?.cancel();
     state = const SearchState();
@@ -281,9 +221,9 @@ class SearchStateNotifier extends StateNotifier<SearchState> {
   }
 }
 
-final searchStateProvider = StateNotifierProvider.family<
-    SearchStateNotifier, SearchState, String>((ref, conversationId) {
+final searchStateProvider =
+    StateNotifierProvider.family<SearchStateNotifier, SearchState, String>(
+        (ref, conversationId) {
   final searchService = ref.watch(messageSearchServiceProvider);
   return SearchStateNotifier(searchService, conversationId);
 });
-

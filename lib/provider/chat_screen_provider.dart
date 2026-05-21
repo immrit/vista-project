@@ -244,7 +244,6 @@ class ChatScreenNotifier extends StateNotifier<ChatScreenState> {
     // e.g., call a method in repository or user service
     try {
       // If repo has reportUser? No.
-      // We can use Supabase direct or specialized service.
       // For now logging it.
       print('Reporting user $userId for $reason');
     } catch (e) {

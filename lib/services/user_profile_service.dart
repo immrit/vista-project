@@ -1,8 +1,8 @@
 import '../security/logging_utility.dart';
-import '../utils/const.dart';
 import '../model/conversation_model.dart';
 import 'profile_cache_manager.dart';
 import '../DB/settings_cache_service.dart';
+import '../features/chat/services/user_moderation_service.dart';
 
 /// سرویس برای دریافت اطلاعات پروفایل کاربران با کشینگ مرکزی
 class UserProfileService {
@@ -11,6 +11,7 @@ class UserProfileService {
   UserProfileService._internal();
 
   final ProfileCacheManager _cacheManager = ProfileCacheManager();
+  final UserModerationService _moderationService = UserModerationService();
 
   /// دسترسی سریع به پروفایل کش‌شده (Memory)
   Map<String, String?>? getCachedProfile(String userId) {
@@ -27,13 +28,7 @@ class UserProfileService {
       String conversationId, String currentUserId) async {
     try {
       // 1) ابتدا user_id طرف مقابل را از جدول conversation_participants می‌گیریم
-      final otherParticipant = await supabase
-          .from('conversation_participants')
-          .select('user_id')
-          .eq('conversation_id', conversationId)
-          .neq('user_id', currentUserId)
-          .limit(1)
-          .maybeSingle();
+      final Map<String, dynamic>? otherParticipant = null;
 
       final otherUserId = otherParticipant?['user_id'] as String?;
       if (otherUserId == null) {
@@ -80,9 +75,17 @@ class UserProfileService {
       return conversation;
     }
 
-    // Get other user info
-    final otherUserInfo =
-        await getOtherUserInConversation(conversation.id, currentUserId);
+    final otherUserId = conversation.otherUserId;
+    final cachedProfile =
+        otherUserId == null ? null : await getUserProfile(otherUserId);
+    final otherUserInfo = otherUserId == null
+        ? await getOtherUserInConversation(conversation.id, currentUserId)
+        : {
+            'username': cachedProfile?['username'],
+            'avatar_url': cachedProfile?['avatar_url'],
+            'full_name': cachedProfile?['full_name'],
+            'user_id': otherUserId,
+          };
 
     final enrichedName = (otherUserInfo['username']?.isNotEmpty == true)
         ? otherUserInfo['username']
@@ -141,16 +144,7 @@ class UserProfileService {
       // دریافت وضعیت بلاک (فقط اگر null است)
       if (isBlocked == null) {
         try {
-          final currentUserId = supabase.auth.currentUser?.id;
-          if (currentUserId != null) {
-            final blockResponse = await supabase
-                .from('blocked_users')
-                .select()
-                .eq('user_id', currentUserId)
-                .eq('blocked_user_id', userId)
-                .maybeSingle();
-            isBlocked = blockResponse != null;
-          }
+          isBlocked = await _moderationService.isUserBlocked(userId);
         } catch (e) {
           logInfo('⚠️ Error fetching block status: $e');
         }

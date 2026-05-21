@@ -1,6 +1,6 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import '../data/go_posts_repository.dart';
 
 /// فیلد متنی با قابلیت Autocomplete هشتگ (مشابه ویستا)
 class HashtagAutocompleteField extends StatefulWidget {
@@ -35,6 +35,7 @@ class HashtagAutocompleteField extends StatefulWidget {
 }
 
 class _HashtagAutocompleteFieldState extends State<HashtagAutocompleteField> {
+  final GoPostsRepository _postsRepository = GoPostsRepository();
   final LayerLink _layerLink = LayerLink();
   OverlayEntry? _overlayEntry;
   List<Map<String, dynamic>> _suggestions = [];
@@ -119,32 +120,22 @@ class _HashtagAutocompleteFieldState extends State<HashtagAutocompleteField> {
 
   Future<void> _loadTrendingTags() async {
     try {
-      final resp = await Supabase.instance.client.rpc('get_trending_tags', params: {
-        'limit_count': 20,
-        'days_back': 30,
-      });
-
-      if (resp is List) {
-        final list = <Map<String, dynamic>>[];
-        for (final row in resp) {
-          if (row is! Map) continue;
-          final tag = row['tag']?.toString() ?? '';
-          if (tag.isEmpty) continue;
-          final usage = (row['post_count'] is num) ? (row['post_count'] as num).toInt() : 0;
-          list.add({'tag': tag, 'usage_count': usage});
-        }
-        if (mounted) {
-          setState(() => _trending = list);
-        } else {
-          _trending = list;
-        }
+      final suggestions = await _postsRepository.getTrendingHashtags(
+        limit: 20,
+        days: 30,
+      );
+      final list = suggestions.map((item) => item.toMap()).toList();
+      if (mounted) {
+        setState(() => _trending = list);
+      } else {
+        _trending = list;
       }
     } catch (_) {
       // ignore – trending is best-effort for UX only
     }
   }
 
-  /// جستجوی هشتگ از Supabase
+  /// جستجوی هشتگ از Go backend
   Future<void> _searchHashtags(String keyword) async {
     // If user just typed '#', show trending tags instead of an empty dropdown.
     if (keyword.isEmpty) {
@@ -164,35 +155,41 @@ class _HashtagAutocompleteFieldState extends State<HashtagAutocompleteField> {
     setState(() => _isLoading = true);
 
     try {
-      final response = await Supabase.instance.client
-          .rpc('search_hashtags', params: {'keyword': keyword});
+      final response = await _postsRepository.searchHashtags(
+        keyword: keyword,
+        limit: 20,
+      );
+      final suggestions = response.map((item) => item.toMap()).toList();
 
-      if (response != null && response is List) {
+      if (mounted) {
         setState(() {
-          _suggestions = List<Map<String, dynamic>>.from(response);
+          _suggestions = suggestions;
         });
+      } else {
+        _suggestions = suggestions;
+      }
 
+      if (_suggestions.isNotEmpty) {
+        _showOverlay();
+      } else {
+        // fallback: filter trending cache if search returns nothing
+        if (_trending.isEmpty) {
+          await _loadTrendingTags();
+        }
+        final k = keyword.toLowerCase();
+        final filtered = _trending
+            .where(
+                (m) => (m['tag']?.toString().toLowerCase() ?? '').startsWith(k))
+            .toList();
+        if (mounted) {
+          setState(() => _suggestions = filtered);
+        } else {
+          _suggestions = filtered;
+        }
         if (_suggestions.isNotEmpty) {
           _showOverlay();
         } else {
-          // fallback: filter trending cache if search RPC returns nothing
-          if (_trending.isEmpty) {
-            await _loadTrendingTags();
-          }
-          final k = keyword.toLowerCase();
-          final filtered = _trending
-              .where((m) => (m['tag']?.toString().toLowerCase() ?? '').startsWith(k))
-              .toList();
-          if (mounted) {
-            setState(() => _suggestions = filtered);
-          } else {
-            _suggestions = filtered;
-          }
-          if (_suggestions.isNotEmpty) {
-            _showOverlay();
-          } else {
-            _removeOverlay();
-          }
+          _removeOverlay();
         }
       }
     } catch (e) {
@@ -202,7 +199,8 @@ class _HashtagAutocompleteFieldState extends State<HashtagAutocompleteField> {
       }
       final k = keyword.toLowerCase();
       final filtered = _trending
-          .where((m) => (m['tag']?.toString().toLowerCase() ?? '').startsWith(k))
+          .where(
+              (m) => (m['tag']?.toString().toLowerCase() ?? '').startsWith(k))
           .toList();
       if (!mounted) return;
       setState(() => _suggestions = filtered);

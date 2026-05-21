@@ -1,12 +1,14 @@
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:dio/dio.dart';
 
 import '../model/conversation_model.dart';
 import '../model/message_model.dart';
 import '../features/chat/providers/chat_providers.dart';
-import '../utils/const.dart';
 import '../services/user_profile_service.dart';
 import '../security/logging_utility.dart';
+import '../features/auth/providers/auth_controller.dart';
 
 // --- Core Providers ---
 
@@ -44,13 +46,28 @@ final userProfileProvider =
 
 class UserBlockNotifier extends StateNotifier<AsyncValue<void>> {
   UserBlockNotifier() : super(const AsyncValue.data(null));
+
+  static String get _backendUrl =>
+      dotenv.env['BACKEND_URL'] ?? 'http://10.0.2.2:8080';
+
+  Future<Dio?> _authedDio() async {
+    final token = await TokenStorage.getAccessToken();
+    if (token == null || token.isEmpty) return null;
+    return Dio(BaseOptions(
+      baseUrl: '$_backendUrl/v1',
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json'
+      },
+    ));
+  }
+
   Future<void> blockUser(String userId) async {
     state = const AsyncValue.loading();
     try {
-      final myId = supabase.auth.currentUser!.id;
-      await supabase
-          .from('blocked_users')
-          .upsert({'user_id': myId, 'blocked_user_id': userId});
+      final dio = await _authedDio();
+      if (dio == null) throw Exception('Not authenticated');
+      await dio.post('/me/block', data: {'target_user_id': userId});
       state = const AsyncValue.data(null);
     } catch (e, st) {
       state = AsyncValue.error(e, st);
@@ -60,12 +77,9 @@ class UserBlockNotifier extends StateNotifier<AsyncValue<void>> {
   Future<void> unblockUser(String userId) async {
     state = const AsyncValue.loading();
     try {
-      final myId = supabase.auth.currentUser!.id;
-      await supabase
-          .from('blocked_users')
-          .delete()
-          .eq('user_id', myId)
-          .eq('blocked_user_id', userId);
+      final dio = await _authedDio();
+      if (dio == null) throw Exception('Not authenticated');
+      await dio.post('/me/unblock', data: {'target_user_id': userId});
       state = const AsyncValue.data(null);
     } catch (e, st) {
       state = AsyncValue.error(e, st);
@@ -79,16 +93,24 @@ final userBlockNotifierProvider =
 
 class UserReportNotifier extends StateNotifier<AsyncValue<void>> {
   UserReportNotifier() : super(const AsyncValue.data(null));
+
+  static String get _backendUrl =>
+      dotenv.env['BACKEND_URL'] ?? 'http://10.0.2.2:8080';
+
   Future<void> reportUser(String userId, String reason) async {
     state = const AsyncValue.loading();
     try {
-      final myId = supabase.auth.currentUser!.id;
-      await supabase.from('user_reports').insert({
-        'reporter_id': myId,
-        'reported_id': userId,
-        'reason': reason,
-        'created_at': DateTime.now().toIso8601String(),
-      });
+      final token = await TokenStorage.getAccessToken();
+      if (token == null || token.isEmpty) throw Exception('Not authenticated');
+      final dio = Dio(BaseOptions(
+        baseUrl: '$_backendUrl/v1',
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json'
+        },
+      ));
+      await dio.post('/profiles/report',
+          data: {'reported_user_id': userId, 'reason': reason});
       state = const AsyncValue.data(null);
     } catch (e, st) {
       state = AsyncValue.error(e, st);
@@ -128,17 +150,15 @@ final conversationProvider = StreamProvider.family
 final sharedMediaProvider = FutureProvider.family
     .autoDispose<List<MessageModel>, String>((ref, conversationId) async {
   try {
-    final response = await supabase
-        .from('messages')
-        .select()
-        .eq('conversation_id', conversationId)
-        .or('attachment_type.not.is.null,content.ilike.%http%,content.ilike.%www.%')
-        .order('created_at', ascending: false);
-
-    final userId = supabase.auth.currentUser?.id ?? '';
-
-    return response
-        .map((data) => MessageModel.fromJson(data, currentUserId: userId))
+    // Fetch shared media via Go backend messages endpoint
+    final result = await ref
+        .read(chatRepositoryProvider)
+        .getMessages(conversationId, limit: 100);
+    final messages = result.fold((data) => data, (_) => <MessageModel>[]);
+    return messages
+        .where((m) =>
+            m.attachmentUrl != null ||
+            (m.content.contains('http') || m.content.contains('www.')))
         .toList();
   } catch (e) {
     return [];
@@ -168,16 +188,9 @@ final cachedConversationsStreamProvider = conversationsStreamProvider;
 
 final userSettingsByIdProvider =
     FutureProvider.family<Map<String, dynamic>?, String>((ref, userId) async {
-  try {
-    final response = await supabase
-        .from('user_settings')
-        .select()
-        .eq('user_id', userId)
-        .maybeSingle();
-    return response;
-  } catch (e) {
-    return null;
-  }
+  // Go backend placeholder — user settings not yet migrated
+  // Returns empty map until /v1/users/{id}/settings is implemented
+  return <String, dynamic>{};
 });
 
 final userBlockStatusProvider =

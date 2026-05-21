@@ -1,11 +1,10 @@
 import 'package:riverpod_annotation/riverpod_annotation.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:Vista/model/message_model.dart';
 import 'package:Vista/features/chat/providers/chat_providers.dart';
 import 'package:Vista/security/logging_utility.dart';
 import 'package:Vista/features/chat/services/message_actions_service.dart';
-import 'package:Vista/services/message_reaction_service.dart'; // Add this imports for keeping existing functionality
 import 'package:Vista/features/chat/domain/message_payload.dart';
+import 'package:Vista/features/auth/providers/auth_controller.dart';
 
 part 'chat_action_controller.g.dart';
 
@@ -41,11 +40,8 @@ class ChatActionState {
 
 @riverpod
 class ChatActionController extends _$ChatActionController {
-  late final MessageReactionService _reactionService;
-
   @override
   ChatActionState build() {
-    _reactionService = MessageReactionService();
     return const ChatActionState();
   }
 
@@ -79,9 +75,7 @@ class ChatActionController extends _$ChatActionController {
     String? replyToSenderName,
     String? mediaGroupId,
   }) async {
-    // استفاده مستقیم از Supabase به جای provider
-    final currentUser = Supabase.instance.client.auth.currentUser;
-    if (currentUser == null) {
+    if (!await TokenStorage.hasValidSession()) {
       return const ActionResult.failure('User not logged in');
     }
 
@@ -118,13 +112,14 @@ class ChatActionController extends _$ChatActionController {
         },
         (failure) {
           state = state.copyWith(isLoading: false);
-          throw Exception(failure);
+          return ActionResult.failure(failure);
         },
       );
     } catch (e) {
       logInfo('Send Message Failed: $e');
       state = state.copyWith(isLoading: false);
-      return ActionResult.failure(e.toString());
+      final errMsg = e.toString().replaceFirst('Exception: ', '');
+      return ActionResult.failure(errMsg);
     }
   }
 
@@ -136,16 +131,6 @@ class ChatActionController extends _$ChatActionController {
 
     try {
       final repository = ref.read(chatRepositoryProvider);
-      // Assuming repository has editMessage method, if not we might need to fallback or add it.
-      // Based on typical repo patterns. If Isar/Repo mismatch, we might need adjustments.
-      // For now assuming repo support or using a hypothetical method.
-      // Wait, original file didn't show editMessage in Repo usage explicitly, but user requested Edit Logic.
-      // Task 2 says "Call chatProvider.notifier.editMessage". Maybe it's here?
-
-      // I will assume repo has editMessage or similar.
-      // If not, I'll return failure for now or let it be.
-      // Ideally I should check ChatRepository, but I did not read it.
-      // I'll proceed keeping it structurally correct.
 
       await repository.editMessage(messageId, newContent);
 
@@ -154,7 +139,8 @@ class ChatActionController extends _$ChatActionController {
     } catch (e) {
       logInfo('Edit Message Failed: $e');
       state = state.copyWith(isLoading: false);
-      return ActionResult.failure(e.toString());
+      final errMsg = e.toString().replaceFirst('Exception: ', '');
+      return ActionResult.failure(errMsg);
     }
   }
 
@@ -178,11 +164,11 @@ class ChatActionController extends _$ChatActionController {
     required String emoji,
   }) async {
     try {
-      await _reactionService.toggleReaction(
-        messageId: messageId,
-        conversationId: conversationId,
-        emoji: emoji,
-      );
+      await ref.read(chatRepositoryProvider).toggleReaction(
+            messageId: messageId,
+            conversationId: conversationId,
+            emoji: emoji,
+          );
     } catch (e) {
       logInfo('Toggle Reaction Failed: $e');
     }

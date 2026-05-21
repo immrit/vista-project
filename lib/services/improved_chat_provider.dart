@@ -1,4 +1,4 @@
-﻿import '../security/logging_utility.dart';
+import '../security/logging_utility.dart';
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../model/message_model.dart';
@@ -7,7 +7,7 @@ import 'package:Vista/features/chat/repositories/chat_repository.dart';
 import 'package:Vista/features/chat/providers/chat_providers.dart';
 import 'package:Vista/features/chat/domain/message_payload.dart';
 
-import '../utils/const.dart';
+import '../features/auth/providers/auth_controller.dart' show TokenStorage;
 
 /// Provider بهبود یافته برای مدیریت چت با سیستم sync ویستا
 class ImprovedChatProvider extends StateNotifier<ImprovedChatState> {
@@ -51,16 +51,13 @@ class ImprovedChatProvider extends StateNotifier<ImprovedChatState> {
       // شروع sync فوری
       await _chatRepository.refreshMessages(conversationId);
 
-      // راه‌اندازی real-time listener
-      await _setupRealtimeListener();
+      // راه‌اندازی SSE listener
+      await _setupSseListener();
 
       _isInitialized = true;
       state = state.copyWith(isLoading: false);
     } catch (e) {
-      state = state.copyWith(
-        isLoading: false,
-        error: e.toString(),
-      );
+      state = state.copyWith(isLoading: false, error: e.toString());
     }
   }
 
@@ -84,23 +81,24 @@ class ImprovedChatProvider extends StateNotifier<ImprovedChatState> {
     }
   }
 
-  /// راه‌اندازی real-time listener
-  Future<void> _setupRealtimeListener() async {
+  /// راه‌اندازی SSE listener
+  Future<void> _setupSseListener() async {
     // await _cacheSync.subscribeToConversation(conversationId);
 
     // گوش دادن به تغییرات cache
     // Instead of polling cache via periodic stream, let's use the repository stream!
-    _messageSubscription =
-        _chatRepository.watchMessages(conversationId).listen((messages) {
-      // فیلتر پیام‌های حذف شده محلی
-      final filteredMessages = messages
-          .where((m) => !_locallyDeletedMessageIds.contains(m.id))
-          .toList();
+    _messageSubscription = _chatRepository.watchMessages(conversationId).listen(
+      (messages) {
+        // فیلتر پیام‌های حذف شده محلی
+        final filteredMessages = messages
+            .where((m) => !_locallyDeletedMessageIds.contains(m.id))
+            .toList();
 
-      if (mounted) {
-        state = state.copyWith(messages: filteredMessages);
-      }
-    });
+        if (mounted) {
+          state = state.copyWith(messages: filteredMessages);
+        }
+      },
+    );
   }
 
   /// بارگذاری پیام‌های بیشتر
@@ -151,19 +149,20 @@ class ImprovedChatProvider extends StateNotifier<ImprovedChatState> {
   }) async {
     try {
       final tempId = 'temp_${DateTime.now().millisecondsSinceEpoch}';
-      final currentUser = supabase.auth.currentUser!;
+      final currentUserId = await TokenStorage.getUserId();
+      if (currentUserId == null || currentUserId.isEmpty) {
+        throw Exception('User is not authenticated');
+      }
 
       // ایجاد پیام موقت
       final tempMessage = MessageModel.temporary(
         tempId: tempId,
         conversationId: conversationId,
-        senderId: currentUser.id,
+        senderId: currentUserId,
         content: content,
         attachmentUrl: attachmentUrl,
         attachmentType: attachmentType,
         replyToMessageId: replyToMessageId,
-        senderName: currentUser.userMetadata?['username'],
-        senderAvatar: currentUser.userMetadata?['avatar_url'],
       );
 
       // اضافه کردن به state
@@ -214,8 +213,10 @@ class ImprovedChatProvider extends StateNotifier<ImprovedChatState> {
   }
 
   /// حذف پیام
-  Future<void> deleteMessage(String messageId,
-      {bool forEveryone = false}) async {
+  Future<void> deleteMessage(
+    String messageId, {
+    bool forEveryone = false,
+  }) async {
     try {
       // اضافه کردن به لیست پیام‌های حذف شده محلی
       _locallyDeletedMessageIds.add(messageId);
@@ -307,25 +308,29 @@ class ImprovedChatState {
 
 /// Provider برای استفاده در UI - بدون autoDispose برای جلوگیری از dispose زودهنگام
 final improvedChatProvider = StateNotifierProvider.family<ImprovedChatProvider,
-    ImprovedChatState, String>(
-  (ref, conversationId) {
-    final repository = ref.watch(chatRepositoryProvider);
-    return ImprovedChatProvider(conversationId, repository);
-  },
-);
+    ImprovedChatState, String>((ref, conversationId) {
+  final repository = ref.watch(chatRepositoryProvider);
+  return ImprovedChatProvider(conversationId, repository);
+});
 
 /// Helper providers برای دسترسی آسان‌تر
-final chatMessagesProvider =
-    Provider.family<List<MessageModel>, String>((ref, conversationId) {
+final chatMessagesProvider = Provider.family<List<MessageModel>, String>((
+  ref,
+  conversationId,
+) {
   return ref.watch(improvedChatProvider(conversationId)).messages;
 });
 
-final chatLoadingProvider =
-    Provider.family<bool, String>((ref, conversationId) {
+final chatLoadingProvider = Provider.family<bool, String>((
+  ref,
+  conversationId,
+) {
   return ref.watch(improvedChatProvider(conversationId)).isLoading;
 });
 
-final chatErrorProvider =
-    Provider.family<String?, String>((ref, conversationId) {
+final chatErrorProvider = Provider.family<String?, String>((
+  ref,
+  conversationId,
+) {
   return ref.watch(improvedChatProvider(conversationId)).error;
 });

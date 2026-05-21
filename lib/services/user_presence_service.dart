@@ -1,43 +1,32 @@
-﻿// lib/services/user_presence_service.dart
-//
-// سرویس مدیریت وضعیت آنلاین کاربران - Real-time با Supabase
-//
-// ویژگی‌ها:
-// ✅ Real-time presence با Supabase Realtime
-// ✅ به‌روزرسانی خودکار وضعیت آنلاین
-// ✅ مدیریت چرخه حیات برنامه
-// ✅ کشینگ هوشمند وضعیت
-// ✅ رعایت تنظیمات حریم خصوصی
-//
-
 import 'dart:async';
+
+import 'package:dio/dio.dart';
 import 'package:flutter/widgets.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+
+import '../features/auth/providers/auth_controller.dart';
 import '../utils/time_utils.dart';
 
-/// وضعیت‌های مختلف کاربر
 enum UserPresenceStatus {
-  online, // آنلاین (فعال در برنامه)
-  away, // دور (برنامه در پس‌زمینه)
-  offline, // آفلاین
-  typing, // در حال تایپ
-  recording, // در حال ضبط صدا
+  online,
+  away,
+  offline,
+  typing,
+  recording,
 }
 
-/// تنظیمات نمایش آخرین بازدید
 enum LastSeenVisibility {
-  everyone, // همه
-  myContacts, // فقط مخاطبین
-  nobody, // هیچکس
+  everyone,
+  myContacts,
+  nobody,
 }
 
-/// مدل وضعیت آنلاین کاربر
 class UserPresenceState {
   final String userId;
   final UserPresenceStatus status;
   final DateTime? lastOnline;
   final LastSeenVisibility visibility;
-  final bool canViewLastSeen; // آیا کاربر فعلی اجازه دیدن دارد
+  final bool canViewLastSeen;
   final DateTime updatedAt;
 
   const UserPresenceState({
@@ -54,9 +43,7 @@ class UserPresenceState {
   bool get isRecording => status == UserPresenceStatus.recording;
   bool get isAway => status == UserPresenceStatus.away;
 
-  /// فرمت نمایش وضعیت به سبک ویستا
   String get displayText {
-    // اگر اجازه نمایش ندارد
     if (!canViewLastSeen) {
       return _getApproximateLastSeen();
     }
@@ -70,31 +57,18 @@ class UserPresenceState {
         return 'در حال ضبط صدا...';
       case UserPresenceStatus.away:
       case UserPresenceStatus.offline:
-        return _formatLastSeen();
+        return TimeUtils.formatUserPresence(lastOnline);
     }
   }
 
-  /// فرمت تقریبی برای حالت مخفی (مثل ویستا)
   String _getApproximateLastSeen() {
-    if (lastOnline == null) return 'آخرین بازدید: اخیراً';
+    if (lastOnline == null) return 'آخرین بازدید: اخیرا';
 
-    final now = DateTime.now();
-    final diff = now.difference(lastOnline!);
-
-    if (diff.inDays < 1) {
-      return 'آخرین بازدید: اخیراً';
-    } else if (diff.inDays < 7) {
-      return 'آخرین بازدید: این هفته';
-    } else if (diff.inDays < 30) {
-      return 'آخرین بازدید: این ماه';
-    } else {
-      return 'آخرین بازدید: مدتی پیش';
-    }
-  }
-
-  /// فرمت دقیق آخرین بازدید
-  String _formatLastSeen() {
-    return TimeUtils.formatUserPresence(lastOnline);
+    final diff = DateTime.now().difference(lastOnline!);
+    if (diff.inDays < 1) return 'آخرین بازدید: اخیرا';
+    if (diff.inDays < 7) return 'آخرین بازدید: این هفته';
+    if (diff.inDays < 30) return 'آخرین بازدید: این ماه';
+    return 'آخرین بازدید: مدتی پیش';
   }
 
   UserPresenceState copyWith({
@@ -114,167 +88,157 @@ class UserPresenceState {
   }
 }
 
-/// سرویس مرکزی مدیریت وضعیت آنلاین
 class UserPresenceService with WidgetsBindingObserver {
   static final UserPresenceService _instance = UserPresenceService._internal();
   factory UserPresenceService() => _instance;
   UserPresenceService._internal();
 
-  final _supabase = Supabase.instance.client;
+  static String get _backendUrl =>
+      dotenv.env['BACKEND_URL'] ?? 'http://10.0.2.2:8080';
 
-  // کشینگ وضعیت کاربران
+  late final Dio _dio = Dio(BaseOptions(
+    baseUrl: '$_backendUrl/v1',
+    connectTimeout: const Duration(seconds: 10),
+    receiveTimeout: const Duration(seconds: 10),
+    headers: {'Content-Type': 'application/json'},
+  ));
+
   final Map<String, UserPresenceState> _presenceCache = {};
   final Map<String, StreamController<UserPresenceState>> _presenceStreams = {};
+  final Map<String, Timer> _pollingTimers = {};
 
-  // Subscription‌های فعال
-  final Map<String, RealtimeChannel> _userChannels = {};
-
-  // تایمرها
   Timer? _heartbeatTimer;
   Timer? _cleanupTimer;
-
-  // وضعیت سرویس
   bool _isInitialized = false;
   bool _isDisposed = false;
   String? _currentUserId;
 
-  // تنظیمات
   static const Duration _heartbeatInterval = Duration(seconds: 30);
-  static const Duration _onlineThreshold = Duration(minutes: 2);
+  static const Duration _pollingInterval = Duration(seconds: 20);
   static const Duration _cacheCleanupInterval = Duration(minutes: 5);
 
-  /// راه‌اندازی سرویس
   Future<void> initialize() async {
     if (_isInitialized) return;
 
-    _currentUserId = _supabase.auth.currentUser?.id;
-    if (_currentUserId == null) {
-      debugPrint('⚠️ UserPresenceService: کاربر وارد نشده');
+    _currentUserId = await TokenStorage.getUserId();
+    if (_currentUserId == null || _currentUserId!.isEmpty) {
+      debugPrint('UserPresenceService: user is not authenticated');
       return;
     }
 
-    // ثبت observer برای چرخه حیات
     WidgetsBinding.instance.addObserver(this);
-
-    // شروع heartbeat
     _startHeartbeat();
-
-    // شروع پاکسازی دوره‌ای کش
     _startCacheCleanup();
-
-    // به‌روزرسانی اولیه وضعیت
     await _updateMyPresence(UserPresenceStatus.online);
-
     _isInitialized = true;
-    debugPrint('✅ UserPresenceService initialized');
   }
 
-  /// اتصال به کانال Presence یک کاربر خاص
   Stream<UserPresenceState> watchUserPresence(String userId) {
-    // اگر استریم وجود دارد، برگردان
     if (_presenceStreams.containsKey(userId)) {
       return _presenceStreams[userId]!.stream;
     }
 
-    // ایجاد استریم جدید
     late final StreamController<UserPresenceState> controller;
     controller = StreamController<UserPresenceState>.broadcast(
       onListen: () {
-        final cached = _presenceCache[userId];
-        if (cached != null) {
-          controller.add(cached);
-        } else {
-          controller.add(UserPresenceState(
-            userId: userId,
-            status: UserPresenceStatus.offline,
-            updatedAt: DateTime.now(),
-          ));
-        }
-
-        _subscribeToUser(userId);
-        unawaited(_fetchInitialPresence(userId));
+        controller.add(
+          _presenceCache[userId] ??
+              UserPresenceState(
+                userId: userId,
+                status: UserPresenceStatus.offline,
+                updatedAt: DateTime.now(),
+              ),
+        );
+        unawaited(refreshUserPresence(userId));
+        _startPollingUser(userId);
       },
-      onCancel: () => _unsubscribeFromUser(userId),
+      onCancel: () {
+        _pollingTimers.remove(userId)?.cancel();
+        _presenceStreams.remove(userId)?.close();
+      },
     );
 
     _presenceStreams[userId] = controller;
-
     return controller.stream;
   }
 
-  /// دریافت وضعیت اولیه کاربر
-  Future<void> _fetchInitialPresence(String userId) async {
+  Future<void> refreshUserPresence(String userId) async {
     try {
-      final currentUserId = _currentUserId;
-      if (currentUserId == null) {
-        _emitFallbackPresence(userId);
-        return;
-      }
-
-      // دریافت پروفایل و تنظیمات
-      final responses = await Future.wait<dynamic>([
-        _supabase
-            .from('profiles')
-            .select('is_online, last_online, last_seen_status')
-            .eq('id', userId)
-            .maybeSingle(),
-        _supabase
-            .from('user_settings')
-            .select('last_seen_visibility')
-            .eq('user_id', userId)
-            .maybeSingle(),
-      ]).timeout(
-        const Duration(seconds: 4),
-        onTimeout: () => [null, null],
+      final response = await _dio.get(
+        '/presence/$userId',
+        options: await _optionalAuthOptions(),
       );
-
-      final profileData = responses[0];
-      final settingsData = responses[1];
-
-      if (profileData == null) {
-        _emitFallbackPresence(userId);
-        return;
-      }
-
-      // بررسی اجازه نمایش
-      final visibility = _parseVisibility(
-        settingsData?['last_seen_visibility'] as String? ?? 'everyone',
+      final state = _presenceFromJson(
+        Map<String, dynamic>.from(response.data as Map),
       );
-      final canView = await _checkCanViewLastSeen(userId, visibility);
-
-      // پارس وضعیت
-      final isOnline = profileData['is_online'] as bool? ?? false;
-      final lastOnlineStr = profileData['last_online'] as String?;
-      final lastOnline = lastOnlineStr != null
-          ? DateTime.parse(lastOnlineStr).toLocal()
-          : null;
-
-      // تعیین وضعیت واقعی
-      UserPresenceStatus status;
-      if (isOnline && lastOnline != null) {
-        final diff = DateTime.now().difference(lastOnline);
-        status = diff < _onlineThreshold
-            ? UserPresenceStatus.online
-            : UserPresenceStatus.offline;
-      } else {
-        status = UserPresenceStatus.offline;
-      }
-
-      final state = UserPresenceState(
-        userId: userId,
-        status: status,
-        lastOnline: lastOnline,
-        visibility: visibility,
-        canViewLastSeen: canView,
-        updatedAt: DateTime.now(),
-      );
-
       _presenceCache[userId] = state;
       _presenceStreams[userId]?.add(state);
     } catch (e) {
-      debugPrint('❌ Error fetching presence for $userId: $e');
+      debugPrint('Error fetching presence for $userId: $e');
       _emitFallbackPresence(userId);
     }
+  }
+
+  void _startPollingUser(String userId) {
+    _pollingTimers.remove(userId)?.cancel();
+    _pollingTimers[userId] = Timer.periodic(_pollingInterval, (_) {
+      if (!_isDisposed) {
+        unawaited(refreshUserPresence(userId));
+      }
+    });
+  }
+
+  Future<void> _updateMyPresence(UserPresenceStatus status) async {
+    if (_currentUserId == null) return;
+
+    try {
+      final response = await _dio.post(
+        '/presence/update',
+        data: {'status': _presenceStatusToWire(status)},
+        options: await _authOptions(),
+      );
+      final state = _presenceFromJson(
+        Map<String, dynamic>.from(response.data as Map),
+      );
+      _presenceCache[state.userId] = state;
+      _presenceStreams[state.userId]?.add(state);
+    } catch (e) {
+      debugPrint('Error updating presence: $e');
+    }
+  }
+
+  Future<void> setTyping(String conversationId, bool isTyping) async {}
+
+  UserPresenceState? getCachedPresence(String userId) {
+    return _presenceCache[userId];
+  }
+
+  void invalidateCache(String userId) {
+    _presenceCache.remove(userId);
+    if (_presenceStreams.containsKey(userId)) {
+      unawaited(refreshUserPresence(userId));
+    }
+  }
+
+  void invalidateAllCaches() {
+    final userIds = _presenceStreams.keys.toList(growable: false);
+    _presenceCache.clear();
+    for (final userId in userIds) {
+      unawaited(refreshUserPresence(userId));
+    }
+  }
+
+  Future<DateTime?> getLastSeen(String userId) async {
+    await refreshUserPresence(userId);
+    final presence = _presenceCache[userId];
+    return presence != null && presence.canViewLastSeen
+        ? presence.lastOnline
+        : null;
+  }
+
+  Future<bool> canViewLastSeen(String userId) async {
+    await refreshUserPresence(userId);
+    return _presenceCache[userId]?.canViewLastSeen ?? false;
   }
 
   void _emitFallbackPresence(String userId) {
@@ -288,329 +252,131 @@ class UserPresenceService with WidgetsBindingObserver {
     _presenceStreams[userId]?.add(fallback);
   }
 
-  /// اشتراک در تغییرات وضعیت یک کاربر
-  Future<void> _subscribeToUser(String userId) async {
-    if (_userChannels.containsKey(userId)) return;
-
-    // ✅ گوش دادن به هر دو جدول: profiles و user_settings
-    final channel = _supabase
-        .channel('presence:$userId')
-        // تغییرات profiles (is_online, last_online)
-        .onPostgresChanges(
-          event: PostgresChangeEvent.update,
-          schema: 'public',
-          table: 'profiles',
-          filter: PostgresChangeFilter(
-            type: PostgresChangeFilterType.eq,
-            column: 'id',
-            value: userId,
-          ),
-          callback: (payload) =>
-              _handleProfileUpdate(userId, payload.newRecord),
-        )
-        // ✅ تغییرات user_settings (last_seen_visibility)
-        .onPostgresChanges(
-          event: PostgresChangeEvent.update,
-          schema: 'public',
-          table: 'user_settings',
-          filter: PostgresChangeFilter(
-            type: PostgresChangeFilterType.eq,
-            column: 'user_id',
-            value: userId,
-          ),
-          callback: (payload) =>
-              _handleSettingsUpdate(userId, payload.newRecord),
-        )
-        .subscribe();
-
-    _userChannels[userId] = channel;
-    debugPrint('📡 Subscribed to presence & settings: $userId');
-  }
-
-  /// ✅ پردازش تغییرات تنظیمات حریم خصوصی
-  Future<void> _handleSettingsUpdate(
-      String userId, Map<String, dynamic> data) async {
-    try {
-      final cached = _presenceCache[userId];
-      if (cached == null) {
-        await _fetchInitialPresence(userId);
-        return;
+  void _startHeartbeat() {
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = Timer.periodic(_heartbeatInterval, (_) {
+      if (!_isDisposed) {
+        unawaited(_updateMyPresence(UserPresenceStatus.online));
       }
-
-      // خواندن visibility جدید
-      final visibilityStr =
-          data['last_seen_visibility'] as String? ?? 'everyone';
-      final newVisibility = _parseVisibility(visibilityStr);
-
-      // بررسی مجدد دسترسی با visibility جدید
-      final canView = await _checkCanViewLastSeen(userId, newVisibility);
-
-      final newState = UserPresenceState(
-        userId: userId,
-        status: cached.status,
-        lastOnline: cached.lastOnline,
-        visibility: newVisibility,
-        canViewLastSeen: canView,
-        updatedAt: DateTime.now(),
-      );
-
-      _presenceCache[userId] = newState;
-      _presenceStreams[userId]?.add(newState);
-
-      debugPrint(
-          '🔐 Privacy settings updated: $userId -> $newVisibility (canView: $canView)');
-    } catch (e) {
-      debugPrint('❌ Error handling settings update: $e');
-    }
+    });
   }
 
-  /// لغو اشتراک از کاربر
-  Future<void> _unsubscribeFromUser(String userId) async {
-    final channel = _userChannels.remove(userId);
-    if (channel != null) {
-      await _supabase.removeChannel(channel);
-      debugPrint('📴 Unsubscribed from presence: $userId');
-    }
-
-    _presenceStreams.remove(userId)?.close();
-    _presenceCache.remove(userId);
-  }
-
-  /// پردازش به‌روزرسانی پروفایل
-  Future<void> _handleProfileUpdate(
-      String userId, Map<String, dynamic> data) async {
-    try {
-      final cached = _presenceCache[userId];
-      if (cached == null) {
-        await _fetchInitialPresence(userId);
-        return;
+  void _startCacheCleanup() {
+    _cleanupTimer?.cancel();
+    _cleanupTimer = Timer.periodic(_cacheCleanupInterval, (_) {
+      final now = DateTime.now();
+      final staleKeys = _presenceCache.entries
+          .where(
+              (entry) => now.difference(entry.value.updatedAt).inMinutes > 10)
+          .map((entry) => entry.key)
+          .toList(growable: false);
+      for (final key in staleKeys) {
+        _presenceCache.remove(key);
       }
+    });
+  }
 
-      final isOnline = data['is_online'] as bool? ?? false;
-      final lastOnlineStr = data['last_online'] as String?;
-      final lastOnline = lastOnlineStr != null
-          ? DateTime.parse(lastOnlineStr).toLocal()
-          : cached.lastOnline;
-
-      // تعیین وضعیت
-      UserPresenceStatus status;
-      if (isOnline && lastOnline != null) {
-        final diff = DateTime.now().difference(lastOnline);
-        status = diff < _onlineThreshold
-            ? UserPresenceStatus.online
-            : UserPresenceStatus.offline;
-      } else {
-        status = UserPresenceStatus.offline;
-      }
-
-      final newState = cached.copyWith(
-        status: status,
-        lastOnline: lastOnline,
-      );
-
-      _presenceCache[userId] = newState;
-      _presenceStreams[userId]?.add(newState);
-
-      debugPrint('🔄 Presence updated: $userId -> $status');
-    } catch (e) {
-      debugPrint('❌ Error handling profile update: $e');
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    switch (state) {
+      case AppLifecycleState.resumed:
+        unawaited(_updateMyPresence(UserPresenceStatus.online));
+        _startHeartbeat();
+        break;
+      case AppLifecycleState.paused:
+      case AppLifecycleState.inactive:
+        unawaited(_updateMyPresence(UserPresenceStatus.away));
+        _heartbeatTimer?.cancel();
+        break;
+      case AppLifecycleState.detached:
+      case AppLifecycleState.hidden:
+        unawaited(_updateMyPresence(UserPresenceStatus.offline));
+        _heartbeatTimer?.cancel();
+        break;
     }
   }
 
-  /// بررسی اجازه نمایش آخرین بازدید
-  Future<bool> _checkCanViewLastSeen(
-    String userId,
-    LastSeenVisibility visibility,
-  ) async {
-    if (visibility == LastSeenVisibility.everyone) return true;
-    if (visibility == LastSeenVisibility.nobody) return false;
+  void dispose() {
+    if (_isDisposed) return;
+    _isDisposed = true;
+    unawaited(_updateMyPresence(UserPresenceStatus.offline));
+    _heartbeatTimer?.cancel();
+    _cleanupTimer?.cancel();
+    for (final timer in _pollingTimers.values) {
+      timer.cancel();
+    }
+    _pollingTimers.clear();
+    for (final controller in _presenceStreams.values) {
+      controller.close();
+    }
+    _presenceStreams.clear();
+    _presenceCache.clear();
+    WidgetsBinding.instance.removeObserver(this);
+    _isInitialized = false;
+  }
 
-    // برای my_contacts باید فالو دوطرفه باشد
-    final currentUserId = _currentUserId;
-    if (currentUserId == null) return false;
+  Future<Options> _authOptions() async {
+    final token = await TokenStorage.getAccessToken();
+    if (token == null || token.isEmpty) {
+      throw StateError('User is not authenticated');
+    }
+    return Options(headers: {'Authorization': 'Bearer $token'});
+  }
 
-    try {
-      final results = await Future.wait([
-        _supabase
-            .from('follows')
-            .select('id')
-            .eq('follower_id', currentUserId)
-            .eq('following_id', userId)
-            .maybeSingle(),
-        _supabase
-            .from('follows')
-            .select('id')
-            .eq('follower_id', userId)
-            .eq('following_id', currentUserId)
-            .maybeSingle(),
-      ]).timeout(
-        const Duration(seconds: 3),
-        onTimeout: () => [null, null],
-      );
+  Future<Options> _optionalAuthOptions() async {
+    final token = await TokenStorage.getAccessToken();
+    if (token == null || token.isEmpty) return Options();
+    return Options(headers: {'Authorization': 'Bearer $token'});
+  }
 
-      return results[0] != null && results[1] != null;
-    } catch (e) {
-      debugPrint('❌ Error checking follow status: $e');
-      return false; // deny-by-default on error
+  UserPresenceState _presenceFromJson(Map<String, dynamic> json) {
+    final lastOnlineRaw = json['last_online_at']?.toString();
+    return UserPresenceState(
+      userId: json['user_id']?.toString() ?? '',
+      status: _parsePresenceStatus(json['status']?.toString()),
+      lastOnline: lastOnlineRaw != null && lastOnlineRaw.isNotEmpty
+          ? DateTime.tryParse(lastOnlineRaw)?.toLocal()
+          : null,
+      visibility: _parseVisibility(json['visibility']?.toString()),
+      canViewLastSeen: json['can_view_last_seen'] as bool? ?? false,
+      updatedAt:
+          DateTime.tryParse(json['updated_at']?.toString() ?? '')?.toLocal() ??
+              DateTime.now(),
+    );
+  }
+
+  UserPresenceStatus _parsePresenceStatus(String? raw) {
+    switch (raw) {
+      case 'online':
+        return UserPresenceStatus.online;
+      case 'away':
+        return UserPresenceStatus.away;
+      default:
+        return UserPresenceStatus.offline;
     }
   }
 
-  LastSeenVisibility _parseVisibility(String value) {
-    switch (value) {
-      case 'nobody':
-        return LastSeenVisibility.nobody;
+  LastSeenVisibility _parseVisibility(String? raw) {
+    switch (raw) {
       case 'my_contacts':
         return LastSeenVisibility.myContacts;
+      case 'nobody':
+        return LastSeenVisibility.nobody;
       default:
         return LastSeenVisibility.everyone;
     }
   }
 
-  /// به‌روزرسانی وضعیت کاربر فعلی
-  Future<void> _updateMyPresence(UserPresenceStatus status) async {
-    final userId = _currentUserId;
-    if (userId == null) return;
-
-    try {
-      await _supabase.from('profiles').update({
-        'is_online': status == UserPresenceStatus.online,
-        'last_online': DateTime.now().toUtc().toIso8601String(),
-      }).eq('id', userId);
-
-      debugPrint('✅ My presence updated: $status');
-    } catch (e) {
-      debugPrint('❌ Error updating presence: $e');
+  String _presenceStatusToWire(UserPresenceStatus status) {
+    switch (status) {
+      case UserPresenceStatus.online:
+      case UserPresenceStatus.typing:
+      case UserPresenceStatus.recording:
+        return 'online';
+      case UserPresenceStatus.away:
+        return 'away';
+      case UserPresenceStatus.offline:
+        return 'offline';
     }
-  }
-
-  /// شروع heartbeat برای حفظ وضعیت آنلاین
-  void _startHeartbeat() {
-    _heartbeatTimer?.cancel();
-    _heartbeatTimer = Timer.periodic(_heartbeatInterval, (_) {
-      if (!_isDisposed) {
-        _updateMyPresence(UserPresenceStatus.online);
-      }
-    });
-  }
-
-  /// شروع پاکسازی دوره‌ای کش
-  void _startCacheCleanup() {
-    _cleanupTimer?.cancel();
-    _cleanupTimer = Timer.periodic(_cacheCleanupInterval, (_) {
-      _cleanupCache();
-    });
-  }
-
-  /// پاکسازی کش
-  void _cleanupCache() {
-    final now = DateTime.now();
-    final keysToRemove = <String>[];
-
-    _presenceCache.forEach((userId, state) {
-      // اگر بیش از 10 دقیقه آپدیت نشده، حذف کن
-      if (now.difference(state.updatedAt).inMinutes > 10) {
-        keysToRemove.add(userId);
-      }
-    });
-
-    for (final key in keysToRemove) {
-      _presenceCache.remove(key);
-    }
-
-    if (keysToRemove.isNotEmpty) {
-      debugPrint('🧹 Cleaned ${keysToRemove.length} cached presence states');
-    }
-  }
-
-  /// تنظیم وضعیت تایپ
-  Future<void> setTyping(String conversationId, bool isTyping) async {
-    // این از طریق typing_provider مدیریت می‌شود
-    // اینجا فقط برای آپدیت وضعیت نمایشی است
-  }
-
-  /// دریافت وضعیت کش شده
-  UserPresenceState? getCachedPresence(String userId) {
-    return _presenceCache[userId];
-  }
-
-  /// ✅ رفرش کردن وضعیت یک کاربر (برای استفاده بعد از تغییر تنظیمات)
-  Future<void> refreshUserPresence(String userId) async {
-    await _fetchInitialPresence(userId);
-  }
-
-  /// ✅ پاک کردن کش یک کاربر (برای force refresh)
-  void invalidateCache(String userId) {
-    _presenceCache.remove(userId);
-    // اگر استریم فعال دارد، وضعیت جدید را دریافت کن
-    if (_presenceStreams.containsKey(userId)) {
-      _fetchInitialPresence(userId);
-    }
-  }
-
-  /// ✅ پاک کردن همه کش‌ها
-  void invalidateAllCaches() {
-    final userIds = _presenceCache.keys.toList();
-    _presenceCache.clear();
-
-    // رفرش همه استریم‌های فعال
-    for (final userId in userIds) {
-      if (_presenceStreams.containsKey(userId)) {
-        _fetchInitialPresence(userId);
-      }
-    }
-  }
-
-  /// مدیریت چرخه حیات برنامه
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    switch (state) {
-      case AppLifecycleState.resumed:
-        _updateMyPresence(UserPresenceStatus.online);
-        _startHeartbeat();
-        break;
-      case AppLifecycleState.paused:
-      case AppLifecycleState.inactive:
-        _updateMyPresence(UserPresenceStatus.away);
-        _heartbeatTimer?.cancel();
-        break;
-      case AppLifecycleState.detached:
-      case AppLifecycleState.hidden:
-        _updateMyPresence(UserPresenceStatus.offline);
-        _heartbeatTimer?.cancel();
-        break;
-    }
-  }
-
-  /// آزادسازی منابع
-  void dispose() {
-    if (_isDisposed) return;
-    _isDisposed = true;
-
-    // تنظیم آفلاین
-    _updateMyPresence(UserPresenceStatus.offline);
-
-    // لغو تایمرها
-    _heartbeatTimer?.cancel();
-    _cleanupTimer?.cancel();
-
-    // بستن استریم‌ها
-    for (final controller in _presenceStreams.values) {
-      controller.close();
-    }
-    _presenceStreams.clear();
-
-    // لغو subscription‌ها
-    for (final channel in _userChannels.values) {
-      _supabase.removeChannel(channel);
-    }
-    _userChannels.clear();
-
-    // حذف observer
-    WidgetsBinding.instance.removeObserver(this);
-
-    _presenceCache.clear();
-    _isInitialized = false;
-
-    debugPrint('🔴 UserPresenceService disposed');
   }
 }

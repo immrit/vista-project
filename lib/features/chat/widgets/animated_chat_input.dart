@@ -825,6 +825,7 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
         enabled: widget.enabled,
         maxLines: 5,
         minLines: 1,
+        maxLength: 4000,
         textInputAction: TextInputAction.newline,
         textDirection: textDirection,
         textAlign: textAlign,
@@ -845,6 +846,7 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
             color: theme.secondaryTextColor.withOpacity(0.6),
             fontSize: 15, // فونت کوچک‌تر
           ),
+          counterText: "", // Hide the counter
           border: InputBorder.none,
           enabledBorder: InputBorder.none,
           focusedBorder: InputBorder.none,

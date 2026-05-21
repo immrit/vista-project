@@ -30,7 +30,7 @@ class _ReelsScreenState extends ConsumerState<ReelsScreen>
   late PageController _pageController;
   int _currentIndex = 0;
   bool _isLoading = false;
-  // removed unused _supabaseService field to satisfy linter
+  // Post action service is read on demand.
 
   @override
   bool get wantKeepAlive => true; // برای حفظ وضعیت ویدیوها در هنگام اسکرول
@@ -40,7 +40,7 @@ class _ReelsScreenState extends ConsumerState<ReelsScreen>
     super.initState();
     _currentIndex = widget.initialIndex;
     _pageController = PageController(initialPage: _currentIndex);
-    // _supabaseService = SupabaseService(supabase);
+    // Post actions are provided by postActionsServiceProvider.
 
     // لاگ کردن موقعیت‌های اولیه برای دیباگ
     if (widget.initialPositions.isNotEmpty) {
@@ -110,7 +110,7 @@ class _ReelsScreenState extends ConsumerState<ReelsScreen>
       ref.read(publicPostsProvider.notifier).updatePost(updatedReel);
 
       // ارسال درخواست به سرور
-      await ref.read(supabaseServiceProvider).toggleLike(
+      await ref.read(postActionsServiceProvider).toggleLike(
             postId: reel.id,
             ownerId: reel.userId,
             ref: ref,

@@ -4,36 +4,24 @@ import 'dart:io';
 
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
+import '../features/auth/data/auth_repository.dart';
+import '../features/auth/providers/auth_controller.dart';
 import '../model/session_model.dart';
 import '../security/logging_utility.dart';
-import '../security/security.dart';
-import '../security/secure_kv_store.dart';
+import '../services/current_user_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-enum SessionVerificationState {
-  verified,
-  pendingVerification,
-  invalid,
-}
+enum SessionVerificationState { verified, pendingVerification, invalid }
 
-/// 🚀 Session Manager V2 - Professional Grade
+/// 🚀 Session Manager V2 — Go Backend Edition
 ///
-/// Key Features:
-/// - Trust Supabase session as source of truth
-/// - Graceful degradation with network errors
-/// - Smart retry logic (3x before giving up)
-/// - No aggressive checks in background
-/// - Only user-initiated session termination
-///
-/// Based on best practices from:
-/// - Telegram (persistent sessions)
-/// - WhatsApp (offline-first)
-/// - Instagram (background resilience)
+/// Auth tokens are managed via TokenStorage (flutter_secure_storage).
+/// Session records are kept in the custom Go backend.
 class SessionManagerServiceV2 {
   static final SessionManagerServiceV2 _instance =
       SessionManagerServiceV2._internal();
@@ -41,13 +29,11 @@ class SessionManagerServiceV2 {
   static SessionManagerServiceV2 get instance => _instance;
   SessionManagerServiceV2._internal();
 
-  final SupabaseClient _supabase = Supabase.instance.client;
-
+  // ─── State ───────────────────────────────────────────────────
   String? _currentSessionId;
   String? _sessionToken;
   Timer? _activityTimer;
   Timer? _healthCheckTimer;
-  RealtimeChannel? _sessionChannel;
   SessionVerificationState _verificationState =
       SessionVerificationState.pendingVerification;
 
@@ -55,134 +41,149 @@ class SessionManagerServiceV2 {
   bool _isRegistering = false;
   bool _isInBackground = false;
   DateTime? _lastActivityUpdate;
-
   bool _isTerminating = false;
   Future<bool>? _refreshInFlight;
 
-  // ✅ Configuration
-  static const Duration _activityUpdateInterval =
-      Duration(minutes: 3); // هر 3 دقیقه
-  static const Duration _healthCheckInterval =
-      Duration(minutes: 2); // هر 2 دقیقه
+  // ─── Config ──────────────────────────────────────────────────
+  static const Duration _activityUpdateInterval = Duration(minutes: 3);
+  static const Duration _healthCheckInterval = Duration(minutes: 2);
   static const String _sessionIdStorageKey = 'session_manager_v2.session_id';
   static const String _sessionTokenStorageKey =
       'session_manager_v2.session_token';
+  static const Duration _backendTimeout = Duration(seconds: 10);
 
+  // ─── Callbacks ───────────────────────────────────────────────
   Function()? onSessionTerminated;
 
+  // ─── Public Getters ──────────────────────────────────────────
   String? get currentSessionId => _currentSessionId;
   bool get isSessionActive => _currentSessionId != null;
   String? get currentSessionToken => _sessionToken;
   bool get isInBackground => _isInBackground;
   SessionVerificationState get verificationState => _verificationState;
 
-  bool _hasSupabaseSession({int minRemainingSeconds = 0}) {
-    final session = _supabase.auth.currentSession;
-    if (session == null) return false;
+  // ─── Backend helpers ─────────────────────────────────────────
+  String get _backendUrl => dotenv.env['BACKEND_URL'] ?? 'http://10.0.2.2:8080';
 
-    if (minRemainingSeconds <= 0) return true;
+  Uri _backendUri(String path) => Uri.parse('$_backendUrl$path');
 
-    final expiresAt = session.expiresAt;
-    if (expiresAt == null || expiresAt <= 0) return true;
+  Future<String?> _getAccessToken() async => TokenStorage.getAccessToken();
 
-    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    return (expiresAt - now) > minRemainingSeconds;
+  Future<String?> _getAuthenticatedUserId() async =>
+      CurrentUserService.instance.resolveUserId();
+
+  Future<bool> _hasAnyAuthSession() async =>
+      await TokenStorage.hasValidSession() ||
+      await TokenStorage.hasRefreshToken();
+
+  Future<Map<String, String>> _buildHeaders() async {
+    final headers = <String, String>{'Content-Type': 'application/json'};
+    final token = await _getAccessToken();
+    if (token != null && token.isNotEmpty) {
+      headers['Authorization'] = 'Bearer $token';
+    }
+    return headers;
   }
 
-  void _markSessionPendingAndRecover() {
-    _verificationState = SessionVerificationState.pendingVerification;
-    if (!_isRegistering) {
-      _registerSessionInBackground();
+  dynamic _decodeBody(String body) {
+    if (body.isEmpty) return null;
+    try {
+      return jsonDecode(body);
+    } catch (_) {
+      return null;
     }
   }
 
-  /// ═══════════════════════════════════════════════════════════
-  /// APP LIFECYCLE HANDLERS
-  /// ═══════════════════════════════════════════════════════════
+  Future<dynamic> _backendRequest({
+    required String method,
+    required String path,
+    Map<String, dynamic>? body,
+  }) async {
+    final headers = await _buildHeaders();
+    final uri = _backendUri(path);
+    http.Response response;
+    if (method == 'GET') {
+      response = await http.get(uri, headers: headers).timeout(_backendTimeout);
+    } else {
+      response = await http
+          .post(uri,
+              headers: headers, body: body == null ? null : jsonEncode(body))
+          .timeout(_backendTimeout);
+    }
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      final payload = _decodeBody(response.body);
+      if (payload is Map) {
+        throw payload['message']?.toString() ??
+            payload['error']?.toString() ??
+            'HTTP ${response.statusCode}';
+      }
+      throw 'HTTP ${response.statusCode}';
+    }
+    return _decodeBody(response.body);
+  }
 
-  /// وقتی برنامه به پس‌زمینه می‌رود
+  // ─── Helper: get/set userId from CurrentUserService ──────────
+  void _markSessionPendingAndRecover() {
+    _verificationState = SessionVerificationState.pendingVerification;
+    if (!_isRegistering) _registerSessionInBackground();
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // APP LIFECYCLE
+  // ═══════════════════════════════════════════════════════════
+
   Future<void> onAppPaused() async {
     _isInBackground = true;
-    logInfo('⏸️ App paused - entering background mode');
-
-    // متوقف کردن تمام checks تهاجمی
+    logInfo('⏸️ App paused');
     _stopHealthCheck();
-
-    // ذخیره سریع session
     await _saveSession();
   }
 
-  /// وقتی برنامه از پس‌زمینه برمی‌گردد
   Future<void> onAppResumed() async {
     final wasPaused = _isInBackground;
     _isInBackground = false;
+    if (!wasPaused || _currentSessionId == null) return;
 
-    if (!wasPaused) return;
-
-    // ✅ اگر فقط سشن لوکال داریم هم کافیست، لازم نیست حتما سوپابیس وصل باشد
-    if (_currentSessionId == null) return;
-
-    logInfo('▶️ App resumed - Checking session state...');
-
-    final supabaseSession = _supabase.auth.currentSession;
-    if (supabaseSession != null) {
-      final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-      final expiresAt = supabaseSession.expiresAt ?? 0;
-
-      // فقط اگر توکن منقضی شده تلاش کن رفرش کنی
-      if (expiresAt - now < 300) {
-        logInfo('🔄 Session token expiring soon, attempting refresh...');
-        // نتیجه رفرش مهم نیست، اگر نت نداشتیم لاگین می‌مانیم
-        await _refreshSessionWithRetry();
-      }
+    logInfo('▶️ App resumed — checking token...');
+    final hasValid = await TokenStorage.hasValidSession();
+    if (!hasValid) {
+      logInfo('🔄 Token expiring soon, refreshing...');
+      await _refreshSessionWithRetry();
     }
-
     _startActivityTracking();
     _startHealthCheck();
     _setupRealtimeListener();
-    _updateActivity(); // تلاش برای آپدیت وضعیت آنلاین (Fire & Forget)
+    _updateActivity();
   }
 
-  /// ═══════════════════════════════════════════════════════════
-  /// INITIALIZATION
-  /// ═══════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════
+  // INITIALIZATION
+  // ═══════════════════════════════════════════════════════════
 
   Future<void> initialize() async {
     if (_isInitialized) return;
-
     try {
-      logInfo('🔧 Initializing Session Manager V2 (Offline-First Mode)...');
-
-      // بارگذاری session محلی
+      logInfo('🔧 Initializing Session Manager V2...');
       await _loadSavedSession();
 
-      // ✅ مهم: اگر سشن لوکال داریم، یعنی لاگین هستیم. نقطه سر خط.
-      // اصلا مهم نیست سوپابیس الان وصل است یا نه.
       if (_currentSessionId != null) {
-        logInfo('🚀 Local session found via Persistent Storage. Trusting it.');
+        logInfo('🚀 Local session found. Trusting it.');
         _isInitialized = true;
-
         _startActivityTracking();
         _startHealthCheck();
         _setupRealtimeListener();
-
-        // تلاش در پس‌زمینه برای سینک کردن با سرور (بدون بلاک کردن)
         _syncWithServerInBackground();
         return;
       }
 
-      // اگر لوکال نداشتیم، چک می‌کنیم شاید سوپابیس چیزی داشته باشد (مثلا بعد از لاگین اول)
-      final supabaseSession = _supabase.auth.currentSession;
-      if (supabaseSession != null) {
-        logInfo('✅ Supabase SDK has session, trusting it.');
-        if (_currentSessionId == null && _sessionToken != null) {
-          await _findSessionFromToken();
-        }
+      final hasAuth = await _hasAnyAuthSession();
+      if (hasAuth) {
+        logInfo('✅ Auth token exists, finding session...');
+        await _findSessionFromToken();
         _startActivityTracking();
         _startHealthCheck();
         _setupRealtimeListener();
       }
-
       _isInitialized = true;
     } catch (e) {
       logInfo('❌ Error initializing Session Manager: $e');
@@ -192,36 +193,28 @@ class SessionManagerServiceV2 {
   void _syncWithServerInBackground() {
     Future.delayed(const Duration(seconds: 2), () async {
       try {
-        final session = _supabase.auth.currentSession;
-        if (session == null && _currentSessionId != null) {
-          logInfo(
-              '⚠️ Local session exists but Supabase SDK is empty. This is normal in Offline mode.');
-          // اینجا می‌توانیم تلاش کنیم `recoverSession` کنیم اما اگر نشد هم مهم نیست
-        } else if (session != null) {
-          // اگر توکن منقضی شده تلاش برای رفرش
-          final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-          if ((session.expiresAt ?? 0) < now) {
-            await _supabase.auth.refreshSession();
-          }
+        final valid = await _quickSessionCheck();
+        if (!valid) {
+          logInfo('⚠️ Background sync: session invalid, recovering...');
+          _markSessionPendingAndRecover();
         }
       } catch (e) {
-        logInfo('⚠️ Background sync failed (Ignored): $e');
+        logInfo('⚠️ Background sync failed (ignored): $e');
       }
     });
   }
 
-  /// ═══════════════════════════════════════════════════════════
-  /// SESSION REGISTRATION
-  /// ═══════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════
+  // SESSION REGISTRATION
+  // ═══════════════════════════════════════════════════════════
 
   Future<String?> registerSession() async {
     if (_isRegistering) return _currentSessionId;
     if (_currentSessionId != null) return _currentSessionId;
-
     _isRegistering = true;
 
     try {
-      final userId = _supabase.auth.currentUser?.id;
+      final userId = await _getAuthenticatedUserId();
       if (userId == null) {
         _isRegistering = false;
         return null;
@@ -244,48 +237,31 @@ class SessionManagerServiceV2 {
       } catch (_) {}
 
       try {
-        await _supabase.rpc('register_active_session', params: {
-          'p_session_id': sessionId,
-          'p_session_token': _sessionToken,
-          'p_device_info': deviceInfo?.toJson() ?? {},
-          'p_app_version': packageInfo.version,
-          'p_platform': _getPlatformName(),
-          'p_ip_address': ipAddress,
-          'p_location': locationData?['location'],
-        });
-      } catch (e) {
-        final msg = e.toString().toLowerCase();
-        final rpcMissing = msg.contains('register_active_session') &&
-            (msg.contains('not found') || msg.contains('does not exist'));
-
-        if (rpcMissing) {
-          await _supabase.from('active_sessions').insert({
-            'id': sessionId,
-            'user_id': userId,
+        await _backendRequest(
+          method: 'POST',
+          path: '/v1/sessions/register',
+          body: {
+            'session_id': sessionId,
             'session_token': _sessionToken,
-            'device_info': deviceInfo?.toJson() ?? {},
-            'is_active': true,
+            'user_id': userId,
             'app_version': packageInfo.version,
-            'platform': _getPlatformName(),
-            'created_at': DateTime.now().toUtc().toIso8601String(),
-            'last_activity': DateTime.now().toUtc().toIso8601String(),
+            'build_number': packageInfo.buildNumber,
             if (ipAddress != null) 'ip_address': ipAddress,
             if (locationData != null) ...locationData,
-          });
-        } else {
-          logInfo(
-              '⚠️ Could not register session on server (offline or temporary failure). Proceeding locally.');
-        }
+            if (deviceInfo != null) ...deviceInfo.toJson(),
+          },
+        );
+      } catch (e) {
+        logInfo(
+            '⚠️ Could not register session on backend (offline). Proceeding locally: $e');
       }
 
       _currentSessionId = sessionId;
       await _saveSession();
       _verificationState = SessionVerificationState.verified;
-
       _startActivityTracking();
       _startHealthCheck();
       _setupRealtimeListener();
-
       _isRegistering = false;
       return _currentSessionId;
     } catch (e) {
@@ -296,30 +272,29 @@ class SessionManagerServiceV2 {
     }
   }
 
-  /// ═══════════════════════════════════════════════════════════
-  /// SESSION VERIFICATION (NON-AGGRESSIVE)
-  /// ═══════════════════════════════════════════════════════════
+  void _registerSessionInBackground() {
+    Future.microtask(() async {
+      await registerSession();
+    });
+  }
 
-  /// بررسی سریع session (فقط اگر واقعاً لازم باشد)
+  // ═══════════════════════════════════════════════════════════
+  // SESSION VERIFICATION
+  // ═══════════════════════════════════════════════════════════
+
   Future<bool> _quickSessionCheck() async {
     if (_currentSessionId == null || _sessionToken == null) {
       _verificationState = SessionVerificationState.invalid;
       return false;
     }
-
-    // ✅ اولویت اول: Supabase session
-    final supabaseSession = _supabase.auth.currentSession;
-    if (supabaseSession != null) {
-      final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-      final expiresAt = supabaseSession.expiresAt ?? 0;
-
-      if (expiresAt - now > 300) {
-        _verificationState = SessionVerificationState.verified;
-        return true;
+    final hasToken = await TokenStorage.hasValidSession();
+    if (!hasToken) {
+      final refreshed = await _refreshSessionWithRetry();
+      if (!refreshed) {
+        _verificationState = SessionVerificationState.invalid;
+        return false;
       }
     }
-
-    // ✅ بررسی database با retry
     return await _checkSessionInDatabase();
   }
 
@@ -328,175 +303,96 @@ class SessionManagerServiceV2 {
       _verificationState = SessionVerificationState.invalid;
       return false;
     }
-
     int retries = 0;
-    const maxRetries = 3;
-
-    while (retries < maxRetries) {
+    while (retries < 3) {
       try {
-        try {
-          final rpcResult =
-              await _supabase.rpc('validate_active_session', params: {
-            'p_session_id': _currentSessionId,
-            'p_session_token': _sessionToken,
-          }).timeout(const Duration(seconds: 5));
-
-          if (rpcResult is List && rpcResult.isNotEmpty) {
-            final first = Map<String, dynamic>.from(
-              rpcResult.first as Map,
-            );
-            final valid = first['valid'] == true;
-            _verificationState = valid
-                ? SessionVerificationState.verified
-                : SessionVerificationState.invalid;
-            return valid;
-          }
-        } catch (rpcError) {
-          final msg = rpcError.toString().toLowerCase();
-          final rpcMissing = msg.contains('validate_active_session') &&
-              (msg.contains('not found') || msg.contains('does not exist'));
-          if (!rpcMissing) rethrow;
+        final result = await _backendRequest(
+          method: 'POST',
+          path: '/v1/sessions/validate',
+          body: {
+            'session_id': _currentSessionId,
+            'session_token': _sessionToken,
+          },
+        );
+        if (result is Map && result['valid'] == true) {
+          _verificationState = SessionVerificationState.verified;
+          return true;
         }
-
-        final response = await _supabase
-            .from('active_sessions')
-            .select('is_active, expires_at')
-            .eq('id', _currentSessionId!)
-            .maybeSingle()
-            .timeout(const Duration(seconds: 5));
-
-        if (response == null) {
-          _verificationState = SessionVerificationState.invalid;
-          return false;
-        }
-
-        final isActive = response['is_active'] as bool? ?? false;
-        final expiresAtStr = response['expires_at'] as String?;
-        if (expiresAtStr != null) {
-          final expiresAt = DateTime.parse(expiresAtStr);
-          if (expiresAt.isBefore(DateTime.now().toUtc())) {
-            _verificationState = SessionVerificationState.invalid;
-            return false;
-          }
-        }
-
-        _verificationState = isActive
-            ? SessionVerificationState.verified
-            : SessionVerificationState.invalid;
-        return isActive;
+        _verificationState = SessionVerificationState.invalid;
+        return false;
       } catch (e) {
-        final errorString = e.toString().toLowerCase();
-        final isNetworkError = errorString.contains('network') ||
-            errorString.contains('timeout') ||
-            errorString.contains('connection') ||
-            errorString.contains('socket') ||
-            errorString.contains('failed host lookup');
-
-        if (isNetworkError) {
-          logInfo(
-              '⚠️ Network error checking session DB ($retries/$maxRetries), trusting local session: $e');
+        final s = e.toString().toLowerCase();
+        if (s.contains('network') ||
+            s.contains('timeout') ||
+            s.contains('connection') ||
+            s.contains('socket') ||
+            s.contains('failed host')) {
           _verificationState = SessionVerificationState.pendingVerification;
           return true;
         }
-
         retries++;
-        if (retries < maxRetries) {
+        if (retries < 3) {
           await Future.delayed(Duration(milliseconds: 500 * retries));
         }
       }
     }
-
     _verificationState = SessionVerificationState.invalid;
     return false;
   }
 
-  /// ═══════════════════════════════════════════════════════════
-  /// ACTIVITY TRACKING (OPTIMIZED)
-  /// ═══════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════
+  // ACTIVITY TRACKING
+  // ═══════════════════════════════════════════════════════════
 
   void _startActivityTracking() {
     _activityTimer?.cancel();
     _activityTimer = Timer.periodic(_activityUpdateInterval, (_) {
-      if (!_isInBackground) {
-        _updateActivity();
-      }
+      if (!_isInBackground) _updateActivity();
     });
   }
 
   Future<void> _updateActivity() async {
     if (_currentSessionId == null || _sessionToken == null) return;
     if (_isInBackground) return;
-
-    // ✅ Rate limiting - فقط اگر 2 دقیقه از آخرین آپدیت گذشته باشد
-    if (_lastActivityUpdate != null) {
-      final diff = DateTime.now().difference(_lastActivityUpdate!);
-      if (diff.inMinutes < 2) {
-        return;
-      }
+    if (_lastActivityUpdate != null &&
+        DateTime.now().difference(_lastActivityUpdate!).inMinutes < 2) {
+      return;
     }
 
     try {
       _lastActivityUpdate = DateTime.now();
-
-      // گرفتن IP و Location (بدون بلاک کردن زیاد)
       final ip = await _getIPWithTimeout();
-      final locationData = await _getCurrentLocation();
-
-      try {
-        final touched = await _supabase.rpc('touch_active_session', params: {
-          'p_session_id': _currentSessionId,
-          'p_session_token': _sessionToken,
-          'p_ip_address': ip,
-          'p_location': locationData['location'],
-        });
-
-        if (touched == true) {
-          _verificationState = SessionVerificationState.verified;
-          return;
-        }
-      } catch (rpcError) {
-        final msg = rpcError.toString().toLowerCase();
-        final rpcMissing = msg.contains('touch_active_session') &&
-            (msg.contains('not found') || msg.contains('does not exist'));
-        if (!rpcMissing) rethrow;
-      }
-
-      final updates = <String, dynamic>{
-        'last_activity': DateTime.now().toIso8601String(),
-        if (ip != null) 'ip_address': ip,
-        if (locationData['location'] != null) ...{
-          'location': jsonEncode(locationData['location']),
-          'location_city': locationData['location_city'],
-          'location_country': locationData['location_country'],
-          'location_region': locationData['location_region'],
+      final loc = await _getCurrentLocation();
+      final result = await _backendRequest(
+        method: 'POST',
+        path: '/v1/sessions/touch',
+        body: {
+          'session_id': _currentSessionId,
+          'session_token': _sessionToken,
+          if (ip != null) 'ip_address': ip,
+          if (loc != null) ...loc,
         },
-      };
-
-      await _supabase
-          .from('active_sessions')
-          .update(updates)
-          .eq('id', _currentSessionId!);
+      );
+      if (result is Map && result['valid'] == true) {
+        _verificationState = SessionVerificationState.verified;
+      }
     } catch (e) {
       logInfo('⚠️ Activity update failed (non-critical): $e');
     }
   }
 
-  /// ═══════════════════════════════════════════════════════════
-  /// HEALTH CHECK (NON-AGGRESSIVE)
-  /// ═══════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════
+  // HEALTH CHECK
+  // ═══════════════════════════════════════════════════════════
 
   void _startHealthCheck() {
-    // ✅ در debug mode، health check را غیرفعال کن
     if (kDebugMode) {
       logInfo('🔧 Debug mode: Health check disabled');
       return;
     }
-
     _stopHealthCheck();
     _healthCheckTimer = Timer.periodic(_healthCheckInterval, (_) async {
-      if (_isInBackground) return; // در background چک نکن
-
-      await _performHealthCheck();
+      if (!_isInBackground) await _performHealthCheck();
     });
   }
 
@@ -506,1169 +402,374 @@ class SessionManagerServiceV2 {
   }
 
   Future<void> _performHealthCheck() async {
-    // ✅ قانون طلایی: Health Check هرگز نباید به خاطر مشکلات شبکه کاربر را لاگ‌اوت کند.
-
-    final supabaseSession = _supabase.auth.currentSession;
-
-    // اگر سشن سوپابیس نال است اما ما لوکال سشن داریم، یعنی آفلاین هستیم یا SDK پریده.
-    // در این حالت هیچ کاری نمی‌کنیم (لاگین می‌مانیم).
-    if (supabaseSession == null) {
-      if (_currentSessionId != null) {
-        logInfo(
-            '⚠️ Health Check: Supabase session missing, but local exists. Keeping user logged in.');
-        // تلاش برای ریکاوری آرام
-        _restoreSupabaseSessionInBackground();
-      }
-      return;
-    }
-
-    // بررسی انقضا
-    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    final expiresAt = supabaseSession.expiresAt ?? 0;
-
-    if (expiresAt - now < 600) {
-      logInfo('🔄 Health Check: Token expiring, refreshing...');
-      await _refreshSessionWithRetry();
+    final hasValid = await TokenStorage.hasValidSession();
+    if (!hasValid && _currentSessionId != null) {
+      logInfo('⚠️ Health Check: token invalid, refreshing...');
+      await _performSessionRefresh();
     }
   }
 
-  Future<void> _restoreSupabaseSessionInBackground() async {
-    // این متد فقط تلاش می‌کند state سوپابیس را برگرداند
-    // اگر نشد، هیچ اتفاقی نمی‌افتد
-    try {
-      // اگر رفرش توکن در localStorage باشد، خود سوپابیس تلاش می‌کند
-      // ما اینجا کار خاصی نمی‌توانیم بکنیم جز اینکه صبر کنیم نت وصل شود
-    } catch (_) {}
-  }
-
-  /// ═══════════════════════════════════════════════════════════
-  /// SESSION REFRESH WITH RETRY
-  /// ═══════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════
+  // SESSION REFRESH WITH RETRY
+  // ═══════════════════════════════════════════════════════════
 
   Future<bool> _refreshSessionWithRetry() async {
-    final runningRefresh = _refreshInFlight;
-    if (runningRefresh != null) {
-      return runningRefresh;
-    }
-
-    final refreshFuture = _performSessionRefresh();
-    _refreshInFlight = refreshFuture;
-
+    final running = _refreshInFlight;
+    if (running != null) return running;
+    final future = _performSessionRefresh();
+    _refreshInFlight = future;
     try {
-      return await refreshFuture;
+      return await future;
     } finally {
-      if (identical(_refreshInFlight, refreshFuture)) {
-        _refreshInFlight = null;
-      }
+      if (identical(_refreshInFlight, future)) _refreshInFlight = null;
     }
   }
 
   Future<bool> _performSessionRefresh() async {
     try {
-      final response = await _supabase.auth.refreshSession();
-      if (response.session != null ||
-          _hasSupabaseSession(minRemainingSeconds: 30)) {
-        return true;
-      }
-    } on AuthException catch (e) {
-      final msg = e.message.toLowerCase();
-      if (msg.contains('invalid refresh token') ||
-          msg.contains('already been used') ||
-          msg.contains('revoked') ||
-          msg.contains('refresh_token_not_found')) {
-        if (_hasSupabaseSession(minRemainingSeconds: 10)) {
-          logInfo(
-              '⚠️ Refresh token error ignored because an active Supabase session still exists.');
-          return true;
-        }
-
-        await Future.delayed(const Duration(milliseconds: 350));
-        if (_hasSupabaseSession(minRemainingSeconds: 10)) {
-          logInfo(
-              '⚠️ Refresh token race detected. Session is healthy after retry window.');
-          return true;
-        }
-
-        logInfo('🔴 Fatal Auth Error: Token is invalid. Logging out.');
-        await _handleSessionTermination();
+      final refreshToken = await TokenStorage.getRefreshToken();
+      if (refreshToken == null || refreshToken.isEmpty) {
+        logInfo('🔴 No refresh token — cannot refresh');
         return false;
       }
 
-      logInfo('⚠️ Auth warning during refresh (Ignored): $e');
-    } catch (e) {
-      logInfo('⚠️ Network error during refresh (Ignored): $e');
-    }
+      final repo = AuthRepository();
+      final response = await repo.refreshToken(refreshToken);
 
-    return false;
+      await TokenStorage.saveTokens(AuthSessionResponse(
+        accessToken: response.session.accessToken,
+        refreshToken: response.session.refreshToken,
+        expiresAt: response.session.expiresAt,
+        tokenType: response.session.tokenType,
+      ));
+      await TokenStorage.saveUserId(response.user.id);
+
+      CurrentUserService.setCachedUserId(response.user.id);
+      logInfo('✅ Token refreshed successfully');
+      return true;
+    } catch (e) {
+      logInfo('⚠️ Token refresh failed: $e');
+      return false;
+    }
   }
 
-  /// REALTIME LISTENER
-  /// ═══════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════
 
   void _setupRealtimeListener() {
+    // Now uses periodic health check polling instead.
+    logInfo('ℹ️ Realtime listener replaced by health check polling.');
+  }
+
+  void _teardownRealtimeListener() {
+    // Empty
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // SESSION PERSISTENCE
+  // ═══════════════════════════════════════════════════════════
+
+  Future<void> _saveSession() async {
     if (_currentSessionId == null) return;
-
-    try {
-      _sessionChannel?.unsubscribe();
-
-      _sessionChannel = _supabase
-          .channel('session:$_currentSessionId')
-          .onPostgresChanges(
-            event: PostgresChangeEvent.update,
-            schema: 'public',
-            table: 'active_sessions',
-            filter: PostgresChangeFilter(
-              type: PostgresChangeFilterType.eq,
-              column: 'id',
-              value: _currentSessionId,
-            ),
-            callback: (payload) {
-              final newData = payload.newRecord;
-              if (newData['is_active'] == false) {
-                logInfo('⚠️ Session terminated by another device (Realtime)');
-                _handleSessionTermination();
-              }
-            },
-          )
-          .subscribe();
-
-      logInfo('✅ Realtime listener setup complete');
-    } catch (e) {
-      logInfo('⚠️ Realtime setup failed (non-critical): $e');
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_sessionIdStorageKey, _currentSessionId!);
+    if (_sessionToken != null) {
+      await prefs.setString(_sessionTokenStorageKey, _sessionToken!);
     }
   }
 
-  /// ═══════════════════════════════════════════════════════════
-  /// SESSION TERMINATION
-  /// ═══════════════════════════════════════════════════════════
+  Future<void> _loadSavedSession() async {
+    final prefs = await SharedPreferences.getInstance();
+    _currentSessionId = prefs.getString(_sessionIdStorageKey);
+    _sessionToken = prefs.getString(_sessionTokenStorageKey);
+    if (_currentSessionId != null) {
+      logInfo('📂 Loaded session from prefs: $_currentSessionId');
+    }
+  }
+
+  Future<void> _clearSavedSession() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_sessionIdStorageKey);
+    await prefs.remove(_sessionTokenStorageKey);
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // SESSION TERMINATION
+  // ═══════════════════════════════════════════════════════════
 
   Future<void> _handleSessionTermination() async {
     if (_isTerminating) return;
     _isTerminating = true;
-
-    logInfo('🔴 Terminating session (User logout or Fatal Error)...');
+    logInfo('🔴 Terminating session...');
 
     _stopHealthCheck();
     _activityTimer?.cancel();
-    _sessionChannel?.unsubscribe();
+    _teardownRealtimeListener();
 
-    // Mark current server session terminated when possible.
     if (_currentSessionId != null) {
       try {
-        try {
-          await _supabase.rpc('terminate_session', params: {
-            'target_session_id': _currentSessionId,
-          }).timeout(const Duration(seconds: 3));
-        } catch (_) {
-          await _supabase
-              .from('active_sessions')
-              .update({'is_active': false})
-              .eq('id', _currentSessionId!)
-              .timeout(const Duration(seconds: 3));
-        }
+        await _backendRequest(
+          method: 'POST',
+          path: '/v1/sessions/terminate',
+          body: {'target_session_id': _currentSessionId},
+        );
       } catch (_) {}
     }
 
-    // پاک کردن لوکال
+    await TokenStorage.clearAll();
     await _clearSavedSession();
     _currentSessionId = null;
     _sessionToken = null;
     _verificationState = SessionVerificationState.invalid;
-
-    try {
-      await _supabase.auth.signOut();
-    } catch (_) {}
+    CurrentUserService.clearCache();
 
     onSessionTerminated?.call();
     _isTerminating = false;
   }
 
-  // متد userLogout برای خروج دستی توسط کاربر
+  /// خروج دستی توسط کاربر
   Future<void> userLogout() async {
     await _handleSessionTermination();
   }
 
-  /// ═══════════════════════════════════════════════════════════
-  /// UTILITY METHODS
-  /// ═══════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════
+  // FIND SESSION FROM TOKEN (init helper)
+  // ═══════════════════════════════════════════════════════════
 
   Future<void> _findSessionFromToken() async {
-    if (_sessionToken == null) return;
-
     try {
-      final response = await _supabase
-          .from('active_sessions')
-          .select('id')
-          .eq('session_token', _sessionToken!)
-          .eq('is_active', true)
-          .maybeSingle();
-
-      if (response != null) {
-        _currentSessionId = response['id'] as String;
-        await _saveSession();
-        logInfo('✅ Session found from token: $_currentSessionId');
-      }
-    } catch (e) {
-      logInfo('⚠️ Error finding session from token: $e');
-    }
-  }
-
-  Future<void> _saveSession() async {
-    try {
-      if (_currentSessionId == null || _currentSessionId!.isEmpty) {
-        await SecureKeyValueStore.delete(_sessionIdStorageKey);
-      } else {
-        await SecureKeyValueStore.write(
-            _sessionIdStorageKey, _currentSessionId!);
-      }
-
-      if (_sessionToken == null || _sessionToken!.isEmpty) {
-        await SecureKeyValueStore.delete(_sessionTokenStorageKey);
-      } else {
-        await SecureKeyValueStore.write(
-            _sessionTokenStorageKey, _sessionToken!);
-      }
-    } catch (e) {
-      logInfo('❌ Error saving session: $e');
-    }
-  }
-
-  Future<void> _loadSavedSession() async {
-    try {
-      _currentSessionId = await SecureKeyValueStore.read(_sessionIdStorageKey);
-      _sessionToken = await SecureKeyValueStore.read(_sessionTokenStorageKey);
-
-      if ((_currentSessionId == null || _sessionToken == null) && !kIsWeb) {
-        final prefs = await SharedPreferences.getInstance();
-        final legacySessionId = prefs.getString('session_id');
-        final legacySessionToken = prefs.getString('session_token');
-        if (legacySessionId != null &&
-            legacySessionId.isNotEmpty &&
-            legacySessionToken != null &&
-            legacySessionToken.isNotEmpty) {
-          _currentSessionId = legacySessionId;
-          _sessionToken = legacySessionToken;
+      final userId = await _getAuthenticatedUserId();
+      if (userId == null) return;
+      final result = await _backendRequest(
+        method: 'GET',
+        path: '/v1/sessions/active',
+      );
+      if (result is Map) {
+        final sessions = result['sessions'];
+        final firstSession =
+            sessions is List && sessions.isNotEmpty ? sessions.first : null;
+        if (firstSession is Map) {
+          _currentSessionId = firstSession['id']?.toString();
+          _sessionToken = firstSession['session_token']?.toString();
+        }
+        if (_currentSessionId != null) {
           await _saveSession();
-          await prefs.remove('session_id');
-          await prefs.remove('session_token');
+          _verificationState = SessionVerificationState.verified;
+          logInfo('✅ Found active session from backend: $_currentSessionId');
         }
       }
-
-      if (_currentSessionId?.isEmpty ?? true) _currentSessionId = null;
-      if (_sessionToken?.isEmpty ?? true) _sessionToken = null;
-
-      _verificationState = _currentSessionId != null && _sessionToken != null
-          ? SessionVerificationState.pendingVerification
-          : SessionVerificationState.invalid;
     } catch (e) {
-      logInfo('❌ Error loading session: $e');
+      logInfo('⚠️ Could not find session from token: $e');
     }
   }
 
-  Future<void> _clearSavedSession() async {
+  // ═══════════════════════════════════════════════════════════
+  // MULTI-DEVICE: TERMINATE OTHER SESSIONS
+  // ═══════════════════════════════════════════════════════════
+
+  Future<bool> terminateSession(String targetSessionId) async {
     try {
-      await SecureKeyValueStore.delete(_sessionIdStorageKey);
-      await SecureKeyValueStore.delete(_sessionTokenStorageKey);
+      final result = await _backendRequest(
+        method: 'POST',
+        path: '/v1/sessions/terminate',
+        body: {'target_session_id': targetSessionId},
+      );
+      return result is Map && result['success'] == true;
     } catch (e) {
-      logInfo('❌ Error clearing session: $e');
-    }
-  }
-
-  /// ═══════════════════════════════════════════════════════════
-  /// PUBLIC API
-  /// ═══════════════════════════════════════════════════════════
-
-  Future<bool> ensureSessionRegistered() async {
-    final supabaseSession = _supabase.auth.currentSession;
-    if (supabaseSession == null) {
-      _verificationState = SessionVerificationState.invalid;
+      logInfo('❌ Terminate session error: $e');
       return false;
     }
+  }
 
-    if (_currentSessionId != null) {
-      final isValid = await _quickSessionCheck();
-      if (isValid) return true;
-    }
-
-    // اگر session id نداریم یا verify نشد، تلاش برای ثبت
+  Future<bool> terminateAllOtherSessions() async {
     try {
-      // تلاش برای ثبت با timeout کوتاه
-      final sessionId = await registerSession().timeout(
-        const Duration(seconds: 3),
-        onTimeout: () {
-          logInfo(
-              '⚠️ Session registration timed out (likely offline), proceeding anyway');
-          _verificationState = SessionVerificationState.pendingVerification;
-          return null;
+      final userId = await _getAuthenticatedUserId();
+      if (userId == null) return false;
+      final result = await _backendRequest(
+        method: 'POST',
+        path: '/v1/sessions/terminate-others',
+        body: {
+          'current_session_id': _currentSessionId,
         },
       );
-
-      if (sessionId == null) {
-        // ثبت نشد (شاید آفلاین هستیم). چون کاربر Supabase session معتبر دارد (چک شده در خط اول)
-        // اجازه می‌دهیم وارد شود و در پس‌زمینه تلاش می‌کنیم
-        _registerSessionInBackground();
-        return true;
-      }
-
-      _verificationState = SessionVerificationState.verified;
-      return true;
+      return result is Map &&
+          (result['success'] == true || result['count'] != null);
     } catch (e) {
-      logInfo('⚠️ Error ensuring session registered: $e');
-      _verificationState = SessionVerificationState.pendingVerification;
-      return true;
-    }
-  }
-
-  /// بررسی اینکه نشست فعلی هنوز معتبر است (برای گارد قبل از عملیات حساس).
-  ///
-  /// رفتار:
-  /// - اگر session لوکال یا session Supabase وجود نداشته باشد => نامعتبر
-  /// - در غیر این صورت => بررسی سریع (و در صورت نیاز DB)
-  Future<bool> isSessionStillValid() async {
-    final supabaseSession = _supabase.auth.currentSession;
-    if (supabaseSession == null) {
-      _verificationState = SessionVerificationState.invalid;
+      logInfo('❌ Terminate all sessions error: $e');
       return false;
     }
-
-    if (_currentSessionId == null || _sessionToken == null) {
-      logInfo(
-          '⚠️ Session metadata missing locally while Supabase session exists. Recovering in background.');
-      _markSessionPendingAndRecover();
-      return true;
-    }
-
-    return _quickSessionCheck();
   }
 
-  Future<SessionVerificationState> verifyCurrentSession({
-    bool forceServer = false,
-  }) async {
-    if (!_hasSupabaseSession()) {
-      _verificationState = SessionVerificationState.invalid;
-      return _verificationState;
-    }
-
-    if (_currentSessionId == null || _sessionToken == null) {
-      _markSessionPendingAndRecover();
-      return _verificationState;
-    }
-
-    if (!forceServer) {
-      final quick = await _quickSessionCheck();
-      if (quick) return _verificationState;
-    }
-
-    final ok = await _checkSessionInDatabase();
-    if (!ok) {
-      _verificationState = SessionVerificationState.invalid;
-    } else if (_verificationState == SessionVerificationState.invalid) {
-      _verificationState = SessionVerificationState.verified;
-    }
-    return _verificationState;
-  }
-
-  /// تلاش برای پیدا کردن session فعلی در دیتابیس (برای سازگاری با UIهای قدیمی).
-  ///
-  /// استراتژی (مشابه v1):
-  /// 1) اگر `session_token` داریم، دقیق‌ترین روش: match روی `user_id + session_token`
-  /// 2) اگر deviceId داریم: match روی `device_info.device_id` با جدیدترین `last_activity`
-  /// 3) fallback: اعتبارسنجی `_currentSessionId` اگر هنوز وجود دارد
-  Future<String?> findCurrentSessionId() async {
+  Future<List<Map<String, dynamic>>> getActiveSessions() async {
     try {
-      final userId = _supabase.auth.currentUser?.id;
-      if (userId == null) {
-        logInfo('⚠️ User not authenticated, cannot find session');
-        return _currentSessionId;
+      final userId = await _getAuthenticatedUserId();
+      if (userId == null) return [];
+      final result = await _backendRequest(
+        method: 'GET',
+        path: '/v1/sessions/active',
+      );
+      if (result is Map && result['sessions'] is List) {
+        return (result['sessions'] as List)
+            .whereType<Map>()
+            .map((session) => Map<String, dynamic>.from(session))
+            .toList();
       }
-
-      // 1) Try by session token (most accurate)
-      if (_sessionToken != null && _sessionToken!.isNotEmpty) {
-        final tokenResponse = await _supabase
-            .from('active_sessions')
-            .select('id')
-            .eq('user_id', userId)
-            .eq('session_token', _sessionToken!)
-            .eq('is_active', true)
-            .maybeSingle();
-
-        if (tokenResponse != null) {
-          final foundSessionId = tokenResponse['id'] as String?;
-          if (foundSessionId != null && foundSessionId.isNotEmpty) {
-            if (foundSessionId != _currentSessionId) {
-              logInfo(
-                  '🔄 Updating session ID: $_currentSessionId -> $foundSessionId');
-              _currentSessionId = foundSessionId;
-              await _saveSession();
-            }
-            return foundSessionId;
-          }
-        }
-      }
-
-      // 2) Try by device ID
-      final deviceInfo = await _getDeviceInfo();
-      final deviceId = deviceInfo.deviceId;
-      if (deviceId != null && deviceId.isNotEmpty) {
-        final sessions = await _supabase
-            .from('active_sessions')
-            .select('id, device_info, last_activity')
-            .eq('user_id', userId)
-            .eq('is_active', true)
-            .order('last_activity', ascending: false)
-            .limit(20);
-
-        Map<String, dynamic>? asMap(dynamic v) {
-          if (v == null) return null;
-          if (v is Map<String, dynamic>) return v;
-          if (v is Map) {
-            return v.map((k, val) => MapEntry(k.toString(), val));
-          }
-          if (v is String) {
-            try {
-              final decoded = json.decode(v);
-              if (decoded is Map<String, dynamic>) return decoded;
-              if (decoded is Map) {
-                return decoded.map((k, val) => MapEntry(k.toString(), val));
-              }
-            } catch (_) {}
-          }
-          return null;
-        }
-
-        String? bestMatchSessionId;
-        DateTime? bestMatchTime;
-
-        for (final session in (sessions as List<dynamic>)) {
-          final map = (session as Map?)?.cast<String, dynamic>();
-          if (map == null) continue;
-
-          final deviceInfoRaw = map['device_info'];
-          final sessionDeviceInfo = asMap(deviceInfoRaw);
-          final sessionDeviceId = sessionDeviceInfo?['device_id'] as String?;
-          if (sessionDeviceId == null || sessionDeviceId != deviceId) continue;
-
-          final lastActivityStr = map['last_activity'] as String?;
-          if (lastActivityStr != null) {
-            try {
-              final lastActivity = DateTime.parse(lastActivityStr);
-              if (bestMatchTime == null ||
-                  lastActivity.isAfter(bestMatchTime)) {
-                bestMatchTime = lastActivity;
-                bestMatchSessionId = map['id'] as String?;
-              }
-            } catch (_) {
-              bestMatchSessionId ??= map['id'] as String?;
-            }
-          } else {
-            bestMatchSessionId ??= map['id'] as String?;
-          }
-        }
-
-        if (bestMatchSessionId != null && bestMatchSessionId.isNotEmpty) {
-          logInfo('✅ Found session by device ID: $bestMatchSessionId');
-          _currentSessionId = bestMatchSessionId;
-          await _saveSession();
-          return bestMatchSessionId;
-        }
-      }
-
-      // 3) Fallback: validate existing session id
-      if (_currentSessionId != null) {
-        try {
-          final existing = await _supabase
-              .from('active_sessions')
-              .select('id')
-              .eq('id', _currentSessionId!)
-              .eq('is_active', true)
-              .maybeSingle();
-          if (existing != null) return _currentSessionId;
-        } catch (_) {
-          // network issues => trust local value
-          return _currentSessionId;
-        }
-      }
-
-      logInfo('⚠️ Could not find current session ID');
-      return null;
+      return [];
     } catch (e) {
-      logInfo('⚠️ Error finding current session ID: $e');
-      return _currentSessionId;
-    }
-  }
-
-  void _registerSessionInBackground() {
-    Future.delayed(const Duration(seconds: 10), () async {
-      if (_supabase.auth.currentSession != null && _currentSessionId == null) {
-        await registerSession();
-      }
-    });
-  }
-
-  void updateLocationAndIP() {
-    // Fire and forget در background
-    Future.microtask(() async {
-      try {
-        final userId = _supabase.auth.currentUser?.id;
-        if (userId == null || _currentSessionId == null) return;
-
-        final ipAddress = await _getIPWithTimeout();
-        final locationData = await _getCurrentLocation();
-
-        try {
-          await _supabase.rpc('touch_active_session', params: {
-            'p_session_id': _currentSessionId,
-            'p_session_token': _sessionToken,
-            'p_ip_address': ipAddress,
-            'p_location': locationData['location'],
-          }).timeout(const Duration(seconds: 5));
-        } catch (_) {
-          final updateData = <String, dynamic>{
-            'last_activity': DateTime.now().toUtc().toIso8601String(),
-          };
-
-          if (ipAddress != null) updateData['ip_address'] = ipAddress;
-          if (locationData['location_city'] != null) {
-            updateData['location_city'] = locationData['location_city'];
-          }
-          if (locationData['location_country'] != null) {
-            updateData['location_country'] = locationData['location_country'];
-          }
-          if (locationData['location_region'] != null) {
-            updateData['location_region'] = locationData['location_region'];
-          }
-          if (locationData['location'] != null) {
-            updateData['location'] = locationData['location'];
-          }
-
-          await _supabase
-              .from('active_sessions')
-              .update(updateData)
-              .eq('id', _currentSessionId!)
-              .timeout(const Duration(seconds: 5));
-        }
-
-        if (ipAddress != null) {
-          await _supabase
-              .from('profiles')
-              .update({'last_ip': ipAddress})
-              .eq('id', userId)
-              .timeout(const Duration(seconds: 5));
-        }
-      } catch (e) {
-        logInfo('⚠️ Location/IP update failed (non-critical): $e');
-      }
-    });
-  }
-
-  /// دریافت لیست نشست‌های فعال
-  Future<List<SessionModel>> getActiveSessions() async {
-    try {
-      final userId = _supabase.auth.currentUser?.id;
-      if (userId == null) {
-        logInfo('⚠️ [getActiveSessions] User not authenticated');
-        return [];
-      }
-
-      logInfo('📡 [getActiveSessions] Fetching sessions for user: $userId');
-
-      final response = await _supabase
-          .from('active_sessions')
-          .select()
-          .eq('user_id', userId)
-          .eq('is_active', true)
-          .order('last_activity', ascending: false);
-
-      logInfo(
-          '📥 [getActiveSessions] Received ${response.length} sessions from database');
-
-      final sessions = <SessionModel>[];
-      for (final json in response) {
-        try {
-          // ✅ بررسی و تبدیل device_info اگر string است
-          if (json['device_info'] is String) {
-            try {
-              json['device_info'] = jsonDecode(json['device_info'] as String);
-            } catch (e) {
-              logInfo(
-                  '⚠️ [getActiveSessions] Error parsing device_info as JSON: $e');
-              continue; // این session را skip کن
-            }
-          }
-
-          // ✅ بررسی و تبدیل location اگر string است
-          if (json['location'] is String) {
-            try {
-              final locationStr = json['location'] as String;
-              if (locationStr.isNotEmpty && locationStr.startsWith('{')) {
-                json['location'] = jsonDecode(locationStr);
-              }
-            } catch (e) {
-              logInfo(
-                  '⚠️ [getActiveSessions] Error parsing location as JSON: $e');
-              // location را null بگذار
-              json['location'] = null;
-            }
-          }
-
-          final session = SessionModel.fromJson(json);
-          sessions.add(session);
-        } catch (e, stackTrace) {
-          logInfo(
-              '❌ [getActiveSessions] Error parsing session ${json['id']}: $e');
-          logInfo('📚 [getActiveSessions] Stack: $stackTrace');
-          logInfo('📋 [getActiveSessions] Session data: $json');
-          // این session را skip کن اما ادامه بده
-        }
-      }
-
-      logInfo(
-          '✅ [getActiveSessions] Successfully parsed ${sessions.length} sessions');
-      return sessions;
-    } catch (e, stackTrace) {
-      logInfo('❌ [getActiveSessions] خطا در دریافت نشست‌ها: $e');
-      logInfo('📚 [getActiveSessions] Stack: $stackTrace');
+      logInfo('❌ Get active sessions error: $e');
       return [];
     }
   }
 
-  /// Stream نشست‌های فعال
-  Stream<List<SessionModel>> watchActiveSessions() async* {
-    final user = _supabase.auth.currentUser;
-    if (user == null) {
-      yield [];
-      return;
+  // ═══════════════════════════════════════════════════════════
+  // LEGACY COMPATIBILITY WRAPPERS
+  // ═══════════════════════════════════════════════════════════
+
+  Future<void> ensureSessionRegistered() async {
+    if (!isSessionActive) {
+      await registerSession();
     }
+  }
+
+  Future<bool> verifyCurrentSession({bool forceServer = false}) async {
+    return await _quickSessionCheck();
+  }
+
+  Future<void> updateLocationAndIP() async {
+    _updateActivity();
+  }
+
+  Future<bool> updateFcmToken(String fcmToken) async {
+    final token = fcmToken.trim();
+    if (token.isEmpty) return false;
+
+    if (_currentSessionId == null || _sessionToken == null) {
+      await ensureSessionRegistered();
+    }
+    if (_currentSessionId == null || _sessionToken == null) return false;
 
     try {
-      // ابتدا داده‌های اولیه را از getActiveSessions بگیر
-      logInfo('📡 [watchActiveSessions] Loading initial sessions...');
-      final initialSessions = await getActiveSessions();
-      logInfo(
-          '✅ [watchActiveSessions] Loaded ${initialSessions.length} initial sessions');
-      yield initialSessions;
-
-      // سپس stream را subscribe کن با error handling
-      final stream = _supabase
-          .from('active_sessions')
-          .stream(primaryKey: ['id']).handleError((error, stackTrace) {
-        logInfo('❌ [watchActiveSessions] Stream error: $error');
-        logInfo('📚 [watchActiveSessions] Stack: $stackTrace');
-      });
-
-      await for (final data in stream) {
-        try {
-          logInfo(
-              '📡 [watchActiveSessions] Received ${data.length} items from stream');
-
-          // فیلتر کردن داده‌ها بر اساس user_id و is_active
-          final filtered = data.where((json) {
-            final userId = json['user_id'] as String?;
-            final isActive = json['is_active'] as bool?;
-            final matches = userId == user.id && isActive == true;
-            if (!matches) {
-              logInfo(
-                  '🔍 [watchActiveSessions] Filtered out session: userId=$userId, isActive=$isActive');
-            }
-            return matches;
-          }).toList();
-
-          logInfo(
-              '✅ [watchActiveSessions] After filtering: ${filtered.length} sessions');
-
-          // مرتب‌سازی بر اساس last_activity
-          filtered.sort((a, b) {
-            try {
-              final aTime = DateTime.parse(a['last_activity'] as String);
-              final bTime = DateTime.parse(b['last_activity'] as String);
-              return bTime.compareTo(aTime);
-            } catch (e) {
-              logInfo('⚠️ [watchActiveSessions] Error parsing date: $e');
-              return 0;
-            }
-          });
-
-          final sessions = <SessionModel>[];
-          for (final json in filtered) {
-            try {
-              // ✅ بررسی و تبدیل device_info اگر string است
-              if (json['device_info'] is String) {
-                try {
-                  json['device_info'] =
-                      jsonDecode(json['device_info'] as String);
-                } catch (e) {
-                  logInfo(
-                      '⚠️ [watchActiveSessions] Error parsing device_info as JSON: $e');
-                  continue; // این session را skip کن
-                }
-              }
-
-              // ✅ بررسی و تبدیل location اگر string است
-              if (json['location'] is String) {
-                try {
-                  final locationStr = json['location'] as String;
-                  if (locationStr.isNotEmpty && locationStr.startsWith('{')) {
-                    json['location'] = jsonDecode(locationStr);
-                  }
-                } catch (e) {
-                  logInfo(
-                      '⚠️ [watchActiveSessions] Error parsing location as JSON: $e');
-                  // location را null بگذار
-                  json['location'] = null;
-                }
-              }
-
-              final session = SessionModel.fromJson(json);
-              sessions.add(session);
-            } catch (e, stackTrace) {
-              logInfo(
-                  '⚠️ [watchActiveSessions] Error parsing session ${json['id']}: $e');
-              logInfo('📚 [watchActiveSessions] Stack: $stackTrace');
-              logInfo('📋 [watchActiveSessions] Session data: $json');
-              // این session را skip کن اما ادامه بده
-            }
-          }
-
-          logInfo(
-              '📡 [watchActiveSessions] Stream update: ${sessions.length} sessions');
-          yield sessions;
-        } catch (e) {
-          logInfo('❌ [watchActiveSessions] Error processing stream data: $e');
-          // در صورت خطا، دوباره از getActiveSessions استفاده کن
-          try {
-            final fallbackSessions = await getActiveSessions();
-            yield fallbackSessions;
-          } catch (fallbackError) {
-            logInfo('❌ [watchActiveSessions] Fallback failed: $fallbackError');
-            yield [];
-          }
-        }
+      final ip = await _getIPWithTimeout();
+      final loc = await _getCurrentLocation();
+      final result = await _backendRequest(
+        method: 'POST',
+        path: '/v1/sessions/touch',
+        body: {
+          'session_id': _currentSessionId,
+          'session_token': _sessionToken,
+          'fcm_token': token,
+          if (ip != null) 'ip_address': ip,
+          if (loc != null) ...loc,
+        },
+      );
+      if (result is Map && result['valid'] == true) {
+        _verificationState = SessionVerificationState.verified;
+        return true;
       }
-    } catch (e, stackTrace) {
-      logInfo('❌ [watchActiveSessions] Initial load error: $e');
-      logInfo('📚 [watchActiveSessions] Stack: $stackTrace');
-      // در صورت خطا در بارگذاری اولیه، یک بار دیگر تلاش کن
+    } catch (e) {
+      logInfo('FCM token sync failed: $e');
+    }
+    return false;
+  }
+
+  Future<void> onNetworkRestored() async {
+    await _performHealthCheck();
+  }
+
+  Future<String?> findCurrentSessionId() async {
+    return currentSessionId;
+  }
+
+  Future<bool> isSessionStillValid() async {
+    return verificationState == SessionVerificationState.verified;
+  }
+
+  Stream<List<SessionModel>> watchActiveSessions() async* {
+    while (true) {
       try {
-        final fallbackSessions = await getActiveSessions();
-        yield fallbackSessions;
-      } catch (fallbackError) {
-        logInfo(
-            '❌ [watchActiveSessions] Final fallback failed: $fallbackError');
+        final sessions = await getActiveSessions();
+        yield sessions.map((s) => SessionModel.fromJson(s)).toList();
+      } catch (e) {
+        // Yield empty or current if error occurs, but prevent crash
         yield [];
       }
+      await Future.delayed(const Duration(seconds: 15));
     }
   }
 
-  /// خاتمه یک نشست خاص (با بررسی امنیتی)
-  Future<TerminateSessionResult> terminateSession(String sessionId) async {
-    try {
-      final currentUser = _supabase.auth.currentUser;
-      if (currentUser == null) {
-        return TerminateSessionResult(
-          success: false,
-          errorMessage: 'برای این عملیات باید وارد حساب شوید.',
-        );
-      }
+  // ═══════════════════════════════════════════════════════════
+  // DEVICE INFO HELPERS
+  // ═══════════════════════════════════════════════════════════
 
-      if (_currentSessionId == null) {
-        return TerminateSessionResult(
-          success: false,
-          errorMessage: 'نشست فعلی معتبر نیست.',
-        );
-      }
-
-      final finalTargetCheck = await _supabase
-          .from('active_sessions')
-          .select('user_id')
-          .eq('id', sessionId)
-          .maybeSingle();
-
-      if (finalTargetCheck == null) {
-        return TerminateSessionResult(
-          success: false,
-          errorMessage: 'نشست موردنظر پیدا نشد.',
-        );
-      }
-
-      final targetUserId = finalTargetCheck['user_id'] as String?;
-      if (targetUserId != currentUser.id) {
-        return TerminateSessionResult(
-          success: false,
-          errorMessage: 'شما اجازه مدیریت این نشست را ندارید.',
-        );
-      }
-
-      try {
-        final result = await _supabase.rpc('terminate_session', params: {
-          'target_session_id': sessionId,
-        });
-
-        if (result == true) {
-          return TerminateSessionResult(
-            success: true,
-          );
-        } else {
-          return TerminateSessionResult(
-            success: false,
-            errorMessage: 'خاتمه نشست انجام نشد. دوباره تلاش کنید.',
-          );
-        }
-      } catch (e) {
-        return TerminateSessionResult(
-          success: false,
-          errorMessage: 'خطا در ارتباط با سرور نشست.',
-        );
-      }
-    } catch (e, stackTrace) {
-      logInfo('❌ [terminateSession] Error: $e');
-      logInfo('📚 [terminateSession] Stack: $stackTrace');
-      return TerminateSessionResult(
-        success: false,
-        errorMessage: 'خطای غیرمنتظره در مدیریت نشست.',
+  Future<SessionDeviceInfo?> _getDeviceInfo() async {
+    final di = DeviceInfoPlugin();
+    if (Platform.isAndroid) {
+      final info = await di.androidInfo;
+      return SessionDeviceInfo(
+        deviceName: '${info.brand} ${info.model}',
+        deviceModel: info.model,
+        osVersion: info.version.release,
+        targetPlatform: TargetPlatform.android,
+        deviceId: info.id,
+      );
+    } else if (Platform.isIOS) {
+      final info = await di.iosInfo;
+      return SessionDeviceInfo(
+        deviceName: info.name,
+        deviceModel: info.model,
+        osVersion: info.systemVersion,
+        targetPlatform: TargetPlatform.iOS,
+        deviceId: info.identifierForVendor,
       );
     }
-  }
-
-  Future<int> terminateAllOtherSessions() async {
-    final currentUser = _supabase.auth.currentUser;
-    if (currentUser == null || _currentSessionId == null) {
-      return 0;
-    }
-
-    try {
-      final result =
-          await _supabase.rpc('terminate_all_other_sessions', params: {
-        'current_session_id': _currentSessionId,
-      });
-
-      if (result is int) return result;
-      return int.tryParse('$result') ?? 0;
-    } catch (e) {
-      logInfo('❌ [terminateAllOtherSessions] Error: $e');
-      return 0;
-    }
-  }
-
-  /// ═══════════════════════════════════════════════════════════
-  /// HELPER METHODS
-  /// ═══════════════════════════════════════════════════════════
-
-  Future<SessionDeviceInfo> _getDeviceInfo() async {
-    final deviceInfoPlugin = DeviceInfoPlugin();
-
-    try {
-      if (Platform.isAndroid) {
-        final androidInfo = await deviceInfoPlugin.androidInfo;
-        return SessionDeviceInfo(
-          deviceName: androidInfo.brand.isNotEmpty
-              ? androidInfo.brand
-              : 'Android Device',
-          deviceModel: '${androidInfo.manufacturer} ${androidInfo.model}',
-          osVersion: 'Android ${androidInfo.version.release}',
-          targetPlatform: TargetPlatform.android,
-          deviceId: androidInfo.id,
-        );
-      } else if (Platform.isIOS) {
-        final iosInfo = await deviceInfoPlugin.iosInfo;
-        return SessionDeviceInfo(
-          deviceName: iosInfo.name.isNotEmpty ? iosInfo.name : 'iOS Device',
-          deviceModel: iosInfo.model.isNotEmpty ? iosInfo.model : 'iPhone',
-          osVersion: 'iOS ${iosInfo.systemVersion}',
-          targetPlatform: TargetPlatform.iOS,
-          deviceId: iosInfo.identifierForVendor,
-        );
-      } else if (Platform.isWindows) {
-        final windowsInfo = await deviceInfoPlugin.windowsInfo;
-        return SessionDeviceInfo(
-          deviceName: windowsInfo.computerName,
-          deviceModel: 'Windows PC',
-          osVersion: 'Windows',
-          targetPlatform: TargetPlatform.windows,
-        );
-      } else if (Platform.isMacOS) {
-        final macInfo = await deviceInfoPlugin.macOsInfo;
-        return SessionDeviceInfo(
-          deviceName: macInfo.computerName,
-          deviceModel: macInfo.model,
-          osVersion: 'macOS',
-          targetPlatform: TargetPlatform.macOS,
-        );
-      } else if (Platform.isLinux) {
-        final linuxInfo = await deviceInfoPlugin.linuxInfo;
-        return SessionDeviceInfo(
-          deviceName: linuxInfo.name,
-          deviceModel: 'Linux',
-          osVersion: 'Linux',
-          targetPlatform: TargetPlatform.linux,
-        );
-      }
-    } catch (e) {
-      logInfo('خطا در دریافت اطلاعات دستگاه: $e');
-    }
-
-    return SessionDeviceInfo(
-      deviceName: 'Unknown',
-      deviceModel: 'Unknown',
-      osVersion: 'Unknown',
-      targetPlatform: defaultTargetPlatform,
-    );
-  }
-
-  String _getPlatformName() {
-    if (Platform.isAndroid) return 'android';
-    if (Platform.isIOS) return 'ios';
-    if (Platform.isWindows) return 'windows';
-    if (Platform.isMacOS) return 'macos';
-    if (Platform.isLinux) return 'linux';
-    return 'unknown';
+    return null;
   }
 
   Future<String?> _getIPWithTimeout() async {
     try {
-      logInfo('📡 [_getIPWithTimeout] Fetching IP address...');
-      final ip = await getIpAddress().timeout(
-        const Duration(seconds: 5),
-        onTimeout: () {
-          logInfo('⏱️ [_getIPWithTimeout] Request timeout!');
-          throw TimeoutException('IP address fetch timeout');
-        },
-      );
-      logInfo('✅ [_getIPWithTimeout] IP address received: $ip');
-      return ip;
-    } on TimeoutException {
-      logInfo('⏱️ [_getIPWithTimeout] TimeoutException caught');
-      return null;
-    } catch (e, stackTrace) {
-      logInfo('❌ [_getIPWithTimeout] Exception: $e');
-      logInfo('📚 [_getIPWithTimeout] Stack: $stackTrace');
-      return null;
-    }
-  }
-
-  Future<Map<String, dynamic>> _getCurrentLocation() async {
-    logInfo('🌍 [_getCurrentLocation] Starting...');
-
-    // تلاش اول: استفاده از ipapi.co
-    try {
-      logInfo('📡 [_getCurrentLocation] Trying ipapi.co...');
-      final result = await _getLocationFromIpApiCo();
-      if (result != null) {
-        logInfo(
-            '✅ [_getCurrentLocation] Successfully got location from ipapi.co');
-        return result;
-      }
-    } catch (e) {
-      logInfo('⚠️ [_getCurrentLocation] ipapi.co failed: $e');
-    }
-
-    // تلاش دوم: استفاده از ipwho.is (fallback)
-    try {
-      logInfo('📡 [_getCurrentLocation] Trying ipwho.is as fallback...');
-      final result = await _getLocationFromIpApiCom();
-      if (result != null) {
-        logInfo(
-            '✅ [_getCurrentLocation] Successfully got location from ipwho.is');
-        return result;
-      }
-    } catch (e) {
-      logInfo('⚠️ [_getCurrentLocation] ipwho.is also failed: $e');
-    }
-
-    logInfo(
-        '❌ [_getCurrentLocation] All location APIs failed, returning empty data');
-    return _getEmptyLocationData();
-  }
-
-  Future<Map<String, dynamic>?> _getLocationFromIpApiCo() async {
-    try {
-      final response = await http.get(
-        Uri.parse('https://ipapi.co/json/'),
-        headers: {'Accept': 'application/json'},
-      ).timeout(
-        const Duration(seconds: 10),
-        onTimeout: () {
-          logInfo('⏱️ [_getLocationFromIpApiCo] Request timeout!');
-          throw TimeoutException('Location API timeout');
-        },
-      );
-
-      logInfo(
-          '📨 [_getLocationFromIpApiCo] Response status: ${response.statusCode}');
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-
-        // چک کردن اگر API محدودیت داشت
-        if (data['error'] == true) {
-          logInfo('❌ [_getLocationFromIpApiCo] API Error: ${data['reason']}');
-          return null;
-        }
-
-        final city = data['city']?.toString();
-        final country = data['country_name']?.toString();
-        final region = data['region']?.toString();
-        final latitude = data['latitude']?.toString();
-        final longitude = data['longitude']?.toString();
-
-        // ساخت location object به صورت JSON
-        Map<String, dynamic>? locationObject;
-        if (city != null ||
-            country != null ||
-            (latitude != null && longitude != null)) {
-          locationObject = {
-            'city': city,
-            'country': country,
-            'latitude': latitude != null ? double.tryParse(latitude) : null,
-            'longitude': longitude != null ? double.tryParse(longitude) : null,
-          };
-        }
-
-        return {
-          'location_city': city,
-          'location_country': country,
-          'location_region': region,
-          'location': locationObject,
-        };
-      } else {
-        logInfo(
-            '❌ [_getLocationFromIpApiCo] Bad status code: ${response.statusCode}');
-        return null;
-      }
-    } catch (e, stackTrace) {
-      logInfo('❌ [_getLocationFromIpApiCo] Exception: $e');
-      logInfo('📚 [_getLocationFromIpApiCo] Stack: $stackTrace');
-      return null;
-    }
-  }
-
-  Future<Map<String, dynamic>?> _getLocationFromIpApiCom() async {
-    try {
       final response = await http
-          .get(
-        Uri.parse(
-            'http://ipwho.is/json/?fields=status,message,city,country,regionName,lat,lon'),
-      )
-          .timeout(
-        const Duration(seconds: 10),
-        onTimeout: () {
-          logInfo('⏱️ [_getLocationFromIpApiCom] Request timeout!');
-          throw TimeoutException('Location API timeout');
-        },
-      );
-
+          .get(Uri.parse('https://api.ipify.org?format=json'))
+          .timeout(const Duration(seconds: 5));
       if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-
-        if (data['status'] == 'success') {
-          final city = data['city']?.toString();
-          final country = data['country']?.toString();
-          final region = data['regionName']?.toString();
-          final lat = data['lat']?.toString();
-          final lon = data['lon']?.toString();
-
-          // ساخت location object به صورت JSON
-          Map<String, dynamic>? locationObject;
-          if (city != null || country != null || (lat != null && lon != null)) {
-            locationObject = {
-              'city': city,
-              'country': country,
-              'latitude': lat != null ? double.tryParse(lat) : null,
-              'longitude': lon != null ? double.tryParse(lon) : null,
-            };
-          }
-
-          return {
-            'location_city': city,
-            'location_country': country,
-            'location_region': region,
-            'location': locationObject,
-          };
-        } else {
-          logInfo(
-              '❌ [_getLocationFromIpApiCom] API returned fail: ${data['message']}');
-          return null;
-        }
-      } else {
-        logInfo(
-            '❌ [_getLocationFromIpApiCom] Bad status code: ${response.statusCode}');
-        return null;
+        final data = jsonDecode(response.body) as Map?;
+        return data?['ip']?.toString();
       }
-    } catch (e, stackTrace) {
-      logInfo('❌ [_getLocationFromIpApiCom] Exception: $e');
-      logInfo('📚 [_getLocationFromIpApiCom] Stack: $stackTrace');
-      return null;
-    }
+    } catch (_) {}
+    return null;
   }
 
-  Map<String, dynamic> _getEmptyLocationData() {
-    return {
-      'location_city': null,
-      'location_country': null,
-      'location_region': null,
-      'location': null,
-    };
+  Future<Map<String, dynamic>?> _getCurrentLocation() async {
+    // Location requires permission — return null safely
+    return null;
   }
 
-  /// ✅ فراخوانی خودکار وقتی اینترنت وصل می‌شود
-  /// این متد هوشمندانه چک می‌کند که نشست قبلاً ثبت شده یا نه:
-  /// - اگر نشست ثبت نشده (چون کاربر آفلاین وارد شده)، آن را ثبت می‌کند
-  /// - اگر نشست ثبت شده، فقط IP و Location را آپدیت می‌کند
-  Future<void> onNetworkRestored() async {
-    logInfo('📶 Network restored! Syncing session data...');
+  // ═══════════════════════════════════════════════════════════
+  // PUBLIC REFRESH & BACKGROUND INIT (used by session_auth_wrapper)
+  // ═══════════════════════════════════════════════════════════
 
-    final currentSession = _supabase.auth.currentSession;
-    if (currentSession == null) {
-      logInfo('⚠️ No Supabase session, skipping network restoration sync');
-      return;
-    }
+  /// عمومی‌سازی refresh برای استفاده در session_auth_wrapper
+  Future<bool> performSessionRefreshPublic() => _performSessionRefresh();
 
-    // ۱. اگر نشست کلاً ثبت نشده (چون کاربر آفلاین وارد شده)
-    if (_currentSessionId == null) {
-      logInfo(
-          '⚠️ Session was not registered due to offline start. Registering now...');
+  /// راه‌اندازی session manager در پس‌زمینه بدون block کردن UI
+  void initInBackground() {
+    Future.microtask(() async {
       try {
-        final sessionId = await registerSession();
-        if (sessionId != null) {
-          logInfo(
-              '✅ Session successfully registered after network restore: $sessionId');
-        } else {
-          logInfo('⚠️ Session registration failed even after network restore');
-        }
+        await initialize();
+        await ensureSessionRegistered();
+        _syncWithServerInBackground();
       } catch (e) {
-        logInfo('❌ Error registering session after network restore: $e');
+        logInfo('⚠️ Background session init failed: $e');
       }
-    }
-    // ۲. اگر نشست هست، اطلاعات IP و Location را بروز کن
-    else {
-      logInfo('🔄 Session exists. Updating IP and Location...');
-      try {
-        // آپدیت Activity (این متد خودش IP و Location را هم آپدیت می‌کند)
-        await _updateActivity();
-
-        logInfo('✅ Session data synced after network restore');
-      } catch (e) {
-        logInfo('⚠️ Error syncing session data after network restore: $e');
-      }
-    }
+    });
   }
+
+  // ═══════════════════════════════════════════════════════════
+  // DISPOSE
+  // ═══════════════════════════════════════════════════════════
 
   void dispose() {
-    _stopHealthCheck();
     _activityTimer?.cancel();
-    _sessionChannel?.unsubscribe();
-    onSessionTerminated = null;
+    _stopHealthCheck();
+    _teardownRealtimeListener();
   }
-}
-
-/// کلاس نتیجه برای عملیات خاتمه نشست
-class TerminateSessionResult {
-  final bool success;
-  final String? errorMessage;
-  final int? remainingDays;
-
-  TerminateSessionResult({
-    required this.success,
-    this.errorMessage,
-    this.remainingDays,
-  });
 }

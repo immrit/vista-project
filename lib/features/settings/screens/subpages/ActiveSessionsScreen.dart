@@ -533,11 +533,11 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen>
 
     final result = await sessionManager.terminateSession(session.id);
     if (mounted) {
-      if (result.success) {
+      if (result) {
         ref.invalidate(activeSessionsProvider);
         _showSuccessSnackBar('نشست با موفقیت خاتمه یافت');
       } else {
-        _showErrorSnackBar(result.errorMessage ?? 'خطا در خاتمه نشست');
+        _showErrorSnackBar('خطا در خاتمه نشست');
       }
     }
   }

@@ -1,22 +1,59 @@
+import 'package:dio/dio.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../../../DB/settings_cache_service.dart';
 import '../../../security/logging_utility.dart';
-import '../../../utils/const.dart';
+import '../../auth/providers/auth_controller.dart';
 
-/// Canonical privacy/security settings are stored in `user_settings`.
-/// For backward compatibility, some keys are also mirrored into `privacy_settings`.
+/// Canonical privacy/security settings are stored in `user_settings` on frontend.
+/// Now synced to the Go backend `privacy_settings` via `/v1/me/privacy`.
 class PrivacySettingsRepository {
   final SettingsCacheService _cache = SettingsCacheService();
+  late final Dio _dio;
 
-  static const Set<String> _mirrorToPrivacySettingsKeys = {
-    'is_private',
-    'group_add_privacy',
-  };
+  static String get _backendUrl =>
+      dotenv.env['BACKEND_URL'] ?? 'http://10.0.2.2:8080';
+
+  PrivacySettingsRepository() {
+    _dio = Dio(BaseOptions(
+      baseUrl: '$_backendUrl/v1',
+      connectTimeout: const Duration(seconds: 15),
+      receiveTimeout: const Duration(seconds: 15),
+      headers: {'Content-Type': 'application/json'},
+    ));
+  }
+
+  Future<Options> _authOptions() async {
+    final token = await TokenStorage.getAccessToken();
+    if (token == null || token.isEmpty) {
+      throw StateError('User is not authenticated');
+    }
+    return Options(headers: {'Authorization': 'Bearer $token'});
+  }
 
   Future<Map<String, dynamic>> getMergedPrivacySettings(String userId) async {
+    // Try to get from remote first if it's the current user
+    try {
+      final currentUserId = await TokenStorage.getUserId();
+      if (userId == currentUserId) {
+        final response = await _dio.get(
+          '/me/privacy',
+          options: await _authOptions(),
+        );
+        final remoteSettings =
+            Map<String, dynamic>.from(response.data as Map? ?? {});
+        // Cache the remote settings
+        await _cache.updateUserSettings(userId, remoteSettings);
+        return remoteSettings;
+      }
+    } catch (e) {
+      logInfo(
+          '⚠️ Failed fetching remote privacy settings, falling back to cache: $e');
+    }
+
+    // Fallback to cache
     final userSettings = await _cache.getUserSettings(userId) ?? {};
     final privacySettings = await _cache.getPrivacySettings(userId) ?? {};
 
-    // `user_settings` is canonical, so it overrides any overlapping keys.
     return {
       ...privacySettings,
       ...userSettings,
@@ -33,40 +70,15 @@ class PrivacySettingsRepository {
     final nextUser = {...currentUser, ...patch};
     await _cache.updateUserSettings(userId, nextUser);
 
-    // Mirror subset to privacy cache (for consumers still reading privacy_settings).
-    final mirrorPatch = <String, dynamic>{};
-    for (final entry in patch.entries) {
-      if (_mirrorToPrivacySettingsKeys.contains(entry.key)) {
-        mirrorPatch[entry.key] = entry.value;
-      }
-    }
-    if (mirrorPatch.isNotEmpty) {
-      final currentPrivacy = await _cache.getPrivacySettings(userId) ?? {};
-      final nextPrivacy = {...currentPrivacy, ...mirrorPatch};
-      await _cache.updatePrivacySettings(userId, nextPrivacy);
-    }
-
-    // Best-effort remote sync.
+    // Sync to backend
     try {
-      await supabase.from('user_settings').upsert({
-        'user_id': userId,
-        ...patch,
-        'updated_at': DateTime.now().toIso8601String(),
-      });
+      await _dio.post(
+        '/me/privacy',
+        data: nextUser, // send the full updated settings
+        options: await _authOptions(),
+      );
     } catch (e) {
-      logInfo('⚠️ Failed syncing user_settings: $e');
-    }
-
-    if (mirrorPatch.isNotEmpty) {
-      try {
-        await supabase.from('privacy_settings').upsert({
-          'user_id': userId,
-          ...mirrorPatch,
-          'updated_at': DateTime.now().toIso8601String(),
-        });
-      } catch (e) {
-        logInfo('⚠️ Failed syncing privacy_settings mirror: $e');
-      }
+      logInfo('⚠️ Failed syncing privacy settings to Go backend: $e');
     }
   }
 }

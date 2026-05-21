@@ -3,14 +3,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:timeago/timeago.dart' as timeago;
 
+import '../../../chat/providers/chat_providers.dart';
 import '../../../chat/screens/modern_chat_screen.dart';
+import '../../../../services/current_user_service.dart';
 import '../../domain/entities/entities.dart';
 import '../../domain/entities/story_editor_models.dart' as editor_models;
 import '../../domain/repositories/i_story_repository.dart';
 import '../providers/story_providers.dart';
-import '../../../../utils/const.dart';
 import '../../../../utils/user_friendly_error_utils.dart';
 import '../../../../widgets/verification_badge_icon.dart';
+
+const String _defaultAvatarAsset = 'lib/utils/images/default-avatar.jpg';
 
 /// پنل insight استوری: بازدیدها / نظرسنجی‌ها / پاسخ‌های سوال
 class StoryViewersSheet extends ConsumerWidget {
@@ -176,7 +179,7 @@ class StoryViewersSheet extends ConsumerWidget {
               leading: CircleAvatar(
                 backgroundImage: view.viewerAvatarUrl != null
                     ? CachedNetworkImageProvider(view.viewerAvatarUrl!)
-                    : const AssetImage(defaultAvatarUrl) as ImageProvider,
+                    : const AssetImage(_defaultAvatarAsset) as ImageProvider,
               ),
               title: Row(
                 children: [
@@ -387,7 +390,7 @@ class StoryViewersSheet extends ConsumerWidget {
                 leading: CircleAvatar(
                   backgroundImage: answer.respondentAvatarUrl != null
                       ? CachedNetworkImageProvider(answer.respondentAvatarUrl!)
-                      : const AssetImage(defaultAvatarUrl) as ImageProvider,
+                      : const AssetImage(_defaultAvatarAsset) as ImageProvider,
                 ),
                 title: Text(
                   answer.respondentUsername,
@@ -421,7 +424,11 @@ class StoryViewersSheet extends ConsumerWidget {
                   tooltip: 'رفتن به چت',
                   icon: const Icon(Icons.chat_bubble_outline_rounded),
                   color: textColor,
-                  onPressed: () => _openChatWithRespondent(context, answer),
+                  onPressed: () => _openChatWithRespondent(
+                    context,
+                    ref,
+                    answer,
+                  ),
                 ),
               ),
             );
@@ -433,10 +440,12 @@ class StoryViewersSheet extends ConsumerWidget {
 
   Future<void> _openChatWithRespondent(
     BuildContext context,
+    WidgetRef ref,
     StoryQuestionAnswer answer,
   ) async {
     try {
-      final currentUserId = supabase.auth.currentUser?.id;
+      final currentUserId = await CurrentUserService.instance.resolveUserId();
+      if (!context.mounted) return;
       if (currentUserId == null) {
         UserFriendlyErrorUtils.showErrorSnackBar(
             context, 'ابتدا وارد حساب شوید');
@@ -450,29 +459,26 @@ class StoryViewersSheet extends ConsumerWidget {
         return;
       }
 
-      final conversationId = await supabase.rpc(
-        'create_or_get_conversation',
-        params: {
-          'current_user_id': currentUserId,
-          'target_user_id': answer.respondentId,
-        },
-      );
+      final result = await ref
+          .read(chatRepositoryProvider)
+          .createConversation(answer.respondentId);
 
       if (!context.mounted) return;
 
-      if (conversationId == null) {
+      if (!result.isSuccess || result.data == null) {
         UserFriendlyErrorUtils.showErrorSnackBar(
           context,
-          'ایجاد مکالمه ممکن نشد',
+          result.error ?? 'Could not create conversation',
         );
         return;
       }
 
+      final conversation = result.data!;
       await Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => ModernChatScreen(
             args: ChatScreenArgs(
-              conversationId: conversationId.toString(),
+              conversationId: conversation.id,
               otherUserName: answer.respondentUsername,
               otherUserAvatar: answer.respondentAvatarUrl,
               otherUserId: answer.respondentId,

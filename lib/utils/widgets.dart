@@ -10,10 +10,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shamsi_date/shamsi_date.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:Vista/features/settings/screens/ContactUs.dart';
 
-import 'const.dart';
+import '../../features/profile/data/profile_repository.dart';
+import '../../services/backend_upload_service.dart';
 import '../../model/CommentModel.dart';
 import '../../model/UserModel.dart';
 import '../../model/publicPostModel.dart';
@@ -198,26 +198,27 @@ Widget addNotesTextFiels(
 final picker = ImagePicker();
 
 Future<void> uploadProfilePicture() async {
-  // انتخاب عکس از گالری
   final pickedFile = await picker.pickImage(source: ImageSource.gallery);
+  if (pickedFile == null) return;
 
-  if (pickedFile != null) {
-    File file = File(pickedFile.path);
+  final userId = await TokenStorage.getUserId();
+  if (userId == null || userId.isEmpty) return;
 
-    final userId = Supabase.instance.client.auth.currentUser?.id;
+  final file = File(pickedFile.path);
+  final objectKey =
+      'avatars/$userId/profile_${DateTime.now().millisecondsSinceEpoch}.png';
+  final response = await BackendUploadService.uploadFile(
+    file: file,
+    objectKey: objectKey,
+    contentType: 'image/png',
+  );
 
-    if (userId != null) {
-      // آپلود عکس به باکت
-      final fileName = 'public/$userId/profile-pic.png';
-      final response = await Supabase.instance.client.storage
-          .from('user-profile-pics')
-          .upload(fileName, file);
-
-      logInfo('خطا در آپلود عکس: $response');
-    }
-  }
+  await ProfileRepository().updateProfile(
+    userId,
+    {'avatar_url': response.url},
+  );
+  logInfo('Profile picture uploaded for user: $userId');
 }
-
 //CustomDrawer
 
 // تابع کمکی برای انتخاب رنگ header drawer
@@ -321,7 +322,7 @@ Drawer CustomDrawer(AsyncValue<Map<String, dynamic>?> getprofile,
                         SizedBox(
                           width: double.infinity,
                           child: Text(
-                            "${supabase.auth.currentUser!.email}",
+                            "${getprofile['email'] ?? ''}",
                             style: TextStyle(
                               color: _getDrawerHeaderTextColor(dynamicTheme)
                                   .withValues(alpha: 0.8),
@@ -473,8 +474,7 @@ class _ReportDialogState extends ConsumerState<ReportDialog> {
   // متد ارسال گزارش
   void _submitReport() async {
     try {
-      // دریافت سرویس سوپابیس از پرووایدر
-      final supabaseService = ref.read(supabaseServiceProvider);
+      final postActionsService = ref.read(postActionsServiceProvider);
 
       // بررسی انتخاب دلیل
       if (_selectedReason.isEmpty) {
@@ -483,7 +483,7 @@ class _ReportDialogState extends ConsumerState<ReportDialog> {
       }
 
       // ارسال گزارش
-      await supabaseService.insertReport(
+      await postActionsService.insertReport(
         postId: widget.post.id,
         reportedUserId: widget.post.userId,
         reason: _selectedReason,
@@ -654,9 +654,19 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet> {
   final TextEditingController commentController = TextEditingController();
   String? replyToCommentId;
   List<UserModel> mentionedUsers = [];
-  final String currentUserId = supabase.auth.currentUser!.id;
+  String currentUserId = '';
 
   bool _isSubmittingComment = false;
+
+  @override
+  void initState() {
+    super.initState();
+    TokenStorage.getUserId().then((value) {
+      if (mounted && value != null) {
+        setState(() => currentUserId = value);
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1415,17 +1425,8 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet> {
   }
 
   Future<String?> getUserIdByUsername(String username) async {
-    final response = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('username', username)
-        .single();
-
-    if (response['id'] != null) {
-      return response['id'];
-    } else {
-      return null;
-    }
+    final response = await ProfileRepository().fetchProfileByUsername(username);
+    return response['id']?.toString() ?? response['user_id']?.toString();
   }
 
   TextDirection getDirectionality(String content) {

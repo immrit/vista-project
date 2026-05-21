@@ -1,3 +1,5 @@
+// ignore_for_file: unused_element, use_build_context_synchronously, deprecated_member_use
+
 import 'package:Vista/features/chat/screens/ChatConversationsScreen.dart'
     show ChatConversationsScreen;
 import 'package:flutter/material.dart';
@@ -5,16 +7,18 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:badges/badges.dart' as badges;
 import 'package:Vista/provider/profile_completion_provider.dart';
-import 'package:Vista/utils/const.dart';
 import 'package:Vista/features/posts/screens/AddPost.dart';
 import 'package:Vista/features/posts/screens/profileScreen.dart';
 import 'package:Vista/features/posts/screens/ExploreFeedScreen.dart';
 import 'package:Vista/features/search/screens/searchPage.dart';
+import 'package:Vista/features/profile/data/profile_repository.dart';
 import 'package:Vista/provider/chat_provider.dart';
 import 'package:Vista/provider/optimized_conversations_provider.dart';
 import 'package:Vista/core/security/input_policy.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../features/auth/widgets/otp_dialog.dart';
+import '../../../features/auth/data/auth_repository.dart';
+import '../../../features/auth/providers/auth_controller.dart';
 import '../../../provider/provider.dart';
 
 // ✅ Provider تعداد مکالمه‌های خوانده‌نشده
@@ -51,30 +55,57 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   int _selectedIndex = 0;
   DateTime? _lastPressed;
 
-  late final List<Widget> _tabs;
+  String _currentUserId = '';
+  String _currentUsername = 'کاربر';
+
+  List<Widget> get _tabs => [
+        const ExploreFeedScreen(),
+        const SearchPage(),
+        const AddPublicPostScreen(),
+        const ChatConversationsScreen(),
+        ProfileScreen(
+          userId: _currentUserId,
+          username: _currentUsername,
+        ),
+      ];
 
   @override
   void initState() {
     super.initState();
+    _currentUsername = 'کاربر';
+    _loadCurrentUser();
     _checkProfileCompletion();
-    _checkPhoneVerification();
+  }
 
-    final currentUser = supabase.auth.currentUser;
-    final userId = currentUser?.id ?? '';
-    final username = currentUser?.userMetadata?['username'] ??
-        currentUser?.userMetadata?['full_name'] ??
-        'کاربر';
+  Future<void> _loadCurrentUser() async {
+    try {
+      final storedUserId = await TokenStorage.getUserId();
+      if (storedUserId != null && storedUserId.isNotEmpty && mounted) {
+        setState(() => _currentUserId = storedUserId);
+      }
 
-    _tabs = [
-      const ExploreFeedScreen(),
-      const SearchPage(),
-      const AddPublicPostScreen(),
-      const ChatConversationsScreen(),
-      ProfileScreen(
-        userId: userId,
-        username: username,
-      ),
-    ];
+      final accessToken = await TokenStorage.getAccessToken();
+      if (accessToken == null || accessToken.isEmpty) return;
+
+      final user = await AuthRepository().me(accessToken);
+      if (!mounted) return;
+
+      final username = user.username?.trim();
+      final fullName = user.fullName.trim();
+      setState(() {
+        _currentUserId = user.id;
+        _currentUsername =
+            (username != null && username.isNotEmpty) ? username : fullName;
+        if (_currentUsername.isEmpty) {
+          _currentUsername = 'کاربر';
+        }
+      });
+      if (_currentUsername.startsWith('Ú') && mounted) {
+        setState(() => _currentUsername = 'کاربر');
+      }
+    } catch (_) {
+      // The profile tab can still render with the cached/default identity.
+    }
   }
 
   void _checkProfileCompletion() {
@@ -87,7 +118,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         if (!isComplete && mounted) {
           await Future.delayed(const Duration(milliseconds: 500));
           if (mounted) {
-            Navigator.pushNamed(context, '/editeProfile');
+            Navigator.pushNamed(context, '/profile-setup');
           }
         }
       } catch (e) {
@@ -112,17 +143,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           }
         }
 
-        final user = supabase.auth.currentUser;
-        if (user == null) return;
+        final userId = await TokenStorage.getUserId();
+        if (userId == null || userId.isEmpty) return;
 
-        final profile = await supabase
-            .from('profiles')
-            .select('phone_number')
-            .eq('id', user.id)
-            .maybeSingle();
-
-        if (profile != null) {
-          final phone = profile['phone_number'] as String?;
+        final profile = await ProfileRepository().fetchProfileById(userId);
+        {
+          final phone = profile['phone_number']?.toString();
           final normalized = phone == null ? null : normalizePhone09(phone);
           if (phone == null || phone.isEmpty || normalized != phone) {
             if (mounted) {
@@ -255,9 +281,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                 await showOtpDialog(context, ref, phone);
                             if (verified) {
                               try {
-                                await supabase.from('profiles').update({
-                                  'phone_number': phone,
-                                }).eq('id', supabase.auth.currentUser!.id);
+                                final userId = await TokenStorage.getUserId();
+                                if (userId != null && userId.isNotEmpty) {
+                                  await ProfileRepository().updateProfile(
+                                    userId,
+                                    {'phone_number': phone},
+                                  );
+                                }
 
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   const SnackBar(

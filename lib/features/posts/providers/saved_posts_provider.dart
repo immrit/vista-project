@@ -1,132 +1,37 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../model/publicPostModel.dart';
+import '../data/go_posts_repository.dart';
 
 final savedPostsRepositoryProvider = Provider<SavedPostsRepository>((ref) {
-  return SavedPostsRepository(Supabase.instance.client);
+  return SavedPostsRepository(ref.read(goPostsRepositoryProvider));
 });
 
 class SavedPostsRepository {
-  final SupabaseClient _supabase;
+  final GoPostsRepository _postsRepository;
 
-  SavedPostsRepository(this._supabase);
-
-  String _requireUserId() {
-    final userId = _supabase.auth.currentUser?.id;
-    if (userId == null || userId.isEmpty) {
-      throw const AuthException('User not logged in');
-    }
-    return userId;
-  }
+  SavedPostsRepository(this._postsRepository);
 
   Future<void> savePost(String postId) async {
-    final userId = _requireUserId();
-    await _supabase.from('user_saved_posts').upsert(
-      {
-        'user_id': userId,
-        'post_id': postId,
-        'created_at': DateTime.now().toUtc().toIso8601String(),
-      },
-      onConflict: 'user_id,post_id',
-    );
+    await _postsRepository.setSaved(postId, true);
   }
 
   Future<void> unsavePost(String postId) async {
-    final userId = _requireUserId();
-    await _supabase
-        .from('user_saved_posts')
-        .delete()
-        .eq('user_id', userId)
-        .eq('post_id', postId);
+    await _postsRepository.setSaved(postId, false);
   }
 
   Future<Set<String>> getSavedPostIds({
     int limit = 500,
     int offset = 0,
   }) async {
-    final userId = _requireUserId();
-    final rows = await _supabase
-        .from('user_saved_posts')
-        .select('post_id')
-        .eq('user_id', userId)
-        .order('created_at', ascending: false)
-        .range(offset, offset + limit - 1);
-
-    return rows
-        .map((e) => (e['post_id'] as String?) ?? '')
-        .where((id) => id.isNotEmpty)
-        .toSet();
+    return _postsRepository.getSavedPostIds(limit: limit, offset: offset);
   }
 
   Future<List<PublicPostModel>> getSavedPosts({
     required int limit,
     required int offset,
   }) async {
-    final userId = _requireUserId();
-
-    final savedRows = await _supabase
-        .from('user_saved_posts')
-        .select('post_id, created_at')
-        .eq('user_id', userId)
-        .order('created_at', ascending: false)
-        .range(offset, offset + limit - 1);
-    if (savedRows.isEmpty) {
-      return const [];
-    }
-
-    final postIds = savedRows
-        .map((e) => (e['post_id'] as String?) ?? '')
-        .where((id) => id.isNotEmpty)
-        .toList();
-    if (postIds.isEmpty) {
-      return const [];
-    }
-
-    final postsResponse = await _supabase.from('posts').select('''
-          *,
-          profiles!posts_user_id_fkey (
-            username,
-            full_name,
-            avatar_url,
-            is_verified,
-            verification_type
-          ),
-          likes (
-            user_id
-          ),
-          comments (
-            id
-          )
-        ''').inFilter('id', postIds);
-
-    final postsById = <String, PublicPostModel>{};
-    for (final raw in postsResponse) {
-      final post = raw;
-      final profile = (post['profiles'] as Map<String, dynamic>?) ?? {};
-      final postLikes = post['likes'] as List<dynamic>? ?? const [];
-      final comments = post['comments'] as List<dynamic>? ?? const [];
-      final model = PublicPostModel.fromMap({
-        ...post,
-        'like_count': postLikes.length,
-        'is_liked': postLikes.any((like) => like['user_id'] == userId),
-        'username': profile['username'] ?? profile['full_name'] ?? 'Unknown',
-        'avatar_url': profile['avatar_url'] ?? '',
-        'is_verified': profile['is_verified'] ?? false,
-        'comment_count': comments.length,
-        'verification_type': profile['verification_type'],
-      });
-      postsById[model.id] = model;
-    }
-
-    final ordered = <PublicPostModel>[];
-    for (final postId in postIds) {
-      final model = postsById[postId];
-      if (model != null) {
-        ordered.add(model);
-      }
-    }
-    return ordered;
+    return _postsRepository.getSavedPosts(limit: limit, offset: offset);
   }
 }
 

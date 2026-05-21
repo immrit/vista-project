@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../chat/screens/ChatPartnerInfoScreen.dart';
 import '../../chat/screens/modern_chat_screen.dart';
 import '../../chat/services/group_service.dart';
+import '../../profile/data/profile_repository.dart';
 import '../../posts/screens/profileScreen.dart';
 
 /// اسکنر پیشرفته ویستا برای اسکن QR کدهای پروفایل
@@ -78,11 +78,8 @@ class _VistaQRScannerState extends ConsumerState<VistaQRScanner>
 
       try {
         // دریافت اطلاعات کاربر از دیتابیس
-        final response = await Supabase.instance.client
-            .from('profiles')
-            .select('id, username, avatar_url, full_name')
-            .eq('id', userId)
-            .maybeSingle();
+        final Map<String, dynamic>? response =
+            await ProfileRepository().fetchProfileById(userId);
 
         if (!mounted) return;
 
@@ -161,11 +158,8 @@ class _VistaQRScannerState extends ConsumerState<VistaQRScanner>
       }
 
       try {
-        final response = await Supabase.instance.client
-            .from('profiles')
-            .select('id, username, avatar_url')
-            .eq('id', userId)
-            .maybeSingle();
+        final Map<String, dynamic>? response =
+            await ProfileRepository().fetchProfileById(userId);
 
         if (!mounted) return;
 

@@ -7,7 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:logger/logger.dart';
 import 'package:local_auth/local_auth.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'current_user_service.dart';
 import '../security/logging_utility.dart';
 
 final logger = Logger(
@@ -747,117 +747,26 @@ class AdvancedSecurityService {
     DateTime? lockoutUntil,
     LockReason? lockReason,
   }) async {
-    try {
-      final supabase = Supabase.instance.client;
-
-      final updateData = <String, dynamic>{
-        'failed_attempts': attempts,
-        'updated_at': DateTime.now().toIso8601String(),
-      };
-
-      if (lockoutUntil != null) {
-        updateData['lockout_until'] = lockoutUntil.toIso8601String();
-        updateData['lock_reason'] =
-            lockReason?.value ?? LockReason.failedLoginAttempts.value;
-        updateData['lock_type'] = LockType.temporary.value;
-        updateData['locked_by'] = 'system';
-        updateData['locked_at'] = DateTime.now().toIso8601String();
-      }
-
-      await supabase.from('profiles').update(updateData).eq('id', userId);
-
-      logger.d('💾 Saved failed attempts to database for user: $userId');
-    } catch (e) {
-      // اگر فیلدها وجود ندارند، سعی نکنیم خطا بدهیم
-      if (e.toString().contains('column') ||
-          e.toString().contains('does not exist')) {
-        logger.w(
-            '⚠️ Security columns may not exist in database yet. Please run the migration SQL.');
-      } else {
-        rethrow;
-      }
-    }
+    // TODO: Connect to Go backend
   }
 
   /// Get failed attempts from database
   static Future<int?> _getFailedAttemptsFromDatabase(
       {required String userId}) async {
-    try {
-      final supabase = Supabase.instance.client;
-
-      final response = await supabase
-          .from('profiles')
-          .select('failed_attempts')
-          .eq('id', userId)
-          .maybeSingle();
-
-      if (response != null && response['failed_attempts'] != null) {
-        return response['failed_attempts'] as int;
-      }
-      return null;
-    } catch (e) {
-      if (e.toString().contains('column') ||
-          e.toString().contains('does not exist')) {
-        logger.w('⚠️ Security columns may not exist in database yet.');
-        return null;
-      }
-      rethrow;
-    }
+    // TODO: Connect to Go backend
+    return null;
   }
 
   /// Get lockout time from database
   static Future<int?> _getLockoutFromDatabase({required String userId}) async {
-    try {
-      final supabase = Supabase.instance.client;
-
-      final response = await supabase
-          .from('profiles')
-          .select('lockout_until')
-          .eq('id', userId)
-          .maybeSingle();
-
-      if (response != null && response['lockout_until'] != null) {
-        final lockoutStr = response['lockout_until'] as String;
-        final lockoutTime = DateTime.parse(lockoutStr);
-        return lockoutTime.millisecondsSinceEpoch;
-      }
-      return null;
-    } catch (e) {
-      if (e.toString().contains('column') ||
-          e.toString().contains('does not exist')) {
-        logger.w('⚠️ Security columns may not exist in database yet.');
-        return null;
-      }
-      rethrow;
-    }
+    // TODO: Connect to Go backend
+    return null;
   }
 
   /// Clear failed attempts from database
   static Future<void> _clearFailedAttemptsFromDatabase(
       {required String userId}) async {
-    try {
-      final supabase = Supabase.instance.client;
-
-      await supabase.from('profiles').update({
-        'failed_attempts': null,
-        'lockout_until': null,
-        'lock_reason': null,
-        'lock_type': null,
-        'locked_by': null,
-        'lock_notes': null,
-        'locked_at': null,
-        'updated_at': DateTime.now().toIso8601String(),
-      }).eq('id', userId);
-
-      logger.d('💾 Cleared failed attempts from database for user: $userId');
-    } catch (e) {
-      if (e.toString().contains('column') ||
-          e.toString().contains('does not exist')) {
-        logger.w('⚠️ Security columns may not exist in database yet.');
-      } else {
-        rethrow;
-      }
-    }
+    // TODO: Connect to Go backend
   }
 
   // ==================== Admin Lock Methods ====================
@@ -878,55 +787,8 @@ class AdvancedSecurityService {
     String? notes,
     String? adminId,
   }) async {
-    try {
-      final supabase = Supabase.instance.client;
-
-      // اگر adminId داده نشده، از کاربر فعلی استفاده کن
-      final adminUserId = adminId ?? supabase.auth.currentUser?.id;
-      if (adminUserId == null) {
-        throw Exception('Admin ID is required');
-      }
-
-      DateTime? lockoutUntil;
-      if (lockType == LockType.temporary && duration != null) {
-        lockoutUntil = DateTime.now().add(duration);
-      } else if (lockType == LockType.permanent) {
-        // برای قفل دائمی، یک تاریخ خیلی دور در آینده تنظیم می‌کنیم
-        lockoutUntil =
-            DateTime.now().add(const Duration(days: 365 * 100)); // 100 سال
-      }
-
-      await supabase.from('profiles').update({
-        'lockout_until': lockoutUntil?.toIso8601String(),
-        'lock_reason': reason.value,
-        'lock_type': lockType.value,
-        'locked_by': adminUserId,
-        'lock_notes': notes,
-        'locked_at': DateTime.now().toIso8601String(),
-        'updated_at': DateTime.now().toIso8601String(),
-      }).eq('id', userId);
-
-      // همگام‌سازی با محلی (اگر کاربر همان کاربری است که قفل شده)
-      try {
-        final currentUserId = supabase.auth.currentUser?.id;
-        if (currentUserId == userId) {
-          if (lockoutUntil != null) {
-            await _storage.write(
-              key: _lockoutUntilKey,
-              value: lockoutUntil.millisecondsSinceEpoch.toString(),
-            );
-          }
-        }
-      } catch (e) {
-        logger.w('⚠️ Failed to sync to local storage: $e');
-      }
-
-      logger
-          .i('🔒 User locked by admin: $userId, Reason: ${reason.persianName}');
-    } catch (e) {
-      logger.e('❌ Failed to lock user by admin: $e');
-      rethrow;
-    }
+    // TODO: Connect to Go backend
+    logger.w('⚠️ lockUserByAdmin is temporarily disabled during migration');
   }
 
   /// باز کردن قفل حساب کاربر
@@ -937,42 +799,8 @@ class AdvancedSecurityService {
     required String userId,
     String? adminId,
   }) async {
-    try {
-      final supabase = Supabase.instance.client;
-
-      // اگر adminId داده نشده، از کاربر فعلی استفاده کن
-      final adminUserId = adminId ?? supabase.auth.currentUser?.id;
-      if (adminUserId == null) {
-        throw Exception('Admin ID is required');
-      }
-
-      await supabase.from('profiles').update({
-        'lockout_until': null,
-        'lock_reason': null,
-        'lock_type': null,
-        'locked_by': null,
-        'lock_notes': null,
-        'locked_at': null,
-        'failed_attempts': 0, // پاک کردن تلاش‌های ناموفق هم
-        'updated_at': DateTime.now().toIso8601String(),
-      }).eq('id', userId);
-
-      // همگام‌سازی با محلی
-      try {
-        final currentUserId = supabase.auth.currentUser?.id;
-        if (currentUserId == userId) {
-          await _storage.delete(key: _lockoutUntilKey);
-          await _storage.delete(key: _failedAttemptsKey);
-        }
-      } catch (e) {
-        logger.w('⚠️ Failed to sync to local storage: $e');
-      }
-
-      logger.i('🔓 User unlocked by admin: $userId');
-    } catch (e) {
-      logger.e('❌ Failed to unlock user: $e');
-      rethrow;
-    }
+    // TODO: Connect to Go backend
+    logger.w('⚠️ unlockUser is temporarily disabled during migration');
   }
 
   /// دریافت اطلاعات قفل حساب کاربر
@@ -982,45 +810,8 @@ class AdvancedSecurityService {
   /// Returns: Map شامل اطلاعات قفل یا null اگر قفل نشده باشد
   static Future<Map<String, dynamic>?> getLockInfo(
       {required String userId}) async {
-    try {
-      final supabase = Supabase.instance.client;
-
-      final response = await supabase
-          .from('profiles')
-          .select(
-              'lockout_until, lock_reason, lock_type, locked_by, lock_notes, locked_at')
-          .eq('id', userId)
-          .maybeSingle();
-
-      if (response == null) {
-        return null;
-      }
-
-      final lockoutUntil = response['lockout_until'] as String?;
-      if (lockoutUntil == null) {
-        return null;
-      }
-
-      final lockTime = DateTime.parse(lockoutUntil);
-      final isLocked = DateTime.now().isBefore(lockTime);
-
-      if (!isLocked) {
-        return null; // قفل منقضی شده
-      }
-
-      return {
-        'lockout_until': lockoutUntil,
-        'lock_reason': response['lock_reason'] as String?,
-        'lock_type': response['lock_type'] as String?,
-        'locked_by': response['locked_by'] as String?,
-        'lock_notes': response['lock_notes'] as String?,
-        'locked_at': response['locked_at'] as String?,
-        'remaining_time': lockTime.difference(DateTime.now()),
-      };
-    } catch (e) {
-      logger.e('❌ Failed to get lock info: $e');
-      return null;
-    }
+    // TODO: Connect to Go backend
+    return null;
   }
 
   /// دریافت علت قفل شدن به فارسی

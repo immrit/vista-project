@@ -18,9 +18,9 @@ import 'story_progress_bar.dart';
 import 'story_header.dart';
 import 'story_actions.dart';
 import 'story_viewers_sheet.dart';
-import '../../../../utils/const.dart';
 import '../../../../utils/navigation_helper.dart';
 import '../../../../utils/user_friendly_error_utils.dart';
+import '../../../../services/current_user_service.dart';
 
 /// صفحه پخش استوری
 class StoryPlayerScreen extends ConsumerStatefulWidget {
@@ -58,6 +58,7 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
   StreamSubscription<PlayerState>? _musicPlayerStateSub;
   Timer? _musicPreviewStopTimer;
   String? _playingMusicElementId;
+  String? _currentUserId;
 
   @override
   void initState() {
@@ -104,7 +105,7 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
 
   StoryUser get _currentUser => widget.users[_currentUserIndex];
   Story get _currentStory => _currentUser.stories[_currentStoryIndex];
-  bool get _isOwnStory => _currentStory.userId == supabase.auth.currentUser?.id;
+  bool get _isOwnStory => _currentStory.userId == _currentUserId;
 
   void _onProgressComplete(AnimationStatus status) {
     if (status == AnimationStatus.completed) {
@@ -120,6 +121,7 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
 
     // Track view + resolve reply permission state for current story.
     final repository = ref.read(storyRepositoryProvider);
+    _currentUserId = await CurrentUserService.instance.resolveUserId();
     await repository.trackView(_currentStory.id);
     await _loadReplyState(repository);
 

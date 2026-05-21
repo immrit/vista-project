@@ -10,6 +10,10 @@ Future<bool> showOtpDialog(
   String? error;
   int countdown = 60;
   Timer? timer;
+  String? debugCode = ref.read(authControllerProvider).otpDebugCode;
+  if (debugCode != null && debugCode.isNotEmpty) {
+    otpController.text = debugCode;
+  }
 
   final result = await showGeneralDialog<bool>(
     context: context,
@@ -73,7 +77,7 @@ Future<bool> showOtpDialog(
                         border: Border.all(
                           color: error != null
                               ? Colors.red
-                              : const Color(0xFF4A80F0).withOpacity(0.3),
+                              : const Color(0xFF4A80F0).withValues(alpha: 0.3),
                           width: 2,
                         ),
                       ),
@@ -100,6 +104,17 @@ Future<bool> showOtpDialog(
                       Text(error!,
                           style:
                               const TextStyle(color: Colors.red, fontSize: 12)),
+                    ],
+                    if ((debugCode ?? '').isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        'Dev OTP: $debugCode',
+                        style: const TextStyle(
+                          color: Color(0xFF4A80F0),
+                          fontWeight: FontWeight.w600,
+                          fontSize: 12,
+                        ),
+                      ),
                     ],
                     const SizedBox(height: 24),
                     if (countdown > 0)
@@ -132,6 +147,13 @@ Future<bool> showOtpDialog(
                             await ref
                                 .read(authControllerProvider.notifier)
                                 .sendOtp(phoneNumber);
+                            setDialogState(() {
+                              debugCode =
+                                  ref.read(authControllerProvider).otpDebugCode;
+                              if ((debugCode ?? '').isNotEmpty) {
+                                otpController.text = debugCode ?? '';
+                              }
+                            });
                           } catch (e) {
                             setDialogState(() => error = 'خطا در ارسال مجدد');
                           }
@@ -167,6 +189,7 @@ Future<bool> showOtpDialog(
                                   .verifyOtp(
                                       phone: phoneNumber,
                                       token: otpController.text);
+                              if (!context.mounted) return;
                               if (success) {
                                 timer?.cancel();
                                 Navigator.pop(context, true);

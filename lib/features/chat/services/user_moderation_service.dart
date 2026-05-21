@@ -1,20 +1,9 @@
-// lib/features/chat/services/user_moderation_service.dart
-//
-// سرویس مدیریت مسدودیت و گزارش کاربران
-//
-// ویژگی‌ها:
-// ✅ مسدود/رفع مسدودیت کاربر
-// ✅ گزارش کاربر با دلایل مختلف
-// ✅ بررسی وضعیت مسدودیت
-// ✅ کش هوشمند برای عملکرد بهتر
-// ✅ Error handling حرفه‌ای
-//
+import 'package:dio/dio.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
-import 'package:supabase_flutter/supabase_flutter.dart';
-import '../../../utils/const.dart';
+import '../../auth/providers/auth_controller.dart';
 import '../../../security/logging_utility.dart';
 
-/// دلایل مختلف گزارش کاربر
 enum ModerationReason {
   inappropriateContent('محتوای نامناسب'),
   harassment('آزار و اذیت'),
@@ -29,7 +18,6 @@ enum ModerationReason {
   const ModerationReason(this.persianLabel);
 }
 
-/// نتیجه عملیات مدیریتی
 class ModerationResult {
   final bool success;
   final String? error;
@@ -42,21 +30,14 @@ class ModerationResult {
   });
 
   factory ModerationResult.success([String? message]) {
-    return ModerationResult(
-      success: true,
-      message: message,
-    );
+    return ModerationResult(success: true, message: message);
   }
 
   factory ModerationResult.failure(String error) {
-    return ModerationResult(
-      success: false,
-      error: error,
-    );
+    return ModerationResult(success: false, error: error);
   }
 }
 
-/// وضعیت مسدودیت کاربر
 class BlockStatus {
   final bool isBlocked;
   final bool isBlockedBy;
@@ -74,291 +55,155 @@ class BlockStatus {
   bool get canSendMessage => !hasAnyBlock;
 
   factory BlockStatus.noBlock() {
-    return const BlockStatus(
-      isBlocked: false,
-      isBlockedBy: false,
-    );
+    return const BlockStatus(isBlocked: false, isBlockedBy: false);
   }
 }
 
-/// سرویس مدیریت مسدودیت و گزارش
 class UserModerationService {
-  final SupabaseClient _supabase = supabase;
-
-  // کش برای وضعیت مسدودیت (5 دقیقه)
+  late final Dio _dio;
   final Map<String, ({BlockStatus status, DateTime cachedAt})> _blockCache = {};
   static const Duration _cacheDuration = Duration(minutes: 5);
 
-  /// مسدود کردن کاربر
-  ///
-  /// [userId] - شناسه کاربر مورد نظر برای مسدود کردن
-  ///
-  /// Returns: نتیجه عملیات
+  UserModerationService() {
+    _dio = Dio(
+      BaseOptions(
+        baseUrl: '${dotenv.env['BACKEND_URL'] ?? 'http://10.0.2.2:8080'}/v1',
+        connectTimeout: const Duration(seconds: 10),
+        receiveTimeout: const Duration(seconds: 20),
+        headers: {'Content-Type': 'application/json'},
+      ),
+    );
+  }
+
   Future<ModerationResult> blockUser(String userId) async {
     try {
-      final currentUserId = _supabase.auth.currentUser?.id;
-      if (currentUserId == null) {
-        return ModerationResult.failure('کاربر وارد نشده است');
-      }
-
-      // جلوگیری از مسدود کردن خودت
-      if (currentUserId == userId) {
-        return ModerationResult.failure('نمی‌توانید خودتان را مسدود کنید');
-      }
-
-      logInfo('🚫 Blocking user: $userId by $currentUserId');
-
-      // بررسی وجود رکورد قبلی
-      final existingRecord = await _supabase
-          .from('blocked_users')
-          .select()
-          .eq('user_id', currentUserId)
-          .eq('blocked_user_id', userId)
-          .maybeSingle();
-
-      if (existingRecord != null) {
-        logInfo('⚠️ User already blocked');
-        return ModerationResult.success('کاربر قبلاً مسدود شده است');
-      }
-
-      // ایجاد رکورد مسدودیت
-      await _supabase.from('blocked_users').insert({
-        'user_id': currentUserId,
-        'blocked_user_id': userId,
-        'created_at': DateTime.now().toUtc().toIso8601String(),
-      });
-
-      // پاک کردن کش
+      await _dio.post(
+        '/me/block',
+        data: {'target_user_id': userId},
+        options: await _authOptions(),
+      );
       _invalidateCache(userId);
-
-      logInfo('✅ User blocked successfully');
       return ModerationResult.success('کاربر با موفقیت مسدود شد');
-    } catch (e, stackTrace) {
-      logInfo('❌ Error blocking user: $e\n$stackTrace');
-      return ModerationResult.failure(
-          'خطا در مسدود کردن کاربر: ${e.toString()}');
+    } catch (e) {
+      return ModerationResult.failure('خطا در مسدود کردن کاربر: $e');
     }
   }
 
-  /// رفع مسدودیت کاربر
-  ///
-  /// [userId] - شناسه کاربر مورد نظر برای رفع مسدودیت
-  ///
-  /// Returns: نتیجه عملیات
   Future<ModerationResult> unblockUser(String userId) async {
     try {
-      final currentUserId = _supabase.auth.currentUser?.id;
-      if (currentUserId == null) {
-        return ModerationResult.failure('کاربر وارد نشده است');
-      }
-
-      logInfo('✅ Unblocking user: $userId by $currentUserId');
-
-      // حذف رکورد مسدودیت
-      final result = await _supabase
-          .from('blocked_users')
-          .delete()
-          .eq('user_id', currentUserId)
-          .eq('blocked_user_id', userId)
-          .select();
-
-      if (result.isEmpty) {
-        logInfo('⚠️ No block record found');
-        return ModerationResult.success('کاربر قبلاً مسدود نبوده است');
-      }
-
-      // پاک کردن کش
+      await _dio.post(
+        '/me/unblock',
+        data: {'target_user_id': userId},
+        options: await _authOptions(),
+      );
       _invalidateCache(userId);
-
-      logInfo('✅ User unblocked successfully');
-      return ModerationResult.success('مسدودیت کاربر با موفقیت برداشته شد');
-    } catch (e, stackTrace) {
-      logInfo('❌ Error unblocking user: $e\n$stackTrace');
-      return ModerationResult.failure('خطا در رفع مسدودیت: ${e.toString()}');
+      return ModerationResult.success('مسدودیت کاربر برداشته شد');
+    } catch (e) {
+      return ModerationResult.failure('خطا در رفع مسدودیت: $e');
     }
   }
 
-  /// گزارش کاربر
-  ///
-  /// [userId] - شناسه کاربر مورد گزارش
-  /// [reason] - دلیل گزارش
-  /// [additionalInfo] - توضیحات اضافی (اختیاری)
-  ///
-  /// Returns: نتیجه عملیات
   Future<ModerationResult> reportUser({
     required String userId,
     required ModerationReason reason,
     String? additionalInfo,
   }) async {
     try {
-      final currentUserId = _supabase.auth.currentUser?.id;
-      if (currentUserId == null) {
-        return ModerationResult.failure('کاربر وارد نشده است');
-      }
-
-      // جلوگیری از گزارش خودت
-      if (currentUserId == userId) {
-        return ModerationResult.failure('نمی‌توانید خودتان را گزارش کنید');
-      }
-
-      logInfo('📢 Reporting user: $userId by $currentUserId');
-      logInfo('   Reason: ${reason.name} - ${reason.persianLabel}');
-
-      // ثبت گزارش در دیتابیس
-      await _supabase.from('user_reports').insert({
-        'reporter_id': currentUserId,
-        'reported_user_id': userId,
-        'reason': reason.name,
-        'reason_text': reason.persianLabel,
-        'additional_info': additionalInfo,
-        'created_at': DateTime.now().toUtc().toIso8601String(),
-        'status': 'pending', // pending, reviewed, dismissed, actioned
-      });
-
-      logInfo('✅ User reported successfully');
-      return ModerationResult.success('گزارش شما با موفقیت ثبت شد');
-    } catch (e, stackTrace) {
-      logInfo('❌ Error reporting user: $e\n$stackTrace');
-      return ModerationResult.failure('خطا در ثبت گزارش: ${e.toString()}');
+      await _dio.post(
+        '/profiles/report',
+        data: {
+          'user_id': userId,
+          'reason': reason.name,
+          if (additionalInfo != null) 'additional_details': additionalInfo,
+        },
+        options: await _authOptions(),
+      );
+      return ModerationResult.success('گزارش شما ثبت شد');
+    } catch (e) {
+      return ModerationResult.failure('خطا در ثبت گزارش: $e');
     }
   }
 
-  /// بررسی وضعیت مسدودیت کاربر
-  ///
-  /// [userId] - شناسه کاربر مورد نظر
-  /// [useCache] - استفاده از کش (پیش‌فرض: true)
-  ///
-  /// Returns: وضعیت مسدودیت
   Future<BlockStatus> getBlockStatus(String userId,
       {bool useCache = true}) async {
+    if (useCache && _blockCache.containsKey(userId)) {
+      final cached = _blockCache[userId]!;
+      if (DateTime.now().difference(cached.cachedAt) < _cacheDuration) {
+        return cached.status;
+      }
+      _blockCache.remove(userId);
+    }
     try {
-      final currentUserId = _supabase.auth.currentUser?.id;
-      if (currentUserId == null) {
-        return BlockStatus.noBlock();
-      }
-
-      // بررسی کش
-      if (useCache && _blockCache.containsKey(userId)) {
-        final cached = _blockCache[userId]!;
-        final age = DateTime.now().difference(cached.cachedAt);
-
-        if (age < _cacheDuration) {
-          // ✅ حذف لاگ cache hit برای بهبود performance
-          return cached.status;
-        } else {
-          // کش منقضی شده
-          _blockCache.remove(userId);
-        }
-      }
-
-      // ✅ حذف لاگ info برای بهبود performance - فقط در حالت debug
-      assert(() {
-        logInfo('🔍 Checking block status for user: $userId');
-        return true;
-      }());
-
-      // بررسی اینکه آیا کاربر فعلی این کاربر را مسدود کرده
-      final iBlockedUser = await _supabase
-          .from('blocked_users')
-          .select('created_at')
-          .eq('user_id', currentUserId)
-          .eq('blocked_user_id', userId)
-          .maybeSingle();
-
-      // بررسی اینکه آیا این کاربر، کاربر فعلی را مسدود کرده
-      final userBlockedMe = await _supabase
-          .from('blocked_users')
-          .select('created_at')
-          .eq('user_id', userId)
-          .eq('blocked_user_id', currentUserId)
-          .maybeSingle();
-
-      final status = BlockStatus(
-        isBlocked: iBlockedUser != null,
-        isBlockedBy: userBlockedMe != null,
-        blockedAt: iBlockedUser != null
-            ? DateTime.parse(iBlockedUser['created_at'] as String)
-            : null,
-        blockedByAt: userBlockedMe != null
-            ? DateTime.parse(userBlockedMe['created_at'] as String)
-            : null,
+      final response = await _dio.get(
+        '/me/block-status/$userId',
+        options: await _authOptions(),
       );
-
-      // ذخیره در کش
+      final data = _asMap(response.data);
+      final status = BlockStatus(
+        isBlocked: data['is_blocked'] == true,
+        isBlockedBy: data['is_blocked_by'] == true,
+        blockedAt: DateTime.tryParse(data['blocked_at']?.toString() ?? ''),
+        blockedByAt: DateTime.tryParse(data['blocked_by_at']?.toString() ?? ''),
+      );
       _blockCache[userId] = (status: status, cachedAt: DateTime.now());
-
-      // ✅ حذف لاگ success برای بهبود performance - فقط در حالت debug لاگ می‌کنیم
-      assert(() {
-        logInfo(
-            '✅ Block status: isBlocked=${status.isBlocked}, isBlockedBy=${status.isBlockedBy}');
-        return true;
-      }());
       return status;
-    } catch (e, stackTrace) {
-      // ✅ فقط لاگ error ها را نگه می‌داریم
-      logInfo('❌ Error checking block status: $e\n$stackTrace');
+    } catch (e, stack) {
+      logError('Failed to load block status', error: e, stackTrace: stack);
       return BlockStatus.noBlock();
     }
   }
 
-  /// بررسی ساده آیا کاربر مسدود شده است
   Future<bool> isUserBlocked(String userId) async {
-    final status = await getBlockStatus(userId);
-    return status.isBlocked;
+    return (await getBlockStatus(userId)).isBlocked;
   }
 
-  /// بررسی ساده آیا کاربر فعلی مسدود شده است
   Future<bool> isCurrentUserBlocked(String userId) async {
-    final status = await getBlockStatus(userId);
-    return status.isBlockedBy;
+    return (await getBlockStatus(userId)).isBlockedBy;
   }
 
-  /// پاک کردن کش برای یک کاربر خاص
   void _invalidateCache(String userId) {
     _blockCache.remove(userId);
-    logInfo('🗑️ Cache invalidated for user: $userId');
   }
 
-  /// پاک کردن کل کش
   void clearCache() {
     _blockCache.clear();
-    logInfo('🗑️ All block cache cleared');
   }
 
-  /// دریافت لیست کاربران مسدود شده
   Future<List<Map<String, dynamic>>> getBlockedUsers() async {
     try {
-      final currentUserId = _supabase.auth.currentUser?.id;
-      if (currentUserId == null) return [];
-
-      final result = await _supabase
-          .from('blocked_users')
-          .select('blocked_user_id, created_at')
-          .eq('user_id', currentUserId)
-          .order('created_at', ascending: false);
-
-      return List<Map<String, dynamic>>.from(result);
-    } catch (e) {
-      logInfo('❌ Error fetching blocked users: $e');
+      final response = await _dio.get(
+        '/me/blocked-users',
+        options: await _authOptions(),
+      );
+      return _asList(_asMap(response.data)['profiles'])
+          .whereType<Map>()
+          .map((row) => row.cast<String, dynamic>())
+          .toList(growable: false);
+    } catch (_) {
       return [];
     }
   }
 
-  /// دریافت تعداد کاربران مسدود شده
   Future<int> getBlockedUsersCount() async {
-    try {
-      final currentUserId = _supabase.auth.currentUser?.id;
-      if (currentUserId == null) return 0;
+    return (await getBlockedUsers()).length;
+  }
 
-      final result = await _supabase
-          .from('blocked_users')
-          .select('id')
-          .eq('user_id', currentUserId);
-
-      return result.length;
-    } catch (e) {
-      logInfo('❌ Error counting blocked users: $e');
-      return 0;
+  Future<Options> _authOptions() async {
+    final token = await TokenStorage.getAccessToken();
+    if (token == null || token.isEmpty) {
+      throw StateError('User not authenticated');
     }
+    return Options(headers: {'Authorization': 'Bearer $token'});
+  }
+
+  Map<String, dynamic> _asMap(dynamic data) {
+    if (data is Map<String, dynamic>) return data;
+    if (data is Map) return data.cast<String, dynamic>();
+    return <String, dynamic>{};
+  }
+
+  List<dynamic> _asList(dynamic data) {
+    if (data is List) return data;
+    return const [];
   }
 }

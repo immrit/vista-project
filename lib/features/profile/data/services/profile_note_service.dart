@@ -1,100 +1,100 @@
+import 'package:dio/dio.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../../security/logging_utility.dart';
+import '../../../auth/providers/auth_controller.dart';
 import '../models/profile_note_model.dart';
 
 /// سرویس مدیریت وضعیت پروفایل
 class ProfileNoteService {
-  final SupabaseClient _supabase;
+  static String get _backendUrl =>
+      dotenv.env['BACKEND_URL'] ?? 'http://10.0.2.2:8080';
 
-  ProfileNoteService(this._supabase);
+  late final Dio _dio;
+
+  ProfileNoteService() {
+    _dio = Dio(BaseOptions(
+      baseUrl: '$_backendUrl/v1',
+      connectTimeout: const Duration(seconds: 15),
+      receiveTimeout: const Duration(seconds: 15),
+      headers: {'Content-Type': 'application/json'},
+    ));
+  }
+
+  Future<Options> _authOptions() async {
+    final token = await TokenStorage.getAccessToken();
+    if (token == null || token.isEmpty) {
+      throw 'User is not logged in';
+    }
+    return Options(headers: {'Authorization': 'Bearer $token'});
+  }
 
   /// دریافت وضعیت فعال یک کاربر
   Future<ProfileNoteModel?> getActiveNote(String userId) async {
     try {
-      final response = await _supabase
-          .rpc('get_active_profile_note', params: {'p_user_id': userId});
+      final storedUserId = await TokenStorage.getUserId();
+      final isSelf = storedUserId == userId;
 
-      if (response == null || (response as List).isEmpty) {
-        return null;
+      // فعلا برای سادگی فرض می‌کنیم برای کاربر خودش را می‌گیرد،
+      // اما اگر بخواهیم یادداشت دیگران را بگیریم نیاز به route جدید داریم.
+      // با توجه به کدهای قبلی که get_active_profile_note داشتیم، الان فقط me را داریم.
+      // بنابراین برای BatchGet استفاده می‌کنیم یا از مسیر /me/note.
+
+      if (!isSelf) {
+        final notes = await getNotesForUsers([userId]);
+        return notes[userId];
       }
 
-      return ProfileNoteModel.fromJson(response[0] as Map<String, dynamic>);
+      final response = await _dio.get(
+        '/me/note',
+        options: await _authOptions(),
+      );
+
+      if (response.data == null) return null;
+      return ProfileNoteModel.fromJson(response.data as Map<String, dynamic>);
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404) {
+        return null; // یادداشتی یافت نشد
+      }
+      logError('Get Active Note Error', error: e);
+      return null;
     } catch (e) {
-      // اگر تابع RPC وجود نداشت، از کوئری مستقیم استفاده کن
-      try {
-        final response = await _supabase
-            .from('profile_notes')
-            .select()
-            .eq('user_id', userId)
-            .gt('expires_at', DateTime.now().toIso8601String())
-            .maybeSingle();
-
-        if (response == null) return null;
-        return ProfileNoteModel.fromJson(response);
-      } catch (e2) {
-        return null;
-      }
+      logError('Get Active Note Error', error: e);
+      return null;
     }
   }
 
   /// ایجاد یا بروزرسانی وضعیت
   Future<ProfileNoteModel?> upsertNote(String content) async {
-    final userId = _supabase.auth.currentUser?.id;
-    if (userId == null) throw Exception('User not authenticated');
-
-    // اعتبارسنجی طول محتوا
     if (content.isEmpty || content.length > 60) {
-      throw Exception('Content must be between 1 and 60 characters');
+      throw Exception('محتوای یادداشت باید بین ۱ تا ۶۰ کاراکتر باشد');
     }
 
     try {
-      // سعی کن از تابع RPC استفاده کنی
-      final response = await _supabase.rpc(
-        'upsert_profile_note',
-        params: {
-          'p_user_id': userId,
-          'p_content': content,
-        },
+      final response = await _dio.post(
+        '/me/note',
+        data: {'content': content},
+        options: await _authOptions(),
       );
 
-      if (response == null || (response as List).isEmpty) {
-        return null;
-      }
-
-      return ProfileNoteModel.fromJson(response[0] as Map<String, dynamic>);
+      if (response.data == null) return null;
+      return ProfileNoteModel.fromJson(response.data as Map<String, dynamic>);
     } catch (e) {
-      // اگر تابع RPC وجود نداشت، از upsert مستقیم استفاده کن
-      final expiresAt = DateTime.now().add(const Duration(hours: 24));
-
-      final response = await _supabase
-          .from('profile_notes')
-          .upsert(
-            {
-              'user_id': userId,
-              'content': content,
-              'created_at': DateTime.now().toIso8601String(),
-              'expires_at': expiresAt.toIso8601String(),
-            },
-            onConflict: 'user_id',
-          )
-          .select()
-          .single();
-
-      return ProfileNoteModel.fromJson(response);
+      logError('Upsert Note Error', error: e);
+      return null;
     }
   }
 
   /// حذف وضعیت کاربر فعلی
   Future<void> deleteNote() async {
-    final userId = _supabase.auth.currentUser?.id;
-    if (userId == null) throw Exception('User not authenticated');
-
     try {
-      await _supabase.rpc('delete_profile_note', params: {'p_user_id': userId});
+      await _dio.delete(
+        '/me/note',
+        options: await _authOptions(),
+      );
     } catch (e) {
-      // اگر تابع RPC وجود نداشت، از delete مستقیم استفاده کن
-      await _supabase.from('profile_notes').delete().eq('user_id', userId);
+      logError('Delete Note Error', error: e);
     }
   }
 
@@ -104,19 +104,22 @@ class ProfileNoteService {
     if (userIds.isEmpty) return {};
 
     try {
-      final response = await _supabase
-          .from('profile_notes')
-          .select()
-          .inFilter('user_id', userIds)
-          .gt('expires_at', DateTime.now().toIso8601String());
+      final response = await _dio.post(
+        '/profiles/notes/batch',
+        data: {'user_ids': userIds},
+        options: await _authOptions(),
+      );
 
       final notes = <String, ProfileNoteModel>{};
-      for (final row in response as List) {
-        final note = ProfileNoteModel.fromJson(row as Map<String, dynamic>);
-        notes[note.userId] = note;
+      final dataMap = response.data as Map<String, dynamic>;
+
+      for (final key in dataMap.keys) {
+        notes[key] =
+            ProfileNoteModel.fromJson(dataMap[key] as Map<String, dynamic>);
       }
       return notes;
     } catch (e) {
+      logError('Batch Get Notes Error', error: e);
       return {};
     }
   }
@@ -124,5 +127,5 @@ class ProfileNoteService {
 
 /// Provider برای سرویس وضعیت پروفایل
 final profileNoteServiceProvider = Provider<ProfileNoteService>((ref) {
-  return ProfileNoteService(Supabase.instance.client);
+  return ProfileNoteService();
 });

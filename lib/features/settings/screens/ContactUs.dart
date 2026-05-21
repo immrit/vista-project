@@ -1,10 +1,12 @@
 import '../../../security/logging_utility.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../../../utils/const.dart';
+import '../../auth/data/auth_repository.dart';
+import '../../auth/providers/auth_controller.dart';
 
 class ContactUsScreen extends StatefulWidget {
   const ContactUsScreen({super.key});
@@ -16,14 +18,25 @@ class ContactUsScreen extends StatefulWidget {
 class _ContactUsScreenState extends State<ContactUsScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
-  final _emailController = supabase.auth.currentUser != null
-      ? TextEditingController(text: supabase.auth.currentUser!.email)
-      : TextEditingController();
+  final _emailController = TextEditingController();
   final _subjectController = TextEditingController();
   final _messageController = TextEditingController();
 
   bool _isSubmitting = false;
-  final _supabase = Supabase.instance.client;
+  late final Dio _dio = Dio(
+    BaseOptions(
+      baseUrl: '${dotenv.env['BACKEND_URL'] ?? 'http://10.0.2.2:8080'}/v1',
+      connectTimeout: const Duration(seconds: 15),
+      receiveTimeout: const Duration(seconds: 15),
+      headers: {'Content-Type': 'application/json'},
+    ),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    _prefillCurrentUser();
+  }
 
   @override
   void dispose() {
@@ -32,6 +45,29 @@ class _ContactUsScreenState extends State<ContactUsScreen> {
     _subjectController.dispose();
     _messageController.dispose();
     super.dispose();
+  }
+
+  Future<void> _prefillCurrentUser() async {
+    try {
+      final token = await TokenStorage.getAccessToken();
+      if (token == null || token.isEmpty) return;
+      final user = await AuthRepository().me(token);
+      if (!mounted) return;
+      if (_nameController.text.trim().isEmpty) {
+        _nameController.text = user.fullName;
+      }
+      if (_emailController.text.trim().isEmpty) {
+        _emailController.text = user.email ?? '';
+      }
+    } catch (_) {
+      // Contact form stays usable for guests/offline startup.
+    }
+  }
+
+  Future<Options> _optionalAuthOptions() async {
+    final token = await TokenStorage.getAccessToken();
+    if (token == null || token.isEmpty) return Options();
+    return Options(headers: {'Authorization': 'Bearer $token'});
   }
 
   @override
@@ -332,18 +368,18 @@ class _ContactUsScreenState extends State<ContactUsScreen> {
 
         // تهیه داده‌ها برای ارسال به سوپابیس
         final contactData = {
-          'full_name': _nameController.text,
-          'email': supabase.auth.currentUser?.email,
-          'subject': _subjectController.text,
-          'message': _messageController.text,
-          // اگر کاربر لاگین باشد، شناسه کاربر را اضافه می‌کنیم
-          if (_supabase.auth.currentUser != null)
-            'user_id': _supabase.auth.currentUser!.id,
+          'full_name': _nameController.text.trim(),
+          'email': _emailController.text.trim(),
+          'subject': _subjectController.text.trim(),
+          'message': _messageController.text.trim(),
+          'category': 'contact',
         };
 
-        // ارسال داده‌ها به جدول contact_requests در سوپابیس
-        await _supabase.from('contact_requests').insert(contactData);
-
+        await _dio.post(
+          '/contact-requests',
+          data: contactData,
+          options: await _optionalAuthOptions(),
+        );
         // نمایش پیام موفقیت‌آمیز
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(

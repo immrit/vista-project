@@ -25,7 +25,8 @@ final profileProvider = FutureProvider<Map<String, dynamic>?>((ref) async {
 
 // پروایدر Update Profile
 final profileUpdateProvider =
-    FutureProvider.family<void, Map<String, dynamic>>((ref, updatedData) async {
+    FutureProvider.family<Map<String, dynamic>, Map<String, dynamic>>(
+        (ref, updatedData) async {
   final user = ref.watch(userAuthStateProvider).when(
         data: (user) => user,
         loading: () => null,
@@ -37,5 +38,5 @@ final profileUpdateProvider =
   }
 
   final repository = ref.watch(profileRepositoryProvider);
-  await repository.updateProfile(user.id, updatedData);
+  return repository.updateProfile(user.id, updatedData);
 });

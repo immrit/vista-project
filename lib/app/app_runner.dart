@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:overlay_support/overlay_support.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:app_links/app_links.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:loading_animation_widget/loading_animation_widget.dart';
@@ -31,6 +30,7 @@ import 'package:Vista/middleware/session_middleware.dart';
 
 // Providers
 import 'package:Vista/provider/theme_provider.dart';
+import 'package:Vista/provider/app_settings_provider.dart';
 
 // Utils
 import 'package:Vista/utils/const.dart';
@@ -48,12 +48,14 @@ import 'package:Vista/features/auth/screens/password_recovery_confirm_screen.dar
 import 'package:Vista/features/auth/widgets/session_auth_wrapper.dart'; // Import SessionAuthWrapper
 import 'package:Vista/features/onboarding/screens/Onboarding.dart';
 import 'package:Vista/features/profile/screens/editeProfile.dart';
+import 'package:Vista/features/profile/screens/profile_setup_wizard_screen.dart';
 import 'package:Vista/features/settings/screens/Settings.dart';
 import 'package:Vista/features/settings/screens/vistaStore/store.dart';
 import 'package:Vista/features/posts/screens/ExploreFeedScreen.dart';
 import 'package:Vista/features/posts/screens/PostDetailPage.dart';
 import 'package:Vista/features/posts/screens/profileScreen.dart';
 import 'package:Vista/features/emoji/domain/telegram_emoji_lookup.dart';
+import 'package:Vista/features/auth/providers/auth_controller.dart';
 
 // Stories Module
 import 'package:Vista/features/stories/stories.dart';
@@ -192,7 +194,6 @@ class MyApp extends ConsumerStatefulWidget {
 class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
   late final AppLinks _appLinks;
   StreamSubscription? _linkSubscription;
-  StreamSubscription<AuthState>? _authSubscription;
   Timer? _sessionCheckTimer;
   bool _isLoading = false;
   bool _pushServiceInitialized = false;
@@ -201,7 +202,6 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
 
   @override
   void dispose() {
-    _authSubscription?.cancel();
     _sessionCheckTimer?.cancel();
     _linkSubscription?.cancel();
     WidgetsBinding.instance.removeObserver(this);
@@ -221,11 +221,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initializePushServiceOnce();
     });
-
-    final supabase = Supabase.instance.client;
-    _authSubscription = supabase.auth.onAuthStateChange.listen((data) async {
-      await processAuthEvent(data);
-    });
+    unawaited(_bootstrapAuthenticatedUser());
 
     _startSessionMonitoring();
     _setupNetworkStateListener();
@@ -240,33 +236,27 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
     } catch (_) {}
   }
 
-  Future<void> processAuthEvent(AuthState data) async {
-    final event = data.event;
-    final session = data.session;
+  Future<void> _bootstrapAuthenticatedUser() async {
     try {
-      if (event == AuthChangeEvent.initialSession && session != null) {
-        await _handleUserSignIn(session);
-      } else if (event == AuthChangeEvent.signedIn) {
-        await _handleUserSignIn(session);
-      } else if (event == AuthChangeEvent.signedOut) {
-        await _handleUserSignOut();
-      }
-    } catch (e) {
-      debugPrint('Error handling auth event: $e');
-    }
-  }
+      final hasTokenSession = await TokenStorage.hasValidSession();
+      if (!hasTokenSession) return;
 
-  Future<void> _handleUserSignIn(Session? session) async {
-    if (session == null) return;
-    final sessionManager = SessionManagerServiceV2();
-    await sessionManager.ensureSessionRegistered();
-    await sessionManager.verifyCurrentSession(forceServer: false);
-    sessionManager.updateLocationAndIP();
-    UserPresenceService().initialize();
-    try {
-      ProfileCacheService().cacheProfileAndPosts(session.user.id);
-    } catch (_) {}
-    await _setupFCMTokenForUser();
+      final userId = await TokenStorage.getUserId();
+      final sessionManager = SessionManagerServiceV2();
+      await sessionManager.initialize();
+      await sessionManager.ensureSessionRegistered();
+      await sessionManager.verifyCurrentSession(forceServer: false);
+      sessionManager.updateLocationAndIP();
+      UserPresenceService().initialize();
+      if (userId != null && userId.isNotEmpty) {
+        try {
+          ProfileCacheService().cacheProfileAndPosts(userId);
+        } catch (_) {}
+      }
+      await _setupFCMTokenForUser();
+    } catch (e) {
+      debugPrint('Error bootstrapping backend auth session: $e');
+    }
   }
 
   Future<void> _handleUserSignOut() async {
@@ -274,6 +264,19 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
       Navigator.of(navigatorKey.currentContext!)
           .pushNamedAndRemoveUntil('/auth', (route) => false);
     }
+  }
+
+  Future<void> _handlePotentialSessionExpiry() async {
+    final sessionManager = SessionManagerServiceV2();
+    try {
+      final hasTokenSession = await TokenStorage.hasValidSession();
+      if (!hasTokenSession) return;
+      final state =
+          await sessionManager.verifyCurrentSession(forceServer: false);
+      if (state == SessionVerificationState.invalid) {
+        await _handleUserSignOut();
+      }
+    } catch (_) {}
   }
 
   Future<void> _setupFCMTokenForUser() async {
@@ -291,17 +294,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
   void _startSessionMonitoring() {
     _sessionCheckTimer =
         Timer.periodic(const Duration(minutes: 5), (timer) async {
-      try {
-        final session = Supabase.instance.client.auth.currentSession;
-        if (session == null) return;
-        final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-        final expiresAt = session.expiresAt ?? 0;
-        if (expiresAt - now < 1200) {
-          try {
-            await Supabase.instance.client.auth.refreshSession();
-          } catch (_) {}
-        }
-      } catch (_) {}
+      await _handlePotentialSessionExpiry();
     });
   }
 
@@ -403,6 +396,8 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
                   const SessionMiddleware(child: HomeScreen()),
               '/onboarding': (context) => const Onboarding(),
               '/auth': (context) => const AuthWizardScreen(),
+              '/profile-setup': (context) =>
+                  const SessionMiddleware(child: ProfileSetupWizardScreen()),
               '/reset-password': (context) => const ResetPasswordScreen(),
               '/reset-password-code': (context) =>
                   const PasswordResetCodeScreen(),
@@ -443,6 +438,8 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
                 }
                 return const Scaffold();
               },
+              // <-- نام صحیح ویجت خود را اینجا جایگزین کنید
+
               '/chat': (context) {
                 final args = ModalRoute.of(context)?.settings.arguments;
                 String? conversationId;

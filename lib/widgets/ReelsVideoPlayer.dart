@@ -186,7 +186,7 @@ class _ReelsVideoPlayerState extends ConsumerState<ReelsVideoPlayer> {
       _showLikeAnimation();
 
       // ارسال به سرور
-      await ref.watch(supabaseServiceProvider).toggleLike(
+      await ref.watch(postActionsServiceProvider).toggleLike(
             postId: widget.post.id,
             ownerId: widget.post.userId,
             ref: ref,

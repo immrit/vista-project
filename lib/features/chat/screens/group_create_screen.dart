@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -169,21 +169,15 @@ class _GroupCreateScreenState extends ConsumerState<GroupCreateScreen> {
         msg.contains('function') && msg.contains('does not exist')) {
       return 'توابع گروه روی سوپابیس اعمال نشده‌اند';
     }
-    if (error is PostgrestException) {
-      return UserFriendlyErrorHandler.getFriendlyMessage(error,
-          context: 'group_create');
+    if (error is DioException) {
+      return 'خطا در ارتباط با سرور';
     }
     return 'خطا در ساخت گروه';
   }
 
   String _extractErrorMessage(Object error) {
-    if (error is PostgrestException) {
-      final buffer = StringBuffer();
-      buffer.write(error.message);
-      if (error.details != null) buffer.write(' ${error.details}');
-      if (error.hint != null) buffer.write(' ${error.hint}');
-      if (error.code != null) buffer.write(' ${error.code}');
-      return buffer.toString();
+    if (error is DioException) {
+      return error.message ?? error.toString();
     }
     return error.toString();
   }

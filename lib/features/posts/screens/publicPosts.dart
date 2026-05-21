@@ -9,17 +9,15 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'package:shamsi_date/shamsi_date.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:loading_animation_widget/loading_animation_widget.dart';
 import 'package:visibility_detector/visibility_detector.dart';
-import '../../../utils/const.dart';
 import '../../../provider/MusicProvider.dart';
 // تغییر به فایل جدید
 import '../../../provider/personalized_feed_provider.dart';
-import '../../../services/secure_upload_service.dart';
-import '../../../services/vista_node_service.dart';
+import '../../../services/backend_upload_service.dart';
+import '../../../services/current_user_service.dart';
 import 'package:Vista/utils/widgets.dart';
 import 'package:Vista/widgets/profile_avatar_widget.dart'; // Add this import
 import 'package:Vista/widgets/CustomVideoPlayer.dart';
@@ -33,6 +31,7 @@ import '../../../provider/provider.dart';
 import '../../../services/smart_share_service.dart';
 import 'package:Vista/features/posts/widgets/standard_edit_post_dialog.dart';
 import 'package:Vista/features/posts/widgets/post_music_bubble.dart';
+import '../data/go_posts_repository.dart';
 import '../providers/post_upload_provider.dart';
 import '../providers/saved_posts_provider.dart';
 import 'notificationScreen.dart';
@@ -120,11 +119,11 @@ class _PublicPostsScreenState extends ConsumerState<PublicPostsScreen>
     bool hasInternet = false;
     try {
       final response = await Future.any<dynamic>([
-        Supabase.instance.client.from('posts').select().limit(1).single(),
+        GoPostsRepository().exploreFeed(limit: 1),
         Future<dynamic>.delayed(
             const Duration(seconds: 3), () => throw 'timeout'),
       ]);
-      hasInternet = response != null;
+      hasInternet = response is List<PublicPostModel>;
     } catch (_) {
       hasInternet = false;
     }
@@ -832,7 +831,7 @@ Widget _buildPostItem(
                     post.isLiked = !post.isLiked;
                     post.likeCount += post.isLiked ? 1 : -1;
                     (context as Element).markNeedsBuild();
-                    await ref.watch(supabaseServiceProvider).toggleLike(
+                    await ref.watch(postActionsServiceProvider).toggleLike(
                           postId: post.id,
                           ownerId: post.userId,
                           ref: ref,
@@ -884,7 +883,7 @@ Widget _buildPostItem(
                   ref
                       .read(likeStateProvider.notifier)
                       .updateLikeState(post.id, true);
-                  await ref.read(supabaseServiceProvider).toggleLike(
+                  await ref.read(postActionsServiceProvider).toggleLike(
                         postId: post.id,
                         ownerId: post.userId,
                         ref: ref,
@@ -963,7 +962,7 @@ Widget _buildPostItem(
                                 .updateLikeState(post.id, !isLiked);
                             try {
                               await ref
-                                  .read(supabaseServiceProvider)
+                                  .read(postActionsServiceProvider)
                                   .toggleLike(
                                     postId: post.id,
                                     ownerId: post.userId,
@@ -1024,10 +1023,11 @@ Widget _buildPostItem(
                     // دکمه اشتراک‌گذاری
                     GestureDetector(
                       onTap: () {
-                        VistaNodeService.trackFeedEvent(
-                          postId: post.id,
-                          eventType: 'share',
-                        );
+                        unawaited(
+                            ref.read(goPostsRepositoryProvider).trackFeedEvent(
+                                  postId: post.id,
+                                  eventType: 'share',
+                                ));
                         SmartShareService().showShareOptions(post, context);
                       },
                       child: Container(
@@ -1346,12 +1346,11 @@ void showEditPostDialog(
     }
   }
 
-  // تابع حذف فایل از آروان کلود
   // تابع حذف فایل از storage
   Future<void> deleteFileFromArvan(String fileUrl) async {
     try {
       if (fileUrl.contains('storage.389346.ir.cdn.ir')) {
-        final deleted = await SecureUploadService.deleteByUrl(fileUrl);
+        final deleted = await BackendUploadService.deleteByUrl(fileUrl);
         if (deleted) {
           logInfo('فایل با موفقیت از آروان کلود حذف شد: $fileUrl');
         }
@@ -1771,35 +1770,10 @@ void showEditPostDialog(
                         });
 
                         try {
-                          // دریافت اطلاعات ناظر فعلی
-                          final currentUser = supabase.auth.currentUser;
-                          final moderatorProfile = await supabase
-                              .from('profiles')
-                              .select('username')
-                              .eq('id', currentUser!.id)
-                              .single();
-
-                          final updateData = {
-                            'content': content,
-                            if (imageRemoved) 'image_url': null,
-                            if (!imageRemoved && imageUrl != null)
-                              'image_url': imageUrl,
-                            if (videoRemoved) 'video_url': null,
-                            if (!videoRemoved && videoUrl != null)
-                              'video_url': videoUrl,
-                            'updated_at': DateTime.now().toIso8601String(),
-                            // ثبت اطلاعات ناظر
-                            'moderator_id': currentUser.id,
-                            'moderator_username': moderatorProfile['username'],
-                            'moderated_at': DateTime.now().toIso8601String(),
-                            'moderation_reason':
-                                content, // متن ویرایش شده به عنوان دلیل
-                          };
-
-                          await supabase
-                              .from('posts')
-                              .update(updateData)
-                              .eq('id', post.id);
+                          await GoPostsRepository().updatePost(
+                            postId: post.id,
+                            content: content,
+                          );
 
                           // رفرش همه provider های مربوطه
                           ref.invalidate(personalizedFeedProvider);
@@ -1872,7 +1846,7 @@ Widget _buildPostActions(
           profile['is_verified'] == true &&
           profile['verification_type'] == 'blueTick';
 
-      final currentUserId = supabase.auth.currentUser?.id;
+      final currentUserId = CurrentUserService.cachedUserId;
       final isCurrentUserPost = post.userId == currentUserId;
 
       return PopupMenuButton<String>(
@@ -2138,7 +2112,9 @@ void _showDeleteConfirmation(
           TextButton(
             onPressed: () async {
               try {
-                await ref.read(supabaseServiceProvider).deletePost(ref, postId);
+                await ref
+                    .read(postActionsServiceProvider)
+                    .deletePost(ref, postId);
                 if (context.mounted) {
                   Navigator.of(context).pop();
                   ScaffoldMessenger.of(context).showSnackBar(

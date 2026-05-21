@@ -6,8 +6,8 @@ import 'package:video_compress/video_compress.dart';
 import 'package:path/path.dart' as path;
 import 'package:uuid/uuid.dart';
 
-import '../../../../services/secure_upload_service.dart';
-import '../../../../utils/const.dart';
+import '../../../../features/auth/providers/auth_controller.dart';
+import '../../../../services/backend_upload_service.dart';
 import '../../../../security/logging_utility.dart';
 import '../../core/story_enums.dart';
 
@@ -37,7 +37,7 @@ class StoryUploadService {
     Function(double progress)? onProgress,
   }) async {
     try {
-      final userId = supabase.auth.currentUser?.id;
+      final userId = await TokenStorage.getUserId();
       if (userId == null) {
         throw Exception('کاربر احراز هویت نشده است');
       }
@@ -160,7 +160,7 @@ class StoryUploadService {
 
       // آپلود ویدیو
       final videoFileName = 'stories/$userId/${timestamp}_${uuid}_video.mp4';
-      final videoUpload = await SecureUploadService.uploadFile(
+      final videoUpload = await BackendUploadService.uploadFile(
         file: compressedInfo.file!,
         objectKey: videoFileName,
         contentType: 'video/mp4',
@@ -175,7 +175,8 @@ class StoryUploadService {
         final thumbnailBytes = await thumbnailFile.readAsBytes();
         final thumbnailFileName =
             'stories/$userId/${timestamp}_${uuid}_thumb.jpg';
-        final thumbnailUpload = await _uploadToS3(thumbnailFileName, thumbnailBytes, 'image/jpeg');
+        final thumbnailUpload =
+            await _uploadToS3(thumbnailFileName, thumbnailBytes, 'image/jpeg');
         thumbnailUrl = thumbnailUpload.url;
 
         _deleteFileAsync(thumbnailFile);
@@ -205,9 +206,9 @@ class StoryUploadService {
   }
 
   /// Upload media using secure uploads
-  static Future<UploadResult> _uploadToS3(
+  static Future<BackendUploadResult> _uploadToS3(
       String key, Uint8List data, String contentType) async {
-    return SecureUploadService.uploadBytes(
+    return BackendUploadService.uploadBytes(
       bytes: data,
       objectKey: key,
       contentType: contentType,
@@ -290,7 +291,7 @@ class StoryUploadService {
     if (fileUrl.isEmpty) return false;
 
     try {
-      final deleted = await SecureUploadService.deleteByUrl(fileUrl);
+      final deleted = await BackendUploadService.deleteByUrl(fileUrl);
       if (!deleted) {
         throw Exception('Delete failed');
       }
@@ -302,4 +303,3 @@ class StoryUploadService {
     }
   }
 }
-

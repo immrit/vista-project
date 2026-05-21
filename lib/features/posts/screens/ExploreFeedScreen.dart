@@ -1,8 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:badges/badges.dart' as badges;
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 // Import Models
 import '../../../model/publicPostModel.dart';
@@ -20,13 +21,14 @@ import 'profileScreen.dart';
 import 'package:Vista/features/posts/widgets/standard_edit_post_dialog.dart';
 import 'package:flutter/services.dart';
 import '../../../services/smart_share_service.dart';
-import '../../../services/vista_node_service.dart';
+import '../../../services/current_user_service.dart';
 import 'package:Vista/utils/premium_features_helper.dart';
 import 'package:Vista/utils/comments_bottom_sheet.dart';
 import '../../../utils/user_friendly_error_utils.dart';
 import '../widgets/post_action_buttons.dart';
 import '../widgets/hashtag_rich_text.dart';
 import '../providers/saved_posts_provider.dart';
+import '../data/go_posts_repository.dart';
 import 'package:Vista/features/search/screens/searchPage.dart';
 import '../../../widgets/verification_badge_icon.dart';
 
@@ -293,7 +295,8 @@ class _ThreadPostItem extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final hasImage = post.imageUrl != null && post.imageUrl!.isNotEmpty;
-    final currentUserId = Supabase.instance.client.auth.currentUser?.id;
+    final currentUserId =
+        ref.watch(activeUserProvider)?.id ?? CurrentUserService.cachedUserId;
 
     final followStatus = post.authorFollowStatus;
     final shouldShowFollowButton = isForYou &&
@@ -314,10 +317,10 @@ class _ThreadPostItem extends ConsumerWidget {
     return GestureDetector(
       behavior: HitTestBehavior.opaque, // اطمینان از کلیک‌پذیری کل محدوده
       onTap: () {
-        VistaNodeService.trackFeedEvent(
-          postId: post.id,
-          eventType: 'open',
-        );
+        unawaited(ref.read(goPostsRepositoryProvider).trackFeedEvent(
+              postId: post.id,
+              eventType: 'open',
+            ));
         Navigator.push(
           context,
           MaterialPageRoute(builder: (_) => PostDetailsPage(postId: post.id)),
@@ -459,7 +462,7 @@ class _ThreadPostItem extends ConsumerWidget {
                                                 try {
                                                   final status = await ref
                                                       .read(
-                                                          supabaseServiceProvider)
+                                                          postActionsServiceProvider)
                                                       .followUserQuick(
                                                           targetUserId:
                                                               targetId);
@@ -617,7 +620,7 @@ class _ThreadPostItem extends ConsumerWidget {
                                       .updateLikeState(post.id, !isLiked);
                                   try {
                                     await ref
-                                        .read(supabaseServiceProvider)
+                                        .read(postActionsServiceProvider)
                                         .toggleLike(
                                           postId: post.id,
                                           ownerId: post.userId,
@@ -639,10 +642,12 @@ class _ThreadPostItem extends ConsumerWidget {
                           PostCommentButton(
                             commentCount: post.commentCount,
                             onTap: () {
-                              VistaNodeService.trackFeedEvent(
-                                postId: post.id,
-                                eventType: 'comment',
-                              );
+                              unawaited(ref
+                                  .read(goPostsRepositoryProvider)
+                                  .trackFeedEvent(
+                                    postId: post.id,
+                                    eventType: 'comment',
+                                  ));
                               showCommentsBottomSheet2(
                                 context,
                                 postId: post.id,
@@ -676,10 +681,12 @@ class _ThreadPostItem extends ConsumerWidget {
                           // دکمه اشتراک‌گذاری
                           GestureDetector(
                             onTap: () {
-                              VistaNodeService.trackFeedEvent(
-                                postId: post.id,
-                                eventType: 'share',
-                              );
+                              unawaited(ref
+                                  .read(goPostsRepositoryProvider)
+                                  .trackFeedEvent(
+                                    postId: post.id,
+                                    eventType: 'share',
+                                  ));
                               SmartShareService()
                                   .showShareOptions(post, context);
                             },
@@ -718,7 +725,8 @@ class _ThreadPostItem extends ConsumerWidget {
             profile['is_verified'] == true &&
             profile['verification_type'] == 'blueTick';
 
-        final currentUserId = Supabase.instance.client.auth.currentUser?.id;
+        final currentUserId = ref.watch(activeUserProvider)?.id ??
+            CurrentUserService.cachedUserId;
         final isCurrentUserPost = post.userId == currentUserId;
 
         return PopupMenuButton<String>(
@@ -846,10 +854,10 @@ class _ThreadPostItem extends ConsumerWidget {
                 );
               }
             } else if (value == 'not_interested') {
-              VistaNodeService.trackFeedEvent(
-                postId: post.id,
-                eventType: 'not_interested',
-              );
+              unawaited(ref.read(goPostsRepositoryProvider).trackFeedEvent(
+                    postId: post.id,
+                    eventType: 'not_interested',
+                  ));
               // ignore: unused_result
               ref.refresh(personalizedFeedProvider);
             } else if (value == 'delete') {
@@ -937,7 +945,7 @@ class _ThreadPostItem extends ConsumerWidget {
               Navigator.pop(context);
               try {
                 await ref
-                    .read(supabaseServiceProvider)
+                    .read(postActionsServiceProvider)
                     .deletePost(ref, post.id);
                 // Refresh feeds
                 // ignore: unused_result

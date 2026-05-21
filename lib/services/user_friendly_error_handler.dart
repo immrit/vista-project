@@ -1,7 +1,6 @@
 import '../security/logging_utility.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'dart:io';
 import 'dart:async';
@@ -14,30 +13,9 @@ class UserFriendlyErrorHandler {
 
   /// تبدیل خطای فنی به پیام کاربرپسند
   static String getFriendlyMessage(dynamic error, {String? context}) {
-    // خطاهای شبکه
-    if (error is SocketException) {
-      return 'اتصال به اینترنت برقرار نیست. لطفاً اتصال خود را بررسی کنید.';
-    }
-
-    if (error is TimeoutException) {
-      return 'زمان اتصال به سرور به پایان رسید. لطفاً دوباره تلاش کنید.';
-    }
-
-    if (error is http.ClientException) {
-      return 'مشکل در اتصال به سرور. لطفاً اتصال اینترنت خود را بررسی کنید.';
-    }
-
-    // خطاهای Supabase
-    if (error is AuthException) {
-      return _handleAuthError(error);
-    }
-
-    if (error is PostgrestException) {
-      return _handleDatabaseError(error);
-    }
-
-    if (error is RealtimeSubscribeException) {
-      return 'مشکل در دریافت اطلاعات جدید. لطفاً صفحه را رفرش کنید.';
+    final backendMessage = _handleBackendError(error);
+    if (backendMessage != null) {
+      return backendMessage;
     }
 
     // خطاهای فایل
@@ -69,44 +47,26 @@ class UserFriendlyErrorHandler {
     return _defaultErrorMessage;
   }
 
-  /// مدیریت خطاهای احراز هویت
-  static String _handleAuthError(AuthException error) {
-    switch (error.statusCode) {
-      case '400':
-        return 'اطلاعات ورودی نامعتبر است.';
-      case '401':
-        return 'احراز هویت ناموفق بود. لطفاً دوباره وارد شوید.';
-      case '403':
-        return 'دسترسی به این بخش امکان‌پذیر نیست.';
-      case '422':
-        return 'اطلاعات وارد شده صحیح نیست.';
-      default:
-        return 'مشکل در احراز هویت. لطفاً دوباره تلاش کنید.';
+  static String? _handleBackendError(dynamic error) {
+    final text = error.toString().toLowerCase();
+    if (text.contains('401') || text.contains('unauthorized')) {
+      return 'احراز هویت ناموفق بود. لطفا دوباره وارد شوید.';
     }
+    if (text.contains('403') || text.contains('forbidden')) {
+      return 'دسترسی به این بخش امکان پذیر نیست.';
+    }
+    if (text.contains('404') || text.contains('not found')) {
+      return 'اطلاعات مورد نظر یافت نشد.';
+    }
+    if (text.contains('409') || text.contains('duplicate')) {
+      return 'این اطلاعات قبلا ثبت شده است.';
+    }
+    if (_isLikelyServerError(error)) {
+      return 'خطا در سرور. لطفا کمی بعد دوباره تلاش کنید.';
+    }
+    return null;
   }
 
-  /// مدیریت خطاهای دیتابیس
-  static String _handleDatabaseError(PostgrestException error) {
-    switch (error.code) {
-      case '23505': // Duplicate key
-        return 'این اطلاعات قبلاً ثبت شده است.';
-      case '23503': // Foreign key violation
-        return 'اطلاعات مرتبط یافت نشد.';
-      case '42501': // Insufficient privilege
-        return 'دسترسی لازم برای این عملیات را ندارید.';
-      case '42P01': // Undefined table
-        return 'خطا در سیستم. لطفاً با پشتیبانی تماس بگیرید.';
-      case 'PGRST116': // No rows returned
-        return 'اطلاعات مورد نظر یافت نشد.';
-      default:
-        if (error.code?.startsWith('5') == true) {
-          return 'خطا در سرور. لطفاً کمی بعد دوباره تلاش کنید.';
-        }
-        return 'خطا در پردازش اطلاعات. لطفاً دوباره تلاش کنید.';
-    }
-  }
-
-  /// پیام‌های خاص بر اساس context
   static String _getContextSpecificMessage(String context, dynamic error) {
     switch (context.toLowerCase()) {
       case 'login':
@@ -193,10 +153,6 @@ class UserFriendlyErrorHandler {
       return true;
     }
 
-    if (error is PostgrestException) {
-      return error.code?.startsWith('5') == true; // Server errors
-    }
-
     return false;
   }
 
@@ -210,7 +166,7 @@ class UserFriendlyErrorHandler {
       return 'لطفاً اتصال اینترنت خود را بررسی کنید و دوباره تلاش کنید.';
     }
 
-    if (error is PostgrestException && error.code?.startsWith('5') == true) {
+    if (_isLikelyServerError(error)) {
       return 'لطفاً کمی صبر کنید و دوباره تلاش کنید.';
     }
 
@@ -226,6 +182,14 @@ class UserFriendlyErrorHandler {
         logInfo('Stack trace: $stackTrace');
       }
     }
+  }
+
+  static bool _isLikelyServerError(dynamic error) {
+    final text = error.toString().toLowerCase();
+    return text.contains('500') ||
+        text.contains('502') ||
+        text.contains('503') ||
+        text.contains('internal server');
   }
 }
 

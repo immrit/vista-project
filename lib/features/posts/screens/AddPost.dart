@@ -1,4 +1,4 @@
-﻿import '../../../security/logging_utility.dart';
+import '../../../security/logging_utility.dart';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
@@ -10,11 +10,11 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:video_compress/video_compress.dart';
 import 'package:video_player/video_player.dart';
-import '../../../utils/const.dart';
 import '../../../utils/user_friendly_error_utils.dart';
 import '../../../model/UserModel.dart';
 
 import '../../../provider/provider.dart';
+import '../../../services/current_user_service.dart';
 import 'package:Vista/widgets/YourVideoTrimmerPage.dart';
 import 'package:Vista/widgets/verification_badge_icon.dart';
 import '../providers/post_upload_provider.dart';
@@ -445,8 +445,8 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
       return;
     }
 
-    final currentUser = supabase.auth.currentUser;
-    if (currentUser == null) {
+    final currentUserId = await CurrentUserService.instance.resolveUserId();
+    if (currentUserId == null || currentUserId.isEmpty) {
       _showSnackBar('لطفاً ابتدا وارد حساب کاربری خود شوید');
       return;
     }
@@ -459,7 +459,7 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
       // شروع آپلود در پس‌زمینه
       await ref.read(postUploadProvider.notifier).startUpload(
             content: content,
-            userId: currentUser.id,
+            userId: currentUserId,
             image: _selectedImage,
             imageBytes: _selectedImageBytes,
             imageName: _selectedImageName,
@@ -608,7 +608,7 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
 
   Widget _buildAuthorCard(
       Color textColor, Color secondaryTextColor, Color cardColor) {
-    final userData = ref.watch(currentUserProvider);
+    final userData = ref.watch(currentUserMapProvider);
 
     return Card(
       color: cardColor,

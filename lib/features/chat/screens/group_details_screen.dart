@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../auth/providers/auth_controller.dart';
 import '../models/group_member_item.dart';
 import '../models/group_user_item.dart';
 import '../services/group_service.dart';
@@ -15,8 +15,7 @@ class GroupDetailsScreen extends ConsumerStatefulWidget {
   const GroupDetailsScreen({super.key, required this.conversationId});
 
   @override
-  ConsumerState<GroupDetailsScreen> createState() =>
-      _GroupDetailsScreenState();
+  ConsumerState<GroupDetailsScreen> createState() => _GroupDetailsScreenState();
 }
 
 class _GroupDetailsScreenState extends ConsumerState<GroupDetailsScreen> {
@@ -32,9 +31,7 @@ class _GroupDetailsScreenState extends ConsumerState<GroupDetailsScreen> {
   bool _isLoading = true;
   bool _isSaving = false;
   List<GroupMemberItem> _members = [];
-
-  String? get _currentUserId =>
-      Supabase.instance.client.auth.currentUser?.id;
+  String? _currentUserId;
 
   bool get _isAdmin =>
       _members.any((m) => m.userId == _currentUserId && m.isAdmin);
@@ -46,13 +43,21 @@ class _GroupDetailsScreenState extends ConsumerState<GroupDetailsScreen> {
   @override
   void initState() {
     super.initState();
+    _loadCurrentUserId();
     _loadGroup();
+  }
+
+  Future<void> _loadCurrentUserId() async {
+    final userId = await TokenStorage.getUserId();
+    if (!mounted) return;
+    setState(() => _currentUserId = userId);
   }
 
   Future<void> _loadGroup() async {
     setState(() => _isLoading = true);
     final info = await _groupService.fetchGroupInfo(widget.conversationId);
-    final members = await _groupService.fetchGroupMembers(widget.conversationId);
+    final members =
+        await _groupService.fetchGroupMembers(widget.conversationId);
     final invite = await _groupService.getInvite(widget.conversationId);
 
     if (!mounted) return;
@@ -217,7 +222,8 @@ class _GroupDetailsScreenState extends ConsumerState<GroupDetailsScreen> {
   }
 
   void _showSnack(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 
   String _mapGroupError(Object error) {
@@ -262,7 +268,8 @@ class _GroupDetailsScreenState extends ConsumerState<GroupDetailsScreen> {
                 _buildDangerZone(theme),
                 if (_isSaving) const SizedBox(height: 12),
                 if (_isSaving)
-                  const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                  const Center(
+                      child: CircularProgressIndicator(strokeWidth: 2)),
               ],
             ),
     );
@@ -586,9 +593,8 @@ class _AddMembersSheetState extends State<_AddMembersSheet> {
     final users = await _service.getInteractionUsers();
     if (!mounted) return;
     setState(() {
-      _interactions = users
-          .where((u) => !widget.existingMemberIds.contains(u.id))
-          .toList();
+      _interactions =
+          users.where((u) => !widget.existingMemberIds.contains(u.id)).toList();
       _isLoading = false;
     });
   }
@@ -603,9 +609,8 @@ class _AddMembersSheetState extends State<_AddMembersSheet> {
     final users = await _service.searchUsers(q);
     if (!mounted) return;
     setState(() {
-      _results = users
-          .where((u) => !widget.existingMemberIds.contains(u.id))
-          .toList();
+      _results =
+          users.where((u) => !widget.existingMemberIds.contains(u.id)).toList();
       _isSearching = false;
     });
   }

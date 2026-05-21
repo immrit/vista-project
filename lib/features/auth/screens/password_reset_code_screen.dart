@@ -1,9 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:Vista/core/security/input_policy.dart';
-import '../../../utils/const.dart';
+import '../data/auth_repository.dart';
 
 class PasswordResetCodeScreen extends StatefulWidget {
   const PasswordResetCodeScreen({super.key});
@@ -24,6 +23,7 @@ class _PasswordResetCodeScreenState extends State<PasswordResetCodeScreen>
   bool _obscureNewPassword = true;
   bool _obscureConfirmPassword = true;
   String? _email;
+  String? _optionId;
   int _resendCountdown = 0;
   Timer? _resendTimer;
 
@@ -41,6 +41,12 @@ class _PasswordResetCodeScreenState extends State<PasswordResetCodeScreen>
       final args =
           ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
       _email = args?['email'] as String?;
+      _optionId = args?['optionId'] as String?;
+      if ((_optionId == null || _optionId!.isEmpty) &&
+          _email != null &&
+          _email!.isNotEmpty) {
+        _resolveRecoveryOption();
+      }
       // Avoid logging user inputs (email/token) in auth flows.
       if (_email != null && _email!.isNotEmpty) {
         _startResendCountdown(30);
@@ -77,6 +83,23 @@ class _PasswordResetCodeScreenState extends State<PasswordResetCodeScreen>
     _scaleController.forward();
   }
 
+  Future<void> _resolveRecoveryOption() async {
+    final email = _email;
+    if (email == null || email.isEmpty) return;
+
+    try {
+      final options = await AuthRepository().getRecoveryOptions(email);
+      final preferred = options.cast<RecoveryOption?>().firstWhere(
+            (option) => option?.method == 'email',
+            orElse: () => options.isNotEmpty ? options.first : null,
+          );
+      if (!mounted || preferred == null) return;
+      setState(() {
+        _optionId = preferred.id;
+      });
+    } catch (_) {}
+  }
+
   @override
   void dispose() {
     _codeController.dispose();
@@ -103,19 +126,16 @@ class _PasswordResetCodeScreenState extends State<PasswordResetCodeScreen>
   }
 
   Future<void> _resendCode() async {
-    final email = _email;
-    if (email == null || email.isEmpty) {
-      _showErrorSnackBar('ایمیل یافت نشد. لطفاً دوباره تلاش کنید');
+    final optionId = _optionId;
+    if (optionId == null || optionId.isEmpty) {
+      _showErrorSnackBar('اطلاعات بازیابی کامل نیست. لطفاً دوباره تلاش کنید');
       return;
     }
     if (_resendCountdown > 0) return;
 
     try {
       _startResendCountdown(60);
-      await supabase.auth.resetPasswordForEmail(
-        email,
-        redirectTo: 'vista://auth/reset-password',
-      );
+      await AuthRepository().sendRecoveryCode(optionId);
       _showSuccessSnackBar(
           'اگر حسابی با این ایمیل وجود داشته باشد، کد بازنشانی ارسال می‌شود');
     } catch (_) {
@@ -126,8 +146,9 @@ class _PasswordResetCodeScreenState extends State<PasswordResetCodeScreen>
   }
 
   Future<void> _resetPassword() async {
-    if (_email == null) {
-      _showErrorSnackBar('ایمیل یافت نشد. لطفاً دوباره تلاش کنید');
+    final optionId = _optionId;
+    if (optionId == null || optionId.isEmpty) {
+      _showErrorSnackBar('اطلاعات بازیابی کامل نیست. لطفاً دوباره تلاش کنید');
       return;
     }
 
@@ -157,38 +178,22 @@ class _PasswordResetCodeScreenState extends State<PasswordResetCodeScreen>
     setState(() => _isLoading = true);
 
     try {
-      final verifyResponse = await supabase.auth.verifyOTP(
-        type: OtpType.recovery,
-        token: code,
-        email: _email!,
+      await AuthRepository().completeRecovery(
+        optionId: optionId,
+        code: code,
+        newPassword: newPassword,
       );
-
-      if (verifyResponse.user != null) {
-        final updateResponse = await supabase.auth.updateUser(
-          UserAttributes(
-            password: newPassword,
-          ),
-        );
-
-        if (updateResponse.user != null) {
-          _showSuccessSnackBar('رمز عبور با موفقیت تغییر یافت');
-          Navigator.pushNamedAndRemoveUntil(context, '/auth', (route) => false);
-        } else {
-          throw Exception('خطا در تغییر رمز عبور');
-        }
-      } else {
-        throw Exception('کد بازیابی نامعتبر است');
-      }
+      _showSuccessSnackBar('رمز عبور با موفقیت تغییر یافت');
+      Navigator.pushNamedAndRemoveUntil(context, '/auth', (route) => false);
     } catch (error) {
       String errorMessage = 'خطا در تغییر رمز عبور';
 
       if (error.toString().contains('Invalid OTP') ||
-          error.toString().contains('invalid_token')) {
+          error.toString().contains('invalid_token') ||
+          error.toString().contains('RECOVERY_CODE_INVALID')) {
         errorMessage = 'کد بازیابی نامعتبر است';
       } else if (error.toString().contains('expired')) {
         errorMessage = 'کد بازیابی منقضی شده است';
-      } else if (error.toString().contains('Auth session missing')) {
-        errorMessage = 'لطفاً دوباره از صفحه بازیابی رمزعبور شروع کنید';
       } else if (error.toString().contains('password')) {
         errorMessage = 'رمز عبور معتبر نیست';
       }

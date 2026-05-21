@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../security/logging_utility.dart';
 
@@ -19,18 +18,6 @@ class UserFriendlyErrorUtils {
       }
       if (error is HttpException) {
         return 'ارتباط با سرور برقرار نشد.';
-      }
-
-      if (error is AuthException) {
-        return _mapAuthMessage(error.message);
-      }
-
-      if (error is PostgrestException) {
-        final mapped = _mapPostgrestError(error);
-        if (mapped != null) {
-          return mapped;
-        }
-        return 'مشکلی در ارتباط با سرور رخ داد. لطفاً دوباره تلاش کنید.';
       }
 
       if (error is FormatException) {
@@ -68,10 +55,7 @@ class UserFriendlyErrorUtils {
     if (message.isEmpty) return '';
 
     message = message
-        .replaceAll(
-            RegExp(
-                r'^(Exception|AuthException|PostgrestException|MessagingException):\s*'),
-            '')
+        .replaceAll(RegExp(r'^(Exception|MessagingException):\s*'), '')
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
 
@@ -93,7 +77,6 @@ class UserFriendlyErrorUtils {
       'update ',
       'delete ',
       'from ',
-      'postgrest',
     ];
 
     final lower = message.toLowerCase();
@@ -108,8 +91,7 @@ class UserFriendlyErrorUtils {
     // Remove quoted internal identifiers or SQL fragments.
     message = message
         .replaceAll(RegExp(r'"[A-Za-z0-9_\.]+"'), '')
-        .replaceAll(
-            RegExp(r'\b(PGRST|SQLSTATE)\w*\b', caseSensitive: false), '')
+        .replaceAll(RegExp(r'\b(SQLSTATE)\w*\b', caseSensitive: false), '')
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
 
@@ -128,9 +110,7 @@ class UserFriendlyErrorUtils {
       'relation',
       'column',
       'table',
-      'postgrest',
-      'supabase',
-      'rpc',
+      'backend',
       'jwt',
       'trace',
       'stack',
@@ -160,18 +140,7 @@ class UserFriendlyErrorUtils {
     return false;
   }
 
-  static String? _mapPostgrestError(PostgrestException error) {
-    final code = (error.code ?? '').trim();
-    if (code == '23505') return 'این مورد قبلاً ثبت شده است.';
-    if (code == '23503') return 'اطلاعات مرتبط پیدا نشد یا معتبر نیست.';
-    if (code == '23514') return 'مقدار وارد شده معتبر نیست.';
-    if (code == '42501') return 'شما مجوز انجام این عملیات را ندارید.';
-
-    final message = _sanitizeRawMessage(error.message);
-    final mapped = _mapByKeywords(message);
-    return mapped;
-  }
-
+  // ignore: unused_element
   static String _mapAuthMessage(String raw) {
     final message = raw.toLowerCase();
     if (message.contains('invalid login credentials')) {

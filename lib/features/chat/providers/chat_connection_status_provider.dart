@@ -1,8 +1,13 @@
+// lib/features/chat/providers/chat_connection_status_provider.dart
+//
+// Go backend realtime status provider
+// وضعیت connection از SseManager واقعی خوانده میشه
+
 import 'package:riverpod_annotation/riverpod_annotation.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:Vista/security/logging_utility.dart';
 import 'package:Vista/features/chat/providers/chat_providers.dart';
+import 'package:Vista/features/chat/services/sse_manager.dart';
 
 part 'chat_connection_status_provider.g.dart';
 
@@ -15,18 +20,17 @@ enum ConnectionStatus {
 @riverpod
 Stream<ConnectionStatus> chatConnectionStatus(
     ChatConnectionStatusRef ref) async* {
-  // Initial status
   yield ConnectionStatus.connecting;
 
   try {
     final repo = ref.watch(chatRepositoryProvider);
-    ConnectionStatus? lastStatus;
+
     await for (final status in repo.realtimeStatus) {
-      final mapped = status == RealtimeSubscribeStatus.subscribed
-          ? ConnectionStatus.connected
-          : ConnectionStatus.disconnected;
-      if (mapped == lastStatus) continue;
-      lastStatus = mapped;
+      final mapped = switch (status) {
+        SseConnectionState.connected => ConnectionStatus.connected,
+        SseConnectionState.connecting => ConnectionStatus.connecting,
+        SseConnectionState.disconnected => ConnectionStatus.disconnected,
+      };
       yield mapped;
     }
   } catch (e) {

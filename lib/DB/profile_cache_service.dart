@@ -5,8 +5,10 @@ import '../../features/profile/data/entities/profile_entity.dart' hide fastHash;
 import '../../features/posts/data/entities/post_entity.dart' hide fastHash;
 import '../../model/ProfileModel.dart';
 import '../../model/publicPostModel.dart';
-import '../../utils/const.dart';
 import '../../security/logging_utility.dart';
+import '../../features/auth/providers/auth_controller.dart';
+import '../../features/profile/data/profile_repository.dart';
+import '../../features/posts/data/go_posts_repository.dart';
 
 // Import fastHash from one source or define locally to avoid conflicts
 import '../../features/profile/data/entities/profile_entity.dart' show fastHash;
@@ -175,79 +177,19 @@ class ProfileCacheService {
 
   Future<void> cacheProfileAndPosts(String userId) async {
     try {
-      final currentUser = supabase.auth.currentUser;
-      if (currentUser == null) return;
+      final currentUserId = await TokenStorage.getUserId();
+      if (currentUserId == null || currentUserId.isEmpty) return;
 
-      final isSelf = currentUser.id == userId;
+      final profileData = await ProfileRepository().fetchProfileById(userId);
+      final profile = ProfileModel.fromMap(profileData);
 
-      // 1. دریافت پروفایل
-      final profileColumns = isSelf
-          ? '''
-            id, username, full_name, avatar_url, email, bio, created_at,
-            is_verified, verification_type, account_type, role
-          '''
-          : '''
-            id, username, full_name, avatar_url, bio, created_at,
-            is_verified, verification_type
-          ''';
+      final posts = await GoPostsRepository().getUserPosts(
+        userId: userId,
+        limit: maxCachedPostsPerUser,
+        offset: 0,
+      );
+      final postEntities = posts.map(PostEntity.fromModel).toList();
 
-      final profileResponse = await supabase
-          .from('profiles')
-          .select(profileColumns)
-          .eq('id', userId)
-          .single();
-
-      final followersCount =
-          await supabase.from('follows').count().eq('following_id', userId);
-      final followingCount =
-          await supabase.from('follows').count().eq('follower_id', userId);
-      final postsCount =
-          await supabase.from('posts').count().eq('user_id', userId);
-
-      final profile = ProfileModel.fromMap({
-        ...profileResponse,
-        'followers_count': followersCount,
-        'following_count': followingCount,
-        'posts_count': postsCount,
-      });
-
-      // 2. دریافت پست‌ها
-      final postsResponse = await supabase
-          .from('posts')
-          .select('''
-            *,
-            profiles!posts_user_id_fkey (username, avatar_url, is_verified, verification_type),
-            likes (user_id),
-            comments (id)
-          ''')
-          .eq('user_id', userId)
-          .order('created_at', ascending: false)
-          .limit(maxCachedPostsPerUser);
-
-      final currentUserId = supabase.auth.currentUser?.id;
-      final List<PostEntity> postEntities = [];
-
-      for (var postData in postsResponse) {
-        final postLikes = postData['likes'] as List? ?? [];
-        final comments = postData['comments'] as List? ?? [];
-        final profile =
-            (postData['profiles'] as Map<String, dynamic>?) ?? const {};
-
-        final postModel = PublicPostModel.fromMap({
-          ...postData,
-          'like_count': postLikes.length,
-          'is_liked': postLikes.any((like) => like['user_id'] == currentUserId),
-          'username': profile['username'] ?? profile['full_name'] ?? 'Unknown',
-          'avatar_url': profile['avatar_url'] ?? '',
-          'is_verified': profile['is_verified'] ?? false,
-          'comment_count': comments.length,
-          'verification_type': profile['verification_type'],
-        });
-
-        postEntities.add(PostEntity.fromModel(postModel));
-      }
-
-      // 3. نوشتن همه چیز در Isar
       final isar = await _db;
       await isar.writeTxn(() async {
         await isar.profileEntitys.put(ProfileEntity.fromModel(profile));

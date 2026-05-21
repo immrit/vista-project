@@ -2,8 +2,9 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../utils/const.dart';
 import '../../../../services/PostImageUploadService.dart';
+import '../../auth/providers/auth_controller.dart';
+import '../data/go_posts_repository.dart';
 import 'package:uuid/uuid.dart';
 
 class UploadTask {
@@ -170,28 +171,19 @@ class PostUploadNotifier extends StateNotifier<List<UploadTask>> {
 
         // 2. Insert into DB
         updateStageProgress(0.2, dbWeight);
-        final postData = {
-          'user_id': userId,
-          'content': content,
-          'tags': tags ?? [], // ✅ Saving tags to Supabase
-          if (imageUrl != null) 'image_url': imageUrl,
-          if (videoUrl != null) 'video_url': videoUrl,
-          if (musicUrl != null) 'music_url': musicUrl,
-          if (musicUrl != null) 'title': _musicTitleFromFileName(musicName),
-          'created_at': DateTime.now().toIso8601String(),
-        };
+        final musicTitle = _musicTitleFromFileName(musicName);
 
-        try {
-          await supabase.from('posts').insert(postData);
-        } catch (e) {
-          final hasTitleField = postData.containsKey('title');
-          final shouldRetryWithoutTitle =
-              hasTitleField && e.toString().toLowerCase().contains('title');
-          if (!shouldRetryWithoutTitle) rethrow;
-
-          final fallback = Map<String, dynamic>.from(postData)..remove('title');
-          await supabase.from('posts').insert(fallback);
+        if (!await TokenStorage.hasValidSession()) {
+          throw StateError('User is not authenticated');
         }
+        await GoPostsRepository().createPost(
+          content: content,
+          tags: tags ?? const <String>[],
+          imageUrl: imageUrl,
+          videoUrl: videoUrl,
+          musicUrl: musicUrl,
+          musicTitle: musicUrl != null ? musicTitle : null,
+        );
         _updateTaskProgress(taskId, 1.0);
 
         // 3. Mark success and remove after delay

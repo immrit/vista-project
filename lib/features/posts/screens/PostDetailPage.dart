@@ -10,7 +10,6 @@ import 'package:shamsi_date/shamsi_date.dart';
 import '../../../model/publicPostModel.dart';
 import 'package:Vista/utils/widgets.dart';
 import 'package:Vista/features/search/screens/searchPage.dart';
-import '../../../utils/const.dart';
 import 'profileScreen.dart';
 import 'publicPosts.dart' as public_posts;
 import '../../../model/CommentModel.dart';
@@ -20,6 +19,8 @@ import '../../../utils/user_friendly_error_utils.dart';
 import 'package:Vista/features/posts/widgets/post_music_bubble.dart';
 import '../../../utils/premium_features_helper.dart';
 import '../../../services/smart_share_service.dart';
+import '../../../services/current_user_service.dart';
+import '../../profile/data/profile_repository.dart';
 import '../providers/saved_posts_provider.dart';
 import 'package:Vista/widgets/verification_badge_icon.dart';
 
@@ -65,18 +66,9 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
 
 // یک متد برای جلب userId از پایگاه داده بر اساس username
   Future<String?> getUserIdByUsername(String username) async {
-    // فرض کنید از Supabase برای جلب userId استفاده می‌کنید
-    final response = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('username', username)
-        .single();
-
-    if (response['id'] != null) {
-      return response['id'];
-    } else {
-      return null; // اگر کاربر یافت نشد
-    }
+    final profile = await ProfileRepository().fetchProfileByUsername(username);
+    final id = profile['id'] ?? profile['user_id'];
+    return id?.toString();
   }
 
   TextDirection getDirectionality(String content) {
@@ -363,7 +355,8 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
     return Consumer(
       builder: (context, ref, child) {
         final profileAsync = ref.watch(profileProvider);
-        final currentUserId = supabase.auth.currentUser?.id;
+        final currentUserId = ref.watch(activeUserProvider)?.id ??
+            CurrentUserService.cachedUserId;
         final isCurrentUserPost = post.userId == currentUserId;
 
         return profileAsync.when(
@@ -408,7 +401,7 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
                       if (confirmed == true) {
                         try {
                           await ref
-                              .read(supabaseServiceProvider)
+                              .read(postActionsServiceProvider)
                               .deletePost(ref, post.id);
                           if (context.mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
@@ -626,7 +619,7 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
               post.isLiked = !post.isLiked;
               post.likeCount += post.isLiked ? 1 : -1;
             });
-            await ref.read(supabaseServiceProvider).toggleLike(
+            await ref.read(postActionsServiceProvider).toggleLike(
                   postId: post.id,
                   ownerId: post.userId,
                   ref: ref,
@@ -816,6 +809,8 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
   Widget _buildCommentItem(CommentModel comment) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final currentUserId =
+        ref.watch(activeUserProvider)?.id ?? CurrentUserService.cachedUserId;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
@@ -948,7 +943,7 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
                           borderRadius: BorderRadius.circular(12),
                         ),
                         itemBuilder: (context) => [
-                          if (comment.userId != supabase.auth.currentUser?.id)
+                          if (comment.userId != currentUserId)
                             const PopupMenuItem(
                               value: 'report',
                               child: Row(
@@ -960,7 +955,7 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
                                 ],
                               ),
                             ),
-                          if (comment.userId == supabase.auth.currentUser?.id)
+                          if (comment.userId == currentUserId)
                             const PopupMenuItem(
                               value: 'delete',
                               child: Row(
@@ -975,8 +970,10 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
                         ],
                         onSelected: (value) {
                           if (value == 'report') {
-                            _showReportDialog(context, ref, comment,
-                                supabase.auth.currentUser!.id);
+                            if (currentUserId != null) {
+                              _showReportDialog(
+                                  context, ref, comment, currentUserId);
+                            }
                           } else if (value == 'delete') {
                             _deleteComment(
                                 context, ref, comment.id, widget.postId);

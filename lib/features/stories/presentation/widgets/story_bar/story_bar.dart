@@ -4,8 +4,9 @@ import 'package:cached_network_image/cached_network_image.dart';
 
 import '../../../domain/entities/entities.dart';
 import '../../providers/story_providers.dart';
-import '../../../../../utils/const.dart';
 import '../../../../../widgets/verification_badge_icon.dart';
+
+const String _defaultAvatarAsset = 'lib/utils/images/default-avatar.jpg';
 
 /// نوار استوری‌ها با مرتب‌سازی هوشمند
 /// - استوری‌های دیده‌نشده اول
@@ -334,7 +335,7 @@ class _AnimatedStoryRingState extends State<_AnimatedStoryRing>
     return CircleAvatar(
       backgroundImage:
           (widget.user.avatarUrl == null || widget.user.avatarUrl!.isEmpty)
-              ? const AssetImage(defaultAvatarUrl) as ImageProvider
+              ? const AssetImage(_defaultAvatarAsset) as ImageProvider
               : CachedNetworkImageProvider(widget.user.avatarUrl!),
     );
   }

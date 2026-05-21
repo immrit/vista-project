@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:Vista/utils/const.dart';
 import 'package:Vista/model/publicPostModel.dart';
+import 'package:Vista/features/posts/data/go_posts_repository.dart';
 import '../../../utils/user_friendly_error_utils.dart';
 
 void showStandardEditDialog({
@@ -121,15 +121,10 @@ void showStandardEditDialog({
                         });
 
                         try {
-                          final updateData = {
-                            'content': content,
-                            'updated_at': DateTime.now().toIso8601String(),
-                          };
-
-                          await supabase
-                              .from('posts')
-                              .update(updateData)
-                              .eq('id', post.id);
+                          await GoPostsRepository().updatePost(
+                            postId: post.id,
+                            content: content,
+                          );
 
                           if (onSuccess != null) {
                             onSuccess();

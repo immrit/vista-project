@@ -1,9 +1,9 @@
 import '../../../../security/logging_utility.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../../../widgets/verification_badge_icon.dart';
+import '../../../../features/chat/services/user_moderation_service.dart';
 
 import '../../../../provider/provider.dart';
 import '../../../../features/chat/providers/chat_providers.dart';
@@ -26,100 +26,7 @@ class _BlockedUsersPageState extends ConsumerState<BlockedUsersPage> {
   void initState() {
     super.initState();
     logInfo('🚀 صفحه کاربران مسدود شده راه‌اندازی شد');
-    _testSupabaseConnection();
     _loadBlockedUsers();
-  }
-
-  Future<void> _testSupabaseConnection() async {
-    try {
-      final client = Supabase.instance.client;
-
-      final auth = client.auth;
-
-      final currentUser = auth.currentUser;
-
-      // تست اتصال به دیتابیس
-      try {
-        await client.from('blocked_users').select('id').limit(1);
-
-        // بررسی ساختار جدول
-        try {
-          final structureResponse =
-              await client.from('blocked_users').select('*').limit(1);
-          if (structureResponse.isNotEmpty) {
-            final sample = structureResponse.first;
-            logInfo('🏗️ ساختار جدول blocked_users:');
-            sample.forEach((key, value) {
-              logInfo('   $key: ${value.runtimeType} = $value');
-            });
-          }
-        } catch (structureError) {
-          logInfo('⚠️ خطا در بررسی ساختار جدول: $structureError');
-        }
-      } catch (dbError) {
-        logInfo('❌ خطا در اتصال به جدول blocked_users: $dbError');
-
-        // بررسی وجود جدول
-        try {
-          final tablesResponse = await client.rpc('get_tables');
-          logInfo('📋 جداول موجود: $tablesResponse');
-        } catch (tablesError) {
-          logInfo('⚠️ خطا در دریافت لیست جداول: $tablesError');
-        }
-
-        // بررسی جدول profiles
-        try {
-          final profilesResponse = await client
-              .from('profiles')
-              .select('id, username, full_name')
-              .limit(1);
-          logInfo('✅ اتصال به جدول profiles موفق');
-          logInfo('👥 تعداد پروفایل‌ها: ${profilesResponse.length}');
-        } catch (profilesError) {
-          logInfo('❌ خطا در اتصال به جدول profiles: $profilesError');
-        }
-
-        // تست کوئری اصلی
-        if (currentUser != null) {
-          try {
-            logInfo('🧪 تست کوئری اصلی...');
-
-            // تست کوئری جدید (بدون join)
-            final blockedResponse = await client
-                .from('blocked_users')
-                .select('blocked_user_id, created_at')
-                .eq('user_id', currentUser.id)
-                .limit(1);
-            print(
-                '✅ کوئری blocked_users موفق: ${blockedResponse.length} نتیجه');
-
-            if (blockedResponse.isNotEmpty) {
-              final blockedUserId =
-                  blockedResponse.first['blocked_user_id'] as String;
-              logInfo('🆔 شناسه کاربر مسدود شده: $blockedUserId');
-
-              // تست کوئری profiles
-              final profileResponse = await client
-                  .from('profiles')
-                  .select('id, username, full_name')
-                  .eq('id', blockedUserId)
-                  .maybeSingle();
-
-              if (profileResponse != null) {
-                logInfo(
-                    '✅ کوئری profiles موفق: ${profileResponse['username']}');
-              } else {
-                logInfo('⚠️ پروفایل برای کاربر $blockedUserId یافت نشد');
-              }
-            }
-          } catch (mainQueryError) {
-            logInfo('❌ خطا در کوئری اصلی: $mainQueryError');
-          }
-        }
-      }
-    } catch (e) {
-      // Error testing Supabase connection
-    }
   }
 
   Future<void> _loadBlockedUsers() async {
@@ -129,110 +36,42 @@ class _BlockedUsersPageState extends ConsumerState<BlockedUsersPage> {
         _error = null;
       });
 
-      final currentUserId = Supabase.instance.client.auth.currentUser?.id;
+      final moderationService = UserModerationService();
+      final rows = await moderationService.getBlockedUsers();
+      final blockedUsers = rows
+          .map((profile) {
+            final id = (profile['id'] ?? profile['user_id'] ?? '').toString();
+            final username = (profile['username'] ?? '').toString();
+            final fullName = (profile['full_name'] ?? '').toString();
+            return BlockedUserModel(
+              id: id,
+              username: username.isEmpty ? 'user' : username,
+              fullName: fullName.isEmpty ? 'کاربر ناشناس' : fullName,
+              avatarUrl: profile['avatar_url']?.toString(),
+              isVerified: profile['is_verified'] == true,
+              verificationType: profile['verification_type'],
+              role: profile['role']?.toString(),
+              blockedAt: DateTime.tryParse(
+                    profile['blocked_at']?.toString() ?? '',
+                  ) ??
+                  DateTime.now(),
+            );
+          })
+          .where((user) => user.id.isNotEmpty)
+          .toList(growable: false);
 
-      if (currentUserId == null) {
-        throw Exception('کاربر وارد نشده است');
-      }
-
-      // ابتدا لیست کاربران مسدود شده را دریافت می‌کنیم
-      final blockedResponse = await Supabase.instance.client
-          .from('blocked_users')
-          .select('blocked_user_id, created_at')
-          .eq('user_id', currentUserId)
-          .order('created_at', ascending: false);
-
-      print(
-          '📊 پاسخ دریافتی از جدول blocked_users: ${blockedResponse.length} رکورد');
-
-      if (blockedResponse.isEmpty) {
-        logInfo('✅ هیچ کاربر مسدود شده‌ای یافت نشد');
-        setState(() {
-          _blockedUsers = [];
-          _filteredUsers = [];
-          _isLoading = false;
-        });
-        return;
-      }
-
-      // استخراج شناسه‌های کاربران مسدود شده
-      final blockedUserIds = blockedResponse
-          .map((item) => item['blocked_user_id'] as String)
-          .toList();
-
-      logInfo('🆔 شناسه‌های کاربران مسدود شده: $blockedUserIds');
-
-      // سپس اطلاعات پروفایل این کاربران را دریافت می‌کنیم
-      final profilesResponse = await Supabase.instance.client
-          .from('profiles')
-          .select(
-              'id, username, full_name, avatar_url, is_verified, verification_type, role')
-          .inFilter('id', blockedUserIds);
-
-      logInfo('👥 اطلاعات پروفایل‌ها: ${profilesResponse.length} رکورد');
-
-      // ایجاد map برای دسترسی سریع به اطلاعات پروفایل
-      final profilesMap = <String, Map<String, dynamic>>{};
-      for (final profile in profilesResponse) {
-        profilesMap[profile['id'] as String] = profile;
-      }
-
-      final blockedUsers = <BlockedUserModel>[];
-      for (final blockedItem in blockedResponse) {
-        try {
-          final blockedUserId = blockedItem['blocked_user_id'] as String;
-          final profile = profilesMap[blockedUserId];
-
-          if (profile == null) {
-            logInfo('⚠️ پروفایل برای کاربر $blockedUserId یافت نشد');
-            continue;
-          }
-
-          logInfo('🔍 پردازش کاربر: ${profile['username']}');
-
-          final blockedUser = BlockedUserModel(
-            id: profile['id'] as String,
-            username: profile['username'] as String,
-            fullName: profile['full_name'] as String? ?? 'کاربر ناشناس',
-            avatarUrl: profile['avatar_url'] as String?,
-            isVerified: profile['is_verified'] as bool? ?? false,
-            verificationType: profile['verification_type'],
-            role: profile['role']?.toString(),
-            blockedAt: DateTime.parse(blockedItem['created_at'] as String),
-          );
-
-          print(
-              '✅ کاربر ایجاد شد: ${blockedUser.fullName} (@${blockedUser.username})');
-          blockedUsers.add(blockedUser);
-        } catch (parseError) {
-          logInfo('⚠️ خطا در پردازش آیتم: $parseError');
-          logInfo('⚠️ آیتم مشکل‌دار: $blockedItem');
-          continue; // ادامه پردازش آیتم‌های بعدی
-        }
-      }
-
-      logInfo('✅ تعداد کل کاربران پردازش شده: ${blockedUsers.length}');
-
+      if (!mounted) return;
       setState(() {
         _blockedUsers = blockedUsers;
         _filteredUsers = blockedUsers;
         _isLoading = false;
       });
 
-      logInfo('🎉 بارگذاری با موفقیت تکمیل شد');
+      logInfo('Blocked users loaded from Go backend: ${blockedUsers.length}');
     } catch (e, stackTrace) {
-      logInfo('💥 خطای کلی در بارگذاری: $e');
-      logInfo('📚 Stack Trace: $stackTrace');
-
-      // لاگ کردن جزئیات بیشتر خطا
-      if (e.toString().contains('relation')) {
-        logInfo('🔍 احتمالاً مشکل در ساختار جدول دیتابیس است');
-      } else if (e.toString().contains('auth')) {
-        logInfo('🔍 احتمالاً مشکل در احراز هویت است');
-      } else if (e.toString().contains('network')) {
-        logInfo('🔍 احتمالاً مشکل در اتصال شبکه است');
-      }
-
+      logError('Failed to load blocked users',
+          error: e, stackTrace: stackTrace);
+      if (!mounted) return;
       setState(() {
         _error = 'خطا در بارگذاری: $e';
         _isLoading = false;

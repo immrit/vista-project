@@ -4,7 +4,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../DB/settings_cache_service.dart';
 import '../DB/advanced_settings_service.dart';
 import '../features/settings/privacy/privacy_settings_repository.dart';
-import '../utils/const.dart';
 
 /// Provider برای تنظیمات کاربر با قابلیت آفلاین
 final userSettingsProvider = StateNotifierProvider.family<UserSettingsNotifier,
@@ -134,11 +133,7 @@ class UserSettingsNotifier
 
       // به‌روزرسانی در سرور (اگر اتصال وجود دارد)
       try {
-        await supabase.from('user_settings').upsert({
-          'user_id': userId,
-          ...settings,
-          'updated_at': DateTime.now().toIso8601String(),
-        });
+        await PrivacySettingsRepository().updateSettings(userId, settings);
       } catch (e) {
         logInfo('⚠️ Failed to sync settings to server: $e');
         // در صورت خطا، تنظیمات در کش باقی می‌ماند
@@ -232,11 +227,7 @@ class PrivacySettingsNotifier
 
       // به‌روزرسانی در سرور (اگر اتصال وجود دارد)
       try {
-        await supabase.from('privacy_settings').upsert({
-          'user_id': userId,
-          ...settings,
-          'updated_at': DateTime.now().toIso8601String(),
-        });
+        await PrivacySettingsRepository().updateSettings(userId, settings);
       } catch (e) {
         logInfo('⚠️ Failed to sync privacy settings to server: $e');
         // در صورت خطا، تنظیمات در کش باقی می‌ماند
@@ -289,11 +280,10 @@ class NotificationSettingsNotifier
 
       // به‌روزرسانی در سرور (اگر اتصال وجود دارد)
       try {
-        await supabase.from('notification_settings').upsert({
-          'user_id': userId,
-          ...settings,
-          'updated_at': DateTime.now().toIso8601String(),
-        });
+        await PrivacySettingsRepository().updateSettings(
+          userId,
+          {'notification_settings': settings},
+        );
       } catch (e) {
         logInfo('⚠️ Failed to sync notification settings to server: $e');
         // در صورت خطا، تنظیمات در کش باقی می‌ماند

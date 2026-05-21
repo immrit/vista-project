@@ -2,9 +2,9 @@ import '../../security/logging_utility.dart';
 import 'package:Vista/provider/comment_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../model/CommentModel.dart';
 import 'package:Vista/features/posts/screens/profileScreen.dart';
+import 'package:Vista/features/auth/providers/auth_controller.dart';
 import 'package:Vista/widgets/verification_badge_icon.dart';
 
 class CommentsBottomSheet extends ConsumerStatefulWidget {
@@ -425,22 +425,15 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet>
               children: [
                 // آواتار کاربر جاری
                 Builder(builder: (context) {
-                  final currentUser = Supabase.instance.client.auth.currentUser;
-                  final avatarUrl =
-                      currentUser?.userMetadata?['avatar_url'] as String?;
                   return CircleAvatar(
                     radius: 18,
                     backgroundColor:
                         theme.colorScheme.primary.withValues(alpha: 0.1),
-                    backgroundImage:
-                        avatarUrl != null ? NetworkImage(avatarUrl) : null,
-                    child: avatarUrl == null
-                        ? Icon(
-                            Icons.person,
-                            size: 20,
-                            color: theme.colorScheme.primary,
-                          )
-                        : null,
+                    child: Icon(
+                      Icons.person,
+                      size: 20,
+                      color: theme.colorScheme.primary,
+                    ),
                   );
                 }),
 
@@ -838,7 +831,7 @@ class _CommentItemState extends ConsumerState<CommentItem>
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final currentUserId = Supabase.instance.client.auth.currentUser?.id;
+    final currentUserId = ref.watch(activeUserProvider)?.id;
     final isOwner = currentUserId == widget.comment.userId;
 
     return AnimatedBuilder(

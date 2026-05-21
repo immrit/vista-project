@@ -7,13 +7,13 @@ import '../../../model/ProfileModel.dart';
 import '../../../model/publicPostModel.dart';
 import '../../../provider/provider.dart';
 import '../../../DB/profile_cache_service.dart';
-import '../../../utils/const.dart';
 import 'package:Vista/widgets/profile_avatar_widget.dart'; // NEW IMPORT
 import '../providers/saved_posts_provider.dart';
 
 // Imports for existing functionality
 import '../../../features/chat/screens/modern_chat_screen.dart';
 import '../../../services/smart_share_service.dart';
+import '../../../services/current_user_service.dart';
 import 'package:Vista/features/profile/screens/editeProfile.dart';
 import 'package:Vista/features/settings/screens/Settings.dart';
 import 'package:Vista/features/profile/widgets/vista_id_card.dart';
@@ -63,11 +63,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   bool _isStartingConversation = false;
+  String? _currentUserId;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    TokenStorage.getUserId().then((value) {
+      if (!mounted) return;
+      setState(() => _currentUserId = value);
+    });
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref
@@ -95,8 +100,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     final isCurrentUserProfile = profileState != null &&
-        currentUser != null &&
-        profileState.id == currentUser.id;
+        profileState.id == (currentUser?.id ?? _currentUserId);
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -436,27 +440,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     setState(() => _isStartingConversation = true);
 
     try {
-      final myId = supabase.auth.currentUser?.id;
-      if (myId != null && myId != userId) {
-        try {
-          final res = await supabase.rpc(
-            'can_message_user',
-            params: {'target_user_id': userId},
-          );
-          final canMessage = res == true;
-          if (!canMessage && mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('این کاربر دریافت پیام را محدود کرده است'),
-                backgroundColor: Colors.red,
-              ),
-            );
-            return;
-          }
-        } catch (_) {
-          // If the RPC isn't deployed yet (or fails), fall back to existing flow.
-        }
-      }
+      final myId = await CurrentUserService.instance.resolveUserId();
+      if (myId != null && myId == userId) return;
 
       if (mounted) {
         Navigator.push(
@@ -1611,7 +1596,7 @@ class _PostListItem extends ConsumerWidget {
                                   .updateLikeState(post.id, !isLiked);
                               try {
                                 await ref
-                                    .read(supabaseServiceProvider)
+                                    .read(postActionsServiceProvider)
                                     .toggleLike(
                                       postId: post.id,
                                       ownerId: post.userId,
@@ -1858,7 +1843,8 @@ class _PostListItem extends ConsumerWidget {
             profile['is_verified'] == true &&
             profile['verification_type'] == 'blueTick';
 
-        final currentUserId = supabase.auth.currentUser?.id;
+        final currentUserId = ref.watch(activeUserProvider)?.id ??
+            CurrentUserService.cachedUserId;
         final isCurrentUserPost = post.userId == currentUserId;
 
         return PopupMenuButton<String>(
@@ -2047,7 +2033,7 @@ class _PostListItem extends ConsumerWidget {
               Navigator.pop(context);
               try {
                 await ref
-                    .read(supabaseServiceProvider)
+                    .read(postActionsServiceProvider)
                     .deletePost(ref, post.id);
                 ref.invalidate(profilePostsProvider(post.userId));
                 ScaffoldMessenger.of(context).showSnackBar(

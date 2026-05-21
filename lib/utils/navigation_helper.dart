@@ -1,8 +1,8 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 
+import '../features/profile/data/profile_repository.dart';
 import '../features/posts/screens/hashtag_posts_screen.dart';
 import '../features/posts/screens/profileScreen.dart';
-import '../utils/const.dart';
 import 'user_friendly_error_utils.dart';
 
 class NavigationHelper {
@@ -22,29 +22,19 @@ class NavigationHelper {
     );
 
     try {
-      final response = await supabase
-          .from('profiles')
-          .select('id, username')
-          .eq('username', cleanUsername)
-          .maybeSingle();
+      final response =
+          await ProfileRepository().fetchProfileByUsername(cleanUsername);
 
       if (!context.mounted) return;
       Navigator.of(context).pop();
-
-      if (response == null) {
-        UserFriendlyErrorUtils.showErrorSnackBar(
-          context,
-          'کاربر @$cleanUsername پیدا نشد',
-        );
-        return;
-      }
-
       Navigator.push(
         context,
         MaterialPageRoute(
           builder: (_) => ProfileScreen(
-            userId: response['id'] as String,
-            username: response['username'] as String,
+            userId: response['id']?.toString() ??
+                response['user_id']?.toString() ??
+                '',
+            username: response['username']?.toString() ?? cleanUsername,
           ),
         ),
       );

@@ -1,175 +1,227 @@
-import '../security/logging_utility.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import '../services/user_friendly_error_handler.dart';
+import 'dart:convert';
 
-/// سرویس مدیریت امنیت و احراز هویت کاربران
+import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:http/http.dart' as http;
+
+import '../features/auth/data/auth_repository.dart';
+import '../features/auth/providers/auth_controller.dart' show TokenStorage;
+import '../security/logging_utility.dart';
+import '../services/session_manager_service_v2.dart';
+
 class SecurityProvider extends ChangeNotifier {
-  final SupabaseClient _supabase = Supabase.instance.client;
+  final AuthRepository _authRepository;
+  final http.Client _httpClient;
+
+  SecurityProvider({
+    AuthRepository? authRepository,
+    http.Client? httpClient,
+  })  : _authRepository = authRepository ?? AuthRepository(),
+        _httpClient = httpClient ?? http.Client();
+
+  static String get _backendUrl =>
+      dotenv.env['BACKEND_URL'] ?? 'http://10.0.2.2:8080';
 
   bool _isAuthenticated = false;
-  User? _currentUser;
+  AuthUserResponse? _currentUser;
   bool _isLoading = false;
   String? _lastError;
 
-  // Getters
   bool get isAuthenticated => _isAuthenticated;
-  User? get currentUser => _currentUser;
+  AuthUserResponse? get currentUser => _currentUser;
   bool get isLoading => _isLoading;
   String? get lastError => _lastError;
 
-  // ============================================================================
-  // بخش اصلی: مدیریت احراز هویت
-  // ============================================================================
-
-  /// ورود کاربر با ایمیل و رمز عبور
   Future<bool> signInWithEmailPassword(String email, String password) async {
     try {
       _setLoading(true);
 
-      final response = await _supabase.auth.signInWithPassword(
-        email: email,
+      final response = await _authRepository.login(
+        identifier: email,
         password: password,
       );
+      await TokenStorage.saveTokens(response.session);
+      await TokenStorage.saveUserId(response.user.id);
+      await SessionManagerServiceV2.instance.ensureSessionRegistered();
 
-      if (response.user != null) {
-        _currentUser = response.user;
-        _isAuthenticated = true;
-        notifyListeners();
-        return true;
-      }
-
-      return false;
-    } catch (e) {
-      UserFriendlyErrorHandler.logError(e, context: 'login');
-      _lastError =
-          UserFriendlyErrorHandler.getFriendlyMessage(e, context: 'login');
-      logDebug('خطا در ورود: $e');
-      return false;
-    } finally {
-      _setLoading(false);
-    }
-  }
-
-  /// خروج کاربر
-  Future<bool> signOut() async {
-    try {
-      _setLoading(true);
-      await _supabase.auth.signOut();
-
-      _currentUser = null;
-      _isAuthenticated = false;
-
+      _currentUser = response.user;
+      _isAuthenticated = true;
       notifyListeners();
       return true;
     } catch (e) {
-      UserFriendlyErrorHandler.logError(e, context: 'logout');
-      _lastError =
-          UserFriendlyErrorHandler.getFriendlyMessage(e, context: 'logout');
-      logDebug('خطا در خروج: $e');
+      logError('Login failed', error: e);
+      _lastError = _friendlyAuthError(e, 'login');
+      logDebug('Login failed: $e');
       return false;
     } finally {
       _setLoading(false);
     }
   }
 
-  /// بررسی وضعیت احراز هویت
-  Future<void> checkAuthStatus() async {
+  Future<bool> signOut() async {
     try {
-      final session = _supabase.auth.currentSession;
-      if (session?.user != null) {
-        _currentUser = session!.user;
-        _isAuthenticated = true;
-      } else {
-        _currentUser = null;
-        _isAuthenticated = false;
-      }
+      _setLoading(true);
+      await SessionManagerServiceV2.instance.userLogout();
+
+      _currentUser = null;
+      _isAuthenticated = false;
       notifyListeners();
+      return true;
     } catch (e) {
-      logDebug('خطا در بررسی وضعیت احراز هویت: $e');
+      logError('Logout failed', error: e);
+      _lastError = _friendlyAuthError(e, 'logout');
+      logDebug('Logout failed: $e');
+      return false;
+    } finally {
+      _setLoading(false);
     }
   }
 
-// ============================================================================
-  // بخش کمکی: توابع داخلی
-// ============================================================================
+  Future<void> checkAuthStatus() async {
+    try {
+      final hasSession = await TokenStorage.hasValidSession();
+      if (!hasSession) {
+        _currentUser = null;
+        _isAuthenticated = false;
+        notifyListeners();
+        return;
+      }
+
+      final accessToken = await TokenStorage.getAccessToken();
+      if (accessToken != null && accessToken.isNotEmpty) {
+        try {
+          final user = await _authRepository.me(accessToken);
+          await TokenStorage.saveUserId(user.id);
+          _currentUser = user;
+          _isAuthenticated = true;
+          notifyListeners();
+          return;
+        } catch (e) {
+          logDebug('Could not refresh current user from backend: $e');
+        }
+      }
+
+      final userId = await TokenStorage.getUserId();
+      _currentUser = userId == null
+          ? null
+          : AuthUserResponse(
+              id: userId,
+              fullName: '',
+              accountStatus: 'active',
+              profileCompleted: false,
+              createdAt: DateTime.now(),
+            );
+      _isAuthenticated = _currentUser != null;
+      notifyListeners();
+    } catch (e) {
+      logDebug('Auth status check failed: $e');
+    }
+  }
 
   void _setLoading(bool value) {
     _isLoading = value;
     notifyListeners();
   }
 
-  /// تمیز کردن خطاها
   void clearErrors() {
     _lastError = null;
     notifyListeners();
   }
 
-// ============================================================================
-  // بخش جدید: مدیریت کاربران مسدود شده
-// ============================================================================
+  String _friendlyAuthError(Object error, String context) {
+    final text = error.toString().toLowerCase();
+    if (text.contains('socket') ||
+        text.contains('network') ||
+        text.contains('connection')) {
+      return 'مشکل در اتصال به سرور. لطفا اینترنت خود را بررسی کنید.';
+    }
+    if (text.contains('timeout')) {
+      return 'زمان اتصال به سرور به پایان رسید. لطفا دوباره تلاش کنید.';
+    }
+    if (context == 'logout') {
+      return 'خروج ناموفق بود. لطفا دوباره تلاش کنید.';
+    }
+    if (text.contains('401') ||
+        text.contains('invalid') ||
+        text.contains('unauthorized')) {
+      return 'نام کاربری یا رمز عبور نادرست است.';
+    }
+    return 'ورود ناموفق بود. لطفا دوباره تلاش کنید.';
+  }
 
-  /// دریافت تعداد کاربران مسدود شده
+  Future<Map<String, String>?> _authHeaders() async {
+    final accessToken = await TokenStorage.getAccessToken();
+    if (accessToken == null || accessToken.isEmpty) return null;
+    return {
+      'Authorization': 'Bearer $accessToken',
+      'Content-Type': 'application/json',
+    };
+  }
+
   Future<int> getBlockedUsersCount() async {
     try {
-      if (_currentUser == null) return 0;
+      final headers = await _authHeaders();
+      if (headers == null) return 0;
 
-      final response = await _supabase
-          .from('blocked_users')
-          .select('id')
-          .eq('user_id', _currentUser!.id);
+      final response = await _httpClient
+          .get(Uri.parse('$_backendUrl/v1/me/blocked-users'), headers: headers)
+          .timeout(const Duration(seconds: 10));
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        logDebug('Blocked users count failed: ${response.statusCode}');
+        return 0;
+      }
 
-      return response.length;
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map<String, dynamic>) return 0;
+      final profiles = decoded['profiles'];
+      return profiles is List ? profiles.length : 0;
     } catch (e) {
-      logDebug('خطا در دریافت تعداد کاربران مسدود شده: $e');
+      logDebug('Blocked users count failed: $e');
       return 0;
     }
   }
 
-  /// بررسی اینکه آیا کاربر مسدود شده است
   Future<bool> isUserBlocked(String userId) async {
     try {
-      if (_currentUser == null) return false;
+      final headers = await _authHeaders();
+      if (headers == null || userId.trim().isEmpty) return false;
 
-      final response = await _supabase
-          .from('blocked_users')
-          .select('id')
-          .eq('user_id', _currentUser!.id)
-          .eq('blocked_user_id', userId)
-          .maybeSingle();
+      final response = await _httpClient
+          .get(
+            Uri.parse(
+              '$_backendUrl/v1/me/block-status/${Uri.encodeComponent(userId)}',
+            ),
+            headers: headers,
+          )
+          .timeout(const Duration(seconds: 10));
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        logDebug('Block status failed: ${response.statusCode}');
+        return false;
+      }
 
-      return response != null;
+      final decoded = jsonDecode(response.body);
+      return decoded is Map<String, dynamic> && decoded['is_blocked'] == true;
     } catch (e) {
-      logDebug('خطا در بررسی وضعیت مسدودیت کاربر: $e');
+      logDebug('Block status failed: $e');
       return false;
     }
   }
 }
 
-// Provider برای مدیریت امنیت
 final securityProvider = ChangeNotifierProvider<SecurityProvider>((ref) {
   return SecurityProvider();
 });
 
-// Provider برای وضعیت احراز هویت فعلی
-final authStateProvider = StreamProvider<AuthState>((ref) {
-  return Supabase.instance.client.auth.onAuthStateChange;
+final authStateProvider = StreamProvider<bool>((ref) async* {
+  yield await TokenStorage.hasValidSession();
 });
 
-// Provider برای کاربر فعلی
-final currentUserProvider = Provider<User?>((ref) {
-  final authState = ref.watch(authStateProvider);
-  return authState.when(
-    data: (authState) => authState.session?.user,
-    loading: () => null,
-    error: (_, __) => null,
-  );
+final currentUserProvider = Provider<AuthUserResponse?>((ref) {
+  return ref.watch(securityProvider).currentUser;
 });
 
-// Provider برای تعداد کاربران مسدود شده
 final blockedUsersCountProvider = FutureProvider<int>((ref) async {
-  final securityNotifier = ref.read(securityProvider.notifier);
-  return await securityNotifier.getBlockedUsersCount();
+  final securityNotifier = ref.read(securityProvider);
+  return securityNotifier.getBlockedUsersCount();
 });

@@ -1,26 +1,32 @@
-﻿import 'package:flutter/material.dart';
+import 'dart:async';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../models/group_user_item.dart';
 import '../services/group_service.dart';
 import 'group_create_screen.dart';
 import 'modern_chat_screen.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../providers/chat_providers.dart';
 
 /// صفحه پیام جدید - UI ساده و مینیمال مشابه ویستا
-class NewMessageScreen extends StatefulWidget {
+class NewMessageScreen extends ConsumerStatefulWidget {
   const NewMessageScreen({super.key});
 
   @override
-  State<NewMessageScreen> createState() => _NewMessageScreenState();
+  ConsumerState<NewMessageScreen> createState() => _NewMessageScreenState();
 }
 
-class _NewMessageScreenState extends State<NewMessageScreen> {
+class _NewMessageScreenState extends ConsumerState<NewMessageScreen> {
   final _service = GroupService();
   final _searchController = TextEditingController();
   final _scrollController = ScrollController();
+  Timer? _debounce;
 
   bool _isLoading = true;
+  bool _isSearchingGlobally = false;
   List<GroupUserItem> _users = [];
+  List<GroupUserItem>? _globalSearchResults;
 
   @override
   void initState() {
@@ -31,6 +37,7 @@ class _NewMessageScreenState extends State<NewMessageScreen> {
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _searchController.removeListener(_onSearchChanged);
     _searchController.dispose();
     _scrollController.dispose();
@@ -52,10 +59,43 @@ class _NewMessageScreenState extends State<NewMessageScreen> {
   }
 
   void _onSearchChanged() {
-    setState(() {});
+    if (_debounce?.isActive ?? false) _debounce!.cancel();
+    _debounce = Timer(const Duration(milliseconds: 500), () {
+      final query = _searchController.text.trim();
+      if (query.isEmpty) {
+        if (!mounted) return;
+        setState(() {
+          _globalSearchResults = null;
+          _isSearchingGlobally = false;
+        });
+        return;
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _isSearchingGlobally = true;
+      });
+
+      _service.searchUsers(query).then((results) {
+        if (!mounted) return;
+        setState(() {
+          _globalSearchResults = results;
+          _isSearchingGlobally = false;
+        });
+      }).catchError((_) {
+        if (!mounted) return;
+        setState(() {
+          _globalSearchResults = [];
+          _isSearchingGlobally = false;
+        });
+      });
+    });
   }
 
   List<GroupUserItem> _filteredUsers() {
+    if (_globalSearchResults != null) {
+      return _globalSearchResults!;
+    }
     final query = _searchController.text.trim().toLowerCase();
     if (query.isEmpty) return _users;
     return _users.where((user) {
@@ -65,21 +105,40 @@ class _NewMessageScreenState extends State<NewMessageScreen> {
     }).toList();
   }
 
-  void _openConversation(GroupUserItem user) {
-    final conversationId = user.conversationId;
+  void _openConversation(GroupUserItem user) async {
+    String? conversationId = user.conversationId;
+
     if (conversationId == null || conversationId.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('گفتگو پیدا نشد')),
-      );
-      return;
+      try {
+        final repo = ref.read(chatRepositoryProvider);
+        final result = await repo.createConversation(user.id);
+        if (result.isSuccess && result.data != null) {
+          conversationId = result.data!.id;
+        } else {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(result.error ?? 'خطا در ایجاد گفتگو')),
+            );
+          }
+          return;
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('خطا در ارتباط با سرور')),
+          );
+        }
+        return;
+      }
     }
 
+    if (!mounted) return;
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => ModernChatScreen(
           args: ChatScreenArgs(
-            conversationId: conversationId,
+            conversationId: conversationId!,
             otherUserName: user.displayName,
             otherUserAvatar: user.avatarUrl,
             otherUserId: user.id,

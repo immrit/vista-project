@@ -50,19 +50,19 @@ class ChatMessages extends _$ChatMessages {
 
   Future<void> loadMore() async {
     try {
-      final repository = _chatRepository ?? ref.read(chatRepositoryProvider);
+      final ChatRepository repository =
+          _chatRepository ?? ref.read(chatRepositoryProvider);
       _chatRepository = repository;
       if (!_hasMore || state.isLoading) return;
 
       final currentMessages = state.value ?? [];
-      final oldestMessage = currentMessages.isNotEmpty
-          ? currentMessages.last
-          : null;
+      final oldestMessage =
+          currentMessages.isNotEmpty ? currentMessages.last : null;
 
       if (oldestMessage == null) return;
 
       // Correctly load older messages using the repository
-      final result = await repository!.loadMoreMessages(
+      final result = await repository.loadMoreMessages(
         conversationId: conversationId,
         oldestMessageDate: oldestMessage.createdAt,
         limit: _pageSize,

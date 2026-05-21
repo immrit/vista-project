@@ -1,6 +1,7 @@
 import '../security/logging_utility.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import '../features/auth/providers/auth_controller.dart' show TokenStorage;
+import '../services/current_user_service.dart';
 import '../model/CommentModel.dart';
 import '../services/comment_repository.dart';
 
@@ -88,7 +89,7 @@ class CommentEditState {
 
 // ارائه‌دهنده مخزن کامنت‌ها
 final commentRepositoryProvider = Provider<CommentRepository>((ref) {
-  return CommentRepository(Supabase.instance.client);
+  return CommentRepository();
 });
 
 // ارائه‌دهنده کامنت‌های یک پست
@@ -524,13 +525,13 @@ class CommentsNotifier extends StateNotifier<CommentsState> {
       }
 
       // بررسی اینکه آیا کاربر لاگین شده، صاحب کامنت است
-      final supabaseUser = Supabase.instance.client.auth.currentUser;
-      if (supabaseUser == null) {
+      final currentUserId = await TokenStorage.getUserId();
+      if (currentUserId == null || currentUserId.isEmpty) {
         state = state.copyWith(
             isUpdatingComment: false, error: 'کاربر وارد نشده است');
         return false;
       }
-      if (commentToUpdate.userId != supabaseUser.id) {
+      if (commentToUpdate.userId != currentUserId) {
         state = state.copyWith(
             isUpdatingComment: false,
             error: 'شما اجازه ویرایش این کامنت را ندارید');
@@ -787,13 +788,13 @@ class CommentsNotifier extends StateNotifier<CommentsState> {
 
   // بررسی اینکه آیا کاربر فعلی صاحب کامنت است
   bool isOwner(CommentModel comment) {
-    final currentUserId = Supabase.instance.client.auth.currentUser?.id;
+    final currentUserId = CurrentUserService.cachedUserId;
     return currentUserId != null && comment.userId == currentUserId;
   }
 
   // دریافت کامنت‌های کاربر فعلی
   List<CommentModel> get myComments {
-    final currentUserId = Supabase.instance.client.auth.currentUser?.id;
+    final currentUserId = CurrentUserService.cachedUserId;
     if (currentUserId == null) return [];
 
     final userComments = <CommentModel>[];

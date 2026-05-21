@@ -12,7 +12,6 @@ import 'package:just_audio_platform_interface/just_audio_platform_interface.dart
 import 'package:Vista/firebase_options.dart';
 import 'package:Vista/services/PushNotificationService.dart';
 import 'package:Vista/services/local_notification_center.dart';
-import 'package:Vista/utils/const.dart';
 import 'package:Vista/services/session_manager_service_v2.dart';
 import 'package:Vista/DB/isar_database_manager.dart';
 import 'package:Vista/DB/settings_cache_service.dart';
@@ -67,15 +66,8 @@ class AppInitialization {
     PerformanceMonitor().startMonitoring();
     FrameBudgetService.instance.startMonitoring();
 
-    // فاز ۱: سرویس‌های حیاتی پلتفرم (اجرای موازی)
-    // این سرویس‌ها برای بالا آمدن اولیه اپ (مسیریابی روت و دیزاین) نیاز هستند
-    await Future.wait([
-      _initializeFirebase(),
-      initializeSupabaseWithFailover().timeout(
-        const Duration(seconds: 10),
-        onTimeout: () => throw TimeoutException('Supabase init timeout'),
-      ),
-    ]);
+    // فاز ۱: سرویس‌های حیاتی پلتفرم
+    await _initializeFirebase();
 
     // مدیر نشست ضروری است تا بدانیم کاربر لاگین هست یا خیر
     await SessionManagerServiceV2().initialize();

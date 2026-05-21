@@ -1,12 +1,13 @@
 import 'dart:async';
 
+import 'package:dio/dio.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:isar/isar.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../DB/entities/deletion_task_entity.dart';
 import '../../../DB/isar_database_manager.dart';
+import '../../auth/providers/auth_controller.dart';
 import '../../../security/logging_utility.dart';
-import '../../../services/vista_node_service.dart';
 import '../data/datasources/chat_local_datasource_isar.dart';
 
 class MessageTombstoneService {
@@ -19,7 +20,14 @@ class MessageTombstoneService {
 
   final IsarDatabaseManager _dbManager = IsarDatabaseManager();
   final ChatLocalDataSourceIsar _localDataSource = ChatLocalDataSourceIsar();
-  final SupabaseClient _supabase = Supabase.instance.client;
+  late final Dio _dio = Dio(
+    BaseOptions(
+      baseUrl: '${dotenv.env['BACKEND_URL'] ?? 'http://10.0.2.2:8080'}/v1',
+      connectTimeout: const Duration(seconds: 10),
+      receiveTimeout: const Duration(seconds: 20),
+      headers: {'Content-Type': 'application/json'},
+    ),
+  );
   static const String _syncedMarker = '__tombstone_synced__';
 
   Timer? _syncTimer;
@@ -122,42 +130,29 @@ class MessageTombstoneService {
       if (deleteForEveryone) {
         await _deleteForEveryoneServer(messageIds);
       } else {
-        final userId = _supabase.auth.currentUser?.id;
-        if (userId == null) {
-          throw Exception('User not authenticated');
-        }
-        final now = DateTime.now().toUtc().toIso8601String();
-        final payload = messageIds
-            .map(
-              (messageId) => <String, dynamic>{
-                'user_id': userId,
-                'message_id': messageId,
-                'conversation_id': conversationId,
-                'hidden_at': now,
-              },
-            )
-            .toList(growable: false);
-        await _supabase.from('hidden_messages').upsert(payload);
+        await _dio.post(
+          '/chat/conversations/$conversationId/hide',
+          data: {'message_ids': messageIds},
+          options: await _authOptions(),
+        );
       }
 
       await _markRowsSynced(messageIds);
       logInfo('message_delete_batch_synced: ${messageIds.join(",")}');
     } catch (e) {
-      logWarning('Immediate tombstone sync failed, falling back to queue', error: e);
+      logWarning('Immediate tombstone sync failed, falling back to queue',
+          error: e);
     }
   }
 
   Future<void> _deleteForEveryoneServer(List<String> messageIds) async {
     if (messageIds.isEmpty) return;
-    try {
-      await _supabase.from('messages').delete().inFilter('id', messageIds);
-      return;
-    } catch (_) {
-      if (messageIds.length == 1) {
-        await VistaNodeService.deleteMessage(messageIds.first);
-      } else {
-        await VistaNodeService.deleteMessagesBatch(messageIds);
-      }
+    for (final messageId in messageIds) {
+      await _dio.delete(
+        '/chat/messages/$messageId',
+        queryParameters: {'for_everyone': true},
+        options: await _authOptions(),
+      );
     }
   }
 
@@ -191,10 +186,8 @@ class MessageTombstoneService {
           .sortByNextAttempt()
           .findAll();
 
-      final pending = dueRows
-          .where((row) => row.s3Key != _syncedMarker)
-          .take(25)
-          .toList();
+      final pending =
+          dueRows.where((row) => row.s3Key != _syncedMarker).take(25).toList();
 
       for (final row in pending) {
         await _syncSingle(row);
@@ -212,14 +205,13 @@ class MessageTombstoneService {
       if (row.deletionMode == 1) {
         await _deleteForEveryoneServer([row.messageId]);
       } else {
-        final userId = _supabase.auth.currentUser?.id;
-        if (userId == null) throw Exception('User not authenticated');
-        await _supabase.from('hidden_messages').upsert({
-          'user_id': userId,
-          'message_id': row.messageId,
-          'conversation_id': row.conversationId,
-          'hidden_at': DateTime.now().toUtc().toIso8601String(),
-        });
+        await _dio.post(
+          '/chat/conversations/${row.conversationId}/hide',
+          data: {
+            'message_ids': [row.messageId]
+          },
+          options: await _authOptions(),
+        );
       }
 
       await isar.writeTxn(() async {
@@ -253,5 +245,13 @@ class MessageTombstoneService {
   void dispose() {
     _syncTimer?.cancel();
     _syncTimer = null;
+  }
+
+  Future<Options> _authOptions() async {
+    final token = await TokenStorage.getAccessToken();
+    if (token == null || token.isEmpty) {
+      throw StateError('User not authenticated');
+    }
+    return Options(headers: {'Authorization': 'Bearer $token'});
   }
 }

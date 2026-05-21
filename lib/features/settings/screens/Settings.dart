@@ -1,9 +1,9 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import '../../../utils/const.dart';
 import '../../../utils/vista_dialog.dart';
 import '../../../provider/provider.dart';
+import '../../../services/secure_logout_service.dart';
 import '../../profile/screens/updatePassword.dart' show ChangePasswordWidget;
 import '../../posts/screens/saved_posts_screen.dart';
 import 'subpages/ThemeSettingsPage.dart';
@@ -244,7 +244,7 @@ class Settings extends ConsumerWidget {
   ) {
     final avatarUrl = profile?['avatar_url'];
     final username = profile?['username'] ?? 'کاربر';
-    final email = supabase.auth.currentUser?.email ?? '';
+    final email = profile?['email']?.toString() ?? '';
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -351,14 +351,7 @@ class Settings extends ConsumerWidget {
     final confirmed = await VistaDialog.showLogoutDialog(context);
 
     if (confirmed == true && context.mounted) {
-      await supabase.auth.signOut();
-      if (context.mounted) {
-        Navigator.pushNamedAndRemoveUntil(
-          context,
-          '/login',
-          (route) => false,
-        );
-      }
+      await SecureLogoutService.performLogout(context, ref);
     }
   }
 }

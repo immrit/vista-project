@@ -1,10 +1,23 @@
 # Miscellaneous
 *.class
 *.log
+*.md
 *.pyc
 *.swp
 *.sql
 *.zip
+*.tar.gz
+*.rar
+*.7z
+analyze_results*.txt
+view*.xml
+fix_imports.py
+split.py
+.tmp/
+android/.kotlin/
+android/.gradle/
+android/app/.cxx/
+**/flutter/ephemeral/
 
 # Track Supabase migrations (even though we ignore generic *.sql files above)
 !supabase/migrations/*.sql
@@ -15,6 +28,8 @@
 .history
 .svn/
 migrate_working_dir/
+.tmp/
+**/.cxx/
 
 # IntelliJ related
 *.iml

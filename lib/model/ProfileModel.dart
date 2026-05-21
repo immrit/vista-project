@@ -52,8 +52,11 @@ class ProfileModel extends Equatable {
   });
 
   factory ProfileModel.fromMap(Map<String, dynamic> map) {
-    if (map['id'] == null || map['username'] == null) {
-      throw ArgumentError('Missing required fields: id or username');
+    final id = (map['id'] ?? map['user_id'])?.toString();
+    final username =
+        (map['username'] ?? map['full_name'] ?? 'user')?.toString();
+    if (id == null || id.isEmpty || username == null || username.isEmpty) {
+      throw ArgumentError('Missing required fields: id/user_id or username');
     }
 
     final isVerified = map['is_verified'] as bool? ?? false;
@@ -65,14 +68,14 @@ class ProfileModel extends Equatable {
     );
 
     return ProfileModel(
-      id: map['id'].toString(),
-      username: map['username'].toString(),
+      id: id,
+      username: username,
       fullName: map['full_name']?.toString() ?? '',
       avatarUrl: map['avatar_url']?.toString(),
       email: map['email']?.toString(),
       bio: map['bio']?.toString(),
-      followersCount: map['followers_count'] ?? 0,
-      followingCount: map['following_count'] ?? 0,
+      followersCount: map['followers_count'] ?? map['follower_count'] ?? 0,
+      followingCount: map['following_count'] ?? map['following_count'] ?? 0,
       createdAt: map['created_at'] != null
           ? DateTime.tryParse(map['created_at'].toString())
           : null,
@@ -84,7 +87,7 @@ class ProfileModel extends Equatable {
           .map((post) => PublicPostModel.fromMap(post))
           .toList(),
       role: role, // واکشی نقش کاربر
-      postsCount: map['posts_count'] ?? 0,
+      postsCount: map['posts_count'] ?? map['post_count'] ?? 0,
     );
   }
 

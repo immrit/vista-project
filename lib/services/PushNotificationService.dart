@@ -6,21 +6,21 @@ import 'dart:typed_data'; // ✅ برای Uint8List
 import 'package:path_provider/path_provider.dart'; // ✅ برای مسیردهی
 import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:package_info_plus/package_info_plus.dart';
-import 'package:device_info_plus/device_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import '../provider/notification_provider.dart';
 import '../utils/const.dart';
 import 'notification_navigation_service.dart';
+import 'session_manager_service_v2.dart';
 import 'current_chat_tracker.dart';
 import 'local_notification_center.dart';
 import '../features/chat/data/datasources/chat_local_datasource_isar.dart';
+import '../features/auth/providers/auth_controller.dart' show TokenStorage;
 import '../model/message_model.dart';
 
 @pragma('vm:entry-point')
@@ -42,6 +42,8 @@ class PushNotificationService {
       'pending_notification_actions_v1';
   static const int _maxPendingActions = 30;
   static const Uuid _uuid = Uuid();
+  static String get _backendUrl =>
+      dotenv.env['BACKEND_URL'] ?? 'http://10.0.2.2:8080';
 
   static FlutterLocalNotificationsPlugin get notificationsPlugin =>
       LocalNotificationCenter.plugin;
@@ -50,19 +52,9 @@ class PushNotificationService {
   final _flutterLocalNotifications = LocalNotificationCenter.plugin;
   static final Map<String, DateTime> _recentMessageEvents = {};
 
-  // ✅ Getter امن برای Supabase (ممکن است در بک‌گراند initialize نشده باشد)
-  SupabaseClient? get _supabase {
-    try {
-      return Supabase.instance.client;
-    } catch (_) {
-      return null;
-    }
-  }
-
   final List<RemoteMessage> _notifications = [];
   List<RemoteMessage> get notifications => _notifications;
 
-  StreamSubscription<AuthState>? _authStateSubscription;
   StreamSubscription<String>? _tokenRefreshSubscription;
   StreamSubscription<RemoteMessage>? _onMessageSubscription;
   StreamSubscription<RemoteMessage>? _onMessageOpenedSubscription;
@@ -176,8 +168,8 @@ class PushNotificationService {
   }
 
   Future<void> _processPendingNotificationActions() async {
-    final supabase = _supabase;
-    if (supabase == null || supabase.auth.currentUser == null) {
+    final accessToken = await TokenStorage.getAccessToken();
+    if (accessToken == null || accessToken.isEmpty) {
       return;
     }
 
@@ -247,8 +239,10 @@ class PushNotificationService {
         ),
       ],
     );
-    final initSettings =
-        InitializationSettings(android: androidInit, iOS: iOSInit);
+    final initSettings = InitializationSettings(
+      android: androidInit,
+      iOS: iOSInit,
+    );
 
     await _flutterLocalNotifications.initialize(
       initSettings,
@@ -313,7 +307,8 @@ class PushNotificationService {
 
       if (Firebase.apps.isEmpty) {
         logInfo(
-            '⚠️ Firebase not initialized, skipping PushNotificationService init');
+          '⚠️ Firebase not initialized, skipping PushNotificationService init',
+        );
         return;
       }
 
@@ -374,26 +369,15 @@ class PushNotificationService {
         return;
       }
 
-      if (_supabase != null && _authStateSubscription == null) {
-        _authStateSubscription =
-            _supabase!.auth.onAuthStateChange.listen((data) {
-          final AuthChangeEvent event = data.event;
-          if (event == AuthChangeEvent.signedIn ||
-              event == AuthChangeEvent.tokenRefreshed) {
-            logInfo('👤 User Signed In/Refreshed. Updating Token...');
-            saveToken();
-            _processPendingNotificationActions();
-          }
-        });
-      }
-
-      _tokenRefreshSubscription =
-          _firebaseMessaging.onTokenRefresh.listen((newToken) {
+      _tokenRefreshSubscription = _firebaseMessaging.onTokenRefresh.listen((
+        newToken,
+      ) {
         saveToken(token: newToken);
       });
 
-      _onMessageSubscription =
-          FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+      _onMessageSubscription = FirebaseMessaging.onMessage.listen((
+        RemoteMessage message,
+      ) {
         logInfo('📱 Foreground Message: ${message.data}');
         if (_isRecentDuplicate(message)) {
           logInfo('⚠️ Duplicate FCM ignored in foreground');
@@ -444,7 +428,8 @@ class PushNotificationService {
     }
     if (!_shouldShowBackgroundLocalNotification(message)) {
       logInfo(
-          'ℹ️ Background local notification disabled by single-path policy');
+        'ℹ️ Background local notification disabled by single-path policy',
+      );
       if (message.data['type']?.toString() == 'chat_message') {
         // Keep offline fallback so incoming chat message appears in local cache.
         await _saveMessageToLocalDB(message.data);
@@ -471,7 +456,7 @@ class PushNotificationService {
   }
 
   /// ✅ Fallback: Save incoming FCM message to Isar
-  /// This ensures message appears in chat even if Realtime is disconnected.
+  /// This ensures message appears in chat even if SSE is disconnected.
   Future<void> _saveMessageToLocalDB(Map<String, dynamic> data) async {
     try {
       final conversationId = data['conversation_id']?.toString();
@@ -491,7 +476,7 @@ class PushNotificationService {
           createdAt = DateTime.fromMillisecondsSinceEpoch(timestamp);
         } else if (timestamp is String) {
           createdAt = DateTime.tryParse(timestamp) ?? DateTime.now();
-          // Sometimes Supabase sends timestamp as int in string (milliseconds)
+          // Sometimes legacy payloads send timestamp as int in string (milliseconds)
           if (createdAt.year < 2000) {
             final millis = int.tryParse(timestamp);
             if (millis != null) {
@@ -506,9 +491,7 @@ class PushNotificationService {
       // We don't have full profile profile here, but we have enough for the message list
       // Note: MessageModel usually needs just senderId.
 
-      // Check current user to determine 'isMyMessage'
-      final currentUser = _supabase?.auth.currentUser;
-      final currentUserId = currentUser?.id ?? '';
+      final currentUserId = await TokenStorage.getUserId() ?? '';
 
       // Construct MessageModel
       // Note: We need to match the JSON structure MessageModel expects, OR use constructor.
@@ -553,7 +536,8 @@ class PushNotificationService {
 
   /// 🎨 نمایش اعلان حرفه‌ای با عکس پروفایل دانلود شده
   Future<void> _showMessagingStyleNotification(
-      Map<String, dynamic> data) async {
+    Map<String, dynamic> data,
+  ) async {
     final String? conversationId = data['conversation_id']?.toString();
 
     if (conversationId == null || conversationId.isEmpty) return;
@@ -584,11 +568,7 @@ class PushNotificationService {
       important: true,
     );
 
-    final message = Message(
-      messageContent,
-      DateTime.now(),
-      senderPerson,
-    );
+    final message = Message(messageContent, DateTime.now(), senderPerson);
 
     final style = MessagingStyleInformation(
       senderPerson,
@@ -603,7 +583,7 @@ class PushNotificationService {
         'reply',
         'پاسخ',
         inputs: [
-          AndroidNotificationActionInput(label: 'پیام خود را بنویسید...')
+          AndroidNotificationActionInput(label: 'پیام خود را بنویسید...'),
         ],
         icon: const DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
         showsUserInterface: false,
@@ -718,7 +698,9 @@ class PushNotificationService {
       title,
       _shorten(body),
       NotificationDetails(
-          android: androidDetails, iOS: const DarwinNotificationDetails()),
+        android: androidDetails,
+        iOS: const DarwinNotificationDetails(),
+      ),
       payload: jsonEncode(data),
     );
   }
@@ -782,66 +764,36 @@ class PushNotificationService {
 
   Future<void> saveToken({String? token}) async {
     try {
-      if (_supabase?.auth.currentUser == null) {
-        logInfo('⚠️ Skipping Token Registration: User is NOT logged in.');
+      final hasSession = await TokenStorage.hasValidSession();
+      if (!hasSession) {
+        logInfo('Skipping FCM token sync: user is not logged in.');
         return;
       }
       if (Firebase.apps.isEmpty) {
-        logInfo('⚠️ Firebase not initialized, skipping FCM token save');
+        logInfo('Firebase not initialized, skipping FCM token save');
         return;
       }
 
       final fcmToken = token ?? await _firebaseMessaging.getToken();
-      if (fcmToken == null) {
-        logInfo('⚠️ FCM Token is null');
+      if (fcmToken == null || fcmToken.isEmpty) {
+        logInfo('FCM token is null');
         return;
       }
 
-      final user = _supabase!.auth.currentUser;
-      if (user == null) return;
-
-      final deviceType = Platform.isIOS ? 'ios' : 'android';
-      String deviceModel = 'Unknown';
-      try {
-        final deviceInfo = DeviceInfoPlugin();
-        if (Platform.isAndroid) {
-          final androidInfo = await deviceInfo.androidInfo;
-          deviceModel = '${androidInfo.manufacturer} ${androidInfo.model}';
-        } else if (Platform.isIOS) {
-          final iosInfo = await deviceInfo.iosInfo;
-          deviceModel = '${iosInfo.name} ${iosInfo.model}';
-        }
-      } catch (e) {
-        deviceModel = 'Vista App';
+      final synced = await SessionManagerServiceV2.instance.updateFcmToken(
+        fcmToken,
+      );
+      if (synced) {
+        logInfo('FCM token synced with Go backend session.');
+      } else {
+        logInfo('FCM token sync skipped: no active backend session.');
       }
-
-      String appVersion = '1.0.0';
-      try {
-        final packageInfo = await PackageInfo.fromPlatform();
-        appVersion = packageInfo.version;
-      } catch (e) {}
-
-      logInfo('🔄 Registering Device for User: ${user.id}');
-      await _supabase!.rpc('register_device', params: {
-        'p_fcm_token': fcmToken,
-        'p_device_type': deviceType,
-        'p_device_model': deviceModel,
-        'p_app_version': appVersion,
-      });
-
-      logInfo('✅ Device Token Registered in DB Successfully');
-      logInfo('   User ID: ${user.id}');
-      logInfo('   Device Type: $deviceType');
-      logInfo('   Device Model: $deviceModel');
-      logInfo('   App Version: $appVersion');
     } catch (e) {
-      logInfo('❌ Error registering device in DB: $e');
+      logInfo('Error syncing FCM token with backend: $e');
     }
   }
 
   void dispose() {
-    _authStateSubscription?.cancel();
-    _authStateSubscription = null;
     _tokenRefreshSubscription?.cancel();
     _tokenRefreshSubscription = null;
     _onMessageSubscription?.cancel();
@@ -944,14 +896,22 @@ class PushNotificationService {
   String _filterLinksFromText(String text) {
     if (text.isEmpty) return text;
     String filteredText = text;
-    filteredText =
-        filteredText.replaceAll(RegExp(r'https?://[^\s]*vista[^\s]*'), '');
-    filteredText =
-        filteredText.replaceAll(RegExp(r'https?://[^\s]*post/[^\s]*'), '');
-    filteredText =
-        filteredText.replaceAll(RegExp(r'https?://[^\s]*coffevista[^\s]*'), '');
-    filteredText =
-        filteredText.replaceAll(RegExp(r'https?://[^\s]*arvan[^\s]*'), '');
+    filteredText = filteredText.replaceAll(
+      RegExp(r'https?://[^\s]*vista[^\s]*'),
+      '',
+    );
+    filteredText = filteredText.replaceAll(
+      RegExp(r'https?://[^\s]*post/[^\s]*'),
+      '',
+    );
+    filteredText = filteredText.replaceAll(
+      RegExp(r'https?://[^\s]*coffevista[^\s]*'),
+      '',
+    );
+    filteredText = filteredText.replaceAll(
+      RegExp(r'https?://[^\s]*arvan[^\s]*'),
+      '',
+    );
     filteredText = filteredText.replaceAll(RegExp(r'https?://[^\s]*'), '');
     filteredText = filteredText.replaceAll(RegExp(r'🖼️ آواتار:.*'), '');
     filteredText = filteredText.replaceAll(RegExp(r'🎥 ویدیو:.*'), '');
@@ -980,77 +940,63 @@ class PushNotificationService {
   Future<bool> _markConversationAsRead(String conversationId) async {
     final trimmedConversationId = conversationId.trim();
     if (trimmedConversationId.isEmpty) return false;
-    if (_supabase == null) return false;
 
     try {
-      await _supabase!.rpc('mark_conversation_as_read', params: {
-        'p_conversation_id': trimmedConversationId,
-      });
-      await _flutterLocalNotifications.cancel(trimmedConversationId.hashCode);
-      return true;
-    } catch (rpcError) {
-      logInfo(
-          'mark_conversation_as_read RPC failed, trying fallback: $rpcError');
-    }
+      final token = await TokenStorage.getAccessToken();
+      if (token == null || token.isEmpty) return false;
 
-    try {
-      final currentUserId = _supabase!.auth.currentUser?.id;
-      if (currentUserId == null || currentUserId.isEmpty) {
+      final uri = Uri.parse(
+        '$_backendUrl/v1/chat/conversations/${Uri.encodeComponent(trimmedConversationId)}/read',
+      );
+      final response = await http.post(uri, headers: {
+        'Authorization': 'Bearer $token'
+      }).timeout(const Duration(seconds: 10));
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        logInfo('mark read backend failed: ${response.statusCode}');
         return false;
       }
-      await _supabase!
-          .from('messages')
-          .update({'is_seen': true})
-          .eq('conversation_id', trimmedConversationId)
-          .neq('sender_id', currentUserId)
-          .eq('is_seen', false);
-      await _supabase!
-          .from('conversation_participants')
-          .update({'unread_count': 0})
-          .eq('conversation_id', trimmedConversationId)
-          .eq('user_id', currentUserId);
+
       await _flutterLocalNotifications.cancel(trimmedConversationId.hashCode);
       return true;
-    } catch (fallbackError) {
-      logInfo('mark read fallback failed: $fallbackError');
+    } catch (e) {
+      logInfo('mark read backend failed: $e');
       return false;
     }
   }
 
-  Future<bool> _sendQuickReplyFallbackInsert(
+  Future<bool> _sendQuickReplyToBackend(
     String conversationId,
     String replyText,
   ) async {
-    final currentUserId = _supabase?.auth.currentUser?.id;
-    if (currentUserId == null || currentUserId.isEmpty) {
+    final token = await TokenStorage.getAccessToken();
+    if (token == null || token.isEmpty) {
       return false;
     }
 
-    final nowIso = DateTime.now().toUtc().toIso8601String();
-    final payload = <String, dynamic>{
-      'id': _uuid.v4(),
-      'conversation_id': conversationId,
-      'sender_id': currentUserId,
-      'content': replyText,
-      'message_type': 'text',
-      'is_sent': true,
-      'is_pending': false,
-      'created_at': nowIso,
-    };
+    final uri = Uri.parse(
+      '$_backendUrl/v1/chat/conversations/${Uri.encodeComponent(conversationId)}/messages',
+    );
+    final response = await http
+        .post(
+          uri,
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({
+            'id': _uuid.v4(),
+            'content': replyText,
+            'message_type': 'text',
+          }),
+        )
+        .timeout(const Duration(seconds: 10));
 
-    try {
-      await _supabase!.from('messages').insert(payload);
+    if (response.statusCode >= 200 && response.statusCode < 300) {
       return true;
-    } on PostgrestException catch (_) {
-      final legacyPayload = Map<String, dynamic>.from(payload)
-        ..remove('message_type')
-        ..remove('is_pending');
-      await _supabase!.from('messages').insert(legacyPayload);
-      return true;
-    } catch (e) {
-      logInfo('quick reply fallback insert failed: $e');
-      return false;
     }
+
+    logInfo('quick reply backend failed: ${response.statusCode}');
+    return false;
   }
 
   Future<bool> handleQuickReply(String conversationId, String replyText) async {
@@ -1064,28 +1010,17 @@ class PushNotificationService {
       logInfo('sending quick reply to conversation: $trimmedConversationId');
       logInfo('reply text: $trimmedReply');
 
-      if (_supabase == null) {
-        logInfo('Supabase client not initialized in isolate');
-        return false;
-      }
-
-      await _supabase!.rpc('send_reply_message', params: {
-        'p_conversation_id': trimmedConversationId,
-        'p_content': trimmedReply,
-      });
-
-      logInfo('quick reply sent successfully');
-      return true;
-    } catch (e) {
-      logInfo('send_reply_message RPC failed, trying fallback insert: $e');
-      final fallbackSent = await _sendQuickReplyFallbackInsert(
+      final sent = await _sendQuickReplyToBackend(
         trimmedConversationId,
         trimmedReply,
       );
-      if (!fallbackSent) {
-        logInfo('quick reply failed after fallback: $e');
+      if (sent) {
+        logInfo('quick reply sent successfully');
       }
-      return fallbackSent;
+      return sent;
+    } catch (e) {
+      logInfo('quick reply failed: $e');
+      return false;
     }
   }
 
@@ -1103,7 +1038,8 @@ class PushNotificationService {
         final notifier = ref!.read(notificationsProvider.notifier);
         notifier.addNotificationFromPush(message);
         logInfo(
-            '✅ اعلان با موفقیت به provider اضافه شد: ${message.data['type']}');
+          '✅ اعلان با موفقیت به provider اضافه شد: ${message.data['type']}',
+        );
       }
     } catch (e) {
       logInfo('❌ خطا در اضافه کردن اعلان به provider: $e');

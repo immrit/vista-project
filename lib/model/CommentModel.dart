@@ -90,8 +90,9 @@ class CommentModel {
       role: profiles['role']?.toString(),
       isVerified: isVerified,
       verificationType: _mapResolvedType(parsedType),
-      postOwnerId:
-          map['owner_id'] as String? ?? '', // Updated from 'post_owner_id'
+      postOwnerId: map['owner_id'] as String? ??
+          map['post_owner_id'] as String? ??
+          '', // Updated from 'post_owner_id'
       parentCommentId: map['parent_comment_id'] as String?, // Ensure nullable
       replies: (map['replies'] as List?)
               ?.map((replyMap) => CommentModel.fromMap(replyMap))
@@ -128,6 +129,7 @@ class CommentModel {
         'verification_type':
             verificationType.name, // اضافه کردن نوع تیک به خروجی
       },
+      'owner_id': postOwnerId,
       'post_owner_id': postOwnerId,
       'parent_comment_id': parentCommentId,
       'replies': replies.map((reply) => reply.toMap()).toList(),

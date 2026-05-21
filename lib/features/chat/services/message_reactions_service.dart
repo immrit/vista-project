@@ -1,192 +1,166 @@
-// lib/features/chat/services/message_reactions_service.dart
-//
-// سرویس مدیریت واکنش‌های پیام
-//
+import 'dart:async';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+
+import '../../../features/auth/providers/auth_controller.dart';
 import '../models/message_reaction.dart';
+import 'sse_manager.dart';
 
 class MessageReactionsService {
-  final SupabaseClient _supabase = Supabase.instance.client;
+  static String get _backendUrl =>
+      dotenv.env['BACKEND_URL'] ?? 'http://10.0.2.2:8080';
 
-  /// دریافت ID کاربر فعلی
-  String? getCurrentUserId() {
-    return _supabase.auth.currentUser?.id;
-  }
+  late final Dio _dio = Dio(
+    BaseOptions(
+      baseUrl: '$_backendUrl/v1',
+      connectTimeout: const Duration(seconds: 10),
+      receiveTimeout: const Duration(seconds: 15),
+      headers: {'Content-Type': 'application/json'},
+    ),
+  );
 
-  /// افزودن یا حذف واکنش به پیام (toggle)
+  final Map<String, StreamController<List<MessageReaction>>> _controllers = {};
+  final Map<String, List<MessageReaction>> _cache = {};
+  StreamSubscription<Map<String, dynamic>>? _sseSubscription;
+
   Future<MessageReaction?> toggleReaction({
     required String messageId,
-    required String conversationId, // ✅ اضافه شد
+    required String conversationId,
     required String emoji,
   }) async {
-    // 🔴 امکان واکنش به پیام‌های موقت وجود ندارد
     if (messageId.startsWith('temp_')) return null;
-
-    try {
-      final userId = _supabase.auth.currentUser?.id;
-      if (userId == null) throw Exception('کاربر احراز هویت نشده');
-
-      // چک کنیم آیا قبلاً این ایموجی رو زده
-      final existing = await _supabase
-          .from('message_reactions')
-          .select()
-          .eq('message_id', messageId)
-          .eq('user_id', userId)
-          .eq('emoji', emoji)
-          .maybeSingle();
-
-      if (existing != null) {
-        // حذف واکنش
-        await _supabase
-            .from('message_reactions')
-            .delete()
-            .eq('id', existing['id']);
-        return null;
-      } else {
-        // ✅ داده‌های جدید برای درج (شامل conversation_id)
-        final data = {
-          'conversation_id': conversationId, // ✅ این خط مشکل 23502 را حل می‌کند
-          'message_id': messageId,
-          'user_id': userId,
-          'emoji': emoji,
-          // ❌ user_name و user_avatar حذف شدند تا خطای "Column not found" ندهد
-          // اگر بعداً ستون‌ها را اضافه کردید، می‌توانید این خطوط را فعال کنید
-        };
-
-        final response = await _supabase
-            .from('message_reactions')
-            .insert(data)
-            .select()
-            .single();
-
-        return MessageReaction.fromJson(response);
-      }
-    } catch (e) {
-      debugPrint('❌ Error toggling reaction: $e');
-      rethrow;
+    final response = await _dio.post(
+      '/chat/messages/$messageId/reactions',
+      data: {'emoji': emoji},
+      options: await _authOptions(),
+    );
+    final reactions = _parseReactions(response.data);
+    _publish(messageId, reactions);
+    for (final reaction in reactions) {
+      if (reaction.emoji == emoji) return reaction;
     }
+    return null;
   }
 
-  /// دریافت تمام واکنش‌های یک پیام
   Future<List<MessageReaction>> getMessageReactions(String messageId) async {
-    if (messageId.startsWith('temp_')) return [];
-
-    try {
-      final response = await _supabase
-          .from('message_reactions')
-          .select()
-          .eq('message_id', messageId)
-          .order('created_at', ascending: true);
-
-      return (response as List)
-          .map((json) => MessageReaction.fromJson(json))
-          .toList();
-    } catch (e) {
-      debugPrint('❌ Error getting reactions: $e');
-      return [];
-    }
+    if (messageId.startsWith('temp_')) return const [];
+    final response = await _dio.get(
+      '/chat/messages/$messageId/reactions',
+      options: await _authOptions(),
+    );
+    final reactions = _parseReactions(response.data);
+    _publish(messageId, reactions);
+    return reactions;
   }
 
-  /// دریافت واکنش‌های چند پیام یکجا (batch)
   Future<Map<String, List<MessageReaction>>> getMultipleMessageReactions(
     List<String> messageIds,
   ) async {
-    if (messageIds.isEmpty) return {};
+    final validIds = messageIds
+        .where((id) => id.isNotEmpty && !id.startsWith('temp_'))
+        .toList(growable: false);
+    if (validIds.isEmpty) return const {};
 
-    // 🔴 فیلتر کردن IDهای موقت (که با temp_ شروع می‌شوند)
-    // دیتابیس UUID انتظار دارد و ارسال رشته temp_ باعث کرش می‌شود
-    final validIds = messageIds.where((id) => !id.startsWith('temp_')).toList();
-
-    if (validIds.isEmpty) return {};
-
-    try {
-      final response = await _supabase
-          .from('message_reactions')
-          .select()
-          .inFilter('message_id', validIds)
-          .order('created_at', ascending: true);
-
-      final Map<String, List<MessageReaction>> grouped = {};
-
-      for (final json in response as List) {
-        final reaction = MessageReaction.fromJson(json);
-        grouped.putIfAbsent(reaction.messageId, () => []).add(reaction);
+    final response = await _dio.post(
+      '/chat/reactions/batch',
+      data: {'message_ids': validIds},
+      options: await _authOptions(),
+    );
+    final raw = response.data is Map ? response.data['reactions'] : null;
+    final result = <String, List<MessageReaction>>{};
+    if (raw is Map) {
+      for (final entry in raw.entries) {
+        final messageId = entry.key.toString();
+        final reactions = _parseReactionList(entry.value);
+        result[messageId] = reactions;
+        _publish(messageId, reactions);
       }
-
-      return grouped;
-    } catch (e) {
-      debugPrint('❌ Error getting multiple reactions: $e');
-      return {};
     }
+    return result;
   }
 
-  /// Stream برای دریافت real-time واکنش‌های یک پیام
   Stream<List<MessageReaction>> watchMessageReactions(String messageId) {
-    if (messageId.startsWith('temp_')) return Stream.value([]);
-
-    return _supabase
-        .from('message_reactions')
-        .stream(primaryKey: ['id'])
-        .eq('message_id', messageId)
-        .order('created_at')
-        .map((data) =>
-            data.map((json) => MessageReaction.fromJson(json)).toList());
+    if (messageId.startsWith('temp_')) return Stream.value(const []);
+    _ensureSseSubscription();
+    final controller = _controllers.putIfAbsent(
+      messageId,
+      () => StreamController<List<MessageReaction>>.broadcast(
+        onListen: () {
+          controllerAdd(messageId, _cache[messageId] ?? const []);
+        },
+      ),
+    );
+    return controller.stream;
   }
 
-  /// حذف تمام واکنش‌های کاربر از یک پیام
-  Future<void> removeAllUserReactions({
-    required String messageId,
-  }) async {
-    if (messageId.startsWith('temp_')) return;
+  Future<void> removeAllUserReactions({required String messageId}) async {}
 
-    try {
-      final userId = _supabase.auth.currentUser?.id;
-      if (userId == null) return;
+  Future<void> deleteAllMessageReactions(String messageId) async {}
 
-      await _supabase
-          .from('message_reactions')
-          .delete()
-          .eq('message_id', messageId)
-          .eq('user_id', userId);
-    } catch (e) {
-      debugPrint('❌ Error removing user reactions: $e');
+  Future<Map<String, int>> getUserReactionStats(String userId) async =>
+      const {};
+
+  void dispose() {
+    unawaited(_sseSubscription?.cancel());
+    _sseSubscription = null;
+    for (final controller in _controllers.values) {
+      controller.close();
     }
+    _controllers.clear();
+    _cache.clear();
   }
 
-  /// حذف تمام واکنش‌های یک پیام (وقتی پیام حذف میشه)
-  Future<void> deleteAllMessageReactions(String messageId) async {
-    if (messageId.startsWith('temp_')) return;
-
-    try {
-      await _supabase
-          .from('message_reactions')
-          .delete()
-          .eq('message_id', messageId);
-    } catch (e) {
-      debugPrint('❌ Error deleting all reactions: $e');
+  Future<Options> _authOptions() async {
+    final token = await TokenStorage.getAccessToken();
+    if (token == null || token.isEmpty) {
+      throw StateError('User is not authenticated');
     }
+    return Options(headers: {'Authorization': 'Bearer $token'});
   }
 
-  /// دریافت آماری از واکنش‌های یک کاربر
-  Future<Map<String, int>> getUserReactionStats(String userId) async {
-    try {
-      final response = await _supabase
-          .from('message_reactions')
-          .select('emoji')
-          .eq('user_id', userId);
-
-      final Map<String, int> stats = {};
-      for (final row in response as List) {
-        final emoji = row['emoji'] as String;
-        stats[emoji] = (stats[emoji] ?? 0) + 1;
-      }
-
-      return stats;
-    } catch (e) {
-      debugPrint('❌ Error getting reaction stats: $e');
-      return {};
+  List<MessageReaction> _parseReactions(dynamic payload) {
+    if (payload is Map) {
+      return _parseReactionList(payload['reactions']);
     }
+    return const [];
+  }
+
+  List<MessageReaction> _parseReactionList(dynamic raw) {
+    if (raw is! List) return const [];
+    return raw
+        .whereType<Map>()
+        .map((item) => MessageReaction.fromJson(item.cast<String, dynamic>()))
+        .toList(growable: false);
+  }
+
+  void _publish(String messageId, List<MessageReaction> reactions) {
+    _cache[messageId] = reactions;
+    controllerAdd(messageId, reactions);
+  }
+
+  void controllerAdd(String messageId, List<MessageReaction> reactions) {
+    final controller = _controllers[messageId];
+    if (controller == null || controller.isClosed) return;
+    controller.add(reactions);
+  }
+
+  void _ensureSseSubscription() {
+    if (_sseSubscription != null) return;
+    SseManager.instance.start();
+    _sseSubscription = SseManager.instance.events.listen(
+      (event) {
+        if (event['type'] != 'reaction_updated') return;
+        final data = event['data'];
+        if (data is! Map) return;
+        final messageId = data['message_id']?.toString() ?? '';
+        if (messageId.isEmpty) return;
+        _publish(messageId, _parseReactionList(data['reactions']));
+      },
+      onError: (Object error, StackTrace stackTrace) {
+        debugPrint('MessageReactionsService SSE error: $error');
+      },
+    );
   }
 }

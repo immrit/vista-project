@@ -2,11 +2,12 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:path/path.dart' as path;
-import '../../services/secure_upload_service.dart';
+import '../../features/auth/data/auth_repository.dart';
+import '../../features/auth/providers/auth_controller.dart';
+import '../../services/backend_upload_service.dart';
 import '../../services/user_friendly_error_handler.dart';
 import '../../services/upload_object_key_service.dart';
 import '../../services/cache_manager.dart';
-import '../../utils/const.dart';
 import '../../security/logging_utility.dart';
 
 class MediaUploadService {
@@ -94,8 +95,7 @@ class MediaUploadService {
         compressedFile ??= file;
       }
 
-      final userId = supabase.auth.currentUser?.id;
-      if (userId == null) throw Exception('User not authenticated');
+      final userId = await _currentUserId();
 
       final normalizedExt = path.extension(compressedFile.path).toLowerCase();
       final fileName = UploadObjectKeyService.buildChatObjectKey(
@@ -108,7 +108,7 @@ class MediaUploadService {
       final fileBytes = await compressedFile.readAsBytes();
       if (onProgress != null) onProgress(0.0);
 
-      final uploadResult = await SecureUploadService.uploadBytes(
+      final uploadResult = await BackendUploadService.uploadBytes(
         bytes: fileBytes,
         objectKey: fileName,
         contentType: 'image/jpeg',
@@ -140,8 +140,8 @@ class MediaUploadService {
     try {
       if (!await audioFile.exists()) throw Exception('Audio file not found');
 
-      final userId = supabase.auth.currentUser?.id;
-      if (userId == null || userId.isEmpty) {
+      final userId = await _currentUserId();
+      if (userId.isEmpty) {
         throw Exception('User not authenticated');
       }
 
@@ -164,7 +164,7 @@ class MediaUploadService {
       Object? lastError;
       for (final contentType in contentTypes) {
         try {
-          final uploadResult = await SecureUploadService.uploadBytes(
+          final uploadResult = await BackendUploadService.uploadBytes(
             bytes: fileBytes,
             objectKey: objectKey,
             contentType: contentType,
@@ -204,8 +204,7 @@ class MediaUploadService {
           ? '.m4a'
           : path.extension(fileName).toLowerCase().trim();
 
-      final userId = supabase.auth.currentUser?.id;
-      if (userId == null) throw Exception('User not authenticated');
+      final userId = await _currentUserId();
 
       final objectKey = UploadObjectKeyService.buildChatObjectKey(
         conversationId: conversationId,
@@ -218,7 +217,7 @@ class MediaUploadService {
       Object? lastError;
       for (final contentType in contentTypes) {
         try {
-          final uploadResult = await SecureUploadService.uploadBytes(
+          final uploadResult = await BackendUploadService.uploadBytes(
             bytes: fileBytes,
             objectKey: objectKey,
             contentType: contentType,
@@ -262,8 +261,8 @@ class MediaUploadService {
       }
       if (fileBytes.length < 1024) throw Exception('PDF file is too small');
 
-      final userId = supabase.auth.currentUser?.id;
-      if (userId == null || userId.isEmpty) {
+      final userId = await _currentUserId();
+      if (userId.isEmpty) {
         throw Exception('User not authenticated');
       }
 
@@ -307,8 +306,8 @@ class MediaUploadService {
       if (extension.isEmpty) extension = _inferExtensionFromBytes(fileBytes);
       if (extension.isEmpty) extension = '.bin';
 
-      final userId = supabase.auth.currentUser?.id;
-      if (userId == null || userId.isEmpty) {
+      final userId = await _currentUserId();
+      if (userId.isEmpty) {
         throw Exception('User not authenticated');
       }
 
@@ -348,8 +347,8 @@ class MediaUploadService {
       }
       if (fileBytes.length < 1024) throw Exception('PDF file is too small');
 
-      final userId = supabase.auth.currentUser?.id;
-      if (userId == null || userId.isEmpty) {
+      final userId = await _currentUserId();
+      if (userId.isEmpty) {
         throw Exception('User not authenticated');
       }
 
@@ -394,11 +393,12 @@ class MediaUploadService {
         compressedFile ??= file;
       }
 
+      final userId = await _currentUserId();
       final fileName =
-          'posts/${supabase.auth.currentUser!.id}_${DateTime.now().millisecondsSinceEpoch}_${path.basename(compressedFile.path)}';
+          'posts/$userId/${DateTime.now().millisecondsSinceEpoch}_${path.basename(compressedFile.path)}';
 
       final fileBytes = await compressedFile.readAsBytes();
-      final uploadResult = await SecureUploadService.uploadBytes(
+      final uploadResult = await BackendUploadService.uploadBytes(
         bytes: fileBytes,
         objectKey: fileName,
         contentType: 'image/jpeg',
@@ -424,9 +424,10 @@ class MediaUploadService {
     void Function(double progress)? onProgress,
   }) async {
     try {
+      final userId = await _currentUserId();
       final s3FileName =
-          'posts/${supabase.auth.currentUser!.id}_${DateTime.now().millisecondsSinceEpoch}_$fileName';
-      final uploadResult = await SecureUploadService.uploadBytes(
+          'posts/$userId/${DateTime.now().millisecondsSinceEpoch}_$fileName';
+      final uploadResult = await BackendUploadService.uploadBytes(
         bytes: fileBytes,
         objectKey: s3FileName,
         contentType: 'image/jpeg',
@@ -462,10 +463,11 @@ class MediaUploadService {
       if (baseName.isEmpty) baseName = 'track';
       if (baseName.length > 64) baseName = baseName.substring(0, 64);
 
+      final userId = await _currentUserId();
       final fileName =
-          'music/${supabase.auth.currentUser!.id}_${DateTime.now().millisecondsSinceEpoch}_${baseName.toLowerCase()}$extension';
+          'music/$userId/${DateTime.now().millisecondsSinceEpoch}_${baseName.toLowerCase()}$extension';
 
-      final uploadResult = await SecureUploadService.uploadFile(
+      final uploadResult = await BackendUploadService.uploadFile(
         file: file,
         objectKey: fileName,
         contentType: extension == '.m4a' ? 'audio/mp4' : 'audio/mpeg',
@@ -492,9 +494,10 @@ class MediaUploadService {
         throw Exception('فقط فایل‌های mp4، mov و mkv پشتیبانی می‌شوند');
       }
 
+      final userId = await _currentUserId();
       final fileName =
-          'videos/${supabase.auth.currentUser!.id}_${DateTime.now().millisecondsSinceEpoch}$extension';
-      final uploadResult = await SecureUploadService.uploadFile(
+          'videos/$userId/${DateTime.now().millisecondsSinceEpoch}$extension';
+      final uploadResult = await BackendUploadService.uploadFile(
         file: file,
         objectKey: fileName,
         contentType: extension == '.mov'
@@ -524,9 +527,10 @@ class MediaUploadService {
         throw Exception('حجم فایل باید کمتر از ۱۰ مگابایت باشد');
       }
 
+      final userId = await _currentUserId();
       final s3FileName =
-          'videos/${supabase.auth.currentUser!.id}_${DateTime.now().millisecondsSinceEpoch}_$fileName';
-      final uploadResult = await SecureUploadService.uploadBytes(
+          'videos/$userId/${DateTime.now().millisecondsSinceEpoch}_$fileName';
+      final uploadResult = await BackendUploadService.uploadBytes(
         bytes: fileBytes,
         objectKey: s3FileName,
         contentType: extension == '.mov'
@@ -563,7 +567,7 @@ class MediaUploadService {
 
   static Future<bool> _deleteGeneric(String fileUrl) async {
     try {
-      final deleted = await SecureUploadService.deleteByUrl(fileUrl);
+      final deleted = await BackendUploadService.deleteByUrl(fileUrl);
       if (!deleted) throw Exception('Delete failed');
       return true;
     } catch (e) {
@@ -623,7 +627,7 @@ class MediaUploadService {
     Object? lastError;
     for (final contentType in contentTypes) {
       try {
-        final result = await SecureUploadService.uploadBytes(
+        final result = await BackendUploadService.uploadBytes(
           bytes: bytes,
           objectKey: objectKey,
           contentType: contentType,
@@ -727,6 +731,22 @@ class MediaUploadService {
       return '.pdf';
     }
     return ''; // Abbreviated for simplicity
+  }
+
+  static Future<String> _currentUserId() async {
+    final storedUserId = await TokenStorage.getUserId();
+    if (storedUserId != null && storedUserId.isNotEmpty) {
+      return storedUserId;
+    }
+
+    final accessToken = await TokenStorage.getAccessToken();
+    if (accessToken == null || accessToken.isEmpty) {
+      throw Exception('User not authenticated');
+    }
+
+    final user = await AuthRepository().me(accessToken);
+    await TokenStorage.saveUserId(user.id);
+    return user.id;
   }
 }
 

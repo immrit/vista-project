@@ -15,7 +15,7 @@ class UploadObjectKeyService {
     final ts = DateTime.now().toUtc().millisecondsSinceEpoch;
     final rand = _random.nextInt(0x7fffffff).toRadixString(16).padLeft(8, '0');
     final safeExt = _normalizeExtension(extension);
-    return 'chats/$safeConversation/$safeFolder/${safeUser}_${ts}_$rand$safeExt';
+    return 'chat/$safeUser/$safeConversation/$safeFolder/${ts}_$rand$safeExt';
   }
 
   static String _sanitizeSegment(String value, {required String fallback}) {

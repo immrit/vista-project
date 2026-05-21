@@ -1,5 +1,10 @@
+// lib/features/chat/providers/chat_providers.dart
+//
+// Go backend chat providers
+//
+
 import 'package:riverpod_annotation/riverpod_annotation.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+
 import 'chat_messages_provider.dart';
 import '../repositories/chat_repository.dart';
 import '../repositories/chat_repository_impl.dart';
@@ -14,18 +19,14 @@ export '../models/send_message_params.dart';
 part 'chat_providers.g.dart';
 
 // ═══════════════════════════════════════════════════════════════════
-// 📦 REPOSITORIES
+// 📦 REPOSITORY
 // ═══════════════════════════════════════════════════════════════════
 
 @riverpod
 ChatRepository chatRepository(ChatRepositoryRef ref) {
   ref.keepAlive();
-  final supabase = Supabase.instance.client;
-  final localDataSource = ChatLocalDataSourceIsar();
-
   return ChatRepositoryImpl(
-    localDataSource: localDataSource,
-    supabase: supabase,
+    localDataSource: ChatLocalDataSourceIsar(),
   );
 }
 
@@ -36,33 +37,30 @@ ChatRepository chatRepository(ChatRepositoryRef ref) {
 class PaginationState {
   final bool isLoadingMore;
   final bool hasMore;
-
   const PaginationState({this.isLoadingMore = false, this.hasMore = true});
 }
 
 @riverpod
 PaginationState paginationState(PaginationStateRef ref, String conversationId) {
   final messagesState = ref.watch(chatMessagesProvider(conversationId));
-  // Detect if loading more: isLoading is true AND we have data
-  final isLoadingMore = messagesState.isLoading && messagesState.hasValue;
-  // hasMore logic needs to come from provider.
-  // currently ChatMessages doesn't expose hasMore in public state easily unless we cast notifier.
-  // or we can infer if list count % pageSize != 0 ?
-  // let's default true for now or fix ChatMessages to expose state object
-  return PaginationState(isLoadingMore: isLoadingMore, hasMore: true);
+  return PaginationState(
+    isLoadingMore: messagesState.isLoading && messagesState.hasValue,
+    hasMore: true,
+  );
 }
 
 // ═══════════════════════════════════════════════════════════════════
 // 📦 PARAMS
 // ═══════════════════════════════════════════════════════════════════
 
-// Class to hold parameters for the chat provider
 class ChatProviderParams {
   final String conversationId;
   final String otherUserId;
 
-  const ChatProviderParams(
-      {required this.conversationId, required this.otherUserId});
+  const ChatProviderParams({
+    required this.conversationId,
+    required this.otherUserId,
+  });
 
   @override
   bool operator ==(Object other) =>
@@ -77,14 +75,10 @@ class ChatProviderParams {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// 🔄 CONVERSATIONS STREAM (Real-time از Isar)
+// 🔄 CONVERSATIONS STREAM
 // ═══════════════════════════════════════════════════════════════════
 
-/// StreamProvider برای مکالمات - مستقیماً به Isar متصل
-/// این Stream فوراً با هر تغییر در Isar آپدیت میشه
 final conversationsStreamProvider =
     StreamProvider<List<ConversationModel>>((ref) {
-  final repo = ref.watch(chatRepositoryProvider);
-
-  return repo.watchConversations();
+  return ref.watch(chatRepositoryProvider).watchConversations();
 });

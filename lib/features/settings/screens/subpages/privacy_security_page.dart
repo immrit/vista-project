@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../widgets/vista_settings_widgets.dart';
 import 'ActiveSessionsScreen.dart';
 import 'BlockedUsersPage.dart';
 import '../../../../provider/settings_providers.dart';
 import '../../../../model/messagePrivacyModel.dart';
 import '../../../../services/telegram_read_receipt_service.dart';
+import '../../../../features/auth/providers/auth_controller.dart';
+import '../../../../services/current_user_service.dart';
 
 /// صفحه تنظیمات حریم خصوصی و امنیت - طراحی مدرن و یکپارچه
 class PrivacySecurityPage extends ConsumerStatefulWidget {
@@ -68,7 +69,8 @@ class _PrivacySecurityPageState extends ConsumerState<PrivacySecurityPage> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final userId = Supabase.instance.client.auth.currentUser?.id;
+    final userId =
+        ref.watch(activeUserProvider)?.id ?? CurrentUserService.cachedUserId;
     final settingsAsync = userId != null
         ? ref.watch(mergedPrivacySettingsProvider(userId))
         : const AsyncValue.data(<String, dynamic>{});

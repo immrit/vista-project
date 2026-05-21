@@ -5,15 +5,15 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shamsi_date/shamsi_date.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
-import '../../../utils/const.dart';
-import '../../../provider/provider.dart';
 import '../../../provider/ProfileImageUploadService.dart';
 import '../../../services/user_friendly_error_handler.dart';
 import '../../../core/security/input_policy.dart';
-import '../../auth/widgets/otp_dialog.dart';
+import '../../auth/data/auth_repository.dart';
+import '../../auth/providers/auth_controller.dart';
+import '../data/profile_repository.dart';
+import '../providers/profile_controller.dart';
 
 class EditProfile extends ConsumerStatefulWidget {
   const EditProfile({super.key});
@@ -50,7 +50,7 @@ class _EditProfileState extends ConsumerState<EditProfile> {
     final data = await ref.read(profileProvider.future);
     if (data != null) {
       setState(() {
-        emailController.text = supabase.auth.currentUser?.email ?? "";
+        emailController.text = data['email'] ?? "";
         _phoneController.text = data['phone_number'] ?? "";
         if (data['birth_date'] != null) {
           _birthDate = data['birth_date'];
@@ -284,15 +284,14 @@ class _EditProfileState extends ConsumerState<EditProfile> {
   Future<void> _deleteImage() async {
     try {
       setState(() => _isLoading = true);
-      final supabase = Supabase.instance.client;
-      final userId = supabase.auth.currentUser!.id;
+      final data = await ref.read(profileProvider.future);
+      final userId = (data?['id'] ?? data?['user_id'] ?? '').toString();
+      if (userId.isEmpty) {
+        throw Exception('شناسه کاربر پیدا نشد');
+      }
 
       // دریافت URL عکس پروفایل فعلی از پروفایل کاربر
-      final profileResponse = await supabase
-          .from('profiles')
-          .select('avatar_url')
-          .eq('id', userId)
-          .single();
+      final profileResponse = data ?? <String, dynamic>{};
 
       final previousAvatarUrl = profileResponse['avatar_url'];
 
@@ -305,9 +304,8 @@ class _EditProfileState extends ConsumerState<EditProfile> {
         }
 
         // به‌روزرسانی URL تصویر پروفایل به null
-        await supabase
-            .from('profiles')
-            .update({'avatar_url': null}).eq('id', userId);
+        await ProfileRepository().updateProfile(userId, {'avatar_url': ''});
+        ref.invalidate(profileProvider);
 
         // نمایش پیام موفقیت
         if (mounted) {
@@ -390,17 +388,17 @@ class _EditProfileState extends ConsumerState<EditProfile> {
         throw Exception('آپلود تصویر به ArvanCloud شکست خورد');
       }
 
-      // به‌روزرسانی URL تصویر در پروفایل کاربر در Supabase
-      final supabase = ref.read(supabaseClientProvider);
-      final user = supabase.auth.currentUser;
+      // به‌روزرسانی URL تصویر در پروفایل کاربر در بک‌اند Go
+      final data = await ref.read(profileProvider.future);
+      final user = _profileEditUserFromData(data);
 
       if (user == null) {
         throw Exception('کاربر وارد نشده است');
       }
 
-      await supabase
-          .from('profiles')
-          .update({'avatar_url': imageUrl}).eq('id', user.id);
+      await ProfileRepository()
+          .updateProfile(user.id, {'avatar_url': imageUrl});
+      ref.invalidate(profileProvider);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -439,17 +437,17 @@ class _EditProfileState extends ConsumerState<EditProfile> {
         throw Exception('آپلود تصویر به ArvanCloud شکست خورد');
       }
 
-      // به‌روزرسانی URL تصویر در پروفایل کاربر در Supabase
-      final supabase = ref.read(supabaseClientProvider);
-      final user = supabase.auth.currentUser;
+      // به‌روزرسانی URL تصویر در پروفایل کاربر در بک‌اند Go
+      final data = await ref.read(profileProvider.future);
+      final user = _profileEditUserFromData(data);
 
       if (user == null) {
         throw Exception('کاربر وارد نشده است');
       }
 
-      await supabase
-          .from('profiles')
-          .update({'avatar_url': imageUrl}).eq('id', user.id);
+      await ProfileRepository()
+          .updateProfile(user.id, {'avatar_url': imageUrl});
+      ref.invalidate(profileProvider);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -486,7 +484,7 @@ class _EditProfileState extends ConsumerState<EditProfile> {
         return;
       }
 
-      if (email.isEmpty || !_emailPattern.hasMatch(email)) {
+      if (email.isNotEmpty && !_emailPattern.hasMatch(email)) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('لطفاً یک ایمیل معتبر وارد کنید')),
         );
@@ -524,120 +522,56 @@ class _EditProfileState extends ConsumerState<EditProfile> {
       emailController.text = email;
       _phoneController.text = normalizedPhone;
 
-      // بررسی نام کاربری تکراری
-      final response = await supabase
-          .from('profiles')
-          .select('username')
-          .eq('username', username)
-          .neq('id', supabase.auth.currentUser!.id);
-
-      if (response.isNotEmpty) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('این نام کاربری قبلاً استفاده شده است')),
-        );
-        setState(() => _isLoading = false);
-        return;
-      }
-
-      // به‌روزرسانی ایمیل کاربر اگر تغییر کرده باشد
-      final currentEmail =
-          supabase.auth.currentUser!.email?.trim().toLowerCase();
-      bool emailChangeRequested = false;
-
-      if (currentEmail != email) {
-        try {
-          // استفاده از طرح URI مستقیم اپلیکیشن برای ریدایرکت
-          final redirectUrl = 'vista://auth/email-change';
-
-          // درخواست تغییر ایمیل با تنظیم آدرس ریدایرکت
-          await supabase.auth.updateUser(
-            UserAttributes(
-              email: email,
-              data: {
-                'redirectTo': redirectUrl
-              }, // استفاده از data به جای emailRedirectTo
-            ),
-          );
-
-          logInfo('Update user response received');
-
-          emailChangeRequested = true;
-
-          // نمایش پیام به کاربر
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                    'یک ایمیل تأیید به $email ارسال شد. لطفاً ایمیل خود را بررسی کرده و روی لینک کلیک کنید.'),
-                duration: Duration(seconds: 8),
-              ),
-            );
-          }
-        } catch (e) {
-          if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('خطا در به‌روزرسانی ایمیل: $e')),
-          );
-          setState(() => _isLoading = false);
-          return;
-        }
-      }
-
       final data = await ref.read(profileProvider.future);
       final String currentPhone =
           normalizePhone09((data?['phone_number'] ?? '').toString()) ?? '';
       final bool phoneChanged = normalizedPhone != currentPhone;
 
       if (phoneChanged) {
-        try {
-          await ref
-              .read(authControllerProvider.notifier)
-              .sendOtp(normalizedPhone);
-          // Step 2: Show OTP Dialog
-          final bool verified =
-              await showOtpDialog(context, ref, normalizedPhone);
-          if (!verified) {
-            setState(() => _isLoading = false);
-            return; // Exit if OTP verification failed or canceled
-          }
-        } catch (e) {
-          if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('خطا در ارسال کد تأیید: $e')),
-          );
-          setState(() => _isLoading = false);
-          return;
-        }
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content:
+                Text('برای تغییر شماره موبایل، فعلاً با همان شماره وارد شوید'),
+          ),
+        );
+        setState(() => _isLoading = false);
+        return;
       }
 
       // به‌روزرسانی پروفایل
       final updates = sanitizeProfilePayload({
         'username': username,
         'full_name': fullNameController.text.trim(),
+        if (email.isNotEmpty) 'email': email,
         'bio': bioController.text.trim(),
         'birth_date': _birthDate,
         'phone_number': normalizedPhone,
       });
 
-      await supabase
-          .from('profiles')
-          .update(updates)
-          .eq('id', supabase.auth.currentUser!.id);
+      final userId = (data?['id'] ?? data?['user_id'] ?? '').toString();
+      final updated = await ProfileRepository().updateProfile(userId, updates);
 
       if (!mounted) return;
       ref.invalidate(profileProvider);
 
+      final emailVerificationMessage =
+          await _sendEmailVerificationIfNeeded(email, updated);
+      if (!mounted) return;
+
       String successMessage = 'پروفایل با موفقیت به‌روزرسانی شد';
-      if (emailChangeRequested) {
-        successMessage +=
-            '. برای تکمیل تغییر ایمیل، لینک ارسال شده به ایمیل جدید را تایید کنید';
+      if (emailVerificationMessage != null) {
+        successMessage += '. $emailVerificationMessage';
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(successMessage)),
       );
-      Navigator.of(context).pop();
+      if (updated['profile_completed'] == true) {
+        Navigator.pushNamedAndRemoveUntil(context, '/home', (_) => false);
+      } else {
+        Navigator.of(context).pop();
+      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -648,6 +582,140 @@ class _EditProfileState extends ConsumerState<EditProfile> {
         setState(() => _isLoading = false);
       }
     }
+  }
+
+  Future<String?> _sendEmailVerificationIfNeeded(
+    String email,
+    Map<String, dynamic> updated,
+  ) async {
+    if (email.isEmpty || updated['email_verified_at'] != null) {
+      return null;
+    }
+
+    final accessToken = await TokenStorage.getAccessToken();
+    if (accessToken == null || accessToken.isEmpty) {
+      return null;
+    }
+
+    try {
+      final response = await AuthRepository().sendEmailVerification(
+        accessToken: accessToken,
+        email: email,
+      );
+      if (!response.success || response.sessionId.isEmpty) {
+        return 'ایمیل ذخیره شد';
+      }
+
+      final verified = await _showEmailVerificationDialog(
+        accessToken: accessToken,
+        sessionId: response.sessionId,
+        debugCode: response.debugCode,
+      );
+      if (verified == true) {
+        ref.invalidate(profileProvider);
+        return 'ایمیل تأیید شد';
+      }
+      return 'کد تأیید ایمیل ارسال شد';
+    } catch (e) {
+      final message = e.toString();
+      if (message.contains('پیکربندی') ||
+          message.contains('EMAIL_NOT_CONFIGURED') ||
+          message.contains('در دسترس نیست')) {
+        return 'ایمیل ذخیره شد؛ ارسال کد بعد از تنظیم SMTP فعال می‌شود';
+      }
+      return 'ایمیل ذخیره شد؛ ارسال کد تأیید ناموفق بود';
+    }
+  }
+
+  Future<bool?> _showEmailVerificationDialog({
+    required String accessToken,
+    required String sessionId,
+    String? debugCode,
+  }) {
+    final codeController = TextEditingController(text: debugCode ?? '');
+    bool isLoading = false;
+    String? errorText;
+
+    return showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('تأیید ایمیل'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('کد ارسال شده به ایمیل را وارد کنید.'),
+                  if (debugCode != null && debugCode.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Text('کد تست: $debugCode'),
+                  ],
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: codeController,
+                    keyboardType: TextInputType.number,
+                    decoration: InputDecoration(
+                      labelText: 'کد تأیید',
+                      errorText: errorText,
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isLoading
+                      ? null
+                      : () => Navigator.of(dialogContext).pop(false),
+                  child: const Text('بعداً'),
+                ),
+                ElevatedButton(
+                  onPressed: isLoading
+                      ? null
+                      : () async {
+                          final code =
+                              normalizeDigits(codeController.text).trim();
+                          if (code.isEmpty) {
+                            setDialogState(() {
+                              errorText = 'کد را وارد کنید';
+                            });
+                            return;
+                          }
+                          setDialogState(() {
+                            isLoading = true;
+                            errorText = null;
+                          });
+                          try {
+                            await AuthRepository().verifyEmail(
+                              accessToken: accessToken,
+                              sessionId: sessionId,
+                              code: code,
+                            );
+                            if (dialogContext.mounted) {
+                              Navigator.of(dialogContext).pop(true);
+                            }
+                          } catch (e) {
+                            setDialogState(() {
+                              isLoading = false;
+                              errorText = e.toString();
+                            });
+                          }
+                        },
+                  child: isLoading
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('تأیید'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
   @override
@@ -772,10 +840,14 @@ class _EditProfileState extends ConsumerState<EditProfile> {
                           controller: emailController,
                           keyboardType: TextInputType.emailAddress,
                           validator: (value) {
+                            final normalizedEmail = value?.trim() ?? '';
+                            if (normalizedEmail.isEmpty) {
+                              return null;
+                            }
                             if (value == null || value.isEmpty) {
                               return 'ایمیل نمی‌تواند خالی باشد';
                             }
-                            if (!_emailPattern.hasMatch(value)) {
+                            if (!_emailPattern.hasMatch(normalizedEmail)) {
                               return 'لطفاً یک ایمیل معتبر وارد کنید';
                             }
                             return null;
@@ -984,4 +1056,15 @@ class _EditProfileState extends ConsumerState<EditProfile> {
       ),
     );
   }
+}
+
+_ProfileEditUser? _profileEditUserFromData(Map<String, dynamic>? data) {
+  final userId = (data?['id'] ?? data?['user_id'] ?? '').toString();
+  if (userId.isEmpty) return null;
+  return _ProfileEditUser(userId);
+}
+
+class _ProfileEditUser {
+  final String id;
+  const _ProfileEditUser(this.id);
 }

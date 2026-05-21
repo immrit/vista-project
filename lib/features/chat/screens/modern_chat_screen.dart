@@ -1,4 +1,4 @@
-﻿// lib/features/chat/screens/modern_chat_screen.dart
+// lib/features/chat/screens/modern_chat_screen.dart
 //
 // صفحه چت مدرن با انیمیشن‌های حرفه‌ای
 //
@@ -16,7 +16,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
-import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
@@ -24,7 +23,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gal/gal.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../../DB/profile_cache_service.dart';
@@ -56,6 +54,7 @@ import '../../../provider/presence_provider.dart';
 import '../../../provider/optimized_conversations_provider.dart';
 import '../../../provider/settings_providers.dart';
 import '../../../services/telegram_read_receipt_service.dart';
+import '../../../services/current_user_service.dart';
 
 // ✅ New Features
 import '../widgets/chat_attachment_sheet.dart';
@@ -278,7 +277,6 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         ref
             .read(pushNotificationServiceProvider)
             .cancelConversationNotification(widget.args.conversationId);
-        unawaited(_setServerActiveConversation(isActive: true));
         _startActiveConversationHeartbeat();
       }
     });
@@ -297,13 +295,13 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   }
 
   void _initTypingListeners() {
-    final currentUserId = Supabase.instance.client.auth.currentUser?.id;
     _typingSubscription?.cancel();
 
     // Listen to typing updates
     _typingSubscription = _typingService
         .getTypingStream(widget.args.conversationId)
         .listen((typingUsers) {
+      final currentUserId = _currentUserId;
       if (currentUserId == null) return;
 
       // ✅ فقط اگر "کسی غیر از من" در حال تایپ بود
@@ -317,6 +315,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       }
     });
 
+    final currentUserId = _currentUserId;
     final initialTypingUsers =
         _typingService.getTypingUsers(widget.args.conversationId);
     final initialIsTyping =
@@ -379,6 +378,10 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
             _deletingMessageIds.contains(m.id))
         .toList();
     _latestVisibleMessages = visibleMessages;
+
+    if (visibleMessages.any((m) => !m.isMe && !m.isSeen)) {
+      unawaited(_chatRepository.markMessagesAsSeen(widget.args.conversationId));
+    }
 
     _calculateUnreadCount(visibleMessages);
 
@@ -532,9 +535,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     _appBarAnimController.forward();
   }
 
-  void _loadCurrentUser() {
-    // ✅ گرفتن userId از Supabase
-    _currentUserId = Supabase.instance.client.auth.currentUser?.id;
+  Future<void> _loadCurrentUser() async {
+    _currentUserId = await CurrentUserService.instance.resolveUserId();
     if (_currentUserId == null) {
       debugPrint('⚠️ Warning: currentUserId is null!');
     } else {
@@ -633,7 +635,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     }
   }
 
-  StreamSubscription<RealtimeSubscribeStatus>? _realtimeSubscription;
+  StreamSubscription<SseConnectionState>? _realtimeSubscription;
 
   @override
   void dispose() {
@@ -696,7 +698,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     if (state == AppLifecycleState.resumed) {
       CurrentChatTracker.instance
           .setOpenConversation(widget.args.conversationId);
-      unawaited(_setServerActiveConversation(isActive: true));
+      _chatRepository.setActiveConversation(widget.args.conversationId);
       _startActiveConversationHeartbeat();
       return;
     }
@@ -706,7 +708,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         state == AppLifecycleState.detached) {
       _activeConversationHeartbeatTimer?.cancel();
       CurrentChatTracker.instance.clearOpenConversation();
-      unawaited(_setServerActiveConversation(isActive: false));
+      _chatRepository.setActiveConversation(null);
     }
   }
 
@@ -715,30 +717,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     _activeConversationHeartbeatTimer =
         Timer.periodic(const Duration(seconds: 30), (_) {
       CurrentChatTracker.instance.heartbeat(widget.args.conversationId);
-      unawaited(_heartbeatActiveConversation());
+      _chatRepository.setActiveConversation(widget.args.conversationId);
     });
-  }
-
-  Future<void> _setServerActiveConversation({required bool isActive}) async {
-    try {
-      await Supabase.instance.client.rpc('set_active_conversation', params: {
-        'p_conversation_id': widget.args.conversationId,
-        'p_is_active': isActive,
-      });
-    } catch (e) {
-      logInfo('⚠️ set_active_conversation failed: $e');
-    }
-  }
-
-  Future<void> _heartbeatActiveConversation() async {
-    try {
-      await Supabase.instance.client
-          .rpc('heartbeat_active_conversation', params: {
-        'p_conversation_id': widget.args.conversationId,
-      });
-    } catch (e) {
-      logInfo('⚠️ heartbeat_active_conversation failed: $e');
-    }
   }
 
   void _clearActiveConversationState() {
@@ -746,7 +726,6 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     try {
       _chatRepository.setActiveConversation(null);
     } catch (_) {}
-    unawaited(_setServerActiveConversation(isActive: false));
   }
 
   Future<void> _triggerPollingRefresh() async {
@@ -767,7 +746,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     final repo = _chatRepository;
 
     _realtimeSubscription = repo.realtimeStatus.listen((status) {
-      if (status == RealtimeSubscribeStatus.subscribed) {
+      if (status == SseConnectionState.connected) {
         _pollingTimer?.cancel();
         _pollingTimer = null;
       } else {
@@ -1137,7 +1116,9 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
   void _loadMoreMessages() {
     if (!mounted) return;
-    ref.read(chatMessagesProvider(widget.args.conversationId).notifier).loadMore();
+    ref
+        .read(chatMessagesProvider(widget.args.conversationId).notifier)
+        .loadMore();
   }
 
   void _scrollToBottom() {
@@ -1529,7 +1510,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     // تبدیل ID های انتخاب شده به مدل‌های کامل پیام
     // (این برای سرویس لازم است تا بتواند URL فایل‌ها را برای حذف پیدا کند)
     final List<MessageModel> selectedMessagesList = [];
-    final currentUserId = Supabase.instance.client.auth.currentUser?.id;
+    final currentUserId = _currentUserId;
     bool allMyMessages = true;
 
     for (final id in _selectedMessageIds) {
@@ -1603,7 +1584,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     final normalizedMessages = messageMap.values.toList(growable: false);
     if (normalizedMessages.isEmpty) return;
 
-    final currentUserId = Supabase.instance.client.auth.currentUser?.id;
+    final currentUserId = _currentUserId;
     final allMyMessages = allMyMessagesOverride ??
         normalizedMessages.every((m) => m.senderId == currentUserId);
 
@@ -2824,8 +2805,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
     final attachmentService = ChatAttachmentService();
     final chatRepository = ref.read(chatRepositoryProvider);
-    if ((_currentUserId ?? Supabase.instance.client.auth.currentUser?.id) ==
-        null) {
+    if (_currentUserId == null) {
       _showErrorSnackBar('User id not found');
       return;
     }
@@ -3049,9 +3029,10 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   Future<void> _retryFailedMessage(MessageModel message) async {
     if (message.isFailed != true) return;
 
-    final hasAttachmentData = (message.attachmentType?.trim().isNotEmpty ?? false) ||
-        (message.localFilePath?.isNotEmpty ?? false) ||
-        (message.attachmentUrl?.isNotEmpty ?? false);
+    final hasAttachmentData =
+        (message.attachmentType?.trim().isNotEmpty ?? false) ||
+            (message.localFilePath?.isNotEmpty ?? false) ||
+            (message.attachmentUrl?.isNotEmpty ?? false);
 
     if (hasAttachmentData) {
       await _retryFailedUpload(message);
@@ -3059,14 +3040,15 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     }
 
     final chatRepository = ref.read(chatRepositoryProvider);
-    final resend = await ref.read(chatActionControllerProvider.notifier).sendMessage(
-          id: message.id,
-          conversationId: message.conversationId,
-          content: message.content,
-          replyToMessageId: message.replyToMessageId,
-          replyToContent: message.replyToContent,
-          replyToSenderName: message.replyToSenderName,
-        );
+    final resend =
+        await ref.read(chatActionControllerProvider.notifier).sendMessage(
+              id: message.id,
+              conversationId: message.conversationId,
+              content: message.content,
+              replyToMessageId: message.replyToMessageId,
+              replyToContent: message.replyToContent,
+              replyToSenderName: message.replyToSenderName,
+            );
 
     if (!resend.isSuccess) {
       await chatRepository.markUploadFailed(

@@ -1,6 +1,10 @@
 import '../security/logging_utility.dart';
 import 'dart:async';
-import '../utils/const.dart';
+
+import 'package:dio/dio.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+
+import '../features/auth/providers/auth_controller.dart' show TokenStorage;
 
 /// مدیریت مرکزی کشینگ پروفایل‌ها با batching هوشمند و real-time updates
 class ProfileCacheManager {
@@ -22,6 +26,15 @@ class ProfileCacheManager {
   // Stream برای real-time updates
   final StreamController<Map<String, Map<String, String?>>> _profileUpdates =
       StreamController.broadcast();
+
+  late final Dio _dio = Dio(
+    BaseOptions(
+      baseUrl: '${dotenv.env['BACKEND_URL'] ?? 'http://10.0.2.2:8080'}/v1',
+      connectTimeout: const Duration(seconds: 10),
+      receiveTimeout: const Duration(seconds: 20),
+      headers: {'Content-Type': 'application/json'},
+    ),
+  );
 
   Stream<Map<String, Map<String, String?>>> get profileUpdates =>
       _profileUpdates.stream;
@@ -119,24 +132,30 @@ class ProfileCacheManager {
     if (userIds.isEmpty) return {};
 
     try {
-      final response = await supabase
-          .from('profiles')
-          .select('id, username, avatar_url, full_name')
-          .inFilter('id', userIds);
+      final response = await _dio.post(
+        '/profiles/batch',
+        data: {'user_ids': userIds},
+        options: await _authOptions(),
+      );
+      final profiles = _asList(_asMap(response.data)['profiles']);
 
       final results = <String, Map<String, String?>?>{};
 
       for (final userId in userIds) {
-        final profileData = response.cast<Map<String, dynamic>?>().firstWhere(
-              (p) => p?['id'] == userId,
-              orElse: () => null,
-            );
+        Map<String, dynamic>? profileData;
+        for (final item in profiles.whereType<Map>()) {
+          if (item['user_id']?.toString() == userId) {
+            profileData = item.cast<String, dynamic>();
+            break;
+          }
+        }
 
         if (profileData != null) {
           results[userId] = {
-            'username': profileData['username'] as String?,
-            'avatar_url': profileData['avatar_url'] as String?,
-            'full_name': profileData['full_name'] as String?,
+            'username': profileData['username']?.toString(),
+            'avatar_url': profileData['avatar_url']?.toString(),
+            'full_name': profileData['full_name']?.toString(),
+            'user_id': userId,
           };
         } else {
           results[userId] = null;
@@ -152,6 +171,23 @@ class ProfileCacheManager {
   }
 
   /// بروزرسانی پروفایل از real-time
+  Future<Options?> _authOptions() async {
+    final token = await TokenStorage.getAccessToken();
+    if (token == null || token.isEmpty) return null;
+    return Options(headers: {'Authorization': 'Bearer $token'});
+  }
+
+  Map<String, dynamic> _asMap(dynamic data) {
+    if (data is Map<String, dynamic>) return data;
+    if (data is Map) return data.cast<String, dynamic>();
+    return <String, dynamic>{};
+  }
+
+  List<dynamic> _asList(dynamic data) {
+    if (data is List) return data;
+    return const [];
+  }
+
   void updateProfileFromRealtime(String userId, Map<String, dynamic> data) {
     final profile = {
       'username': data['username'] as String?,

@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../utils/const.dart';
 import '../security/logging_utility.dart';
+import '../features/auth/data/auth_repository.dart';
+import '../features/auth/providers/auth_controller.dart';
+import '../services/current_user_service.dart';
 import 'session_manager_service_v2.dart';
 
 /// ═══════════════════════════════════════════════════════════════════════════
@@ -129,28 +131,27 @@ class AuthNavigationService {
   /// زمان انتظار برای restore نشست
   static const Duration _sessionRestoreWait = Duration(milliseconds: 500);
 
-  /// threshold برای refresh نشست (دقیقه قبل از انقضا)
-  static const int _refreshThresholdMinutes = 10;
-
   // ═══════════════════════════════════════════════════════════════════════════
   // PUBLIC GETTERS
   // ═══════════════════════════════════════════════════════════════════════════
 
-  /// بررسی سریع - آیا کاربر لاگین است (cached)
   static bool get isUserLoggedIn {
-    try {
-      return Supabase.instance.client.auth.currentUser != null;
-    } catch (e) {
-      return false;
-    }
+    // ابتدا cache مرکزی را چک می‌کنیم (synchronous)
+    final cached = CurrentUserService.cachedUserId;
+    return cached != null && cached.isNotEmpty;
   }
 
-  /// شناسه کاربر فعلی
+  /// شناسه کاربر فعلی — از cache مرکزی
   static String? get currentUserId {
-    try {
-      return Supabase.instance.client.auth.currentUser?.id;
-    } catch (e) {
-      return null;
+    return CurrentUserService.cachedUserId;
+  }
+
+  static Future<void> _hydrateCachedUserId() async {
+    if (CurrentUserService.cachedUserId?.isNotEmpty == true) return;
+
+    final storedUserId = await TokenStorage.getUserId();
+    if (storedUserId != null && storedUserId.isNotEmpty) {
+      CurrentUserService.setCachedUserId(storedUserId);
     }
   }
 
@@ -169,59 +170,21 @@ class AuthNavigationService {
     logInfo('🔍 [AuthNav] Quick check starting...');
 
     try {
-      final supabase = Supabase.instance.client;
-      final session = supabase.auth.currentSession;
-      final user = supabase.auth.currentUser;
-
-      // بررسی وجود session
-      if (session == null || user == null) {
-        logInfo('⚠️ [AuthNav] Quick check: No session/user found');
-        return const SessionVerificationResult(
-          state: SessionState.unauthenticated,
-          message: 'نشست فعالی یافت نشد',
+      final cachedId = CurrentUserService.cachedUserId;
+      if (cachedId != null && cachedId.isNotEmpty) {
+        logInfo('✅ [AuthNav] Quick check: user found in cache (id=$cachedId)');
+        _currentState = SessionState.authenticated;
+        return SessionVerificationResult(
+          state: SessionState.authenticated,
+          userId: cachedId,
         );
       }
 
-      // بررسی expiry
-      final expiresAt = session.expiresAt;
-      if (expiresAt != null) {
-        final expiryTime =
-            DateTime.fromMillisecondsSinceEpoch(expiresAt * 1000);
-        final now = DateTime.now();
-        final timeUntilExpiry = expiryTime.difference(now);
-
-        if (timeUntilExpiry.isNegative) {
-          logInfo('⏰ [AuthNav] Quick check: Session expired');
-          return SessionVerificationResult(
-            state: SessionState.expiredRefreshable,
-            message: 'نشست منقضی شده',
-            userId: user.id,
-            expiresAt: expiryTime,
-            canRetry: true,
-          );
-        }
-
-        if (timeUntilExpiry.inMinutes < _refreshThresholdMinutes) {
-          logInfo(
-              '⏳ [AuthNav] Quick check: Session expiring soon (${timeUntilExpiry.inMinutes}m)');
-          return SessionVerificationResult(
-            state: SessionState.expiredRefreshable,
-            message: 'نشست در حال انقضا',
-            userId: user.id,
-            expiresAt: expiryTime,
-            canRetry: true,
-          );
-        }
-      }
-
-      logInfo('✅ [AuthNav] Quick check: Session valid');
-      _currentState = SessionState.authenticated;
-      return SessionVerificationResult(
-        state: SessionState.authenticated,
-        userId: user.id,
-        expiresAt: expiresAt != null
-            ? DateTime.fromMillisecondsSinceEpoch(expiresAt * 1000)
-            : null,
+      // اگر cache خالی بود، یعنی کاربر لاگین نیست
+      logInfo('⚠️ [AuthNav] Quick check: No user in cache');
+      return const SessionVerificationResult(
+        state: SessionState.unauthenticated,
+        message: 'نشست فعالی یافت نشد',
       );
     } catch (e) {
       logInfo('❌ [AuthNav] Quick check error: $e');
@@ -259,6 +222,8 @@ class AuthNavigationService {
     }
 
     _currentState = SessionState.verifying;
+
+    await _hydrateCachedUserId();
 
     try {
       // مرحله 1: Quick check
@@ -311,9 +276,10 @@ class AuthNavigationService {
       final sessionManagerCheck = await _verifyWithSessionManager();
       if (!sessionManagerCheck) {
         logInfo('⚠️ [AuthNav] SessionManager reports invalid session');
-        // اما اگر Supabase auth معتبره، به اون اعتماد کن
+        // اما اگر local auth token معتبره، به اون اعتماد کن
         if (quickResult.isValid) {
-          logInfo('ℹ️ [AuthNav] Trusting Supabase auth despite SessionManager');
+          logInfo(
+              'ℹ️ [AuthNav] Trusting local auth token despite SessionManager');
         }
       }
 
@@ -503,34 +469,49 @@ class AuthNavigationService {
   // PRIVATE HELPERS
   // ═══════════════════════════════════════════════════════════════════════════
 
-  /// Refresh با retry و exponential backoff
+  /// Refresh با retry — از بک‌اند Go استفاده می‌کند
   static Future<SessionVerificationResult> _refreshWithRetry() async {
     for (int attempt = 1; attempt <= _maxRefreshAttempts; attempt++) {
       logInfo('🔄 [AuthNav] Refresh attempt $attempt/$_maxRefreshAttempts');
 
       try {
-        final response = await Supabase.instance.client.auth.refreshSession();
-
-        if (response.session != null && response.user != null) {
-          logInfo('✅ [AuthNav] Session refreshed successfully');
-          _currentState = SessionState.authenticated;
-
-          return SessionVerificationResult(
-            state: SessionState.authenticated,
-            userId: response.user!.id,
-            expiresAt: response.session!.expiresAt != null
-                ? DateTime.fromMillisecondsSinceEpoch(
-                    response.session!.expiresAt! * 1000)
-                : null,
+        final refreshToken = await TokenStorage.getRefreshToken();
+        if (refreshToken == null || refreshToken.isEmpty) {
+          logInfo('❌ [AuthNav] No refresh token available');
+          _currentState = SessionState.expiredTerminal;
+          return const SessionVerificationResult(
+            state: SessionState.expiredTerminal,
+            message: 'توکن بازنشانی یافت نشد',
           );
         }
-      } on AuthException catch (e) {
-        logInfo('⚠️ [AuthNav] Auth exception on refresh: ${e.message}');
 
-        // برخی خطاها غیرقابل retry هستند
-        if (e.message.contains('refresh_token_not_found') ||
-            e.message.contains('Invalid Refresh Token')) {
-          logInfo('❌ [AuthNav] Terminal auth error, stopping retry');
+        final repo = AuthRepository();
+        final response = await repo.refreshToken(refreshToken);
+
+        // ذخیره توکن جدید
+        await TokenStorage.saveTokens(response.session);
+        await TokenStorage.saveUserId(response.user.id);
+        CurrentUserService.setCachedUserId(response.user.id);
+
+        logInfo('✅ [AuthNav] Token refreshed via Go backend');
+        _currentState = SessionState.authenticated;
+
+        return SessionVerificationResult(
+          state: SessionState.authenticated,
+          userId: response.user.id,
+          expiresAt: response.session.expiresAt,
+        );
+      } catch (e) {
+        logInfo('⚠️ [AuthNav] Refresh attempt $attempt failed: $e');
+
+        // اگر خطا terminal بود، retry نکن
+        final errStr = e.toString().toLowerCase();
+        if (errStr.contains('invalid') ||
+            errStr.contains('revoked') ||
+            errStr.contains('expired') ||
+            errStr.contains('401') ||
+            errStr.contains('unauthorized')) {
+          logInfo('❌ [AuthNav] Terminal refresh error, stopping retry');
           _currentState = SessionState.expiredTerminal;
           return SessionVerificationResult(
             state: SessionState.expiredTerminal,
@@ -538,8 +519,6 @@ class AuthNavigationService {
             retryCount: attempt,
           );
         }
-      } catch (e) {
-        logInfo('⚠️ [AuthNav] Refresh error: $e');
       }
 
       // Exponential backoff
@@ -553,11 +532,10 @@ class AuthNavigationService {
 
     logInfo('❌ [AuthNav] All refresh attempts failed');
     _currentState = SessionState.expiredRefreshable;
-    return SessionVerificationResult(
+    return const SessionVerificationResult(
       state: SessionState.expiredRefreshable,
       message: 'تلاش برای تمدید نشست ناموفق بود',
       canRetry: true,
-      retryCount: _maxRefreshAttempts,
     );
   }
 

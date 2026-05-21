@@ -1,18 +1,22 @@
 import 'dart:convert';
-import '../security/logging_utility.dart';
+
+import 'package:dio/dio.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
+
+import '../features/auth/providers/auth_controller.dart';
 import '../model/notificationModel.dart';
-import '../utils/const.dart';
+import '../security/logging_utility.dart';
+import '../services/current_user_service.dart';
 import '../services/local_notification_center.dart';
 
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
     LocalNotificationCenter.plugin;
 
 final userIdProvider = Provider<String?>((ref) {
-  return supabase.auth.currentUser?.id;
+  return CurrentUserService.cachedUserId;
 });
 
 const int _kPageSize = 20;
@@ -29,7 +33,9 @@ class FollowRequestActionResult {
 }
 
 bool notificationTypeMatchesFilter(
-    String notificationType, String? filterType) {
+  String notificationType,
+  String? filterType,
+) {
   if (filterType == null || filterType == 'all') return true;
 
   final canonicalType = NotificationModel.canonicalType(notificationType);
@@ -59,50 +65,56 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
   static const bool _showRealtimeLocalNotifications = false;
 
   NotificationsNotifier(this._ref) : super([]) {
-    _userId = _ref.read(userIdProvider);
-    if (_userId != null) {
-      fetchNotifications(refresh: true);
-      _subscribeToNotificationRealtime();
-    }
-    // گوش دادن به تغییر کاربر:
-    _ref.listen<String?>(userIdProvider, (prev, next) {
-      if (prev != next) {
-        _userId = next;
-        _unsubscribe();
-        state = [];
-        _page = 0;
-        _hasMore = true;
-        if (_userId != null) {
-          fetchNotifications(refresh: true);
-          _subscribeToNotificationRealtime();
-        }
-      }
-    });
+    _bootstrap();
   }
 
   final Ref _ref;
-  RealtimeChannel? _channel;
-  String? _userId;
+  late final Dio _dio = Dio(BaseOptions(
+    baseUrl: '${dotenv.env['BACKEND_URL'] ?? 'http://10.0.2.2:8080'}/v1',
+    connectTimeout: const Duration(seconds: 15),
+    receiveTimeout: const Duration(seconds: 15),
+    headers: {'Content-Type': 'application/json'},
+  ));
 
+  String? _userId;
   int _page = 0;
   bool _isFetching = false;
   bool _hasMore = true;
-  bool _isDisposed = false; // ✅ Flag برای چک کردن dispose
+  bool _isDisposed = false;
 
   bool get hasMore => _hasMore;
   bool get isFetching => _isFetching;
 
-  /// بارگیری (پایه، رفرش یا اولین بار)
+  Future<void> _bootstrap() async {
+    _userId = _ref.read(userIdProvider) ??
+        await CurrentUserService.instance.resolveUserId();
+    if (_userId != null && !_isDisposed) {
+      await fetchNotifications(refresh: true);
+      _subscribeToNotificationRealtime();
+    }
+  }
+
+  Future<String?> _resolveUserId() async {
+    if (_userId != null && _userId!.isNotEmpty) return _userId;
+    _userId = await CurrentUserService.instance.resolveUserId();
+    return _userId;
+  }
+
+  Future<Options> _authOptions() async {
+    final token = await TokenStorage.getAccessToken();
+    if (token == null || token.isEmpty) {
+      throw StateError('User is not authenticated');
+    }
+    return Options(headers: {'Authorization': 'Bearer $token'});
+  }
+
   Future<void> fetchNotifications({bool refresh = false}) async {
-    if (_isFetching || _isDisposed) return; // ✅ چک کردن dispose
+    if (_isFetching || _isDisposed) return;
     _isFetching = true;
 
-    final userId = _userId ?? supabase.auth.currentUser?.id;
+    final userId = await _resolveUserId();
     if (userId == null) {
-      logInfo('⚠️ کاربر لاگین نشده، اعلان‌ها بارگیری نمی‌شوند');
-      if (!_isDisposed) {
-        state = [];
-      }
+      if (!_isDisposed) state = [];
       _isFetching = false;
       _hasMore = false;
       return;
@@ -112,193 +124,75 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
       _page = 0;
       _hasMore = true;
       state = [];
-      logInfo('🔄 شروع رفرش اعلان‌ها...');
     }
 
     try {
-      final from = _page * _kPageSize;
-      final to = from + _kPageSize - 1;
+      final offset = _page * _kPageSize;
+      final response = await _dio.get(
+        '/notifications',
+        queryParameters: {'limit': _kPageSize, 'offset': offset},
+        options: await _authOptions(),
+      );
+      if (_isDisposed) return;
 
-      logInfo('📡 درخواست اعلان‌ها از $from تا $to');
-
-      final response = await supabase
-          .from('notifications')
-          .select(
-              '*, sender:profiles!notifications_sender_id_fkey(username, full_name, avatar_url, is_verified, verification_type)')
-          .eq('recipient_id', userId)
-          .order('created_at', ascending: false)
-          .range(from, to);
-
-      // ✅ چک کردن dispose بعد از async operation
-      if (_isDisposed) {
-        logInfo('⚠️ Notifier disposed, skipping state update');
-        return;
-      }
-
-      final notifications = (response as List)
-          .map((item) => NotificationModel.fromMap(item))
+      final rawItems = (response.data['notifications'] as List? ?? []);
+      final notifications = rawItems
+          .map((item) =>
+              NotificationModel.fromMap(Map<String, dynamic>.from(item as Map)))
           .toList();
-
-      logInfo('📥 ${notifications.length} اعلان دریافت شد');
 
       if (refresh) {
         state = notifications;
-        logInfo('✅ اعلان‌ها رفرش شدند');
       } else {
-        // تکراری اضافه نشود
         final existingIds = state.map((n) => n.id).toSet();
         final newNotifications =
             notifications.where((n) => !existingIds.contains(n.id)).toList();
         state = [...state, ...newNotifications];
-        logInfo('➕ ${newNotifications.length} اعلان جدید اضافه شد');
       }
 
-      if (notifications.length < _kPageSize) {
-        _hasMore = false;
-        logInfo('📄 آخرین صفحه اعلان‌ها بارگیری شد');
-      } else {
-        _hasMore = true;
-        _page++;
-        logInfo('📄 صفحه بعدی آماده: $_page');
-      }
-    } catch (e) {
-      print("❌ خطا در واکشی اعلان‌ها: $e");
-      if (refresh && !_isDisposed) {
-        state = [];
-        logInfo('🔄 لیست اعلان‌ها پاک شد به دلیل خطا');
-      }
+      _hasMore = response.data['has_more'] == true;
+      if (_hasMore) _page++;
+    } catch (e, st) {
+      logError('Failed to fetch notifications', error: e, stackTrace: st);
+      if (refresh && !_isDisposed) state = [];
       _hasMore = false;
     } finally {
       _isFetching = false;
     }
   }
 
-  /// بارگیری صفحه بعد (برای لیزی لودینگ)
   Future<void> fetchMore() async {
     if (_hasMore && !_isFetching) {
       await fetchNotifications();
     }
   }
 
-  /// پشتیبانی کامل از ریل تایم (افزودن اعلان جدید بالای لیست)
   void _subscribeToNotificationRealtime() {
-    final userId = _userId ?? supabase.auth.currentUser?.id;
-    if (userId == null) return;
-    _unsubscribe();
-
-    _channel = supabase.channel('public:notifications').onPostgresChanges(
-          event: PostgresChangeEvent.insert,
-          schema: 'public',
-          table: 'notifications',
-          filter: PostgresChangeFilter(
-            type: PostgresChangeFilterType.eq,
-            column: 'recipient_id',
-            value: userId,
-          ),
-          callback: (payload) async {
-            // ✅ چک کردن dispose قبل از پردازش
-            if (_isDisposed) {
-              logInfo('⚠️ Notifier disposed, ignoring realtime notification');
-              return;
-            }
-
-            try {
-              final newData = payload.newRecord;
-              logInfo('🔔 اعلان جدید دریافت شد: ${newData['type']}');
-
-              // دریافت اطلاعات کامل فرستنده
-              final senderData = await supabase
-                  .from('profiles')
-                  .select(
-                      'username, full_name, avatar_url, is_verified, verification_type')
-                  .eq('id', newData['sender_id'])
-                  .single();
-
-              // ✅ چک کردن dispose بعد از async operation
-              if (_isDisposed) {
-                logInfo('⚠️ Notifier disposed during realtime processing');
-                return;
-              }
-
-              // ترکیب اطلاعات اعلان با پروفایل
-              final completeData = {...newData, 'sender': senderData};
-              final notif = NotificationModel.fromMap(completeData);
-
-              // بررسی تکراری نبودن اعلان
-              if (!state.any((n) => n.id == notif.id)) {
-                state = [notif, ...state];
-                if (_showRealtimeLocalNotifications) {
-                  await _showLocalNotification(notif);
-                }
-                logInfo('✅ اعلان جدید به لیست اضافه شد: ${notif.type}');
-              } else {
-                logInfo('⚠️ اعلان تکراری نادیده گرفته شد: ${notif.id}');
-              }
-            } catch (e) {
-              logInfo('❌ خطا در پردازش اعلان ریل تایم: $e');
-
-              // ✅ چک کردن dispose قبل از fallback
-              if (_isDisposed) return;
-
-              // در صورت خطا، اعلان ساده را اضافه کن
-              try {
-                final notif = NotificationModel.fromMap(payload.newRecord);
-                if (!state.any((n) => n.id == notif.id)) {
-                  state = [notif, ...state];
-                  if (_showRealtimeLocalNotifications) {
-                    await _showLocalNotification(notif);
-                  }
-                }
-              } catch (fallbackError) {
-                logInfo('❌ خطا در fallback اعلان: $fallbackError');
-              }
-            }
-          },
-        )..subscribe();
+    // Social notifications now arrive through FCM and are persisted by Go.
   }
 
-  void _unsubscribe() {
-    if (_channel != null) {
-      try {
-        supabase.removeChannel(_channel!);
-      } catch (_) {}
-      _channel = null;
-    }
-  }
+  void _unsubscribe() {}
 
-  /// فیلتر کردن لینک‌ها از متن
   String _filterLinksFromText(String text) {
     if (text.isEmpty) return text;
-
-    // فیلتر کردن لینک‌های Vista و پست‌های اشتراکی
-    String filteredText = text;
-
-    // حذف لینک‌های Vista
+    var filteredText = text;
     filteredText =
         filteredText.replaceAll(RegExp(r'https?://[^\s]*vista[^\s]*'), '');
     filteredText =
         filteredText.replaceAll(RegExp(r'https?://[^\s]*post/[^\s]*'), '');
-    filteredText =
-        filteredText.replaceAll(RegExp(r'https?://[^\s]*coffevista[^\s]*'), '');
+    filteredText = filteredText.replaceAll(
+      RegExp(r'https?://[^\s]*coffevista[^\s]*'),
+      '',
+    );
     filteredText =
         filteredText.replaceAll(RegExp(r'https?://[^\s]*arvan[^\s]*'), '');
-
-    // حذف لینک‌های عمومی
     filteredText = filteredText.replaceAll(RegExp(r'https?://[^\s]*'), '');
-
-    // حذف metadata های پست‌های اشتراکی
-    filteredText = filteredText.replaceAll(RegExp(r'🖼️ آواتار:.*'), '');
-    filteredText = filteredText.replaceAll(RegExp(r'🎥 ویدیو:.*'), '');
-    filteredText = filteredText.replaceAll(RegExp(r'🏷️ تگ‌ها:.*'), '');
-    filteredText = filteredText.replaceAll(RegExp(r'🔗.*'), '');
-    filteredText = filteredText.replaceAll(RegExp(r'📝 پست از.*'), '');
-
     return filteredText.trim();
   }
 
-  // نمایش نوتیفیکیشن لوکال
   Future<void> _showLocalNotification(NotificationModel notif) async {
-    String? title, body;
+    String? title;
+    String? body;
     final senderUsername = notif.username.isNotEmpty ? notif.username : 'کاربر';
     final notificationType = NotificationModel.canonicalType(notif.type);
 
@@ -316,7 +210,7 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
         body = '$senderUsername: ${_filterLinksFromText(notif.content)}';
         break;
       case 'follow':
-        title = 'دنبال‌کننده جدید';
+        title = 'دنبال کننده جدید';
         body = '$senderUsername شما را دنبال کرد';
         break;
       case 'follow_request':
@@ -332,53 +226,10 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
         title = 'پیام جدید';
         body = '$senderUsername: ${_filterLinksFromText(notif.content)}';
         break;
-      case 'reaction':
-      case 'message_reaction':
-        title = 'واکنش جدید';
-        body = '$senderUsername به پیام شما واکنش نشان داد';
-        break;
-      case 'mention':
-        title = 'منشن جدید';
-        body = '$senderUsername شما را منشن کرد';
-        break;
-      case 'suggest_follow':
-        title = 'پیشنهاد دنبال‌کردن';
-        body = notif.content.isNotEmpty
-            ? notif.content
-            : 'چند کاربر جدید برای دنبال‌کردن پیشنهاد شد';
-        break;
-      case 'suggest_post':
-        title = 'پیشنهاد پست';
-        body = notif.content.isNotEmpty
-            ? notif.content
-            : 'یک پست جدید پیشنهادی برای شما آماده است';
-        break;
-      case 'daily_suggestion_digest':
-        title = 'پیشنهادهای امروز';
-        body = notif.content.isNotEmpty
-            ? notif.content
-            : 'پیشنهادهای روزانه شما آماده است';
-        break;
       default:
         title = 'اعلان';
         body = notif.content;
     }
-
-    // ✅ ساخت payload کامل
-    final payloadMap = notif.toPayloadJson();
-    final payloadJson = jsonEncode(payloadMap);
-
-    // 🔍 DEBUG: چاپ اطلاعات کامل
-    print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    print('📢 نمایش Local Notification:');
-    print('   Type: ${notif.type}');
-    print('   ID: ${notif.id}');
-    print('   Sender: ${notif.senderId}');
-    print('   PostID: ${notif.postId}');
-    print('   CommentID: ${notif.commentId}');
-    print('   ConversationID: ${notif.conversationId}');
-    print('   Payload JSON: $payloadJson');
-    print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
     await flutterLocalNotificationsPlugin.show(
       DateTime.now().millisecondsSinceEpoch % 100000,
@@ -387,7 +238,7 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
       NotificationDetails(
         android: AndroidNotificationDetails(
           'social_notify',
-          'فعالیت‌های اجتماعی',
+          'فعالیت های اجتماعی',
           channelDescription: 'اعلان رویدادهای اجتماعی',
           importance: Importance.high,
           priority: Priority.high,
@@ -402,48 +253,40 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
           presentSound: true,
         ),
       ),
-      payload: payloadJson, // ✅ JSON کامل
+      payload: jsonEncode(notif.toPayloadJson()),
     );
   }
 
   @override
   void dispose() {
-    _isDisposed = true; // ✅ علامت‌گذاری dispose
+    _isDisposed = true;
     _unsubscribe();
     super.dispose();
   }
 
   Future<void> deleteAllNotifications() async {
-    if (_isDisposed) return; // ✅ چک کردن dispose
-    final userId = _userId ?? supabase.auth.currentUser?.id;
+    if (_isDisposed) return;
+    final userId = await _resolveUserId();
     if (userId == null) {
-      if (!_isDisposed) {
-        state = [];
-      }
+      if (!_isDisposed) state = [];
       return;
     }
+
     try {
-      await supabase.from('notifications').delete().eq('recipient_id', userId);
-      if (!_isDisposed) {
-        state = [];
-      }
-    } catch (e) {
-      print("خطا در حذف اعلان‌ها: $e");
+      await _dio.delete('/notifications', options: await _authOptions());
+      if (!_isDisposed) state = [];
+    } catch (e, st) {
+      logError('Failed to delete all notifications', error: e, stackTrace: st);
     }
   }
 
   Future<void> markAllAsRead() async {
-    if (_isDisposed) return; // ✅ چک کردن dispose
-    final userId = _userId ?? supabase.auth.currentUser?.id;
+    if (_isDisposed) return;
+    final userId = await _resolveUserId();
     if (userId == null) return;
 
     try {
-      await supabase
-          .from('notifications')
-          .update({'is_read': true})
-          .eq('recipient_id', userId)
-          .eq('is_read', false);
-
+      await _dio.post('/notifications/read-all', options: await _authOptions());
       if (!_isDisposed) {
         state = [
           for (final notification in state)
@@ -453,23 +296,22 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
               notification
         ];
       }
-    } catch (e) {
-      logInfo('خطا در علامت‌گذاری اعلان‌ها به عنوان خوانده شده: $e');
+    } catch (e, st) {
+      logError('Failed to mark all notifications as read',
+          error: e, stackTrace: st);
     }
   }
 
   Future<void> markAsRead(String notificationId) async {
-    if (_isDisposed) return; // ✅ چک کردن dispose
-    final userId = _userId ?? supabase.auth.currentUser?.id;
+    if (_isDisposed || notificationId.isEmpty) return;
+    final userId = await _resolveUserId();
     if (userId == null) return;
 
     try {
-      await supabase
-          .from('notifications')
-          .update({'is_read': true})
-          .eq('id', notificationId)
-          .eq('recipient_id', userId);
-
+      await _dio.post(
+        '/notifications/$notificationId/read',
+        options: await _authOptions(),
+      );
       if (!_isDisposed) {
         state = [
           for (final notification in state)
@@ -479,106 +321,47 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
               notification
         ];
       }
-    } catch (e) {
-      logInfo('خطا در خوانده‌شدن اعلان: $e');
+    } catch (e, st) {
+      logError('Failed to mark notification as read', error: e, stackTrace: st);
     }
   }
 
-  /// ریفِرش دستی (مثلاً برای pull to refresh)
   Future<void> refresh() async {
     await fetchNotifications(refresh: true);
   }
 
-  /// حذف یک اعلان به صورت تکی (از دیتابیس و استیت)
   Future<void> removeNotification(String notificationId) async {
-    if (_isDisposed) return; // ✅ چک کردن dispose
+    if (_isDisposed || notificationId.isEmpty) return;
     try {
-      await supabase.from('notifications').delete().eq('id', notificationId);
+      await _dio.delete('/notifications/$notificationId',
+          options: await _authOptions());
       if (!_isDisposed) {
         state = state.where((n) => n.id != notificationId).toList();
       }
-    } catch (e) {
-      logInfo('خطا در حذف اعلان: $e');
+    } catch (e, st) {
+      logError('Failed to remove notification', error: e, stackTrace: st);
     }
   }
 
-  /// حذف اعلان follow_request با شناسه
   Future<void> removeFollowRequestById(String notificationId) async {
-    if (_isDisposed) return; // ✅ چک کردن dispose
-    try {
-      final notif = state.firstWhere(
-        (n) =>
-            n.id == notificationId &&
-            NotificationModel.canonicalType(n.type) == 'follow_request',
-        orElse: () => NotificationModel.empty(),
-      );
-      if (notif.id.isEmpty) return;
-      await supabase.from('notifications').delete().eq('id', notificationId);
-      if (!_isDisposed) {
-        state = state.where((n) => n.id != notificationId).toList();
-      }
-    } catch (e) {
-      logInfo('خطا در حذف اعلان درخواست دنبال کردن: $e');
-    }
+    if (_isDisposed || notificationId.isEmpty) return;
+    await removeNotification(notificationId);
   }
 
-  Future<void> _cleanupFollowRequestNotifications({
+  void _removeFollowRequestNotifications({
     required String requesterId,
     required String recipientId,
     String? notificationId,
-  }) async {
+  }) {
     if (_isDisposed) return;
-
-    final idsToDelete = <String>{};
-    if (notificationId != null && notificationId.isNotEmpty) {
-      idsToDelete.add(notificationId);
-    }
-
-    try {
-      final response = await supabase
-          .from('notifications')
-          .select('id')
-          .eq('recipient_id', recipientId)
-          .eq('sender_id', requesterId)
-          .eq('type', 'follow_request');
-
-      for (final row in (response as List<dynamic>)) {
-        final id = row['id']?.toString();
-        if (id != null && id.isNotEmpty) {
-          idsToDelete.add(id);
-        }
-      }
-
-      if (idsToDelete.isNotEmpty) {
-        await supabase
-            .from('notifications')
-            .delete()
-            .inFilter('id', idsToDelete.toList(growable: false));
-      }
-    } catch (e) {
-      logInfo('خطا در پاکسازی اعلان‌های follow request: $e');
+    state = state.where((n) {
       if (notificationId != null && notificationId.isNotEmpty) {
-        try {
-          await supabase
-              .from('notifications')
-              .delete()
-              .eq('id', notificationId);
-          idsToDelete.add(notificationId);
-        } catch (_) {}
+        if (n.id == notificationId) return false;
       }
-    }
-
-    if (!_isDisposed) {
-      state = state.where((n) {
-        if (idsToDelete.contains(n.id)) return false;
-
-        final isMatchingPair =
-            NotificationModel.canonicalType(n.type) == 'follow_request' &&
-                n.senderId == requesterId &&
-                n.recipientId == recipientId;
-        return !isMatchingPair;
-      }).toList(growable: false);
-    }
+      return !(NotificationModel.canonicalType(n.type) == 'follow_request' &&
+          n.senderId == requesterId &&
+          n.recipientId == recipientId);
+    }).toList(growable: false);
   }
 
   Future<FollowRequestActionResult> respondToFollowRequest({
@@ -593,36 +376,41 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
       );
     }
 
-    final userId = _userId ?? supabase.auth.currentUser?.id;
+    final userId = await _resolveUserId();
     if (userId == null) {
       return const FollowRequestActionResult(
         FollowRequestActionState.failed,
         'ابتدا وارد حساب کاربری شوید',
       );
     }
-    if (requesterId.isEmpty) {
+    if (requesterId.isEmpty || requesterId == userId) {
       return const FollowRequestActionResult(
         FollowRequestActionState.failed,
         'شناسه درخواست نامعتبر است',
       );
     }
-    if (requesterId == userId) {
-      return const FollowRequestActionResult(
-        FollowRequestActionState.failed,
-        'شما نمی‌توانید درخواست خودتان را مدیریت کنید',
-      );
-    }
 
     try {
-      final request = await supabase
-          .from('follow_requests')
-          .select('id, status')
-          .eq('requester_id', requesterId)
-          .eq('recipient_id', userId)
-          .maybeSingle();
+      final response = await _dio.post(
+        '/me/follow-request/respond',
+        data: {'requester_id': requesterId, 'accept': accept},
+        options: await _authOptions(),
+      );
+      _removeFollowRequestNotifications(
+        requesterId: requesterId,
+        recipientId: userId,
+        notificationId: notificationId,
+      );
 
-      if (request == null) {
-        await _cleanupFollowRequestNotifications(
+      final message =
+          response.data is Map ? response.data['message']?.toString() : null;
+      return FollowRequestActionResult(
+        FollowRequestActionState.success,
+        message ?? (accept ? 'درخواست با موفقیت پذیرفته شد' : 'درخواست رد شد'),
+      );
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404) {
+        _removeFollowRequestNotifications(
           requesterId: requesterId,
           recipientId: userId,
           notificationId: notificationId,
@@ -632,99 +420,9 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
           'این درخواست قبلا مدیریت شده است',
         );
       }
-
-      final requestId = request['id']?.toString();
-      if (requestId == null || requestId.isEmpty) {
-        return const FollowRequestActionResult(
-          FollowRequestActionState.failed,
-          'شناسه درخواست معتبر نیست',
-        );
-      }
-
-      final status = (request['status'] as String? ?? '').toLowerCase().trim();
-      if (status != 'pending') {
-        await _cleanupFollowRequestNotifications(
-          requesterId: requesterId,
-          recipientId: userId,
-          notificationId: notificationId,
-        );
-        return FollowRequestActionResult(
-          FollowRequestActionState.alreadyHandled,
-          'این درخواست در وضعیت "$status" قرار دارد',
-        );
-      }
-
-      if (accept) {
-        await supabase.from('follows').upsert(
-          {
-            'follower_id': requesterId,
-            'following_id': userId,
-            'created_at': DateTime.now().toIso8601String(),
-          },
-          onConflict: 'follower_id,following_id',
-        );
-
-        final updated = await supabase
-            .from('follow_requests')
-            .update({'status': 'accepted'})
-            .eq('id', requestId)
-            .eq('status', 'pending')
-            .select('id')
-            .maybeSingle();
-
-        if (updated == null) {
-          await _cleanupFollowRequestNotifications(
-            requesterId: requesterId,
-            recipientId: userId,
-            notificationId: notificationId,
-          );
-          return const FollowRequestActionResult(
-            FollowRequestActionState.alreadyHandled,
-            'این درخواست قبلا مدیریت شده است',
-          );
-        }
-
-        try {
-          await supabase.from('notifications').insert({
-            'recipient_id': requesterId,
-            'sender_id': userId,
-            'type': 'follow_request_accepted',
-            'content': 'درخواست دنبال کردن شما پذیرفته شد',
-            'created_at': DateTime.now().toIso8601String(),
-            'is_read': false,
-          });
-        } catch (_) {}
-      } else {
-        final updated = await supabase
-            .from('follow_requests')
-            .update({'status': 'rejected'})
-            .eq('id', requestId)
-            .eq('status', 'pending')
-            .select('id')
-            .maybeSingle();
-
-        if (updated == null) {
-          await _cleanupFollowRequestNotifications(
-            requesterId: requesterId,
-            recipientId: userId,
-            notificationId: notificationId,
-          );
-          return const FollowRequestActionResult(
-            FollowRequestActionState.alreadyHandled,
-            'این درخواست قبلا مدیریت شده است',
-          );
-        }
-      }
-
-      await _cleanupFollowRequestNotifications(
-        requesterId: requesterId,
-        recipientId: userId,
-        notificationId: notificationId,
-      );
-
       return FollowRequestActionResult(
-        FollowRequestActionState.success,
-        accept ? 'درخواست با موفقیت پذیرفته شد' : 'درخواست رد شد',
+        FollowRequestActionState.failed,
+        'خطا در پردازش درخواست: ${e.message ?? e.response?.statusCode}',
       );
     } catch (e) {
       return FollowRequestActionResult(
@@ -734,108 +432,82 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
     }
   }
 
-  /// اضافه کردن اعلان جدید از FCM Push Notification
   void addNotificationFromPush(RemoteMessage message) {
-    if (_isDisposed) return; // ✅ چک کردن dispose
+    if (_isDisposed) return;
     try {
       final notification = NotificationModel.fromFCM(message);
-
-      // بررسی تکراری نبودن اعلان
       if (!state.any((n) => n.id == notification.id)) {
-        // اضافه کردن به ابتدای لیست (جدیدترین اول)
         state = [notification, ...state];
-        logInfo('✅ اعلان جدید از FCM اضافه شد: ${notification.type}');
-      } else {
-        logInfo('⚠️ اعلان FCM تکراری نادیده گرفته شد: ${notification.id}');
+        if (_showRealtimeLocalNotifications) {
+          _showLocalNotification(notification);
+        }
       }
-    } catch (e) {
-      logInfo('❌ خطا در اضافه کردن اعلان از FCM: $e');
+    } catch (e, st) {
+      logError('Failed to add push notification', error: e, stackTrace: st);
     }
   }
 
-  /// بررسی وضعیت اتصال و تلاش مجدد در صورت نیاز
   Future<void> checkConnectionAndRetry() async {
-    if (_isDisposed) return; // ✅ چک کردن dispose
+    if (_isDisposed) return;
     try {
-      final userId = _userId ?? supabase.auth.currentUser?.id;
+      final userId = await _resolveUserId();
       if (userId == null) return;
 
-      // تست اتصال با یک درخواست ساده
-      await supabase
-          .from('notifications')
-          .select('id')
-          .eq('recipient_id', userId)
-          .limit(1);
-
-      // ✅ چک کردن dispose بعد از async operation
+      await _dio.get(
+        '/notifications',
+        queryParameters: {'limit': 1, 'offset': 0},
+        options: await _authOptions(),
+      );
       if (_isDisposed) return;
-
-      // اگر اتصال برقرار است و لیست خالی است، اعلان‌ها را بارگیری کن
       if (state.isEmpty) {
         await fetchNotifications(refresh: true);
       }
-    } catch (e) {
-      logInfo('❌ خطا در بررسی اتصال: $e');
+    } catch (e, st) {
+      logError('Notification connection check failed',
+          error: e, stackTrace: st);
     }
   }
 }
 
-// پروایدر اصلی (autoDispose برای آزاد شدن منابع در صورت خروج از صفحه)
 final notificationsProvider = StateNotifierProvider.autoDispose<
     NotificationsNotifier, List<NotificationModel>>(
   (ref) => NotificationsNotifier(ref),
 );
 
-// استیت پروایدرها و پراوایدرهای کمکی:
-
-/// وضعیت لودینگ اعلان (برای نشون‌دادن شرمر یا progress)
 final notificationsLoadingProvider = StateProvider<bool>((ref) => false);
 
-/// آیا اعلان خوانده نشده وجود دارد؟
 final hasNewNotificationProvider = Provider.autoDispose<bool>((ref) {
   final notifications = ref.watch(notificationsProvider);
   return notifications.any((n) => !n.isRead);
 });
 
-/// تعداد اعلان‌های خوانده نشده
 final unreadNotificationCountProvider = Provider.autoDispose<int>((ref) {
   final notifications = ref.watch(notificationsProvider);
   return notifications.where((notification) => !notification.isRead).length;
 });
 
-/// تعداد اعلان‌ها بر اساس نوع (تب‌ها)
 final notificationCountByTypeProvider =
     Provider.family<int, String?>((ref, type) {
   final notifications = ref.watch(notificationsProvider);
   if (type == null || type == 'all') return notifications.length;
   return notifications
-      .where((notification) => notificationTypeMatchesFilter(
-            notification.type,
-            type,
-          ))
+      .where((notification) =>
+          notificationTypeMatchesFilter(notification.type, type))
       .length;
 });
 
-/// فیلتر بر اساس نوع
 final filteredNotificationsProvider =
     Provider.family<List<NotificationModel>, String?>((ref, type) {
   final notifications = ref.watch(notificationsProvider);
   if (type == null || type == 'all') return notifications;
   return notifications
-      .where((notification) => notificationTypeMatchesFilter(
-            notification.type,
-            type,
-          ))
+      .where((notification) =>
+          notificationTypeMatchesFilter(notification.type, type))
       .toList();
 });
 
 final unreadNotificationCountByFilterProvider =
     Provider.family<int, String?>((ref, type) {
-  final notifications = ref.watch(notificationsProvider);
-  if (type == null || type == 'all') {
-    return notifications.where((n) => !n.isRead).length;
-  }
-  return notifications
-      .where((n) => !n.isRead && notificationTypeMatchesFilter(n.type, type))
-      .length;
+  final notifications = ref.watch(filteredNotificationsProvider(type));
+  return notifications.where((notification) => !notification.isRead).length;
 });
