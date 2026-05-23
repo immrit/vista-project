@@ -11,9 +11,10 @@ Future<bool> showOtpDialog(
   int countdown = 60;
   Timer? timer;
   String? debugCode = ref.read(authControllerProvider).otpDebugCode;
-  if (debugCode != null && debugCode.isNotEmpty) {
-    otpController.text = debugCode;
-  }
+  // Dev OTP auto-fill is disabled per user request to allow manual entry.
+  // if (debugCode != null && debugCode.isNotEmpty) {
+  //   otpController.text = debugCode;
+  // }
 
   final result = await showGeneralDialog<bool>(
     context: context,
@@ -150,9 +151,10 @@ Future<bool> showOtpDialog(
                             setDialogState(() {
                               debugCode =
                                   ref.read(authControllerProvider).otpDebugCode;
-                              if ((debugCode ?? '').isNotEmpty) {
-                                otpController.text = debugCode ?? '';
-                              }
+                              // Dev OTP auto-fill is disabled per user request to allow manual entry.
+                              // if ((debugCode ?? '').isNotEmpty) {
+                              //   otpController.text = debugCode ?? '';
+                              // }
                             });
                           } catch (e) {
                             setDialogState(() => error = 'خطا در ارسال مجدد');

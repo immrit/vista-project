@@ -6,6 +6,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../data/auth_repository.dart';
 import '../../../services/current_user_service.dart';
+import '../../../services/session_manager_service_v2.dart';
 
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // Ø°Ø®ÛŒØ±Ù‡â€ŒØ³Ø§Ø²ÛŒ Ø§Ù…Ù† ØªÙˆÚ©Ù† â€” Ø¬Ø§ÛŒÚ¯Ø²ÛŒÙ† legacy auth
@@ -120,6 +121,8 @@ class AuthState {
   final bool isNewUser;
   final AuthUserResponse? currentUser;
   final String? otpDebugCode;
+  final bool is2faRequired;
+  final String? twoFactorToken;
 
   AuthState({
     this.isLoading = false,
@@ -129,6 +132,8 @@ class AuthState {
     this.isNewUser = false,
     this.currentUser,
     this.otpDebugCode,
+    this.is2faRequired = false,
+    this.twoFactorToken,
   });
 
   AuthState copyWith({
@@ -140,17 +145,20 @@ class AuthState {
     AuthUserResponse? currentUser,
     String? otpDebugCode,
     bool clearOtpDebugCode = false,
+    bool? is2faRequired,
+    String? twoFactorToken,
   }) {
     return AuthState(
       isLoading: isLoading ?? this.isLoading,
-      error:
-          error, // Ø§Ú¯Ø± Ù†Ø§Ù„ Ù¾Ø§Ø³ Ø¯Ø§Ø¯Ù‡ Ø´ÙˆØ¯ØŒ Ø§Ø±ÙˆØ± Ù¾Ø§Ú© Ù…ÛŒâ€ŒØ´ÙˆØ¯
+      error: error, 
       codeSent: codeSent ?? this.codeSent,
       isLoggedIn: isLoggedIn ?? this.isLoggedIn,
       isNewUser: isNewUser ?? this.isNewUser,
       currentUser: currentUser ?? this.currentUser,
       otpDebugCode:
           clearOtpDebugCode ? null : (otpDebugCode ?? this.otpDebugCode),
+      is2faRequired: is2faRequired ?? this.is2faRequired,
+      twoFactorToken: twoFactorToken ?? this.twoFactorToken,
     );
   }
 }
@@ -213,6 +221,7 @@ class AuthController extends StateNotifier<AuthState> {
       // Ø°Ø®ÛŒØ±Ù‡ ØªÙˆÚ©Ù†â€ŒÙ‡Ø§
       await TokenStorage.saveTokens(response.session);
       await TokenStorage.saveUserId(response.user.id);
+      await SessionManagerServiceV2.instance.ensureSessionRegistered(force: true);
 
       state = state.copyWith(
         isLoading: false,
@@ -222,6 +231,7 @@ class AuthController extends StateNotifier<AuthState> {
       );
       return true;
     } catch (e) {
+      await TokenStorage.clearAll();
       state = state.copyWith(isLoading: false, error: e.toString());
       return false;
     }
@@ -242,6 +252,7 @@ class AuthController extends StateNotifier<AuthState> {
       // Ø°Ø®ÛŒØ±Ù‡ ØªÙˆÚ©Ù†â€ŒÙ‡Ø§
       await TokenStorage.saveTokens(response.session);
       await TokenStorage.saveUserId(response.user.id);
+      await SessionManagerServiceV2.instance.ensureSessionRegistered(force: true);
 
       state = state.copyWith(
         isLoading: false,
@@ -251,6 +262,7 @@ class AuthController extends StateNotifier<AuthState> {
       );
       return true;
     } catch (e) {
+      await TokenStorage.clearAll();
       state = state.copyWith(isLoading: false, error: e.toString());
       return false;
     }
@@ -284,6 +296,7 @@ class AuthController extends StateNotifier<AuthState> {
   }
 
   // â”€â”€â”€ ØªØ§ÛŒÛŒØ¯ OTP â”€â”€â”€
+  // ─── تایید OTP ───
   Future<bool> verifyOtp({
     required String phone,
     required String token,
@@ -296,24 +309,73 @@ class AuthController extends StateNotifier<AuthState> {
         code: token,
       );
 
-      // Ø°Ø®ÛŒØ±Ù‡ ØªÙˆÚ©Ù†â€ŒÙ‡Ø§
-      await TokenStorage.saveTokens(response.session);
-      await TokenStorage.saveUserId(response.user.id);
+      if (response.is2faRequired && response.twoFactorToken != null) {
+        state = state.copyWith(
+          isLoading: false,
+          is2faRequired: true,
+          twoFactorToken: response.twoFactorToken,
+        );
+        return true;
+      }
+
+      final auth = response.auth;
+      if (auth == null) throw Exception('Auth response missing');
+
+      await TokenStorage.saveTokens(auth.session);
+      await TokenStorage.saveUserId(auth.user.id);
+      if (!isUpdateMode) {
+        await SessionManagerServiceV2.instance.ensureSessionRegistered(force: true);
+      }
 
       if (!isUpdateMode) {
         state = state.copyWith(
           isLoading: false,
           isLoggedIn: true,
-          isNewUser: response.isNewUser,
-          currentUser: response.user,
+          isNewUser: auth.isNewUser,
+          currentUser: auth.user,
+          is2faRequired: false,
         );
       } else {
         state = state.copyWith(isLoading: false);
       }
       return true;
     } catch (e) {
+      await TokenStorage.clearAll();
       state = state.copyWith(isLoading: false, error: e.toString());
       rethrow;
+    }
+  }
+
+  // ─── تایید ۲FA ───
+  Future<bool> verify2fa({
+    required String password,
+  }) async {
+    final token = state.twoFactorToken;
+    if (token == null) return false;
+
+    state = state.copyWith(isLoading: true, error: null);
+    try {
+      final response = await _repository.verify2fa(
+        token: token,
+        password: password,
+      );
+
+      await TokenStorage.saveTokens(response.session);
+      await TokenStorage.saveUserId(response.user.id);
+      await SessionManagerServiceV2.instance.ensureSessionRegistered(force: true);
+
+      state = state.copyWith(
+        isLoading: false,
+        isLoggedIn: true,
+        isNewUser: response.isNewUser,
+        currentUser: response.user,
+        is2faRequired: false,
+      );
+      return true;
+    } catch (e) {
+      await TokenStorage.clearAll();
+      state = state.copyWith(isLoading: false, error: e.toString());
+      return false;
     }
   }
 
@@ -347,6 +409,7 @@ class AuthController extends StateNotifier<AuthState> {
   }
 
   Future<void> logout() async {
+    await SessionManagerServiceV2.instance.userLogout();
     await TokenStorage.clearAll();
     state = AuthState(); // reset to initial state
   }

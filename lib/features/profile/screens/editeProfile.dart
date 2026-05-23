@@ -632,7 +632,7 @@ class _EditProfileState extends ConsumerState<EditProfile> {
     required String sessionId,
     String? debugCode,
   }) {
-    final codeController = TextEditingController(text: debugCode ?? '');
+    final codeController = TextEditingController(text: '');
     bool isLoading = false;
     String? errorText;
 

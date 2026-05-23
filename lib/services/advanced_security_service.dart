@@ -242,11 +242,6 @@ class AdvancedSecurityService {
 
       final authOk = await _localAuth.authenticate(
         localizedReason: 'برای فعال‌سازی احراز هویت بیومتریک تایید کنید',
-        options: const AuthenticationOptions(
-          biometricOnly: false,
-          stickyAuth: true,
-          useErrorDialogs: true,
-        ),
       );
       if (!authOk) return false;
 
@@ -292,11 +287,6 @@ class AdvancedSecurityService {
 
       final success = await _localAuth.authenticate(
         localizedReason: 'برای تایید عملیات حساس احراز هویت کنید',
-        options: const AuthenticationOptions(
-          biometricOnly: false,
-          stickyAuth: true,
-          useErrorDialogs: true,
-        ),
       );
       if (!success) return false;
 

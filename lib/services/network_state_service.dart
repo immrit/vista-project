@@ -42,7 +42,7 @@ class NetworkStateService {
   // 🔌 SUBSCRIPTIONS
   // ═══════════════════════════════════════════════════════════════════════════
 
-  StreamSubscription<ConnectivityResult>? _connectivitySubscription;
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
 
   // ═══════════════════════════════════════════════════════════════════════════
   // ⏱️ TIMERS & MONITORING
@@ -115,7 +115,7 @@ class NetworkStateService {
     try {
       // Check connectivity type
       final connectivityResult = await Connectivity().checkConnectivity();
-      final connectionType = _mapConnectivityToType(connectivityResult);
+      final connectionType = _mapConnectivityToType(connectivityResult.first);
 
       // Check actual internet access
       final hasInternet = await _checkInternetAccess();
@@ -147,9 +147,10 @@ class NetworkStateService {
   // ═══════════════════════════════════════════════════════════════════════════
 
   /// Handle connectivity changes
-  void _onConnectivityChanged(ConnectivityResult result) {
+  void _onConnectivityChanged(List<ConnectivityResult> results) {
     if (_isDisposed) return;
     
+    final result = results.first;
     logInfo('📡 Connectivity changed: $result');
 
     final connectionType = _mapConnectivityToType(result);

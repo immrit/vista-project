@@ -45,6 +45,7 @@ import 'package:Vista/features/auth/screens/reset_password_screen.dart';
 import 'package:Vista/features/auth/screens/password_reset_code_screen.dart';
 import 'package:Vista/features/auth/screens/password_reset_sms_screen.dart';
 import 'package:Vista/features/auth/screens/password_recovery_confirm_screen.dart';
+import 'package:Vista/features/auth/screens/password_set_screen.dart';
 import 'package:Vista/features/auth/widgets/session_auth_wrapper.dart'; // Import SessionAuthWrapper
 import 'package:Vista/features/onboarding/screens/Onboarding.dart';
 import 'package:Vista/features/profile/screens/editeProfile.dart';
@@ -59,6 +60,9 @@ import 'package:Vista/features/auth/providers/auth_controller.dart';
 
 // Stories Module
 import 'package:Vista/features/stories/stories.dart';
+
+import 'package:Vista/screens/maintenance_screen.dart';
+import 'package:Vista/screens/banned_screen.dart';
 
 /// Notification response handler
 Future<void> notificationResponseHandler(NotificationResponse response) async {
@@ -396,6 +400,8 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
                   const SessionMiddleware(child: HomeScreen()),
               '/onboarding': (context) => const Onboarding(),
               '/auth': (context) => const AuthWizardScreen(),
+              '/maintenance': (context) => const MaintenanceScreen(),
+              '/banned': (context) => const BannedScreen(),
               '/profile-setup': (context) =>
                   const SessionMiddleware(child: ProfileSetupWizardScreen()),
               '/reset-password': (context) => const ResetPasswordScreen(),
@@ -405,6 +411,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
                   const PasswordResetSmsScreen(),
               '/reset-password-confirm': (context) =>
                   const PasswordRecoveryConfirmScreen(),
+              '/reset-password-set': (context) => const PasswordSetScreen(),
               '/biometric-login': (context) => BiometricLoginScreen(
                     onSuccess: () =>
                         Navigator.pushReplacementNamed(context, '/home'),

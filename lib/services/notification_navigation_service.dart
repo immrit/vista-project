@@ -159,6 +159,7 @@ class NotificationNavigationService {
         );
         await Future.delayed(const Duration(milliseconds: 400));
       }
+      if (!context.mounted) return;
 
       // باز کردن جزئیات پست
       Navigator.of(context).pushNamed(
@@ -194,6 +195,7 @@ class NotificationNavigationService {
         );
         await Future.delayed(const Duration(milliseconds: 400));
       }
+      if (!context.mounted) return;
 
       // اگر ID کامنت خاص داریم
       if (commentId != null && commentId.isNotEmpty) {
@@ -251,6 +253,7 @@ class NotificationNavigationService {
         );
         await Future.delayed(const Duration(milliseconds: 400));
       }
+      if (!context.mounted) return;
 
       // اگر خودش بود، به پروفایل شخصی برود
       if (userId == currentUserId) {
@@ -291,6 +294,7 @@ class NotificationNavigationService {
         );
         await Future.delayed(const Duration(milliseconds: 400));
       }
+      if (!context.mounted) return;
 
       Navigator.of(context).pushNamed(
         '/chat',
@@ -344,6 +348,7 @@ class NotificationNavigationService {
         );
         await Future.delayed(const Duration(milliseconds: 400));
       }
+      if (!context.mounted) return;
 
       // باز کردن چت با کاربر
       Navigator.of(context).pushNamed(
@@ -375,6 +380,7 @@ class NotificationNavigationService {
         );
         await Future.delayed(const Duration(milliseconds: 400));
       }
+      if (!context.mounted) return;
 
       // اگر route برای notifications وجود دارد
       // Navigator.of(context).pushNamed('/notifications');
@@ -625,6 +631,7 @@ class NotificationNavigationService {
         );
         await Future.delayed(const Duration(milliseconds: 400));
       }
+      if (!context.mounted) return;
 
       // استفاده از route برای سازگاری با سیستم موجود
       Navigator.of(context).pushNamed(

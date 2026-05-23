@@ -2,15 +2,11 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 import 'package:Vista/app/app_initialization.dart';
 import 'package:Vista/app/app_runner.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 Future<void> main() async {
   runZonedGuarded(() async {
     // لود باینری‌های حیاتی قبل از شروع اپلیکیشن
     WidgetsFlutterBinding.ensureInitialized();
-
-    // لود متغیرهای محیطی
-    await dotenv.load(fileName: ".env");
 
     // هندلینگ خطاهایی که در محیط فلاتر (ویجت‌ها و غیره) اتفاق می‌افتند
     FlutterError.onError = (FlutterErrorDetails details) {

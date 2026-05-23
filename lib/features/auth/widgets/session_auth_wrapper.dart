@@ -8,6 +8,8 @@ import 'package:Vista/services/session_manager_service_v2.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:loading_animation_widget/loading_animation_widget.dart';
+import 'package:Vista/services/system_status_service.dart';
+import 'package:Vista/utils/vista_toast.dart';
 
 class SessionAuthWrapper extends ConsumerStatefulWidget {
   const SessionAuthWrapper({super.key});
@@ -28,6 +30,22 @@ class _SessionAuthWrapperState extends ConsumerState<SessionAuthWrapper> {
   }
 
   Future<void> _resolveAuthState() async {
+    // ─── Step 0: بررسی وضعیت سیستم (نگهداری و مسدودی) ────────────
+    final status = await SystemStatusService.instance.fetchStatus();
+    if (status != null && status.maintenance) {
+      if (mounted) {
+        VistaToast.show(
+          context: context,
+          message: 'سیستم در حال بروزرسانی و تعمیر است...',
+          icon: Icons.build_circle_outlined,
+          backgroundColor: Colors.amber.shade700,
+          textColor: Colors.white,
+          duration: const Duration(days: 1), // stay on screen practically forever until killed
+        );
+      }
+      return; // Stuck loading forever
+    }
+
     // ─── Step 1: بررسی توکن محلی ───────────────────────────────
     // اگر توکن معتبر محلی وجود داشته باشد، کاربر را وارد می‌کنیم.
     // این مانع logout ناخواسته در صورت مشکل شبکه یا session validation می‌شود.

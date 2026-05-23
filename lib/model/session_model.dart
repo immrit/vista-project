@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:Vista/services/device_id_service.dart';
 
 class SessionModel {
   final String id;
@@ -142,7 +143,9 @@ class SessionModel {
   }
 
   bool get isCurrentDevice =>
-      defaultTargetPlatform == deviceInfo.targetPlatform;
+      deviceInfo.deviceId == DeviceIdService.id ||
+      (deviceInfo.deviceId == null &&
+          defaultTargetPlatform == deviceInfo.targetPlatform);
 }
 
 class SessionDeviceInfo {

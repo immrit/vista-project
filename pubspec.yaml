@@ -8,8 +8,8 @@ environment:
   sdk: ^3.5.4
 
 dependencies:
-  app_links: ^6.4.0
-  audio_waveforms: ^1.3.0
+  app_links: ^7.0.0
+  audio_waveforms: ^2.0.2
   audio_metadata_reader: ^1.4.0
   audioplayers: ^6.5.0
   aws_s3_api: ^2.0.0
@@ -18,15 +18,15 @@ dependencies:
   buttons_tabbar: ^1.3.15
   cached_network_image: ^3.4.1
   characters: ^1.4.0
-  clipboard: ^0.1.3
-  confetti: ^0.7.0
+  clipboard: ^3.0.14
+  confetti: ^0.8.0
   crypto: ^3.0.3
   base32: ^2.1.3
-  connectivity_plus: ^5.0.2
+  connectivity_plus: ^7.1.1
   cupertino_icons: ^1.0.8
-  device_info_plus: ^11.3.3
-  package_info_plus: ^8.0.2
-  dotted_border: ^2.1.0
+  device_info_plus: ^12.4.0
+  package_info_plus: ^9.0.1
+  dotted_border: ^3.1.0
   isar: ^3.1.0+1
   isar_flutter_libs: ^3.1.0+1
   # drift: ^2.16.0  # Replaced with Isar
@@ -34,22 +34,24 @@ dependencies:
   emoji_picker_flutter: ^4.3.0
   equatable: ^2.0.7
   exif: ^3.3.0
-  file_picker: ^9.1.0
-  firebase_core: ^3.8.0
-  firebase_messaging: ^15.1.5
+  file_picker: ^11.0.2
+  firebase_core: ^4.9.0
+  firebase_messaging: ^16.2.2
   flutter:
     sdk: flutter
   flutter_animate: ^4.5.2
-  flutter_blurhash: ^0.8.2
+  flutter_blurhash: ^0.9.1
   flutter_cache_manager: ^3.4.1
-  flutter_dotenv: ^5.1.0
-  google_fonts: ^6.2.1
+  flutter_dotenv: ^6.0.1
+  # NOTE: flutter_dotenv is kept for now during migration; remove once all
+  # BACKEND_URL usages are replaced with the build-time constant.
+  google_fonts: ^8.1.0
   flutter_emoji: ^2.5.1
   flutter_exif_rotation: ^0.5.2
   flutter_image_compress: ^2.4.0
   # flutter_keyboard_visibility: ^6.0.0  # ? ??? ??? - ?? MediaQuery.viewInsets ??????? ???????
   flutter_launcher_icons: ^0.14.3
-  flutter_local_notifications: ^19.1.0
+  flutter_local_notifications: ^21.0.0
   flutter_mentions: ^2.0.1
   flutter_riverpod: ^2.6.1
   flutter_screenutil: ^5.9.3
@@ -61,10 +63,10 @@ dependencies:
   image: ^4.5.3
   image_editor_plus: ^1.0.6
   gal: ^2.3.0
-  geolocator: ^13.0.1
-  geocoding: ^3.0.0
+  geolocator: ^14.0.2
+  geocoding: ^4.0.0
   image_picker: ^1.1.2
-  local_auth: ^2.3.0
+  local_auth: ^3.0.1
   photo_manager: ^3.0.0
   open_filex: ^4.7.0
   intl: ^0.19.0
@@ -76,22 +78,22 @@ dependencies:
   logger: ^2.5.0
   path: ^1.9.1
   path_provider: ^2.1.5
-  permission_handler: ^11.4.0
+  permission_handler: ^12.0.1
   persian_datetime_picker: ^3.1.1
   photo_view: ^0.15.0
   scrollable_positioned_list: ^0.3.8
-  pro_image_editor: ^9.0.2
+  pro_image_editor: ^12.0.0
   shamsi_date: ^1.0.4
-  share_plus: ^10.1.4
+  share_plus: ^12.0.2
   shimmer: ^3.0.0
   # sqlite3_flutter_libs: ^0.5.0  # Disabled for web compatibility
   # sembast: ^3.7.0 # Removed
-  pinput: ^5.0.2
+  pinput: ^6.0.2
   qr_flutter: ^4.1.0
   record: ^6.1.2  # ???? ??? ??? (??? ??????) - bumped to pick compatible platform implementations
   timeago: ^3.7.0
   timeline_tile: ^2.0.0
-  timelines_plus: ^1.0.6
+  timelines_plus: ^2.0.0
   url_launcher: ^6.3.2
   video_compress: ^3.1.4
   video_player: ^2.8.1
@@ -102,14 +104,14 @@ dependencies:
   dart_jsonwebtoken: ^3.2.0
   flutter_colorpicker: ^1.0.3
   cryptography: ^2.7.0
-  flutter_secure_storage: ^9.2.2
+  flutter_secure_storage: ^10.3.0
   shared_preferences: ^2.2.2
   flutter_poolakey: ^2.2.0
   uuid: ^4.5.2
-  pin_code_fields: ^8.0.1
+  pin_code_fields: ^9.4.0
   overlay_support: ^2.1.0
   riverpod_annotation: ^2.6.1
-  camera: ^0.11.3
+  camera: ^0.12.0+1
   mobile_scanner: ^7.1.4
 
 dependency_overrides:
@@ -140,7 +142,7 @@ dev_dependencies:
   isar_generator: ^3.1.0+1
   # drift_dev: ^2.16.0  # Replaced with Sembast
   # isar_generator: ^3.1.0+1  # Replaced with Sembast
-  flutter_lints: ^5.0.0
+  flutter_lints: ^6.0.0
   flutter_test:
     sdk: flutter
   mockito: ^5.4.4

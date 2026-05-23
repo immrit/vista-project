@@ -1,5 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'dart:io';
+import 'package:device_info_plus/device_info_plus.dart';
 import '../../../security/logging_utility.dart';
 
 // ══════════════════════════════════════════════════════════════
@@ -94,6 +96,26 @@ class AuthResponse {
       session: AuthSessionResponse.fromJson(
           json['session'] as Map<String, dynamic>? ?? {}),
       isNewUser: json['is_new_user'] as bool? ?? false,
+    );
+  }
+}
+
+class VerifyOtpResponse {
+  final bool is2faRequired;
+  final String? twoFactorToken;
+  final AuthResponse? auth;
+
+  const VerifyOtpResponse({
+    required this.is2faRequired,
+    this.twoFactorToken,
+    this.auth,
+  });
+
+  factory VerifyOtpResponse.fromJson(Map<String, dynamic> json) {
+    return VerifyOtpResponse(
+      is2faRequired: json['is_2fa_required'] as bool? ?? false,
+      twoFactorToken: json['two_factor_token'] as String?,
+      auth: json['auth'] != null ? AuthResponse.fromJson(json['auth']) : null,
     );
   }
 }
@@ -259,9 +281,32 @@ class AuthRepository {
     required String password,
   }) async {
     try {
+      String? deviceName;
+      String? platformInfo;
+      try {
+        final deviceInfo = DeviceInfoPlugin();
+        if (Platform.isAndroid) {
+          final androidInfo = await deviceInfo.androidInfo;
+          deviceName = '${androidInfo.brand} ${androidInfo.model}';
+          platformInfo = 'Android ${androidInfo.version.release}';
+        } else if (Platform.isIOS) {
+          final iosInfo = await deviceInfo.iosInfo;
+          deviceName = iosInfo.name;
+          platformInfo = 'iOS ${iosInfo.systemVersion}';
+        } else if (Platform.isWindows) {
+          final windowsInfo = await deviceInfo.windowsInfo;
+          deviceName = windowsInfo.computerName;
+          platformInfo = 'Windows';
+        }
+      } catch (e) {
+        logError('Failed to get device info', error: e);
+      }
+
       final response = await _dio.post('/login', data: {
         'identifier': identifier,
         'password': password,
+        if (deviceName != null) 'device_name': deviceName,
+        if (platformInfo != null) 'platform_info': platformInfo,
       });
 
       return AuthResponse.fromJson(response.data as Map<String, dynamic>);
@@ -342,7 +387,7 @@ class AuthRepository {
   }
 
   // ─── بررسی کد تایید OTP ───
-  Future<AuthResponse> verifyOtp({
+  Future<VerifyOtpResponse> verifyOtp({
     required String phoneNumber,
     required String code,
   }) async {
@@ -352,11 +397,31 @@ class AuthRepository {
         'code': code,
       });
 
-      return AuthResponse.fromJson(response.data as Map<String, dynamic>);
+      return VerifyOtpResponse.fromJson(response.data as Map<String, dynamic>);
     } on DioException catch (e) {
       throw _handleDioError(e, 'تایید کد');
     } catch (e) {
       logError('Verify OTP Error', error: e);
+      rethrow;
+    }
+  }
+
+  // ─── تایید دو مرحله‌ای ───
+  Future<AuthResponse> verify2fa({
+    required String token,
+    required String password,
+  }) async {
+    try {
+      final response = await _dio.post('/2fa/verify', data: {
+        'two_factor_token': token,
+        'password': password,
+      });
+
+      return AuthResponse.fromJson(response.data as Map<String, dynamic>);
+    } on DioException catch (e) {
+      throw _handleDioError(e, 'تایید دو مرحله‌ای');
+    } catch (e) {
+      logError('Verify 2FA Error', error: e);
       rethrow;
     }
   }
@@ -482,16 +547,38 @@ class AuthRepository {
     }
   }
 
-  // ─── تکمیل بازیابی ───
-  Future<void> completeRecovery({
+  // ─── بررسی کد بازیابی ───
+  Future<String> verifyRecoveryCode({
     required String optionId,
     required String code,
+  }) async {
+    try {
+      final response = await _dio.post('/recovery-verify', data: {
+        'option_id': optionId,
+        'code': code,
+      });
+
+      final data = response.data;
+      if (data is Map && data['success'] == true && data['password_reset_token'] != null) {
+        return data['password_reset_token'] as String;
+      }
+      throw 'خطا در بررسی کد';
+    } on DioException catch (e) {
+      throw _handleDioError(e, 'بررسی کد بازیابی');
+    } catch (e) {
+      logError('Verify Recovery Code Error', error: e);
+      rethrow;
+    }
+  }
+
+  // ─── تکمیل بازیابی ───
+  Future<void> completeRecovery({
+    required String token,
     required String newPassword,
   }) async {
     try {
       final response = await _dio.post('/recovery-complete', data: {
-        'option_id': optionId,
-        'code': code,
+        'password_reset_token': token,
         'new_password': newPassword,
       });
 

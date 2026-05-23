@@ -2,6 +2,8 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
+import 'package:dio/io.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 import '../features/auth/providers/auth_controller.dart';
@@ -73,6 +75,17 @@ class BackendUploadService {
       sendTimeout: const Duration(minutes: 5),
       receiveTimeout: const Duration(seconds: 30),
     ));
+
+    if (!kIsWeb) {
+      dio.httpClientAdapter = IOHttpClientAdapter(
+        createHttpClient: () {
+          final client = HttpClient();
+          client.badCertificateCallback =
+              (X509Certificate cert, String host, int port) => true;
+          return client;
+        },
+      );
+    }
 
     await dio.put(
       uploadUrl,

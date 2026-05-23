@@ -146,7 +146,7 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
 
   Future<void> _pickMusicFile() async {
     try {
-      final result = await FilePicker.platform.pickFiles(
+      final result = await FilePicker.pickFiles(
         type: FileType.audio,
         allowMultiple: false,
       );
@@ -309,7 +309,7 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
       debugPrint(
           'محدودیت زمانی برای کاربر ${currentUser.email}: ${maxDuration.inMinutes} دقیقه');
 
-      final result = await FilePicker.platform.pickFiles(
+      final result = await FilePicker.pickFiles(
         type: FileType.video,
         allowMultiple: false,
       );
@@ -877,11 +877,12 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
 
   Widget _buildMediaUploadSection(bool isDarkMode, Color primaryColor) {
     return DottedBorder(
-      borderType: BorderType.RRect,
-      radius: const Radius.circular(12),
-      color: isDarkMode ? Colors.white38 : Colors.black38,
-      strokeWidth: 1,
-      dashPattern: const [6, 4],
+      options: RoundedRectDottedBorderOptions(
+        radius: const Radius.circular(12),
+        color: isDarkMode ? Colors.white38 : Colors.black38,
+        strokeWidth: 1,
+        dashPattern: const [6, 4],
+      ),
       child: Container(
         height: 120,
         width: double.infinity,

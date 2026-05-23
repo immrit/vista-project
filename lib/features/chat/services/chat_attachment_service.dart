@@ -314,7 +314,7 @@ class ChatAttachmentService {
     void Function(double)? onProgress,
   }) async {
     try {
-      final result = await FilePicker.platform.pickFiles(
+      final result = await FilePicker.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'txt', 'zip'],
         withData: false,
@@ -463,7 +463,7 @@ class ChatAttachmentService {
     void Function(double)? onProgress,
   }) async {
     try {
-      final result = await FilePicker.platform.pickFiles(
+      final result = await FilePicker.pickFiles(
         type: FileType.audio,
         withData: false,
       );

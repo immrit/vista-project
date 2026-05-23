@@ -134,14 +134,22 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final input = _sanitizeInput(_inputController.text);
-      final identifier = _isPhoneInput
-          ? normalizePhone09(input) ?? input
-          : input.toLowerCase();
-      final success = await ref.read(authControllerProvider.notifier).login(
-            identifier: identifier,
-            password: password,
-          );
+      final authState = ref.read(authControllerProvider);
+      bool success = false;
+      
+      if (authState.is2faRequired) {
+        success = await ref.read(authControllerProvider.notifier).verify2fa(password: password);
+      } else {
+        final input = _sanitizeInput(_inputController.text);
+        final identifier = _isPhoneInput
+            ? normalizePhone09(input) ?? input
+            : input.toLowerCase();
+        success = await ref.read(authControllerProvider.notifier).login(
+              identifier: identifier,
+              password: password,
+            );
+      }
+      
       if (!success) {
         final error = ref.read(authControllerProvider).error;
         throw error ?? 'ورود ناموفق بود';
@@ -149,8 +157,8 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
 
       setState(() => _isLoading = false);
 
-      final authState = ref.read(authControllerProvider);
-      final currentUser = authState.currentUser;
+      final currentAuthState = ref.read(authControllerProvider);
+      final currentUser = currentAuthState.currentUser;
       final phoneNumberIsSet = currentUser?.phoneNumber != null &&
           currentUser!.phoneNumber!.isNotEmpty;
 
@@ -220,11 +228,7 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
       setState(() => _isLoading = false);
 
       if (success) {
-        final debugCode = ref.read(authControllerProvider).otpDebugCode;
         _otpController.clear();
-        if (debugCode != null && debugCode.isNotEmpty) {
-          _otpController.text = debugCode;
-        }
         _startTimer();
         if (!isResend) {
           _nextPage(2);
@@ -265,9 +269,18 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
       if (success) {
         timer?.cancel();
         if (!mounted) return;
-        _showSnack('خوش آمدید!');
 
         final authState = ref.read(authControllerProvider);
+        if (authState.is2faRequired) {
+          _passwordController.clear();
+          setState(() => _isLoading = false);
+          _showSnack('حساب شما مجهز به تایید دو مرحله‌ای است');
+          _nextPage(1); // Jump to password slide
+          return;
+        }
+
+        _showSnack('خوش آمدید!');
+
         if (authState.isNewUser ||
             authState.currentUser?.profileCompleted == false) {
           Navigator.pushReplacementNamed(context, '/profile-setup');

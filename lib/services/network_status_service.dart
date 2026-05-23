@@ -14,7 +14,7 @@ class NetworkStatusService extends ChangeNotifier {
   // ✅ اضافه شده: ذخیره نوع اتصال
   ConnectivityResult _connectionType = ConnectivityResult.none;
   bool _isInitialized = false;
-  StreamSubscription<ConnectivityResult>? _connectivitySubscription;
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
 
   bool get isOnline => _isOnline;
   // ✅ اضافه شده: دسترسی به نوع اتصال
@@ -29,8 +29,8 @@ class NetworkStatusService extends ChangeNotifier {
       _updateStatus(result); // ✅ استفاده از تابع مشترک
 
       _connectivitySubscription = Connectivity().onConnectivityChanged.listen(
-        (ConnectivityResult result) {
-          _updateStatus(result);
+        (List<ConnectivityResult> results) {
+          _updateStatus(results);
         },
         onError: (error) {
           if (kDebugMode) logInfo('❌ Network error: $error');
@@ -46,7 +46,8 @@ class NetworkStatusService extends ChangeNotifier {
   }
 
   // ✅ تابع جدید برای مدیریت تغییرات
-  void _updateStatus(ConnectivityResult result) {
+  void _updateStatus(List<ConnectivityResult> results) {
+    final result = results.first;
     final wasOnline = _isOnline;
     final oldType = _connectionType;
 

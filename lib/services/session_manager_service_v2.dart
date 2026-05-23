@@ -14,6 +14,7 @@ import '../features/auth/providers/auth_controller.dart';
 import '../model/session_model.dart';
 import '../security/logging_utility.dart';
 import '../services/current_user_service.dart';
+import '../services/device_id_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 enum SessionVerificationState { verified, pendingVerification, invalid }
@@ -77,7 +78,10 @@ class SessionManagerServiceV2 {
       await TokenStorage.hasRefreshToken();
 
   Future<Map<String, String>> _buildHeaders() async {
-    final headers = <String, String>{'Content-Type': 'application/json'};
+    final headers = <String, String>{
+      'Content-Type': 'application/json',
+      'X-Device-ID': DeviceIdService.id,
+    };
     final token = await _getAccessToken();
     if (token != null && token.isNotEmpty) {
       headers['Authorization'] = 'Bearer $token';
@@ -112,13 +116,15 @@ class SessionManagerServiceV2 {
     }
     if (response.statusCode < 200 || response.statusCode >= 300) {
       final payload = _decodeBody(response.body);
+      logInfo('❌ Backend request failed: HTTP ${response.statusCode} ${response.request?.url} - Response: ${response.body}');
       if (payload is Map) {
         throw payload['message']?.toString() ??
             payload['error']?.toString() ??
-            'HTTP ${response.statusCode}';
+            'HTTP ${response.statusCode}: ${response.body}';
       }
-      throw 'HTTP ${response.statusCode}';
+      throw 'HTTP ${response.statusCode}: ${response.body}';
     }
+    logInfo('✅ Backend request success: ${method} ${path}');
     return _decodeBody(response.body);
   }
 
@@ -208,9 +214,13 @@ class SessionManagerServiceV2 {
   // SESSION REGISTRATION
   // ═══════════════════════════════════════════════════════════
 
-  Future<String?> registerSession() async {
+  Future<String?> registerSession({bool force = false}) async {
     if (_isRegistering) return _currentSessionId;
-    if (_currentSessionId != null) return _currentSessionId;
+    if (!force &&
+        _currentSessionId != null &&
+        _verificationState == SessionVerificationState.verified) {
+      return _currentSessionId;
+    }
     _isRegistering = true;
 
     try {
@@ -232,8 +242,16 @@ class SessionManagerServiceV2 {
       Map<String, dynamic>? locationData;
 
       try {
-        ipAddress = await _getIPWithTimeout();
-        locationData = await _getCurrentLocation();
+        final ipInfo = await _getIpAndLocation();
+        if (ipInfo != null) {
+          ipAddress = ipInfo['ip_address'] as String?;
+          locationData = {
+            'city': ipInfo['location_city'],
+            'country': ipInfo['location_country'],
+            'latitude': ipInfo['latitude'],
+            'longitude': ipInfo['longitude'],
+          };
+        }
       } catch (_) {}
 
       try {
@@ -243,17 +261,19 @@ class SessionManagerServiceV2 {
           body: {
             'session_id': sessionId,
             'session_token': _sessionToken,
-            'user_id': userId,
             'app_version': packageInfo.version,
-            'build_number': packageInfo.buildNumber,
             if (ipAddress != null) 'ip_address': ipAddress,
-            if (locationData != null) ...locationData,
-            if (deviceInfo != null) ...deviceInfo.toJson(),
+            if (locationData != null) 'location': locationData,
+            if (deviceInfo != null) 'device_info': deviceInfo.toJson(),
+            if (deviceInfo != null) 'platform': deviceInfo.toJson()['platform'],
           },
         );
       } catch (e) {
-        logInfo(
-            '⚠️ Could not register session on backend (offline). Proceeding locally: $e');
+        logInfo('🚨 CRITICAL: Session registration rejected by backend: $e');
+        _isRegistering = false;
+        _verificationState = SessionVerificationState.invalid;
+        // MUST NOT PROCEED LOCALLY
+        return null;
       }
 
       _currentSessionId = sessionId;
@@ -361,8 +381,14 @@ class SessionManagerServiceV2 {
 
     try {
       _lastActivityUpdate = DateTime.now();
-      final ip = await _getIPWithTimeout();
-      final loc = await _getCurrentLocation();
+      final ipInfo = await _getIpAndLocation();
+      final ip = ipInfo?['ip_address'] as String?;
+      final loc = ipInfo == null ? null : {
+        'city': ipInfo['location_city'],
+        'country': ipInfo['location_country'],
+        'latitude': ipInfo['latitude'],
+        'longitude': ipInfo['longitude'],
+      };
       final result = await _backendRequest(
         method: 'POST',
         path: '/v1/sessions/touch',
@@ -370,7 +396,7 @@ class SessionManagerServiceV2 {
           'session_id': _currentSessionId,
           'session_token': _sessionToken,
           if (ip != null) 'ip_address': ip,
-          if (loc != null) ...loc,
+          if (loc != null) 'location': loc,
         },
       );
       if (result is Map && result['valid'] == true) {
@@ -572,12 +598,15 @@ class SessionManagerServiceV2 {
       final result = await _backendRequest(
         method: 'POST',
         path: '/v1/sessions/terminate',
-        body: {'target_session_id': targetSessionId},
+        body: {
+          'target_session_id': targetSessionId,
+          'current_session_id': _currentSessionId,
+        },
       );
       return result is Map && result['success'] == true;
     } catch (e) {
       logInfo('❌ Terminate session error: $e');
-      return false;
+      rethrow;
     }
   }
 
@@ -596,7 +625,7 @@ class SessionManagerServiceV2 {
           (result['success'] == true || result['count'] != null);
     } catch (e) {
       logInfo('❌ Terminate all sessions error: $e');
-      return false;
+      rethrow;
     }
   }
 
@@ -625,9 +654,14 @@ class SessionManagerServiceV2 {
   // LEGACY COMPATIBILITY WRAPPERS
   // ═══════════════════════════════════════════════════════════
 
-  Future<void> ensureSessionRegistered() async {
-    if (!isSessionActive) {
-      await registerSession();
+  Future<void> ensureSessionRegistered({bool force = false}) async {
+    if (force ||
+        !isSessionActive ||
+        _verificationState != SessionVerificationState.verified) {
+      final sessionId = await registerSession(force: force);
+      if (sessionId == null) {
+        throw Exception('Session registration failed or was rejected by backend.');
+      }
     }
   }
 
@@ -649,8 +683,14 @@ class SessionManagerServiceV2 {
     if (_currentSessionId == null || _sessionToken == null) return false;
 
     try {
-      final ip = await _getIPWithTimeout();
-      final loc = await _getCurrentLocation();
+      final ipInfo = await _getIpAndLocation();
+      final ip = ipInfo?['ip_address'] as String?;
+      final loc = ipInfo == null ? null : {
+        'city': ipInfo['location_city'],
+        'country': ipInfo['location_country'],
+        'latitude': ipInfo['latitude'],
+        'longitude': ipInfo['longitude'],
+      };
       final result = await _backendRequest(
         method: 'POST',
         path: '/v1/sessions/touch',
@@ -659,7 +699,7 @@ class SessionManagerServiceV2 {
           'session_token': _sessionToken,
           'fcm_token': token,
           if (ip != null) 'ip_address': ip,
-          if (loc != null) ...loc,
+          if (loc != null) 'location': loc,
         },
       );
       if (result is Map && result['valid'] == true) {
@@ -703,6 +743,7 @@ class SessionManagerServiceV2 {
 
   Future<SessionDeviceInfo?> _getDeviceInfo() async {
     final di = DeviceInfoPlugin();
+    final deviceId = DeviceIdService.id;
     if (Platform.isAndroid) {
       final info = await di.androidInfo;
       return SessionDeviceInfo(
@@ -710,7 +751,7 @@ class SessionManagerServiceV2 {
         deviceModel: info.model,
         osVersion: info.version.release,
         targetPlatform: TargetPlatform.android,
-        deviceId: info.id,
+        deviceId: deviceId,
       );
     } else if (Platform.isIOS) {
       final info = await di.iosInfo;
@@ -719,27 +760,31 @@ class SessionManagerServiceV2 {
         deviceModel: info.model,
         osVersion: info.systemVersion,
         targetPlatform: TargetPlatform.iOS,
-        deviceId: info.identifierForVendor,
+        deviceId: deviceId,
       );
     }
     return null;
   }
 
-  Future<String?> _getIPWithTimeout() async {
+  Future<Map<String, dynamic>?> _getIpAndLocation() async {
     try {
       final response = await http
-          .get(Uri.parse('https://api.ipify.org?format=json'))
+          .get(Uri.parse('https://ipwho.is/'))
           .timeout(const Duration(seconds: 5));
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body) as Map?;
-        return data?['ip']?.toString();
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        if (data['success'] == true) {
+          return {
+            'ip_address': data['ip']?.toString(),
+            'location_city': data['city']?.toString(),
+            'location_country': data['country']?.toString(),
+            'location_region': data['region']?.toString(),
+            'latitude': data['latitude'],
+            'longitude': data['longitude'],
+          };
+        }
       }
     } catch (_) {}
-    return null;
-  }
-
-  Future<Map<String, dynamic>?> _getCurrentLocation() async {
-    // Location requires permission — return null safely
     return null;
   }
 

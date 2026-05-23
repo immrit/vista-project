@@ -17,17 +17,12 @@ class PasswordRecoveryConfirmScreen extends StatefulWidget {
 class _PasswordRecoveryConfirmScreenState
     extends State<PasswordRecoveryConfirmScreen> {
   final TextEditingController _codeController = TextEditingController();
-  final TextEditingController _newPasswordController = TextEditingController();
-  final TextEditingController _confirmPasswordController =
-      TextEditingController();
 
   String? _optionId;
   String _method = 'sms';
   String _masked = '';
 
   bool _isLoading = false;
-  bool _obscureNewPassword = true;
-  bool _obscureConfirmPassword = true;
 
   int _resendCountdown = 0;
   Timer? _resendTimer;
@@ -55,8 +50,6 @@ class _PasswordRecoveryConfirmScreenState
   void dispose() {
     _resendTimer?.cancel();
     _codeController.dispose();
-    _newPasswordController.dispose();
-    _confirmPasswordController.dispose();
     super.dispose();
   }
 
@@ -92,42 +85,31 @@ class _PasswordRecoveryConfirmScreenState
     }
   }
 
-  Future<void> _complete() async {
+  Future<void> _verifyCode() async {
     final optionId = _optionId;
     if (optionId == null || optionId.isEmpty) return;
 
     final code = _codeController.text.trim();
-    final newPassword = _newPasswordController.text.trim();
-    final confirmPassword = _confirmPasswordController.text.trim();
 
     if (code.isEmpty) {
       _showError('کد را وارد کنید');
       return;
     }
-    if (newPassword.isEmpty) {
-      _showError('رمز جدید را وارد کنید');
-      return;
-    }
-    final passwordValidation = validatePasswordBalanced(newPassword);
-    if (!passwordValidation.isValid) {
-      _showError(passwordValidation.message);
-      return;
-    }
-    if (newPassword != confirmPassword) {
-      _showError('رمز عبور و تایید آن یکسان نیستند');
-      return;
-    }
 
     setState(() => _isLoading = true);
     try {
-      await AuthRepository().completeRecovery(
+      final token = await AuthRepository().verifyRecoveryCode(
         optionId: optionId,
         code: code,
-        newPassword: newPassword,
       );
       if (!mounted) return;
-      _showSuccess('رمز عبور با موفقیت تغییر یافت');
-      Navigator.pushNamedAndRemoveUntil(context, '/auth', (route) => false);
+      
+      // Navigate to the set password screen
+      Navigator.pushNamed(
+        context,
+        '/reset-password-set',
+        arguments: {'token': token},
+      );
     } catch (e) {
       _showError(e is String ? e : 'کد نامعتبر است یا خطایی رخ داده است');
     } finally {
@@ -173,7 +155,7 @@ class _PasswordRecoveryConfirmScreenState
                     ),
                     const Spacer(),
                     Text(
-                      'تایید کد و رمز جدید',
+                      'تایید کد',
                       style: Theme.of(context).textTheme.headlineMedium,
                       textAlign: TextAlign.center,
                     ),
@@ -217,55 +199,9 @@ class _PasswordRecoveryConfirmScreenState
                         onPressed: _isLoading ? null : _resendCode,
                         child: const Text('ارسال مجدد کد'),
                       ),
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: _newPasswordController,
-                      obscureText: _obscureNewPassword,
-                      textAlign: TextAlign.left,
-                      textDirection: TextDirection.ltr,
-                      enabled: !_isLoading,
-                      decoration: InputDecoration(
-                        hintText: 'رمز عبور جدید',
-                        hintTextDirection: TextDirection.rtl,
-                        prefixIcon: const Icon(Icons.lock_outline),
-                        suffixIcon: IconButton(
-                          icon: Icon(_obscureNewPassword
-                              ? Icons.visibility_off
-                              : Icons.visibility),
-                          onPressed: _isLoading
-                              ? null
-                              : () => setState(() =>
-                                  _obscureNewPassword = !_obscureNewPassword),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _confirmPasswordController,
-                      obscureText: _obscureConfirmPassword,
-                      textAlign: TextAlign.left,
-                      textDirection: TextDirection.ltr,
-                      enabled: !_isLoading,
-                      textInputAction: TextInputAction.done,
-                      onSubmitted: (_) => _complete(),
-                      decoration: InputDecoration(
-                        hintText: 'تایید رمز عبور جدید',
-                        hintTextDirection: TextDirection.rtl,
-                        prefixIcon: const Icon(Icons.lock),
-                        suffixIcon: IconButton(
-                          icon: Icon(_obscureConfirmPassword
-                              ? Icons.visibility_off
-                              : Icons.visibility),
-                          onPressed: _isLoading
-                              ? null
-                              : () => setState(() => _obscureConfirmPassword =
-                                  !_obscureConfirmPassword),
-                        ),
-                      ),
-                    ),
                     const SizedBox(height: 24),
                     ElevatedButton(
-                      onPressed: _isLoading ? null : _complete,
+                      onPressed: _isLoading ? null : _verifyCode,
                       child: _isLoading
                           ? const SizedBox(
                               height: 20,
@@ -275,7 +211,7 @@ class _PasswordRecoveryConfirmScreenState
                                 color: Colors.white,
                               ),
                             )
-                          : const Text('تغییر رمز عبور'),
+                          : const Text('تایید کد'),
                     ),
                     const Spacer(flex: 2),
                   ],

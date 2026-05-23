@@ -109,7 +109,7 @@ class PushNotificationService {
 
   Future<void> cancelConversationNotification(String conversationId) async {
     if (conversationId.isEmpty) return;
-    await _flutterLocalNotifications.cancel(conversationId.hashCode);
+    await _flutterLocalNotifications.cancel(id: conversationId.hashCode);
   }
 
   static bool _isActionPersistable(NotificationResponse details) {
@@ -245,7 +245,7 @@ class PushNotificationService {
     );
 
     await _flutterLocalNotifications.initialize(
-      initSettings,
+      settings: initSettings,
       // هندلر کلیک وقتی اپ باز است (Foreground)
       onDidReceiveNotificationResponse: (details) {
         _onNotificationTap(details);
@@ -620,10 +620,10 @@ class PushNotificationService {
     final payloadJson = jsonEncode(data);
 
     await _flutterLocalNotifications.show(
-      notificationId,
-      senderName,
-      messageContent,
-      NotificationDetails(
+      id: notificationId,
+      title: senderName,
+      body: messageContent,
+      notificationDetails: NotificationDetails(
         android: androidDetails,
         iOS: DarwinNotificationDetails(
           categoryIdentifier: 'CHAT_MESSAGE',
@@ -694,10 +694,10 @@ class PushNotificationService {
             'خبر جدید';
 
     await _flutterLocalNotifications.show(
-      message.hashCode,
-      title,
-      _shorten(body),
-      NotificationDetails(
+      id: message.hashCode,
+      title: title,
+      body: _shorten(body),
+      notificationDetails: NotificationDetails(
         android: androidDetails,
         iOS: const DarwinNotificationDetails(),
       ),
@@ -956,7 +956,7 @@ class PushNotificationService {
         return false;
       }
 
-      await _flutterLocalNotifications.cancel(trimmedConversationId.hashCode);
+      await _flutterLocalNotifications.cancel(id: trimmedConversationId.hashCode);
       return true;
     } catch (e) {
       logInfo('mark read backend failed: $e');

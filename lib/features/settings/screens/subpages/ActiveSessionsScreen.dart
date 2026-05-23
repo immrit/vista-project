@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:timeago/timeago.dart' as timeago;
 
+import 'package:dio/dio.dart';
 import 'package:Vista/model/session_model.dart';
 import 'package:Vista/provider/session_provider.dart';
 import 'package:Vista/services/session_manager_service_v2.dart';
@@ -531,12 +532,25 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen>
 
     if (confirmed != true) return;
 
-    final result = await sessionManager.terminateSession(session.id);
-    if (mounted) {
-      if (result) {
-        ref.invalidate(activeSessionsProvider);
-        _showSuccessSnackBar('نشست با موفقیت خاتمه یافت');
-      } else {
+    try {
+      final result = await sessionManager.terminateSession(session.id);
+      if (mounted) {
+        if (result) {
+          ref.invalidate(activeSessionsProvider);
+          _showSuccessSnackBar('نشست با موفقیت خاتمه یافت');
+        } else {
+          _showErrorSnackBar('خطا در خاتمه نشست');
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        if (e is DioException && e.response?.data != null && e.response!.data is Map) {
+          final data = e.response!.data as Map;
+          if (data['message'] != null) {
+            _showErrorSnackBar(data['message'].toString());
+            return;
+          }
+        }
         _showErrorSnackBar('خطا در خاتمه نشست');
       }
     }
@@ -562,11 +576,23 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen>
     );
     if (!allowed) return;
 
-    final successCount = await sessionManager.terminateAllOtherSessions();
-
-    if (mounted) {
-      ref.invalidate(activeSessionsProvider);
-      _showSuccessSnackBar('$successCount نشست دیگر با موفقیت خاتمه یافت');
+    try {
+      final successCount = await sessionManager.terminateAllOtherSessions();
+      if (mounted) {
+        ref.invalidate(activeSessionsProvider);
+        _showSuccessSnackBar('$successCount نشست دیگر با موفقیت خاتمه یافت');
+      }
+    } catch (e) {
+      if (mounted) {
+        if (e is DioException && e.response?.data != null && e.response!.data is Map) {
+          final data = e.response!.data as Map;
+          if (data['message'] != null) {
+            _showErrorSnackBar(data['message'].toString());
+            return;
+          }
+        }
+        _showErrorSnackBar('خطا در خاتمه نشست‌ها');
+      }
     }
   }
 

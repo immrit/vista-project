@@ -9,6 +9,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 import 'package:just_audio_platform_interface/just_audio_platform_interface.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:Vista/firebase_options.dart';
 import 'package:Vista/services/PushNotificationService.dart';
 import 'package:Vista/services/local_notification_center.dart';
@@ -21,6 +22,7 @@ import 'package:Vista/services/memory_leak_detector.dart';
 import 'package:Vista/utils/performance_monitor.dart';
 import 'package:Vista/security/logging_utility.dart';
 import 'package:Vista/features/chat/performance/frame_budget_service.dart';
+import 'package:Vista/services/device_id_service.dart';
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -60,6 +62,8 @@ class AppInitialization {
     ));
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
 
+    await dotenv.load(fileName: ".env");
+
     // Initial Setup
     await initializeDateFormatting('fa', null);
     _setupPerformanceOptimizations();
@@ -71,6 +75,9 @@ class AppInitialization {
 
     // مدیر نشست ضروری است تا بدانیم کاربر لاگین هست یا خیر
     await SessionManagerServiceV2().initialize();
+    
+    // شناسایی دستگاه برای سیستم Firewall و پایش
+    await DeviceIdService.getDeviceId();
 
     // تمامی پردازش‌های سنگین و دیتابیس‌های لوکال که ربطی به صفحه اول ندارند
     // به اولین فریم خالیِ بعد از لود موکول می‌شوند

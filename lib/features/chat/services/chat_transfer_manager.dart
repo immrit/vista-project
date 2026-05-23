@@ -136,7 +136,7 @@ class ChatTransferManager {
     _initFuture = _loadFromPrefs();
     _connectivitySub = Connectivity()
         .onConnectivityChanged
-        .listen(_onConnectivityChanged, onError: (_) {});
+        .listen((results) => _onConnectivityChanged(results.first), onError: (_) {});
   }
 
   static const String _prefsKey = 'chat_transfer_tasks_v1';
@@ -150,7 +150,7 @@ class ChatTransferManager {
   final Set<String> _pauseRequested = {};
   final Set<String> _cancelRequested = {};
 
-  StreamSubscription<ConnectivityResult>? _connectivitySub;
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
   Future<void>? _initFuture;
   bool _isInitialized = false;
   Timer? _persistDebounce;

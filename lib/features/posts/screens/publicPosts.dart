@@ -51,7 +51,7 @@ class _PublicPostsScreenState extends ConsumerState<PublicPostsScreen>
     with AutomaticKeepAliveClientMixin {
   String _connectionStatus = '';
   final Connectivity _connectivity = Connectivity();
-  late StreamSubscription<ConnectivityResult> _connectivitySubscription;
+  late StreamSubscription<List<ConnectivityResult>> _connectivitySubscription;
   bool _isChecking = false;
   bool _mounted = true; // اضافه کردن متغیر برای کنترل وضعیت mount
   final ScrollController _scrollController = ScrollController();
@@ -110,8 +110,9 @@ class _PublicPostsScreenState extends ConsumerState<PublicPostsScreen>
     }
   }
 
-  Future<void> _updateConnectionStatus(ConnectivityResult result) async {
+  Future<void> _updateConnectionStatus(List<ConnectivityResult> results) async {
     if (!_mounted) return; // چک مجدد وضعیت mount
+    final result = results.first;
 
     // محاسبه وضعیت جدید
     String newStatus = '';

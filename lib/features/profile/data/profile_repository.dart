@@ -241,4 +241,25 @@ class ProfileRepository {
         .map((item) => ProfileModel.fromMap(Map<String, dynamic>.from(item)))
         .toList(growable: false);
   }
+
+  Future<void> requestVerification({
+    required String category,
+    required String documentUrl,
+    String? notes,
+  }) async {
+    try {
+      await _dio.post(
+        '/me/verify',
+        data: {
+          'category': category,
+          'document_url': documentUrl,
+          if (notes != null && notes.trim().isNotEmpty) 'notes': notes,
+        },
+        options: await _authOptions(),
+      );
+    } catch (e) {
+      logError('Request Verification Error', error: e);
+      throw 'خطا در ثبت درخواست تایید هویت';
+    }
+  }
 }

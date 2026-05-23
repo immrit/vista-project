@@ -178,9 +178,12 @@ class _PasswordResetCodeScreenState extends State<PasswordResetCodeScreen>
     setState(() => _isLoading = true);
 
     try {
-      await AuthRepository().completeRecovery(
+      final token = await AuthRepository().verifyRecoveryCode(
         optionId: optionId,
         code: code,
+      );
+      await AuthRepository().completeRecovery(
+        token: token,
         newPassword: newPassword,
       );
       _showSuccessSnackBar('رمز عبور با موفقیت تغییر یافت');

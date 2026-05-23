@@ -1,4 +1,4 @@
-﻿import '../security/logging_utility.dart';
+import '../security/logging_utility.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:math';
@@ -89,12 +89,6 @@ class VoiceRecordingService {
       // تنظیمات ضبط بهینه برای کیفیت بالا مثل ویستا و پیام‌رسان
       await _recorderController.record(
         path: _currentRecordingPath!,
-        bitRate: 128000, // بیت ریت بالاتر برای کیفیت بهتر
-        sampleRate: 44100, // نمونه‌برداری 44.1kHz استاندارد
-        androidEncoder:
-            AndroidEncoder.aac, // استفاده از AAC برای کیفیت بهتر در اندروید
-        androidOutputFormat:
-            AndroidOutputFormat.mpeg4, // فرمت خروجی MPEG4 برای اندروید
       );
 
       // شروع تایمر مدت زمان

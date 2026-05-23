@@ -232,10 +232,10 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
     }
 
     await flutterLocalNotificationsPlugin.show(
-      DateTime.now().millisecondsSinceEpoch % 100000,
-      title,
-      body,
-      NotificationDetails(
+      id: DateTime.now().millisecondsSinceEpoch % 100000,
+      title: title,
+      body: body,
+      notificationDetails: NotificationDetails(
         android: AndroidNotificationDetails(
           'social_notify',
           'فعالیت های اجتماعی',

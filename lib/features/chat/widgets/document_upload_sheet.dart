@@ -363,7 +363,7 @@ class _DocumentUploadSheetState extends State<DocumentUploadSheet>
   Future<void> _pickFile() async {
     try {
       HapticFeedback.lightImpact();
-      final result = await FilePicker.platform.pickFiles(
+      final result = await FilePicker.pickFiles(
         type: FileType.custom,
         allowMultiple: false,
         withData: true,
