@@ -101,7 +101,6 @@ dependencies:
   visibility_detector: ^0.4.0+2
   get_thumbnail_video: ^0.7.3
   voice_message_package: ^2.2.1
-  dart_jsonwebtoken: ^3.2.0
   flutter_colorpicker: ^1.0.3
   cryptography: ^2.7.0
   flutter_secure_storage: ^10.3.0
@@ -162,8 +161,6 @@ flutter:
     - lib/utils/images/share_icons/
     - lib/utils/images/wallpapers/dark_wallpaper.png
     - lib/utils/images/wallpapers/light_wallpaper.png
-    - lib/features/emoji/data/telegram_emoji_map.json
-    - assets/emoji/telegram/
   fonts:
     - family: Vazir
       fonts:

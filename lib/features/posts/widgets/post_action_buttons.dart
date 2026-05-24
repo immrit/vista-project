@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 /// Shared action buttons for post cards (used in For You / Following / Public).
 ///
@@ -76,6 +77,7 @@ class _PostLikeButtonState extends State<PostLikeButton>
 
     return InkWell(
       onTap: () {
+        HapticFeedback.lightImpact();
         widget.onTap();
         if (!widget.isLiked) {
           _controller.forward().then((_) => _controller.reverse());
