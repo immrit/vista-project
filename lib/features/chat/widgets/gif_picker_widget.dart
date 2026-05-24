@@ -1,4 +1,4 @@
-﻿// lib/features/chat/widgets/gif_picker_widget.dart
+// lib/features/chat/widgets/gif_picker_widget.dart
 //
 // ویجت انتخاب GIF - مشابه ویستا
 //
@@ -32,7 +32,7 @@ class _GifPickerWidgetState extends State<GifPickerWidget>
   final GifService _gifService = GifService();
   final TextEditingController _searchController = TextEditingController();
   Timer? _debounce;
-  
+
   List<GifItem> _gifs = [];
   bool _isLoading = true;
   bool _hasError = false;
@@ -61,7 +61,7 @@ class _GifPickerWidgetState extends State<GifPickerWidget>
       _hasError = false;
       _gifs = [];
     });
-    
+
     try {
       final gifs = await _gifService.getTrendingGifs();
       if (mounted) {
@@ -85,14 +85,14 @@ class _GifPickerWidgetState extends State<GifPickerWidget>
       _loadTrending();
       return;
     }
-    
+
     if (!mounted) return;
     setState(() {
       _isLoading = true;
       _hasError = false;
       _gifs = [];
     });
-    
+
     try {
       final gifs = await _gifService.searchGifs(query);
       if (mounted) {
@@ -152,10 +152,12 @@ class _GifPickerWidgetState extends State<GifPickerWidget>
                 color: Colors.grey[500],
                 fontSize: 14,
               ),
-              prefixIcon: const Icon(Icons.search, color: Colors.grey, size: 20),
+              prefixIcon:
+                  const Icon(Icons.search, color: Colors.grey, size: 20),
               border: InputBorder.none,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              suffixIcon: _searchQuery.isNotEmpty 
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              suffixIcon: _searchQuery.isNotEmpty
                   ? IconButton(
                       icon: const Icon(Icons.close, size: 18),
                       color: Colors.grey,
@@ -218,7 +220,8 @@ class _GifPickerWidgetState extends State<GifPickerWidget>
                           mainAxisSpacing: 4,
                           crossAxisSpacing: 4,
                           itemCount: _gifs.length,
-                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 4, vertical: 4),
                           itemBuilder: (context, index) {
                             final gif = _gifs[index];
                             return _buildGifItem(gif, isDark);
@@ -276,4 +279,3 @@ class _GifPickerWidgetState extends State<GifPickerWidget>
     );
   }
 }
-

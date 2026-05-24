@@ -25,6 +25,7 @@ class _NewMessageScreenState extends ConsumerState<NewMessageScreen> {
 
   bool _isLoading = true;
   bool _isSearchingGlobally = false;
+  bool _isSecretMode = false;
   List<GroupUserItem> _users = [];
   List<GroupUserItem>? _globalSearchResults;
 
@@ -105,13 +106,13 @@ class _NewMessageScreenState extends ConsumerState<NewMessageScreen> {
     }).toList();
   }
 
-  void _openConversation(GroupUserItem user) async {
+  void _openConversation(GroupUserItem user, {bool isSecret = false}) async {
     String? conversationId = user.conversationId;
 
-    if (conversationId == null || conversationId.isEmpty) {
+    if (isSecret || conversationId == null || conversationId.isEmpty) {
       try {
         final repo = ref.read(chatRepositoryProvider);
-        final result = await repo.createConversation(user.id);
+        final result = await repo.createConversation(user.id, isSecret: isSecret);
         if (result.isSuccess && result.data != null) {
           conversationId = result.data!.id;
         } else {
@@ -142,6 +143,7 @@ class _NewMessageScreenState extends ConsumerState<NewMessageScreen> {
             otherUserName: user.displayName,
             otherUserAvatar: user.avatarUrl,
             otherUserId: user.id,
+            isSecret: isSecret,
           ),
         ),
       ),
@@ -176,11 +178,11 @@ class _NewMessageScreenState extends ConsumerState<NewMessageScreen> {
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
-          'پیام جدید',
+          _isSecretMode ? 'گفتگوی محرمانه' : 'پیام جدید',
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.w600,
-            color: theme.textTheme.titleLarge?.color,
+            color: _isSecretMode ? Colors.green : theme.textTheme.titleLarge?.color,
           ),
         ),
         centerTitle: true,
@@ -202,8 +204,13 @@ class _NewMessageScreenState extends ConsumerState<NewMessageScreen> {
                     physics: const BouncingScrollPhysics(),
                     slivers: [
                       // دکمه ساخت گروه
-                      SliverToBoxAdapter(
+                      if (!_isSecretMode) SliverToBoxAdapter(
                         child: _buildCreateGroupTile(theme),
+                      ),
+                      
+                      // دکمه ساخت سکرت چت
+                      if (!_isSecretMode) SliverToBoxAdapter(
+                        child: _buildCreateSecretChatTile(theme),
                       ),
 
                       // هدر لیست کاربران
@@ -364,10 +371,54 @@ class _NewMessageScreenState extends ConsumerState<NewMessageScreen> {
     );
   }
 
+  Widget _buildCreateSecretChatTile(ThemeData theme) {
+    return InkWell(
+      onTap: () {
+        HapticFeedback.lightImpact();
+        setState(() {
+          _isSecretMode = true;
+        });
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
+          children: [
+            // آیکون سکرت چت
+            Container(
+              width: 52,
+              height: 52,
+              decoration: BoxDecoration(
+                color: Colors.green.withOpacity(0.15),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.lock_rounded,
+                color: Colors.green,
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: 14),
+            // متن
+            const Expanded(
+              child: Text(
+                'گفتگوی محرمانه جدید',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.green,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildUserTile(ThemeData theme, GroupUserItem user,
       {bool isLast = false}) {
     return InkWell(
-      onTap: () => _openConversation(user),
+      onTap: () => _openConversation(user, isSecret: _isSecretMode),
       child: Column(
         children: [
           Padding(

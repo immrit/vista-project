@@ -128,4 +128,3 @@ class AppInfoService {
     return '$_currentVersion ($_installCount)';
   }
 }
-

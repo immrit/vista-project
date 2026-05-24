@@ -72,4 +72,3 @@ enum MessagePrivacyLevel {
         MessagePrivacyLevel.everyone,
       ];
 }
-

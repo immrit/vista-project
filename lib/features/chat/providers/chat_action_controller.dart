@@ -74,6 +74,7 @@ class ChatActionController extends _$ChatActionController {
     String? replyToContent,
     String? replyToSenderName,
     String? mediaGroupId,
+    String? recipientPublicKey,
   }) async {
     if (!await TokenStorage.hasValidSession()) {
       return const ActionResult.failure('User not logged in');
@@ -101,6 +102,7 @@ class ChatActionController extends _$ChatActionController {
         replyToContent: replyToContent ?? state.replyMessage?.content,
         replyToSenderName: replyToSenderName ?? state.replyMessage?.senderName,
         mediaGroupId: mediaGroupId,
+        recipientPublicKey: recipientPublicKey,
       );
 
       final result = await repository.sendMessage(payload);

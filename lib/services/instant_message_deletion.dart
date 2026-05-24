@@ -1,4 +1,4 @@
-﻿import '../security/logging_utility.dart';
+import '../security/logging_utility.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../model/message_model.dart';
@@ -551,12 +551,12 @@ Future<void> _handleConversationDeletion({
         result = await repository.deleteConversation(conversationId);
         break;
       case DeleteConversationOption.clearHistory:
-        result =
-            await repository.clearConversation(conversationId, forEveryone: false);
+        result = await repository.clearConversation(conversationId,
+            forEveryone: false);
         break;
       case DeleteConversationOption.deleteForEveryone:
-        result =
-            await repository.clearConversation(conversationId, forEveryone: true);
+        result = await repository.clearConversation(conversationId,
+            forEveryone: true);
         break;
     }
 

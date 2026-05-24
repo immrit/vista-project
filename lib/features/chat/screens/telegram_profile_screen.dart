@@ -894,10 +894,13 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
     );
   }
 
-  Widget _buildSharedPostTextCardTile(_SharedPostGridItemData post, bool isDark) {
+  Widget _buildSharedPostTextCardTile(
+      _SharedPostGridItemData post, bool isDark) {
     final textColor = isDark ? Colors.white : Colors.black87;
     final subtleColor = isDark ? Colors.white70 : Colors.black54;
-    final quoteBg = isDark ? Colors.white.withOpacity(0.08) : Colors.black.withOpacity(0.04);
+    final quoteBg = isDark
+        ? Colors.white.withOpacity(0.08)
+        : Colors.black.withOpacity(0.04);
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
@@ -956,11 +959,14 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
     );
   }
 
-  Widget _buildSharedPostGridPreview(_SharedPostGridItemData post, bool isDark) {
-    final fallbackColor = isDark ? const Color(0xFF334155) : Colors.blueGrey[50]!;
+  Widget _buildSharedPostGridPreview(
+      _SharedPostGridItemData post, bool isDark) {
+    final fallbackColor =
+        isDark ? const Color(0xFF334155) : Colors.blueGrey[50]!;
     final iconColor = isDark ? Colors.white70 : const Color(0xFF546E7A);
 
-    if (post.kind == _SharedPostKind.image || post.kind == _SharedPostKind.video) {
+    if (post.kind == _SharedPostKind.image ||
+        post.kind == _SharedPostKind.video) {
       final mediaUrl = post.kind == _SharedPostKind.video
           ? (post.imageUrl ?? post.videoUrl)
           : post.imageUrl;
@@ -981,7 +987,10 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    colors: [Colors.transparent, Colors.black.withOpacity(0.58)],
+                    colors: [
+                      Colors.transparent,
+                      Colors.black.withOpacity(0.58)
+                    ],
                   ),
                 ),
                 child: const Center(
@@ -1028,9 +1037,7 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
               borderRadius: BorderRadius.circular(10),
             ),
             child: Icon(
-              isMusic
-                  ? Icons.music_note_rounded
-                  : Icons.subject_rounded,
+              isMusic ? Icons.music_note_rounded : Icons.subject_rounded,
               color: Colors.white,
               size: 22,
             ),
@@ -1053,7 +1060,9 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
     final icon = _sharedPostTypeIcon(kind);
     final label = _sharedPostTypeLabel(kind);
 
-    final bg = isDark ? Colors.white.withOpacity(0.11) : _primaryColor.withOpacity(0.08);
+    final bg = isDark
+        ? Colors.white.withOpacity(0.11)
+        : _primaryColor.withOpacity(0.08);
     final fg = isDark ? Colors.white70 : _primaryColor;
 
     return Container(

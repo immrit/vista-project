@@ -75,16 +75,20 @@ Dio createPinnedDioClient({
         // Maintenance Mode
         final context = navigatorKey.currentContext;
         if (context != null) {
-          Navigator.of(context).pushNamedAndRemoveUntil('/maintenance', (route) => false);
+          Navigator.of(context)
+              .pushNamedAndRemoveUntil('/maintenance', (route) => false);
         }
       } else if (e.response?.statusCode == 403 && e.response?.data != null) {
         final data = e.response!.data;
-        if (data is Map && (data['error'] == 'banned' || data['error'] == 'account_suspended')) {
+        if (data is Map &&
+            (data['error'] == 'banned' ||
+                data['error'] == 'account_suspended')) {
           // Banned or Suspended
           TokenStorage.clearAll();
           final context = navigatorKey.currentContext;
           if (context != null) {
-            Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
+            Navigator.of(context)
+                .pushNamedAndRemoveUntil('/login', (route) => false);
             if (data['error'] == 'banned') {
               VistaToast.error(
                 context: context,

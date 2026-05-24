@@ -7,19 +7,19 @@ class DeviceIdService {
 
   static Future<String> getDeviceId() async {
     if (_cachedId != null) return _cachedId!;
-    
+
     final prefs = await SharedPreferences.getInstance();
     String? id = prefs.getString(_key);
-    
+
     if (id == null) {
       id = const Uuid().v4();
       await prefs.setString(_key, id);
     }
-    
+
     _cachedId = id;
     return id;
   }
-  
+
   // Synchronous getter after initialization
   static String get id => _cachedId ?? 'unknown_device';
 }

@@ -43,8 +43,7 @@ class ChatLocalDataSourceIsar {
       final touchedConversationIds = <String>{};
       for (final message in messages) {
         final existingModel = existingById[message.id];
-        final merged =
-            _mergeWithExistingLocalFields(message, existingModel);
+        final merged = _mergeWithExistingLocalFields(message, existingModel);
         if (existingModel != null &&
             _isMessageEffectivelySame(existingModel, merged)) {
           continue;
@@ -248,7 +247,8 @@ class ChatLocalDataSourceIsar {
         ..lastMessageType = latestMessage.attachmentType ?? 'text'
         ..isLastMessageFromMe = latestMessage.isMe
         ..lastMessageSenderId = latestMessage.senderId
-        ..lastMessageDeliveryStatus = _messageDeliveryStatusToString(latestMessage);
+        ..lastMessageDeliveryStatus =
+            _messageDeliveryStatusToString(latestMessage);
 
       if (latestMessage.createdAt.isAfter(conversation.updatedAt)) {
         conversation.updatedAt = latestMessage.createdAt;
@@ -550,12 +550,13 @@ class ChatLocalDataSourceIsar {
       );
       for (final conv in conversations) {
         final existing = existingById[conv.id];
-        await isar.conversationEntitys
-            .putIfChanged(_mergeConversationEntity(
-          conv,
-          existing,
-          preserveLocalUnread: true,
-        ), existing);
+        await isar.conversationEntitys.putIfChanged(
+            _mergeConversationEntity(
+              conv,
+              existing,
+              preserveLocalUnread: true,
+            ),
+            existing);
       }
     });
   }
@@ -567,20 +568,19 @@ class ChatLocalDataSourceIsar {
           .filter()
           .idEqualTo(conversation.id)
           .findFirst();
-      await isar.conversationEntitys
-          .putIfChanged(_mergeConversationEntity(
-        conversation,
-        existing,
-        preserveLocalUnread: false,
-      ), existing);
+      await isar.conversationEntitys.putIfChanged(
+          _mergeConversationEntity(
+            conversation,
+            existing,
+            preserveLocalUnread: false,
+          ),
+          existing);
     });
   }
 
   ConversationEntity _mergeConversationEntity(
-    ConversationModel incoming,
-    ConversationEntity? existing,
-    {required bool preserveLocalUnread}
-  ) {
+      ConversationModel incoming, ConversationEntity? existing,
+      {required bool preserveLocalUnread}) {
     final merged = ConversationEntity.fromModel(incoming);
     if (existing == null) return merged;
 

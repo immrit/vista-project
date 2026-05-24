@@ -20,7 +20,7 @@ class NoopChatRepository implements ChatRepository {
 
   @override
   Future<ChatResult<ConversationModel>> createConversation(
-          String otherUserId) async =>
+          String otherUserId, {bool isSecret = false}) async =>
       _failure();
 
   @override

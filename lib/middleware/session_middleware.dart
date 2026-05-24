@@ -21,4 +21,3 @@ class _SessionMiddlewareState extends ConsumerState<SessionMiddleware> {
     return widget.child;
   }
 }
-

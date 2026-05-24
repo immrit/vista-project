@@ -370,9 +370,9 @@ class _FullScreenImageViewerState extends State<FullScreenImageViewer>
         (_currentIndex * (itemWidth + spacing)) - ((viewport - itemWidth) / 2);
     final clamped = target
         .clamp(
-      0.0,
-      _thumbnailScrollController.position.maxScrollExtent,
-    )
+          0.0,
+          _thumbnailScrollController.position.maxScrollExtent,
+        )
         .toDouble();
 
     if (animated) {

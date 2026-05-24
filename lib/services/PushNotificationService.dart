@@ -956,7 +956,8 @@ class PushNotificationService {
         return false;
       }
 
-      await _flutterLocalNotifications.cancel(id: trimmedConversationId.hashCode);
+      await _flutterLocalNotifications.cancel(
+          id: trimmedConversationId.hashCode);
       return true;
     } catch (e) {
       logInfo('mark read backend failed: $e');

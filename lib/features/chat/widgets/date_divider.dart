@@ -14,7 +14,7 @@ class DateChipStyle {
   static const double verticalPadding = 7;
   static const double fontSize = 12;
   static const FontWeight fontWeight = FontWeight.w500;
-  
+
   static BoxDecoration getDecoration(ChatTheme theme) {
     return BoxDecoration(
       color: theme.isDark
@@ -23,10 +23,10 @@ class DateChipStyle {
       borderRadius: BorderRadius.circular(borderRadius),
     );
   }
-  
+
   static TextStyle getTextStyle(ChatTheme theme) {
     return TextStyle(
-      color: theme.isDark 
+      color: theme.isDark
           ? Colors.white.withOpacity(0.9)
           : theme.secondaryTextColor,
       fontSize: fontSize,
@@ -37,7 +37,7 @@ class DateChipStyle {
 
 class DateDivider extends StatelessWidget {
   final DateTime date;
-  
+
   const DateDivider({
     super.key,
     required this.date,
@@ -46,13 +46,13 @@ class DateDivider extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = context.chatTheme;
-    
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 16),
       child: Center(
         child: Container(
           padding: const EdgeInsets.symmetric(
-            horizontal: DateChipStyle.horizontalPadding, 
+            horizontal: DateChipStyle.horizontalPadding,
             vertical: DateChipStyle.verticalPadding,
           ),
           decoration: DateChipStyle.getDecoration(theme),
@@ -123,10 +123,9 @@ String _getPersianMonth(int month) {
 /// آیا باید بین دو پیام Date Divider نشون بدیم؟
 bool shouldShowDateDivider(DateTime current, DateTime? previous) {
   if (previous == null) return true;
-  
+
   final currentDate = DateTime(current.year, current.month, current.day);
   final previousDate = DateTime(previous.year, previous.month, previous.day);
-  
+
   return currentDate != previousDate;
 }
-

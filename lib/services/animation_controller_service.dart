@@ -21,14 +21,15 @@ class AnimationControllerService {
     try {
       final advancedService = AdvancedSettingsService();
       final perfSettings = advancedService.getPerformanceSettings();
-      final animations = perfSettings['animations'] as Map<String, dynamic>? ?? {};
+      final animations =
+          perfSettings['animations'] as Map<String, dynamic>? ?? {};
       final enabled = animations['enabled'] as bool? ?? true;
       final reduceMotion = animations['reduce_motion'] as bool? ?? false;
-      
+
       if (!enabled || reduceMotion) {
         return false;
       }
-      
+
       // اگر battery saver فعال باشد، انیمیشن‌ها غیرفعال می‌شوند
       return _animationsEnabled && !_batterySaverMode;
     } catch (e) {
@@ -76,13 +77,15 @@ class AnimationControllerService {
       try {
         final advancedService = AdvancedSettingsService();
         final perfSettings = advancedService.getPerformanceSettings();
-        final animations = perfSettings['animations'] as Map<String, dynamic>? ?? {};
-        
+        final animations =
+            perfSettings['animations'] as Map<String, dynamic>? ?? {};
+
         _animationsEnabled = animations['enabled'] as bool? ?? true;
         _animationSpeed = animations['speed'] as String? ?? 'normal';
         _reduceMotion = animations['reduce_motion'] as bool? ?? false;
-        
-        logInfo('📱 Animation settings loaded from AdvancedSettings: enabled=$_animationsEnabled, speed=$_animationSpeed, reduceMotion=$_reduceMotion');
+
+        logInfo(
+            '📱 Animation settings loaded from AdvancedSettings: enabled=$_animationsEnabled, speed=$_animationSpeed, reduceMotion=$_reduceMotion');
       } catch (e) {
         logInfo('⚠️ Error loading from AdvancedSettings, using defaults: $e');
       }
@@ -108,7 +111,7 @@ class AnimationControllerService {
   /// دریافت مدت زمان انیمیشن (بر اساس تنظیمات)
   Duration get animationDuration {
     if (!animationsEnabled) return Duration.zero;
-    
+
     // بر اساس سرعت انیمیشن
     switch (_animationSpeed) {
       case 'slow':

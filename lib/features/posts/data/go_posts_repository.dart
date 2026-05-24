@@ -65,7 +65,7 @@ class GoPostsRepository {
 
   Future<List<PublicPostModel>> getFeed({
     int limit = 15,
-    int offset = 0,
+    dynamic offset = 0,
   }) async {
     final response = await _dio.get(
       '/feed',
@@ -77,7 +77,7 @@ class GoPostsRepository {
 
   Future<List<PublicPostModel>> getFollowingFeed({
     int limit = 15,
-    int offset = 0,
+    dynamic offset = 0,
   }) async {
     final response = await _dio.get(
       '/feed/following',
@@ -98,7 +98,7 @@ class GoPostsRepository {
   Future<List<PublicPostModel>> getUserPosts({
     required String userId,
     int limit = 15,
-    int offset = 0,
+    dynamic offset = 0,
   }) async {
     final response = await _dio.get(
       '/users/$userId/posts',
@@ -110,7 +110,7 @@ class GoPostsRepository {
 
   Future<List<PublicPostModel>> getSavedPosts({
     required int limit,
-    required int offset,
+    required dynamic offset,
   }) async {
     final response = await _dio.get(
       '/me/saved',
@@ -122,7 +122,7 @@ class GoPostsRepository {
 
   Future<List<PublicPostModel>> exploreFeed({
     int limit = 15,
-    int offset = 0,
+    dynamic offset = 0,
   }) async {
     final response = await _dio.get(
       '/explore',
@@ -135,7 +135,7 @@ class GoPostsRepository {
   Future<List<PublicPostModel>> searchPostsByHashtag({
     required String hashtag,
     int limit = 15,
-    int offset = 0,
+    dynamic offset = 0,
   }) async {
     final cleanTag = hashtag.replaceAll('#', '');
     final response = await _dio.get(
@@ -211,17 +211,17 @@ class GoPostsRepository {
 
   Future<Set<String>> getSavedPostIds({
     int limit = 500,
-    int offset = 0,
+    dynamic offset = 0,
   }) async {
     final ids = <String>{};
-    var cursor = offset;
+    dynamic cursor = offset;
     const pageSize = 30;
 
     while (ids.length < limit) {
       final page = await getSavedPosts(limit: pageSize, offset: cursor);
       if (page.isEmpty) break;
       ids.addAll(page.map((post) => post.id).where((id) => id.isNotEmpty));
-      cursor += page.length;
+      cursor = page.last.createdAt.toUtc().toIso8601String();
       if (page.length < pageSize) break;
     }
 

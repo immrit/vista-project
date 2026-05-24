@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../model/conversation_model.dart';
@@ -324,10 +325,10 @@ class _ArchivedConversationItem extends StatelessWidget {
           ),
           child: ClipOval(
             child: conversation.otherUserAvatar?.isNotEmpty == true
-                ? Image.network(
-                    conversation.otherUserAvatar!,
+                ? CachedNetworkImage(
+                    imageUrl: conversation.otherUserAvatar!,
                     fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) =>
+                    errorWidget: (_, __, ___) =>
                         _buildDefaultAvatar(theme, displayName),
                   )
                 : _buildDefaultAvatar(theme, displayName),

@@ -40,7 +40,8 @@ class _SessionAuthWrapperState extends ConsumerState<SessionAuthWrapper> {
           icon: Icons.build_circle_outlined,
           backgroundColor: Colors.amber.shade700,
           textColor: Colors.white,
-          duration: const Duration(days: 1), // stay on screen practically forever until killed
+          duration: const Duration(
+              days: 1), // stay on screen practically forever until killed
         );
       }
       return; // Stuck loading forever
@@ -56,10 +57,11 @@ class _SessionAuthWrapperState extends ConsumerState<SessionAuthWrapper> {
       if (hasRefresh) {
         final refreshed = await SessionManagerServiceV2.instance
             .performSessionRefreshPublic();
-        if (!refreshed) {
+        if (refreshed == RefreshResult.authError) {
           _setNotAuthenticated();
           return;
         }
+        // If refreshed == RefreshResult.networkError, we STILL allow entry (offline mode)
       } else {
         _setNotAuthenticated();
         return;

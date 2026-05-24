@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../../../../services/weather_service.dart';
 import '../../../../services/MusicService.dart';
 import '../../../../model/MusicModel.dart';
@@ -1033,12 +1034,13 @@ class _MusicPickerSheetState extends State<_MusicPickerSheet> {
                           borderRadius: BorderRadius.circular(8),
                           child: music.coverUrl != null &&
                                   music.coverUrl!.trim().isNotEmpty
-                              ? Image.network(
-                                  music.coverUrl!,
+                              ? CachedNetworkImage(
+                                  imageUrl: music.coverUrl!,
                                   width: 48,
                                   height: 48,
                                   fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) => Container(
+                                  errorWidget: (context, url, error) =>
+                                      Container(
                                     width: 48,
                                     height: 48,
                                     color: Colors.white12,

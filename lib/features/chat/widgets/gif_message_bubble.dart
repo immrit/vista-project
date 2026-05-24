@@ -1,4 +1,4 @@
-﻿// lib/features/chat/widgets/gif_message_bubble.dart
+// lib/features/chat/widgets/gif_message_bubble.dart
 //
 // ویجت نمایش GIF در چت - مشابه ویستا
 //
@@ -87,7 +87,7 @@ class GifMessageBubble extends StatelessWidget {
               ),
             ),
           ),
-          
+
           // زمان و تیک (روی تصویر، پایین سمت راست)
           Positioned(
             bottom: 4,
@@ -112,15 +112,11 @@ class GifMessageBubble extends StatelessWidget {
                   if (message.isMe) ...[
                     const SizedBox(width: 4),
                     Icon(
-                      message.isSeen 
-                          ? Icons.done_all 
-                          : (message.isDelivered 
-                              ? Icons.done_all 
-                              : Icons.done),
+                      message.isSeen
+                          ? Icons.done_all
+                          : (message.isDelivered ? Icons.done_all : Icons.done),
                       size: 12,
-                      color: message.isSeen 
-                          ? Colors.blueAccent 
-                          : Colors.white,
+                      color: message.isSeen ? Colors.blueAccent : Colors.white,
                     ),
                   ],
                 ],
@@ -136,4 +132,3 @@ class GifMessageBubble extends StatelessWidget {
     return '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
   }
 }
-

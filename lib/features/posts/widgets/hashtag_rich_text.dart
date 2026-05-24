@@ -68,7 +68,8 @@ class _HashtagRichTextState extends State<HashtagRichText> {
 
     for (final m in reg.allMatches(text)) {
       if (m.start > start) {
-        spans.add(TextSpan(text: text.substring(start, m.start), style: baseStyle));
+        spans.add(
+            TextSpan(text: text.substring(start, m.start), style: baseStyle));
       }
 
       final raw = m.group(1) ?? '';
@@ -104,4 +105,3 @@ class _HashtagRichTextState extends State<HashtagRichText> {
     );
   }
 }
-

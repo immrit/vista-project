@@ -13,6 +13,7 @@ import 'package:Vista/DB/profile_cache_service.dart';
 import 'package:Vista/DB/settings_cache_service.dart';
 import 'package:Vista/services/animation_controller_service.dart';
 import 'package:Vista/services/video_autoplay_service.dart';
+import 'package:Vista/services/video_preload_service.dart';
 import 'package:Vista/services/image_quality_service.dart';
 import 'package:Vista/core/data/cache/cache_repository.dart';
 import 'package:Vista/model/SearchResut.dart';
@@ -57,7 +58,7 @@ class PublicPostsNotifier
     extends StateNotifier<AsyncValue<List<PublicPostModel>>> {
   final GoPostsRepository _postsRepository = GoPostsRepository();
   final int _limit = 15;
-  int _offset = 0;
+  dynamic _offset = 0;
   bool _hasMore = true;
   bool _isLoading = false;
 
@@ -82,7 +83,9 @@ class PublicPostsNotifier
         limit: _limit,
         offset: _offset,
       );
-      _offset += posts.length;
+      if (posts.isNotEmpty) {
+        _offset = posts.last.createdAt.toUtc().toIso8601String();
+      }
       _hasMore = posts.length == _limit;
 
       if (replace) {
@@ -91,6 +94,14 @@ class PublicPostsNotifier
         final currentPosts = state.value ?? [];
         state = AsyncValue.data([...currentPosts, ...posts]);
       }
+
+      // پیش‌بارگذاری ویدیوها در پس‌زمینه
+      final videoUrls = posts
+          .map((p) => p.videoUrl)
+          .where((url) => url != null && url.isNotEmpty)
+          .cast<String>()
+          .toList();
+      VideoPreloadService().preloadVideos(videoUrls);
     } catch (e, stackTrace) {
       UserFriendlyErrorHandler.logError(
         e,
@@ -280,7 +291,7 @@ class FollowingPostsNotifier
     extends StateNotifier<AsyncValue<List<PublicPostModel>>> {
   final GoPostsRepository _postsRepository = GoPostsRepository();
   final int _limit = 20;
-  int _offset = 0;
+  dynamic _offset = 0;
   bool _hasMore = true;
   bool _isLoading = false;
 
@@ -303,10 +314,20 @@ class FollowingPostsNotifier
         limit: _limit,
         offset: _offset,
       );
-      _offset += posts.length;
+      if (posts.isNotEmpty) {
+        _offset = posts.last.createdAt.toUtc().toIso8601String();
+      }
       _hasMore = posts.length == _limit;
       final current = replace ? <PublicPostModel>[] : state.value ?? [];
       state = AsyncValue.data([...current, ...posts]);
+
+      // پیش‌بارگذاری ویدیوها در پس‌زمینه
+      final videoUrls = posts
+          .map((p) => p.videoUrl)
+          .where((url) => url != null && url.isNotEmpty)
+          .cast<String>()
+          .toList();
+      VideoPreloadService().preloadVideos(videoUrls);
     } catch (e, stackTrace) {
       state = AsyncValue.error(e, stackTrace);
     } finally {

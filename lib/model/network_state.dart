@@ -8,10 +8,10 @@ import 'package:equatable/equatable.dart';
 /// کیفیت اتصال شبکه
 enum NetworkQuality {
   excellent, // <50ms ping - عالی
-  good,      // 50-150ms ping - خوب
-  fair,      // 150-300ms ping - متوسط
-  poor,      // >300ms ping - ضعیف
-  none,      // آفلاین
+  good, // 50-150ms ping - خوب
+  fair, // 150-300ms ping - متوسط
+  poor, // >300ms ping - ضعیف
+  none, // آفلاین
 }
 
 /// نوع اتصال
@@ -43,24 +43,25 @@ class NetworkState extends Equatable {
 
   /// وضعیت پیش‌فرض (آفلاین)
   factory NetworkState.initial() => NetworkState(
-    isConnected: false,
-    connectionType: ConnectionType.none,
-    quality: NetworkQuality.none,
-    lastChecked: DateTime.now(),
-  );
+        isConnected: false,
+        connectionType: ConnectionType.none,
+        quality: NetworkQuality.none,
+        lastChecked: DateTime.now(),
+      );
 
   /// وضعیت آنلاین با کیفیت پیش‌فرض
   factory NetworkState.connected({
     ConnectionType type = ConnectionType.wifi,
     NetworkQuality quality = NetworkQuality.good,
     int? latencyMs,
-  }) => NetworkState(
-    isConnected: true,
-    connectionType: type,
-    quality: quality,
-    lastChecked: DateTime.now(),
-    latencyMs: latencyMs,
-  );
+  }) =>
+      NetworkState(
+        isConnected: true,
+        connectionType: type,
+        quality: quality,
+        lastChecked: DateTime.now(),
+        latencyMs: latencyMs,
+      );
 
   // ═══════════════════════════════════════════════════════════════════════════
   // 🎯 HELPER GETTERS
@@ -70,12 +71,13 @@ class NetworkState extends Equatable {
   bool get canSendMessage => isConnected && quality != NetworkQuality.none;
 
   /// آیا اتصال برای دانلود فایل کافی است؟
-  bool get canDownloadMedia => isConnected && 
-    (quality == NetworkQuality.excellent || quality == NetworkQuality.good);
+  bool get canDownloadMedia =>
+      isConnected &&
+      (quality == NetworkQuality.excellent || quality == NetworkQuality.good);
 
   /// آیا باید media quality رو کاهش بدیم؟
-  bool get shouldCompressMedia => 
-    quality == NetworkQuality.fair || quality == NetworkQuality.poor;
+  bool get shouldCompressMedia =>
+      quality == NetworkQuality.fair || quality == NetworkQuality.poor;
 
   /// آیا اتصال WiFi هست؟
   bool get isWifi => connectionType == ConnectionType.wifi;
@@ -84,8 +86,8 @@ class NetworkState extends Equatable {
   bool get isCellular => connectionType == ConnectionType.cellular;
 
   /// آیا کیفیت خوب یا عالی هست؟
-  bool get hasGoodQuality => 
-    quality == NetworkQuality.excellent || quality == NetworkQuality.good;
+  bool get hasGoodQuality =>
+      quality == NetworkQuality.excellent || quality == NetworkQuality.good;
 
   /// متن فارسی کیفیت
   String get qualityText {
@@ -143,18 +145,17 @@ class NetworkState extends Equatable {
 
   @override
   List<Object?> get props => [
-    isConnected,
-    connectionType,
-    quality,
-    lastChecked,
-    latencyMs,
-    downloadSpeedMbps,
-  ];
+        isConnected,
+        connectionType,
+        quality,
+        lastChecked,
+        latencyMs,
+        downloadSpeedMbps,
+      ];
 
   @override
   String toString() {
     return 'NetworkState(connected: $isConnected, type: $connectionType, '
-           'quality: $quality, latency: ${latencyMs}ms)';
+        'quality: $quality, latency: ${latencyMs}ms)';
   }
 }
-

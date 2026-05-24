@@ -648,10 +648,11 @@ class _EditProfileState extends ConsumerState<EditProfile> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   const Text('کد ارسال شده به ایمیل را وارد کنید.'),
-                  if (debugCode != null && debugCode.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    Text('کد تست: $debugCode'),
-                  ],
+                  // debugCode display is completely hidden per user request.
+                  // if (debugCode != null && debugCode.isNotEmpty) ...[
+                  //   const SizedBox(height: 8),
+                  //   Text('کد تست: $debugCode'),
+                  // ],
                   const SizedBox(height: 12),
                   TextField(
                     controller: codeController,

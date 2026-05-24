@@ -1,4 +1,4 @@
-﻿// lib/features/chat/widgets/edit_message_dialog.dart
+// lib/features/chat/widgets/edit_message_dialog.dart
 //
 // دیالوگ ویرایش پیام - با الهام از ویستا
 //
@@ -59,12 +59,12 @@ class _EditMessageDialogState extends ConsumerState<EditMessageDialog> {
 
   Future<void> _save() async {
     final newContent = _controller.text.trim();
-    
+
     if (newContent.isEmpty) {
       setState(() => _error = 'متن پیام نمی‌تواند خالی باشد');
       return;
     }
-    
+
     if (newContent == widget.currentContent.trim()) {
       Navigator.of(context).pop(false);
       return;
@@ -77,9 +77,9 @@ class _EditMessageDialogState extends ConsumerState<EditMessageDialog> {
 
     try {
       final result = await ref.read(messageActionsProvider).edit(
-        messageId: widget.messageId,
-        newContent: newContent,
-      );
+            messageId: widget.messageId,
+            newContent: newContent,
+          );
 
       if (mounted) {
         if (result.isSuccess) {
@@ -234,4 +234,3 @@ class _EditMessageDialogState extends ConsumerState<EditMessageDialog> {
     );
   }
 }
-

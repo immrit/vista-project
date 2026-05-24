@@ -40,13 +40,17 @@ class BannedScreen extends StatelessWidget {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.white,
                   foregroundColor: Colors.red.shade900,
-                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8)),
                 ),
                 onPressed: () {
                   // User can try to exit or contact support
                 },
-                child: const Text('تماس با پشتیبانی', style: TextStyle(fontFamily: 'Vazir', fontWeight: FontWeight.bold)),
+                child: const Text('تماس با پشتیبانی',
+                    style: TextStyle(
+                        fontFamily: 'Vazir', fontWeight: FontWeight.bold)),
               ),
             ],
           ),

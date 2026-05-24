@@ -31,6 +31,7 @@ class ProfileModel extends Equatable {
   // استوری‌ها اکنون از Provider جداگانه (activeStoriesProvider) می‌آیند
   final String? role; // فیلد نقش کاربر
   final int postsCount;
+  final String? publicKey; // کلید عمومی برای E2EE
 
   const ProfileModel({
     required this.id,
@@ -49,6 +50,7 @@ class ProfileModel extends Equatable {
     this.posts = const [],
     this.role, // پارامتر نقش کاربر
     this.postsCount = 0,
+    this.publicKey,
   });
 
   factory ProfileModel.fromMap(Map<String, dynamic> map) {
@@ -88,6 +90,7 @@ class ProfileModel extends Equatable {
           .toList(),
       role: role, // واکشی نقش کاربر
       postsCount: map['posts_count'] ?? map['post_count'] ?? 0,
+      publicKey: map['public_key']?.toString(),
     );
   }
 
@@ -122,6 +125,7 @@ class ProfileModel extends Equatable {
       'posts': posts.map((post) => post.toMap()).toList(),
       'role': role, // ذخیره نقش کاربر
       'posts_count': postsCount,
+      'public_key': publicKey,
     };
   }
 
@@ -144,6 +148,7 @@ class ProfileModel extends Equatable {
     List<PublicPostModel>? posts,
     String? role, // اضافه کردن نقش کاربر به copyWith
     int? postsCount,
+    String? publicKey,
   }) {
     return ProfileModel(
       id: id ?? this.id,
@@ -162,6 +167,7 @@ class ProfileModel extends Equatable {
       posts: posts ?? this.posts,
       role: role ?? this.role, // اضافه کردن نقش کاربر
       postsCount: postsCount ?? this.postsCount,
+      publicKey: publicKey ?? this.publicKey,
     );
   }
 
@@ -183,6 +189,7 @@ class ProfileModel extends Equatable {
         posts,
         role, // اضافه کردن نقش کاربر به props
         postsCount,
+        publicKey,
       ];
   bool get hasBlueBadge =>
       isVerified && verificationType == VerificationType.blueTick;

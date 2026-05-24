@@ -136,9 +136,11 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
     try {
       final authState = ref.read(authControllerProvider);
       bool success = false;
-      
+
       if (authState.is2faRequired) {
-        success = await ref.read(authControllerProvider.notifier).verify2fa(password: password);
+        success = await ref
+            .read(authControllerProvider.notifier)
+            .verify2fa(password: password);
       } else {
         final input = _sanitizeInput(_inputController.text);
         final identifier = _isPhoneInput
@@ -149,7 +151,7 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
               password: password,
             );
       }
-      
+
       if (!success) {
         final error = ref.read(authControllerProvider).error;
         throw error ?? 'ورود ناموفق بود';
@@ -511,7 +513,6 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
     // Pinput theme based on Monochrome
     // Pinput theme based on Monochrome
     final theme = Theme.of(context);
-    final debugCode = ref.watch(authControllerProvider).otpDebugCode;
     final defaultPinTheme = PinTheme(
       width: 56,
       height: 60,
@@ -569,27 +570,28 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
               ),
             ),
           ),
-          if (debugCode != null && debugCode.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.primary.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: theme.colorScheme.primary.withValues(alpha: 0.2),
-                ),
-              ),
-              child: Text(
-                'Dev OTP: $debugCode',
-                textAlign: TextAlign.center,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.primary,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ],
+          // Dev OTP display is completely hidden per user request.
+          // if (debugCode != null && debugCode.isNotEmpty) ...[
+          //   const SizedBox(height: 12),
+          //   Container(
+          //     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          //     decoration: BoxDecoration(
+          //       color: theme.colorScheme.primary.withValues(alpha: 0.08),
+          //       borderRadius: BorderRadius.circular(12),
+          //       border: Border.all(
+          //         color: theme.colorScheme.primary.withValues(alpha: 0.2),
+          //       ),
+          //     ),
+          //     child: Text(
+          //       'Dev OTP: $debugCode',
+          //       textAlign: TextAlign.center,
+          //       style: theme.textTheme.bodyMedium?.copyWith(
+          //         color: theme.colorScheme.primary,
+          //         fontWeight: FontWeight.w600,
+          //       ),
+          //     ),
+          //   ),
+          // ],
           if (_otpError != null) ...[
             const SizedBox(height: 16),
             Text(_otpError!,

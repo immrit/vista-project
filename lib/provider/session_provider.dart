@@ -10,8 +10,7 @@ final sessionManagerProvider = Provider<SessionManagerServiceV2>((ref) {
 });
 
 // Provider برای لیست نشست‌های فعال
-final activeSessionsProvider =
-    StreamProvider<List<SessionModel>>((ref) {
+final activeSessionsProvider = StreamProvider<List<SessionModel>>((ref) {
   final sessionManager = ref.watch(sessionManagerProvider);
   return sessionManager.watchActiveSessions();
 });
@@ -31,10 +30,3 @@ final sessionCountProvider = Provider<int>((ref) {
     error: (_, __) => 0,
   );
 });
-
-
-
-
-
-
-

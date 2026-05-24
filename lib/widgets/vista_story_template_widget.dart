@@ -1,5 +1,6 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'dart:math' as math;
+import 'package:cached_network_image/cached_network_image.dart';
 import '../../model/publicPostModel.dart';
 import 'verification_badge_icon.dart';
 
@@ -124,7 +125,7 @@ class VistaStoryTemplateWidget extends StatelessWidget {
               radius: 50, // اندازه خیلی بزرگ‌تر
               backgroundColor: Colors.grey[300],
               backgroundImage: post.avatarUrl.isNotEmpty
-                  ? NetworkImage(post.avatarUrl)
+                  ? CachedNetworkImageProvider(post.avatarUrl)
                   : null,
               child: post.avatarUrl.isEmpty
                   ? Text(
@@ -246,10 +247,10 @@ class VistaStoryTemplateWidget extends StatelessWidget {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(8),
-        child: Image.network(
-          imageUrl,
+        child: CachedNetworkImage(
+          imageUrl: imageUrl,
           fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) {
+          errorWidget: (context, url, error) {
             return Container(
               color: Colors.grey[300],
               child: const Icon(
@@ -259,8 +260,7 @@ class VistaStoryTemplateWidget extends StatelessWidget {
               ),
             );
           },
-          loadingBuilder: (context, child, loadingProgress) {
-            if (loadingProgress == null) return child;
+          placeholder: (context, url) {
             return Container(
               color: Colors.grey[200],
               child: const Center(

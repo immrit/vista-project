@@ -29,8 +29,8 @@ class _CountdownStickerWidgetState extends State<CountdownStickerWidget> {
     final targetRaw =
         data['targetDate']?.toString() ?? data['endDate']?.toString() ?? '';
     // Default to 24 hours from now if not set
-    _targetDate =
-        DateTime.tryParse(targetRaw) ?? DateTime.now().add(const Duration(hours: 24));
+    _targetDate = DateTime.tryParse(targetRaw) ??
+        DateTime.now().add(const Duration(hours: 24));
 
     _remaining = _targetDate.difference(DateTime.now());
 

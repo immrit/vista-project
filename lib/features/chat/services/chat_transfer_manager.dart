@@ -6,7 +6,8 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:dio/dio.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../../security/secure_kv_store.dart';
 
 import '../../../security/logging_utility.dart';
 
@@ -134,9 +135,9 @@ class ChatTransferManager {
 
   ChatTransferManager._internal() {
     _initFuture = _loadFromPrefs();
-    _connectivitySub = Connectivity()
-        .onConnectivityChanged
-        .listen((results) => _onConnectivityChanged(results.first), onError: (_) {});
+    _connectivitySub = Connectivity().onConnectivityChanged.listen(
+        (results) => _onConnectivityChanged(results.first),
+        onError: (_) {});
   }
 
   static const String _prefsKey = 'chat_transfer_tasks_v1';
@@ -164,8 +165,7 @@ class ChatTransferManager {
     _isInitialized = true;
 
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString(_prefsKey);
+      final raw = await SecureKeyValueStore.read(_prefsKey);
       if (raw != null && raw.isNotEmpty) {
         final decoded = jsonDecode(raw);
         if (decoded is List) {
@@ -196,9 +196,8 @@ class ChatTransferManager {
     _persistDebounce?.cancel();
     _persistDebounce = null;
     try {
-      final prefs = await SharedPreferences.getInstance();
       final data = _tasksById.values.map((e) => e.toJson()).toList();
-      await prefs.setString(_prefsKey, jsonEncode(data));
+      await SecureKeyValueStore.write(_prefsKey, jsonEncode(data));
     } catch (e, s) {
       logError('Failed to persist transfer tasks', error: e, stackTrace: s);
     }

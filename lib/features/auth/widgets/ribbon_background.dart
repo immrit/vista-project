@@ -7,8 +7,7 @@ class RibbonBackground extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final reduceEffects =
-        MediaQuery.of(context).disableAnimations ||
+    final reduceEffects = MediaQuery.of(context).disableAnimations ||
         MediaQuery.of(context).accessibleNavigation;
 
     // Define palette based on theme (Monochrome but with depth)
@@ -65,8 +64,9 @@ class RibbonBackground extends StatelessWidget {
                   top: shortest * 0.35,
                   right: -orb3Size * 0.2,
                   child: _BlurredOrb(
-                    color:
-                        isDark ? const Color(0xFF222222) : const Color(0xFFEEEEEE),
+                    color: isDark
+                        ? const Color(0xFF222222)
+                        : const Color(0xFFEEEEEE),
                     size: orb3Size,
                   ),
                 ),

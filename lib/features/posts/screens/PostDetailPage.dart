@@ -127,9 +127,9 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
 
   Future<Size> _getImageDimensions(String imageUrl) async {
     final Completer<Size> completer = Completer();
-    final Image image = Image.network(imageUrl);
+    final ImageProvider imageProvider = CachedNetworkImageProvider(imageUrl);
 
-    image.image.resolve(const ImageConfiguration()).addListener(
+    imageProvider.resolve(const ImageConfiguration()).addListener(
           ImageStreamListener(
             (ImageInfo info, bool _) {
               completer.complete(Size(
@@ -1295,18 +1295,17 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
   }
 
   Widget _buildImageWithRetry(String imageUrl) {
-    return Image.network(
-      imageUrl,
+    return CachedNetworkImage(
+      imageUrl: imageUrl,
       fit: BoxFit.cover,
-      loadingBuilder: (context, child, loadingProgress) {
-        if (loadingProgress == null) return child;
+      placeholder: (context, url) {
         return const Center(
           child: CircularProgressIndicator(
             color: Colors.white,
           ),
         );
       },
-      errorBuilder: (context, error, stackTrace) {
+      errorWidget: (context, url, error) {
         return GestureDetector(
           onTap: () {
             setState(() {}); // Trigger rebuild to retry loading

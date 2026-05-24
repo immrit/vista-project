@@ -11,8 +11,8 @@ final typingServiceProvider = Provider<TypingService>((ref) {
 });
 
 /// Provider برای وضعیت تایپ کردن در یک مکالمه خاص
-final typingUsersProvider =
-    StreamProvider.family.autoDispose<Set<String>, String>((ref, conversationId) {
+final typingUsersProvider = StreamProvider.family
+    .autoDispose<Set<String>, String>((ref, conversationId) {
   final typingService = ref.watch(typingServiceProvider);
   return typingService.getTypingStream(conversationId);
 });

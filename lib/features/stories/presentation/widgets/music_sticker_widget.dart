@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../../domain/entities/story_editor_models.dart';
 
 class MusicStickerWidget extends StatelessWidget {
@@ -39,12 +40,13 @@ class MusicStickerWidget extends StatelessWidget {
           ClipRRect(
             borderRadius: BorderRadius.circular(10),
             child: coverUrl != null && coverUrl.trim().isNotEmpty
-                ? Image.network(
-                    coverUrl,
+                ? CachedNetworkImage(
+                    imageUrl: coverUrl,
                     width: 44,
                     height: 44,
                     fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => _buildFallbackCover(style),
+                    errorWidget: (context, url, error) =>
+                        _buildFallbackCover(style),
                   )
                 : _buildFallbackCover(style),
           ),

@@ -1,4 +1,4 @@
-﻿import 'dart:collection';
+import 'dart:collection';
 
 /// ✅ LRU Cache - مثل ویستا
 /// یک cache با الگوریتم Least Recently Used برای مدیریت حافظه
@@ -54,4 +54,3 @@ class LRUCache<K, V> {
   /// دریافت تمام values
   Iterable<V> get values => _cache.values;
 }
-

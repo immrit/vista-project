@@ -35,6 +35,7 @@ class ConversationModel {
   final String type; // ✅ نوع مکالمه: private, group, channel
 
   bool get isGroup => type == 'group'; // ✅ گتر برای تشخیص گروه
+  bool get isSecret => type == 'secret'; // ✅ گتر برای تشخیص سکرت چت
 
   ConversationModel({
     required this.id,
@@ -90,10 +91,9 @@ class ConversationModel {
         json['unreadCount'] ?? json['unread_count'],
         fallback: 0,
       );
-      bool hasUnreadMessages =
-          (json['hasUnreadMessages'] as bool?) ??
-              (json['has_unread_messages'] as bool?) ??
-              false;
+      bool hasUnreadMessages = (json['hasUnreadMessages'] as bool?) ??
+          (json['has_unread_messages'] as bool?) ??
+          false;
 
       final participantsData =
           json['conversation_participants'] ?? json['participants'];
@@ -110,7 +110,8 @@ class ConversationModel {
             if (participantUserId == currentUserId) {
               // Prefer server unread_count from current participant row.
               unreadCount = _toInt(
-                participantData['unread_count'] ?? participantData['unreadCount'],
+                participantData['unread_count'] ??
+                    participantData['unreadCount'],
                 fallback: unreadCount,
               );
               hasUnreadMessages = unreadCount > 0;

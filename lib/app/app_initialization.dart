@@ -23,6 +23,7 @@ import 'package:Vista/utils/performance_monitor.dart';
 import 'package:Vista/security/logging_utility.dart';
 import 'package:Vista/features/chat/performance/frame_budget_service.dart';
 import 'package:Vista/services/device_id_service.dart';
+import 'package:Vista/services/retry_queue_service.dart';
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -62,7 +63,12 @@ class AppInitialization {
     ));
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
 
-    await dotenv.load(fileName: ".env");
+    try {
+      await dotenv.load(fileName: ".env");
+    } catch (e) {
+      debugPrint(
+          '⚠️ Warning: .env file missing or failed to load. Using fallback environment constants: $e');
+    }
 
     // Initial Setup
     await initializeDateFormatting('fa', null);
@@ -75,7 +81,7 @@ class AppInitialization {
 
     // مدیر نشست ضروری است تا بدانیم کاربر لاگین هست یا خیر
     await SessionManagerServiceV2().initialize();
-    
+
     // شناسایی دستگاه برای سیستم Firewall و پایش
     await DeviceIdService.getDeviceId();
 
@@ -111,6 +117,7 @@ class AppInitialization {
       HighPerformanceCacheSystem().initialize(),
     ]).then((_) {
       debugPrint('✅ Deferred Storage Ready');
+      RetryQueueService().initialize();
     }).catchError((e, s) {
       debugPrint('❌ Errore in deferred services: $e\n$s');
     });

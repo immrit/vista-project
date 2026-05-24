@@ -1,4 +1,4 @@
-﻿// lib/features/chat/widgets/message_search_bar.dart
+// lib/features/chat/widgets/message_search_bar.dart
 //
 // نوار جستجو در پیام‌ها - با الهام از ویستا
 //
@@ -75,14 +75,14 @@ class _MessageSearchBarState extends ConsumerState<MessageSearchBar>
   }
 
   void _onSearch(String query) {
-    ref
-        .read(searchStateProvider(widget.conversationId).notifier)
-        .search(query);
+    ref.read(searchStateProvider(widget.conversationId).notifier).search(query);
   }
 
   void _goToPrevious() {
     HapticFeedback.selectionClick();
-    ref.read(searchStateProvider(widget.conversationId).notifier).previousResult();
+    ref
+        .read(searchStateProvider(widget.conversationId).notifier)
+        .previousResult();
     _notifyResultSelected();
   }
 
@@ -284,4 +284,3 @@ class HighlightedText extends StatelessWidget {
     );
   }
 }
-

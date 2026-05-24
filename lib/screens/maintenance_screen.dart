@@ -13,7 +13,8 @@ class MaintenanceScreen extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.build_circle_outlined, size: 100, color: Colors.white),
+              const Icon(Icons.build_circle_outlined,
+                  size: 100, color: Colors.white),
               const SizedBox(height: 24),
               const Text(
                 'در حال بروزرسانی',

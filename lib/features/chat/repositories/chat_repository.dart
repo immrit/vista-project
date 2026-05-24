@@ -58,7 +58,7 @@ abstract class ChatRepository {
 
   Stream<List<ConversationModel>> watchConversations();
 
-  Future<ChatResult<ConversationModel>> createConversation(String otherUserId);
+  Future<ChatResult<ConversationModel>> createConversation(String otherUserId, {bool isSecret = false});
 
   Future<ChatResult<void>> deleteConversation(String conversationId);
 

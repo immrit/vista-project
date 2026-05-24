@@ -1,4 +1,4 @@
-﻿// lib/features/chat/widgets/telegram_reaction_picker.dart
+// lib/features/chat/widgets/telegram_reaction_picker.dart
 //
 // Reaction Picker به سبک ویستا iOS
 //
@@ -14,9 +14,42 @@ import 'dart:ui';
 
 /// لیست گسترده‌ای از ری‌اکشن‌ها مشابه ویستا
 const List<String> kDefaultReactions = [
-  '👍', '👎', '❤️', '🔥', '🥰', '👏', '😁', '🤔', '🤯', '😱', '🤬', '😢', 
-  '🎉', '🤩', '🤮', '💩', '🙏', '👌', '🕊️', '🤡', '🥱', '🥴', '😍', '🐳', 
-  '💯', '🤣', '⚡', '🍌', '🏆', '💔', '🤨', '😐', '🍓', '🍾', '💋', '🖕',
+  '👍',
+  '👎',
+  '❤️',
+  '🔥',
+  '🥰',
+  '👏',
+  '😁',
+  '🤔',
+  '🤯',
+  '😱',
+  '🤬',
+  '😢',
+  '🎉',
+  '🤩',
+  '🤮',
+  '💩',
+  '🙏',
+  '👌',
+  '🕊️',
+  '🤡',
+  '🥱',
+  '🥴',
+  '😍',
+  '🐳',
+  '💯',
+  '🤣',
+  '⚡',
+  '🍌',
+  '🏆',
+  '💔',
+  '🤨',
+  '😐',
+  '🍓',
+  '🍾',
+  '💋',
+  '🖕',
 ];
 
 /// Telegram-style Reaction Picker با اسکرول افقی
@@ -45,13 +78,13 @@ class _TelegramReactionPickerState extends State<TelegramReactionPicker>
   late AnimationController _controller;
   late Animation<double> _scaleAnimation;
   late Animation<double> _widthAnimation;
-  
+
   int? _hoveredIndex;
 
   @override
   void initState() {
     super.initState();
-    
+
     _controller = AnimationController(
       duration: const Duration(milliseconds: 300),
       vsync: this,
@@ -83,7 +116,7 @@ class _TelegramReactionPickerState extends State<TelegramReactionPicker>
   @override
   Widget build(BuildContext context) {
     final screenSize = MediaQuery.of(context).size;
-    
+
     // محاسبه عرض: حداکثر عرض صفحه منهای حاشیه، اما نه بیشتر از 360
     final pickerWidth = (screenSize.width - 32).clamp(200.0, 360.0);
     const pickerHeight = 52.0;
@@ -93,16 +126,16 @@ class _TelegramReactionPickerState extends State<TelegramReactionPicker>
     left = left.clamp(16.0, screenSize.width - pickerWidth - 16.0);
 
     // محاسبه دقیق موقعیت عمودی
-    double top = widget.showAbove 
-        ? widget.position.dy - 70 
-        : widget.position.dy + 10;
+    double top =
+        widget.showAbove ? widget.position.dy - 70 : widget.position.dy + 10;
 
     return Positioned(
       left: left,
       top: top,
       child: ScaleTransition(
         scale: _scaleAnimation,
-        alignment: widget.showAbove ? Alignment.bottomCenter : Alignment.topCenter,
+        alignment:
+            widget.showAbove ? Alignment.bottomCenter : Alignment.topCenter,
         child: AnimatedBuilder(
           animation: _widthAnimation,
           builder: (context, child) {
@@ -164,10 +197,10 @@ class _TelegramReactionPickerState extends State<TelegramReactionPicker>
           setState(() => _hoveredIndex = index);
         },
         onTapUp: (_) {
-           HapticFeedback.mediumImpact();
-           widget.onReactionSelected(emoji);
-           widget.onClose?.call();
-           setState(() => _hoveredIndex = null);
+          HapticFeedback.mediumImpact();
+          widget.onReactionSelected(emoji);
+          widget.onClose?.call();
+          setState(() => _hoveredIndex = null);
         },
         onTapCancel: () {
           setState(() => _hoveredIndex = null);
@@ -236,18 +269,14 @@ class TelegramReactionDisplay extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
               color: hasMyReaction
-                  ? (isDark
-                      ? const Color(0xFF3A3A3A)
-                      : const Color(0xFFE8F5E9))
+                  ? (isDark ? const Color(0xFF3A3A3A) : const Color(0xFFE8F5E9))
                   : (isDark
                       ? const Color(0xFF2A2A2A)
                       : const Color(0xFFF5F5F5)),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
                 color: hasMyReaction
-                    ? (isDark
-                        ? Colors.green[700]!
-                        : Colors.green[400]!)
+                    ? (isDark ? Colors.green[700]! : Colors.green[400]!)
                     : Colors.transparent,
                 width: 1,
               ),

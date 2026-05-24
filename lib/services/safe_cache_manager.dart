@@ -58,7 +58,8 @@ class SafeCacheManager extends CacheManager with ImageCacheManager {
       }
     }
 
-    logInfo('❌ Cache operation failed after $_maxRetries attempts: $lastException');
+    logInfo(
+        '❌ Cache operation failed after $_maxRetries attempts: $lastException');
     if (lastException != null) {
       throw lastException;
     }
@@ -79,7 +80,8 @@ class SafeCacheManager extends CacheManager with ImageCacheManager {
   // other methods that are properly overridden.
 
   @override
-  Future<FileInfo?> getFileFromCache(String key, {bool ignoreMemCache = false}) {
+  Future<FileInfo?> getFileFromCache(String key,
+      {bool ignoreMemCache = false}) {
     return _executeWithRetry(
       () => super.getFileFromCache(key, ignoreMemCache: ignoreMemCache),
       operationName: 'getFileFromCache',
@@ -137,7 +139,8 @@ class SafeCacheManagerFactory {
   static final Map<String, Completer<SafeCacheManager>> _initializers = {};
   static const int _maxConcurrentOperations = 10;
   static int _currentOperations = 0;
-  static final Queue<Completer<void>> _operationQueue = Queue<Completer<void>>();
+  static final Queue<Completer<void>> _operationQueue =
+      Queue<Completer<void>>();
 
   /// Get or create a SafeCacheManager instance for a specific cache key
   static Future<SafeCacheManager> getInstance({

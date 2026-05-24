@@ -1,6 +1,7 @@
 // lib/features/chat/widgets/improved_animated_message_bubble.dart
 
 import 'package:flutter/material.dart';
+import '../../../security/e2ee_service.dart' as import_e2ee;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
@@ -8,6 +9,7 @@ import 'dart:io';
 import '../theme/chat_theme.dart';
 import '../../../utils/compat_extensions.dart';
 import 'voice_message_bubble.dart';
+import 'swipe_to_reply.dart';
 import 'telegram_message_status.dart';
 import 'gif_message_bubble.dart';
 import 'media_message_bubble.dart';
@@ -68,6 +70,7 @@ class ImprovedAnimatedMessageBubble extends StatefulWidget {
   final void Function(BuildContext context, MessageModel message)? onTap;
   final void Function(BuildContext context, MessageModel message)? onLongPress;
   final VoidCallback? onDoubleTap;
+  final VoidCallback? onSwipeToReply;
   final Function(String)? onLinkTap;
 
   // Animation
@@ -99,6 +102,7 @@ class ImprovedAnimatedMessageBubble extends StatefulWidget {
 
   // Optional full message model to use status notifier and richer metadata.
   final MessageModel? message;
+  final String? recipientPublicKey;
 
   const ImprovedAnimatedMessageBubble({
     super.key,
@@ -117,6 +121,7 @@ class ImprovedAnimatedMessageBubble extends StatefulWidget {
     this.onTap,
     this.onLongPress,
     this.onDoubleTap,
+    this.onSwipeToReply,
     this.onLinkTap,
     this.animate = true,
     this.index = 0,
@@ -136,6 +141,7 @@ class ImprovedAnimatedMessageBubble extends StatefulWidget {
     this.onRetryUpload,
     this.effectsLevel = ChatEffectsLevel.high,
     this.message,
+    this.recipientPublicKey,
   });
 
   @override
@@ -154,6 +160,9 @@ class _ImprovedAnimatedMessageBubbleState
   late Animation<Offset> _slideAnimation;
   late Animation<double> _scaleAnimation;
 
+  String _currentContent = "";
+  bool _isDecrypting = false;
+
   @override
   bool get wantKeepAlive {
     final isUploading = widget.message?.isUploading ?? false;
@@ -163,6 +172,8 @@ class _ImprovedAnimatedMessageBubbleState
   @override
   void initState() {
     super.initState();
+    _currentContent = _currentContent;
+    _checkEncryption();
     _formattedTime = widget.time.toFixedTimeLabel();
     _setupAnimations();
 
@@ -256,8 +267,41 @@ class _ImprovedAnimatedMessageBubbleState
   @override
   void didUpdateWidget(ImprovedAnimatedMessageBubble oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (widget.content != oldWidget.content) {
+      _currentContent = _currentContent;
+      _checkEncryption();
+    }
     if (widget.time != oldWidget.time) {
       _formattedTime = widget.time.toFixedTimeLabel();
+    }
+  }
+
+  void _checkEncryption() {
+    if (_currentContent.startsWith('e2ee:v1:')) {
+      if (widget.recipientPublicKey != null &&
+          widget.recipientPublicKey!.isNotEmpty) {
+        if (mounted) {
+          setState(() {
+            _isDecrypting = true;
+          });
+        }
+        import_e2ee.E2EEService()
+            .decryptMessage(_currentContent, widget.recipientPublicKey!)
+            .then((decrypted) {
+          if (mounted) {
+            setState(() {
+              _currentContent = decrypted;
+              _isDecrypting = false;
+            });
+          }
+        }).catchError((_) {
+          if (mounted) {
+            setState(() {
+              _isDecrypting = false;
+            });
+          }
+        });
+      }
     }
   }
 
@@ -274,7 +318,7 @@ class _ImprovedAnimatedMessageBubbleState
     const edgeInset = 1.0;
     const oppositeInset = 30.0;
 
-    return RepaintBoundary(
+    Widget child = RepaintBoundary(
       child: FadeTransition(
         opacity: _fadeAnimation,
         child: SlideTransition(
@@ -328,6 +372,16 @@ class _ImprovedAnimatedMessageBubbleState
         ),
       ),
     );
+
+    if (widget.onSwipeToReply != null) {
+      child = SwipeToReply(
+        onReply: widget.onSwipeToReply!,
+        isMe: widget.isMe,
+        child: child,
+      );
+    }
+
+    return child;
   }
 
   Widget _buildMessageBubble(ChatTheme theme) {
@@ -488,7 +542,7 @@ class _ImprovedAnimatedMessageBubbleState
     String effectiveSecondaryText = secondaryText;
     final answerPreview = ((storyData.answerText?.trim().isNotEmpty ?? false)
             ? storyData.answerText!.trim()
-            : widget.content.trim())
+            : _currentContent.trim())
         .trim();
 
     if (isQuestionReply) {
@@ -753,7 +807,7 @@ class _ImprovedAnimatedMessageBubbleState
             audioTitle: widget.message?.audioTitle,
             audioArtist: widget.message?.audioArtist,
             audioAlbum: widget.message?.audioAlbum,
-            caption: widget.content,
+            caption: _currentContent,
           ),
           Padding(
             padding: const EdgeInsets.only(left: 12, right: 12, bottom: 6),
@@ -775,7 +829,7 @@ class _ImprovedAnimatedMessageBubbleState
         mediaType: isVideo ? MediaType.video : MediaType.image,
         isMe: widget.isMe,
         time: widget.time,
-        caption: widget.content.isNotEmpty ? widget.content : null,
+        caption: _currentContent.isNotEmpty ? _currentContent : null,
         videoDuration: isVideo ? widget.duration : null,
         isUploading: widget.status == MessageStatus.pending ||
             (widget.message?.isUploading ?? false),
@@ -802,7 +856,7 @@ class _ImprovedAnimatedMessageBubbleState
         fileName: resolvedFileName,
         fileSizeBytes: widget.message?.attachmentSizeBytes,
         localFilePath: widget.message?.localFilePath,
-        caption: widget.content.isNotEmpty ? widget.content : null,
+        caption: _currentContent.isNotEmpty ? _currentContent : null,
         isMe: widget.isMe,
         time: widget.time,
       );
@@ -815,9 +869,9 @@ class _ImprovedAnimatedMessageBubbleState
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           Flexible(
-            child: widget.content.isNotEmpty
+            child: _currentContent.isNotEmpty
                 ? TelegramEmojiRichText(
-                    text: '${widget.content}\u200F',
+                    text: '${_currentContent}\u200F',
                     useTelegramEmoji:
                         EmojiRenderPolicy.useTelegramEmojiRenderer(),
                     textDirection: TextDirection.rtl,
@@ -963,11 +1017,11 @@ class _ImprovedAnimatedMessageBubbleState
             ),
           ),
         ),
-        if (widget.content.isNotEmpty)
+        if (_currentContent.isNotEmpty)
           Padding(
             padding: const EdgeInsets.fromLTRB(10, 8, 10, 2),
             child: Text(
-              widget.content,
+              _currentContent,
               maxLines: 3,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
@@ -1036,10 +1090,10 @@ class _ImprovedAnimatedMessageBubbleState
               fontWeight: FontWeight.w600,
             ),
           ),
-          if (widget.content.isNotEmpty) ...[
+          if (_currentContent.isNotEmpty) ...[
             const SizedBox(height: 8),
             Text(
-              widget.content,
+              _currentContent,
               maxLines: 3,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
@@ -1161,10 +1215,10 @@ class _ImprovedAnimatedMessageBubbleState
               fontWeight: FontWeight.w600,
             ),
           ),
-          if (widget.content.isNotEmpty) ...[
+          if (_currentContent.isNotEmpty) ...[
             const SizedBox(height: 8),
             Text(
-              widget.content,
+              _currentContent,
               maxLines: 3,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(

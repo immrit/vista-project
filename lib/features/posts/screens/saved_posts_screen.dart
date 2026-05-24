@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 import '../../../model/publicPostModel.dart';
 import '../providers/saved_posts_provider.dart';
@@ -145,12 +146,13 @@ class _SavedPostTile extends StatelessWidget {
       leading: hasImage
           ? ClipRRect(
               borderRadius: BorderRadius.circular(8),
-              child: Image.network(
-                post.imageUrl!,
+              child: CachedNetworkImage(
+                imageUrl: post.imageUrl!,
                 width: 44,
                 height: 44,
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => const Icon(Icons.image_not_supported),
+                errorWidget: (context, url, error) =>
+                    const Icon(Icons.image_not_supported),
               ),
             )
           : const CircleAvatar(

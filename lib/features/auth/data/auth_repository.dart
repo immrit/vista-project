@@ -3,6 +3,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'dart:io';
 import 'package:device_info_plus/device_info_plus.dart';
 import '../../../security/logging_utility.dart';
+import '../domain/auth_exceptions.dart';
 
 // ══════════════════════════════════════════════════════════════
 // مدل‌های پاسخ بک‌اند Go
@@ -327,6 +328,15 @@ class AuthRepository {
 
       return AuthResponse.fromJson(response.data as Map<String, dynamic>);
     } on DioException catch (e) {
+      if (e.type == DioExceptionType.connectionTimeout ||
+          e.type == DioExceptionType.receiveTimeout ||
+          e.type == DioExceptionType.connectionError ||
+          e.type == DioExceptionType.unknown) {
+        throw NetworkAuthException('اتصال به سرور برقرار نشد.');
+      }
+      if (e.response?.statusCode == 401 || e.response?.statusCode == 403) {
+        throw UnauthorizedAuthException('نشست نامعتبر است.');
+      }
       throw _handleDioError(e, 'تمدید نشست');
     } catch (e) {
       logError('Refresh Token Error', error: e);
@@ -559,7 +569,9 @@ class AuthRepository {
       });
 
       final data = response.data;
-      if (data is Map && data['success'] == true && data['password_reset_token'] != null) {
+      if (data is Map &&
+          data['success'] == true &&
+          data['password_reset_token'] != null) {
         return data['password_reset_token'] as String;
       }
       throw 'خطا در بررسی کد';

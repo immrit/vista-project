@@ -71,7 +71,7 @@ class SavedPostsState {
 class SavedPostsNotifier extends StateNotifier<SavedPostsState> {
   final Ref _ref;
   static const int _pageSize = 20;
-  int _offset = 0;
+  dynamic _offset = 0;
 
   SavedPostsNotifier(this._ref)
       : super(const SavedPostsState(isLoading: true)) {
@@ -91,7 +91,9 @@ class SavedPostsNotifier extends StateNotifier<SavedPostsState> {
     _offset = 0;
     try {
       final posts = await _repo.getSavedPosts(limit: _pageSize, offset: 0);
-      _offset = posts.length;
+      if (posts.isNotEmpty) {
+        _offset = posts.last.createdAt.toUtc().toIso8601String();
+      }
       state = state.copyWith(
         posts: posts,
         isLoading: false,
@@ -111,7 +113,9 @@ class SavedPostsNotifier extends StateNotifier<SavedPostsState> {
 
     try {
       final next = await _repo.getSavedPosts(limit: _pageSize, offset: _offset);
-      _offset += next.length;
+      if (next.isNotEmpty) {
+        _offset = next.last.createdAt.toUtc().toIso8601String();
+      }
       state = state.copyWith(
         isLoadingMore: false,
         hasMore: next.length == _pageSize,

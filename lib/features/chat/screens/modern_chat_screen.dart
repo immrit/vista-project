@@ -40,6 +40,7 @@ import '../widgets/telegram_reaction_picker.dart'
     show kDefaultReactions, TelegramReactionPicker;
 import '../widgets/retry_indicator_widget.dart' show TelegramConnectionBanner;
 import '../widgets/improved_animated_message_bubble.dart';
+import '../widgets/swipe_to_reply.dart';
 import '../widgets/telegram_context_menu.dart';
 import '../widgets/animated_chat_input.dart';
 import '../widgets/instagram_style_post_card.dart';
@@ -112,6 +113,7 @@ class ChatScreenArgs {
   final String? otherUserAvatar;
   final String otherUserId;
   final bool isGroup;
+  final bool isSecret;
 
   const ChatScreenArgs({
     required this.conversationId,
@@ -119,6 +121,7 @@ class ChatScreenArgs {
     this.otherUserAvatar,
     required this.otherUserId,
     this.isGroup = false,
+    this.isSecret = false,
   });
 }
 
@@ -1623,7 +1626,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
     return AppBar(
       elevation: 0,
-      backgroundColor: theme.appBarColor,
+      backgroundColor: widget.args.isSecret ? const Color(0xFF1B3D2F) : theme.appBarColor,
       surfaceTintColor: Colors.transparent,
       systemOverlayStyle:
           theme.isDark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
@@ -1728,15 +1731,29 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
-                    _otherUserProfile?.username ?? widget.args.otherUserName,
-                    style: TextStyle(
-                      color: theme.textColor,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          _otherUserProfile?.username ??
+                              widget.args.otherUserName,
+                          style: TextStyle(
+                            color: theme.textColor,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      if (widget.args.isSecret)
+                        Icon(
+                          Icons.lock_rounded, // 🔒 آیکون امنیتی E2EE
+                          color: theme.isDark ? Colors.greenAccent : Colors.green,
+                          size: 14,
+                        ),
+                    ],
                   ),
                   const SizedBox(height: 2),
 
@@ -2586,6 +2603,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       attachmentMimeType: mimeType,
       attachmentSizeBytes: fileSize,
       duration: finalDuration,
+      recipientPublicKey: widget.args.isSecret ? _otherUserProfile?.publicKey : null,
     );
 
     try {
@@ -2604,6 +2622,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                 audioAlbum: params.audioAlbum,
                 duration: params.duration,
                 replyToMessageId: params.replyToMessageId,
+                recipientPublicKey: widget.args.isSecret ? params.recipientPublicKey : null,
               );
       if (!sendResult.isSuccess) {
         await chatRepository.markUploadFailed(
@@ -2651,6 +2670,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         replyToSenderName: _replyToMessage?.senderId == _currentUserId
             ? 'شما'
             : widget.args.otherUserName,
+        recipientPublicKey: widget.args.isSecret ? _otherUserProfile?.publicKey : null,
       );
 
       final result =
@@ -2660,6 +2680,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                 attachmentUrl: params.attachmentUrl,
                 attachmentType: params.attachmentType,
                 replyToMessageId: params.replyToMessageId,
+                recipientPublicKey: widget.args.isSecret ? params.recipientPublicKey : null,
               );
 
       if (!mounted) return;
@@ -2750,6 +2771,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         replyToSenderName: replyTo?.senderId == _currentUserId
             ? 'شما'
             : widget.args.otherUserName,
+        recipientPublicKey: widget.args.isSecret ? _otherUserProfile?.publicKey : null,
       );
 
       if (!mounted) return;
@@ -2761,6 +2783,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                 replyToMessageId: params.replyToMessageId,
                 replyToContent: params.replyToContent,
                 replyToSenderName: params.replyToSenderName,
+                recipientPublicKey: widget.args.isSecret ? params.recipientPublicKey : null,
               );
 
       if (!mounted) return;
@@ -2928,6 +2951,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                 audioAlbum: audioAlbum,
                 duration: durationSeconds,
                 mediaGroupId: mediaGroupId,
+                recipientPublicKey: widget.args.isSecret ? _otherUserProfile?.publicKey : null,
               );
       if (!result.isSuccess) {
         await chatRepository.markUploadFailed(
@@ -3633,6 +3657,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
     // 2. برای سایر پیام‌ها همان حباب معمولی
     return ImprovedAnimatedMessageBubble(
+      recipientPublicKey: widget.args.isSecret ? _otherUserProfile?.publicKey : null,
+      onSwipeToReply: () => setState(() => _replyToMessage = message),
       key: ValueKey('preview_${message.id}'),
       messageId: message.id,
       content: message.content,
@@ -4535,6 +4561,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       if (postData == null) {
         // Fallback به پیام متنی معمولی
         return ImprovedAnimatedMessageBubble(
+          recipientPublicKey: widget.args.isSecret ? _otherUserProfile?.publicKey : null,
+          onSwipeToReply: () => setState(() => _replyToMessage = message),
           key: ValueKey(message.id),
           messageId: message.id,
           content: message.content,
@@ -4660,6 +4688,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       debugPrint('Error parsing post message: $e');
       // در صورت خطا، از ImprovedAnimatedMessageBubble استفاده کن
       return ImprovedAnimatedMessageBubble(
+        recipientPublicKey: widget.args.isSecret ? _otherUserProfile?.publicKey : null,
+        onSwipeToReply: () => setState(() => _replyToMessage = message),
         key: ValueKey(message.id),
         messageId: message.id,
         content: message.content,
@@ -4745,6 +4775,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
             valueListenable: _reactionNotifierFor(message.id),
             builder: (context, messageReactions, _) {
               return ImprovedAnimatedMessageBubble(
+                recipientPublicKey: widget.args.isSecret ? _otherUserProfile?.publicKey : null,
+                onSwipeToReply: () => setState(() => _replyToMessage = message),
                 key: _messageKeys[message.id] ??= GlobalKey(),
                 messageId: message.id,
                 content: message.content,

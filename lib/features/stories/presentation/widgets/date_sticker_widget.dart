@@ -14,10 +14,10 @@ class DateStickerWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final data = element.interactionData ?? const {};
-    final displayText = (data['displayText']?.toString().trim().isNotEmpty ??
-            false)
-        ? data['displayText'].toString().trim()
-        : _buildDisplayDate(data['dateIso']?.toString());
+    final displayText =
+        (data['displayText']?.toString().trim().isNotEmpty ?? false)
+            ? data['displayText'].toString().trim()
+            : _buildDisplayDate(data['dateIso']?.toString());
     final style = element.resolvedStyleIndex % 3;
 
     switch (style) {
@@ -41,7 +41,8 @@ class DateStickerWidget extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.calendar_today_rounded, color: Colors.black87, size: 16),
+          const Icon(Icons.calendar_today_rounded,
+              color: Colors.black87, size: 16),
           const SizedBox(width: 8),
           Text(
             text,

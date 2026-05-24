@@ -1,4 +1,4 @@
-﻿// lib/features/chat/widgets/unread_messages_divider.dart
+// lib/features/chat/widgets/unread_messages_divider.dart
 //
 // نشانگر پیام‌های خوانده نشده - با الهام از ویستا
 //
@@ -198,4 +198,3 @@ class SimpleUnreadDivider extends StatelessWidget {
     );
   }
 }
-

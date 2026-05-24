@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import '../model/UserModel.dart';
 import '../model/publicPostModel.dart';
 
@@ -204,4 +204,3 @@ class PremiumFeaturesHelper {
     return isPostOwner(currentUserId, post);
   }
 }
-

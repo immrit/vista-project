@@ -11,13 +11,14 @@ import 'package:uuid/uuid.dart';
 
 import '../features/auth/data/auth_repository.dart';
 import '../features/auth/providers/auth_controller.dart';
+import '../features/auth/domain/auth_exceptions.dart';
 import '../model/session_model.dart';
 import '../security/logging_utility.dart';
 import '../services/current_user_service.dart';
 import '../services/device_id_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-
 enum SessionVerificationState { verified, pendingVerification, invalid }
+enum RefreshResult { success, authError, networkError }
 
 /// 🚀 Session Manager V2 — Go Backend Edition
 ///
@@ -43,7 +44,7 @@ class SessionManagerServiceV2 {
   bool _isInBackground = false;
   DateTime? _lastActivityUpdate;
   bool _isTerminating = false;
-  Future<bool>? _refreshInFlight;
+  Future<RefreshResult>? _refreshInFlight;
 
   // ─── Config ──────────────────────────────────────────────────
   static const Duration _activityUpdateInterval = Duration(minutes: 3);
@@ -116,7 +117,8 @@ class SessionManagerServiceV2 {
     }
     if (response.statusCode < 200 || response.statusCode >= 300) {
       final payload = _decodeBody(response.body);
-      logInfo('❌ Backend request failed: HTTP ${response.statusCode} ${response.request?.url} - Response: ${response.body}');
+      logInfo(
+          '❌ Backend request failed: HTTP ${response.statusCode} ${response.request?.url} - Response: ${response.body}');
       if (payload is Map) {
         throw payload['message']?.toString() ??
             payload['error']?.toString() ??
@@ -310,9 +312,13 @@ class SessionManagerServiceV2 {
     final hasToken = await TokenStorage.hasValidSession();
     if (!hasToken) {
       final refreshed = await _refreshSessionWithRetry();
-      if (!refreshed) {
+      if (refreshed == RefreshResult.authError) {
         _verificationState = SessionVerificationState.invalid;
         return false;
+      }
+      if (refreshed == RefreshResult.networkError) {
+        _verificationState = SessionVerificationState.pendingVerification;
+        return true; // We accept them offline!
       }
     }
     return await _checkSessionInDatabase();
@@ -383,12 +389,14 @@ class SessionManagerServiceV2 {
       _lastActivityUpdate = DateTime.now();
       final ipInfo = await _getIpAndLocation();
       final ip = ipInfo?['ip_address'] as String?;
-      final loc = ipInfo == null ? null : {
-        'city': ipInfo['location_city'],
-        'country': ipInfo['location_country'],
-        'latitude': ipInfo['latitude'],
-        'longitude': ipInfo['longitude'],
-      };
+      final loc = ipInfo == null
+          ? null
+          : {
+              'city': ipInfo['location_city'],
+              'country': ipInfo['location_country'],
+              'latitude': ipInfo['latitude'],
+              'longitude': ipInfo['longitude'],
+            };
       final result = await _backendRequest(
         method: 'POST',
         path: '/v1/sessions/touch',
@@ -439,7 +447,7 @@ class SessionManagerServiceV2 {
   // SESSION REFRESH WITH RETRY
   // ═══════════════════════════════════════════════════════════
 
-  Future<bool> _refreshSessionWithRetry() async {
+  Future<RefreshResult> _refreshSessionWithRetry() async {
     final running = _refreshInFlight;
     if (running != null) return running;
     final future = _performSessionRefresh();
@@ -451,12 +459,12 @@ class SessionManagerServiceV2 {
     }
   }
 
-  Future<bool> _performSessionRefresh() async {
+  Future<RefreshResult> _performSessionRefresh() async {
     try {
       final refreshToken = await TokenStorage.getRefreshToken();
       if (refreshToken == null || refreshToken.isEmpty) {
         logInfo('🔴 No refresh token — cannot refresh');
-        return false;
+        return RefreshResult.authError;
       }
 
       final repo = AuthRepository();
@@ -472,10 +480,16 @@ class SessionManagerServiceV2 {
 
       CurrentUserService.setCachedUserId(response.user.id);
       logInfo('✅ Token refreshed successfully');
-      return true;
+      return RefreshResult.success;
+    } on NetworkAuthException catch (e) {
+      logInfo('⚠️ Token refresh network error: $e');
+      return RefreshResult.networkError;
+    } on UnauthorizedAuthException catch (e) {
+      logInfo('🔴 Token refresh auth error: $e');
+      return RefreshResult.authError;
     } catch (e) {
       logInfo('⚠️ Token refresh failed: $e');
-      return false;
+      return RefreshResult.authError;
     }
   }
 
@@ -660,7 +674,8 @@ class SessionManagerServiceV2 {
         _verificationState != SessionVerificationState.verified) {
       final sessionId = await registerSession(force: force);
       if (sessionId == null) {
-        throw Exception('Session registration failed or was rejected by backend.');
+        throw Exception(
+            'Session registration failed or was rejected by backend.');
       }
     }
   }
@@ -685,12 +700,14 @@ class SessionManagerServiceV2 {
     try {
       final ipInfo = await _getIpAndLocation();
       final ip = ipInfo?['ip_address'] as String?;
-      final loc = ipInfo == null ? null : {
-        'city': ipInfo['location_city'],
-        'country': ipInfo['location_country'],
-        'latitude': ipInfo['latitude'],
-        'longitude': ipInfo['longitude'],
-      };
+      final loc = ipInfo == null
+          ? null
+          : {
+              'city': ipInfo['location_city'],
+              'country': ipInfo['location_country'],
+              'latitude': ipInfo['latitude'],
+              'longitude': ipInfo['longitude'],
+            };
       final result = await _backendRequest(
         method: 'POST',
         path: '/v1/sessions/touch',
@@ -793,7 +810,9 @@ class SessionManagerServiceV2 {
   // ═══════════════════════════════════════════════════════════
 
   /// عمومی‌سازی refresh برای استفاده در session_auth_wrapper
-  Future<bool> performSessionRefreshPublic() => _performSessionRefresh();
+  Future<RefreshResult> performSessionRefreshPublic() async {
+    return await _performSessionRefresh();
+  }
 
   /// راه‌اندازی session manager در پس‌زمینه بدون block کردن UI
   void initInBackground() {

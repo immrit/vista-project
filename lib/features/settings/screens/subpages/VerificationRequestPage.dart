@@ -41,7 +41,9 @@ class _VerificationRequestPageState
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('درخواست با موفقیت ثبت شد و در صف بررسی قرار گرفت.')),
+          const SnackBar(
+              content:
+                  Text('درخواست با موفقیت ثبت شد و در صف بررسی قرار گرفت.')),
         );
         Navigator.pop(context);
       }
@@ -184,7 +186,8 @@ class _VerificationRequestPageState
                         width: 20,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          valueColor:
+                              AlwaysStoppedAnimation<Color>(Colors.white),
                         ),
                       )
                     : const Text(

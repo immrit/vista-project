@@ -70,7 +70,7 @@ class _BlockReportBottomSheetState extends State<BlockReportBottomSheet>
 
   final _moderationService = UserModerationService();
   final _reportController = TextEditingController();
-  
+
   bool _isLoading = false;
   ModerationReason _selectedReason = ModerationReason.inappropriateContent;
   late ModerationType _currentType;
@@ -347,9 +347,8 @@ class _BlockReportBottomSheetState extends State<BlockReportBottomSheet>
             decoration: InputDecoration(
               hintText: 'جزئیات بیشتر در مورد مشکل...',
               filled: true,
-              fillColor: isDark 
-                  ? const Color(0xFF2A2A2A) 
-                  : Colors.grey.shade100,
+              fillColor:
+                  isDark ? const Color(0xFF2A2A2A) : Colors.grey.shade100,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
                 borderSide: BorderSide.none,
@@ -403,14 +402,14 @@ class _BlockReportBottomSheetState extends State<BlockReportBottomSheet>
         checkmarkColor: theme.primaryColor,
         backgroundColor: theme.cardColor,
         side: BorderSide(
-          color: isSelected 
-              ? theme.primaryColor 
+          color: isSelected
+              ? theme.primaryColor
               : theme.dividerColor.withOpacity(0.3),
           width: isSelected ? 2 : 1,
         ),
         labelStyle: TextStyle(
-          color: isSelected 
-              ? theme.primaryColor 
+          color: isSelected
+              ? theme.primaryColor
               : theme.textTheme.bodyLarge?.color,
           fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
         ),

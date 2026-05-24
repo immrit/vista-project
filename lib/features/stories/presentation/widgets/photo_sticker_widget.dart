@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../../domain/entities/story_editor_models.dart';
 
 class PhotoStickerWidget extends StatelessWidget {
@@ -34,12 +35,12 @@ class PhotoStickerWidget extends StatelessWidget {
       return _frame(
         width,
         height,
-        Image.network(
-          imagePath,
+        CachedNetworkImage(
+          imageUrl: imagePath,
           width: width,
           height: height,
           fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => _fallback(width, height),
+          errorWidget: (context, url, error) => _fallback(width, height),
         ),
       );
     }

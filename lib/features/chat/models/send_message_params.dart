@@ -13,6 +13,7 @@ class SendMessageParams {
   final String? replyToMessageId;
   final String? replyToContent;
   final String? replyToSenderName;
+  final String? recipientPublicKey;
 
   const SendMessageParams({
     required this.conversationId,
@@ -29,5 +30,6 @@ class SendMessageParams {
     this.replyToMessageId,
     this.replyToContent,
     this.replyToSenderName,
+    this.recipientPublicKey,
   });
 }

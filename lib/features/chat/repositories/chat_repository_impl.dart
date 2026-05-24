@@ -25,6 +25,7 @@ import '../domain/message_payload.dart';
 import '../services/sse_manager.dart';
 import '../services/user_moderation_service.dart';
 import 'chat_repository.dart';
+import '../../../../security/e2ee_service.dart';
 
 class ChatRepositoryImpl implements ChatRepository {
   final ChatLocalDataSourceIsar _local;
@@ -163,17 +164,20 @@ class ChatRepositoryImpl implements ChatRepository {
 
   @override
   Future<ChatResult<ConversationModel>> createConversation(
-      String otherUserId) async {
+      String otherUserId, {bool isSecret = false}) async {
     final uid = await _userId();
     final opts = await _authOptions();
     if (uid == null || opts == null) {
-      return ChatResult.failure('Ú©Ø§Ø±Ø¨Ø± ÙˆØ§Ø±Ø¯ Ù†Ø´Ø¯Ù‡ Ø§Ø³Øª');
+      return ChatResult.failure('کاربر وارد نشده است');
     }
 
     try {
       final res = await _dio.post(
         '/chat/conversations',
-        data: {'peer_id': otherUserId},
+        data: {
+          'peer_id': otherUserId,
+          if (isSecret) 'is_secret': true,
+        },
         options: opts,
       );
       final conv = _convFromGo(_asMap(res.data), uid);
@@ -347,7 +351,8 @@ class ChatRepositoryImpl implements ChatRepository {
         '/chat/conversations/${payload.conversationId}/messages',
         data: {
           'id': messageId,
-          'content': payload.content,
+          'content': await _encryptContent(
+              payload.content, payload.recipientPublicKey),
           'message_type': payload.attachmentType ?? 'text',
           if (payload.attachmentUrl != null) 'media_url': payload.attachmentUrl,
           if (payload.attachmentFileName != null)
@@ -385,6 +390,39 @@ class ChatRepositoryImpl implements ChatRepository {
       await _local.saveMessage(failed);
       return ChatResult.failure(_dioError(e));
     }
+  }
+
+  Future<String> _encryptContent(
+      String rawContent, String? recipientPublicKey) async {
+    if (recipientPublicKey == null || recipientPublicKey.isEmpty) {
+      return rawContent;
+    }
+    try {
+      return await E2EEService().encryptMessage(rawContent, recipientPublicKey);
+    } catch (e) {
+      logWarning('E2EE Encryption failed: $e');
+      return rawContent;
+    }
+  }
+
+  Future<List<MessageModel>> _decryptMessages(
+      List<MessageModel> msgs, String? otherPublicKey) async {
+    if (otherPublicKey == null || otherPublicKey.isEmpty) return msgs;
+    final decrypted = <MessageModel>[];
+    for (var m in msgs) {
+      if (m.content.startsWith('e2ee:v1:')) {
+        try {
+          final clear =
+              await E2EEService().decryptMessage(m.content, otherPublicKey);
+          decrypted.add(m.copyWith(content: clear));
+        } catch (_) {
+          decrypted.add(m);
+        }
+      } else {
+        decrypted.add(m);
+      }
+    }
+    return decrypted;
   }
 
   @override

@@ -5,9 +5,11 @@ import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 import '../../model/ProfileModel.dart';
 import '../../services/video_autoplay_service.dart';
+import '../../services/video_preload_service.dart';
 
 class CustomVideoPlayer extends ConsumerStatefulWidget {
   final String videoUrl;
@@ -149,15 +151,13 @@ class _CustomVideoPlayerState extends ConsumerState<CustomVideoPlayer>
           widget.maxHeight != null) {
         _controller = VideoPlayerController.network(widget.videoUrl);
       } else {
-        // استفاده محدود از کش فقط برای ویدیوهای کوچک
-        try {
-          final file = await _config.videoCacheManager
-              .getSingleFile(widget.videoUrl)
-              .timeout(const Duration(
-                  seconds: 3)); // timeout برای جلوگیری از انتظار طولانی
-          _controller = VideoPlayerController.file(file);
-        } catch (e) {
-          // fallback به network اگر کش شکست خورد
+        // استفاده از پری‌لود سرویس برای بررسی سریع کش
+        final cachedVideo =
+            await VideoPreloadService().getCachedVideo(widget.videoUrl);
+        if (cachedVideo != null) {
+          _controller = VideoPlayerController.file(cachedVideo.file);
+        } else {
+          // اگر کش نبود، به صورت استریم پخش کن و از شبکه بخون
           _controller = VideoPlayerController.network(widget.videoUrl);
         }
       }
@@ -409,16 +409,15 @@ class _CustomVideoPlayerState extends ConsumerState<CustomVideoPlayer>
             if (!_isPlayerInitialized) ...[
               if (widget.thumbnailUrl != null &&
                   widget.thumbnailUrl!.isNotEmpty)
-                Image.network(
-                  widget.thumbnailUrl!,
+                CachedNetworkImage(
+                  imageUrl: widget.thumbnailUrl!,
                   fit: BoxFit.cover,
                   width: double.infinity,
                   height: double.infinity,
-                  loadingBuilder: (context, child, loadingProgress) {
-                    if (loadingProgress == null) return child;
+                  placeholder: (context, url) {
                     return const Center(child: CircularProgressIndicator());
                   },
-                  errorBuilder: (context, error, stackTrace) {
+                  errorWidget: (context, url, error) {
                     return const Center(
                         child: Icon(Icons.error, color: Colors.white));
                   },

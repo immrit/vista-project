@@ -116,7 +116,8 @@ class Settings extends ConsumerWidget {
               title: 'درخواست تیک آبی',
               onTap: () => Navigator.push(
                 context,
-                MaterialPageRoute(builder: (_) => const VerificationRequestPage()),
+                MaterialPageRoute(
+                    builder: (_) => const VerificationRequestPage()),
               ),
             ),
             _SettingsTile(

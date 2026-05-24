@@ -45,9 +45,8 @@ class PerformanceMonitor {
       return;
     }
 
-    final totalMicros = _frameTimes
-        .map((d) => d.inMicroseconds)
-        .reduce((a, b) => a + b);
+    final totalMicros =
+        _frameTimes.map((d) => d.inMicroseconds).reduce((a, b) => a + b);
     final averageMicros = totalMicros / _frameTimes.length;
     final fps = averageMicros == 0 ? 0 : (1000000 / averageMicros);
 
@@ -59,15 +58,3 @@ class PerformanceMonitor {
     print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   }
 }
-
-
-
-
-
-
-
-
-
-
-
-

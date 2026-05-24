@@ -1,7 +1,7 @@
 // lib/services/network_state_service.dart
 //
 // سرویس مدیریت وضعیت شبکه
-// 
+//
 // این سرویس:
 // ✅ وضعیت اینترنت رو real-time تشخیص میده
 // ✅ کیفیت اتصال رو measure میکنه
@@ -19,7 +19,7 @@ class NetworkStateService {
   // ═══════════════════════════════════════════════════════════════════════════
   // 🔧 SINGLETON
   // ═══════════════════════════════════════════════════════════════════════════
-  
+
   static final NetworkStateService _instance = NetworkStateService._internal();
   factory NetworkStateService() => _instance;
   NetworkStateService._internal();
@@ -87,9 +87,8 @@ class NetworkStateService {
       await _checkInitialState();
 
       // ✅ Listen to connectivity changes
-      _connectivitySubscription = Connectivity()
-          .onConnectivityChanged
-          .listen(_onConnectivityChanged);
+      _connectivitySubscription =
+          Connectivity().onConnectivityChanged.listen(_onConnectivityChanged);
 
       // ✅ Start quality monitoring
       _startQualityMonitoring();
@@ -100,7 +99,7 @@ class NetworkStateService {
     } catch (e, stack) {
       logInfo('❌ Failed to initialize NetworkStateService: $e');
       logInfo('Stack trace: $stack');
-      
+
       // Set default connected state if initialization fails
       _updateState(NetworkState.connected());
     }
@@ -149,7 +148,7 @@ class NetworkStateService {
   /// Handle connectivity changes
   void _onConnectivityChanged(List<ConnectivityResult> results) {
     if (_isDisposed) return;
-    
+
     final result = results.first;
     logInfo('📡 Connectivity changed: $result');
 
@@ -172,7 +171,7 @@ class NetworkStateService {
   /// Handle connection established
   Future<void> _onConnected() async {
     if (_isDisposed) return;
-    
+
     _lastDisconnectTime = null;
     _consecutiveFailures = 0;
     _reconnectTimer?.cancel();
@@ -194,7 +193,7 @@ class NetworkStateService {
   /// Handle disconnection
   void _onDisconnected() {
     if (_isDisposed) return;
-    
+
     _lastDisconnectTime = DateTime.now();
     _consecutiveFailures++;
 
@@ -297,7 +296,7 @@ class NetworkStateService {
   /// Start aggressive reconnection monitoring
   void _startReconnectionMonitoring() {
     logInfo('🔄 Starting reconnection monitoring...');
-    
+
     _reconnectTimer?.cancel();
     _reconnectTimer = Timer.periodic(_reconnectCheckInterval, (timer) async {
       if (_isDisposed) {
@@ -347,16 +346,16 @@ class NetworkStateService {
       // Try alternative endpoint
       try {
         final stopwatch = Stopwatch()..start();
-        
+
         final socket = await Socket.connect(
           '1.1.1.1', // Cloudflare DNS
           53,
           timeout: _pingTimeout,
         );
-        
+
         socket.destroy();
         stopwatch.stop();
-        
+
         return stopwatch.elapsedMilliseconds;
       } catch (e2) {
         logInfo('⚠️ Latency measurement failed: $e2');

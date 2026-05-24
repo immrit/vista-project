@@ -544,7 +544,9 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen>
       }
     } catch (e) {
       if (mounted) {
-        if (e is DioException && e.response?.data != null && e.response!.data is Map) {
+        if (e is DioException &&
+            e.response?.data != null &&
+            e.response!.data is Map) {
           final data = e.response!.data as Map;
           if (data['message'] != null) {
             _showErrorSnackBar(data['message'].toString());
@@ -584,7 +586,9 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen>
       }
     } catch (e) {
       if (mounted) {
-        if (e is DioException && e.response?.data != null && e.response!.data is Map) {
+        if (e is DioException &&
+            e.response?.data != null &&
+            e.response!.data is Map) {
           final data = e.response!.data as Map;
           if (data['message'] != null) {
             _showErrorSnackBar(data['message'].toString());

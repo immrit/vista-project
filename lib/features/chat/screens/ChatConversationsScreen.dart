@@ -568,6 +568,7 @@ class _ChatConversationsScreenState
             otherUserAvatar: conversation.otherUserAvatar,
             otherUserId: conversation.otherUserId ?? '',
             isGroup: conversation.isGroup,
+            isSecret: conversation.isSecret,
           ),
         ),
       ),

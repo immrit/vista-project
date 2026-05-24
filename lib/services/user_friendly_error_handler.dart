@@ -178,6 +178,19 @@ class UserFriendlyErrorHandler {
       {String? context, StackTrace? stackTrace}) {
     if (kDebugMode) {
       logInfo('🚨 Error in $context: $error');
+      if (error is http.ClientException) {
+        logInfo('HTTP Exception: ${error.message}');
+      } else {
+        try {
+          if (error.runtimeType.toString().contains('DioException')) {
+            final response = (error as dynamic).response;
+            if (response != null) {
+              logInfo('🚨 DioResponse Data: ${response.data}');
+              logInfo('🚨 DioResponse Headers: ${response.headers}');
+            }
+          }
+        } catch (_) {}
+      }
       if (stackTrace != null) {
         logInfo('Stack trace: $stackTrace');
       }

@@ -10,11 +10,6 @@ Future<bool> showOtpDialog(
   String? error;
   int countdown = 60;
   Timer? timer;
-  String? debugCode = ref.read(authControllerProvider).otpDebugCode;
-  // Dev OTP auto-fill is disabled per user request to allow manual entry.
-  // if (debugCode != null && debugCode.isNotEmpty) {
-  //   otpController.text = debugCode;
-  // }
 
   final result = await showGeneralDialog<bool>(
     context: context,
@@ -106,6 +101,7 @@ Future<bool> showOtpDialog(
                           style:
                               const TextStyle(color: Colors.red, fontSize: 12)),
                     ],
+                    /*
                     if ((debugCode ?? '').isNotEmpty) ...[
                       const SizedBox(height: 8),
                       Text(
@@ -117,6 +113,7 @@ Future<bool> showOtpDialog(
                         ),
                       ),
                     ],
+                    */
                     const SizedBox(height: 24),
                     if (countdown > 0)
                       Text(
@@ -148,14 +145,7 @@ Future<bool> showOtpDialog(
                             await ref
                                 .read(authControllerProvider.notifier)
                                 .sendOtp(phoneNumber);
-                            setDialogState(() {
-                              debugCode =
-                                  ref.read(authControllerProvider).otpDebugCode;
-                              // Dev OTP auto-fill is disabled per user request to allow manual entry.
-                              // if ((debugCode ?? '').isNotEmpty) {
-                              //   otpController.text = debugCode ?? '';
-                              // }
-                            });
+                            setDialogState(() {});
                           } catch (e) {
                             setDialogState(() => error = 'خطا در ارسال مجدد');
                           }

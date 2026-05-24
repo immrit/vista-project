@@ -1,4 +1,4 @@
-﻿// lib/features/chat/widgets/telegram_online_status.dart
+// lib/features/chat/widgets/telegram_online_status.dart
 //
 // ویجت وضعیت آنلاین به سبک ویستا
 //
@@ -14,16 +14,17 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../../../services/user_presence_service.dart';
 import '../../../provider/presence_provider.dart';
 
 /// رنگ‌های وضعیت
 class OnlineStatusColors {
-  static const Color online = Color(0xFF4CAF50);      // سبز ویستا
-  static const Color typing = Color(0xFF2196F3);      // آبی
-  static const Color recording = Color(0xFFE91E63);   // صورتی
-  static const Color offline = Color(0xFF9E9E9E);     // خاکستری
-  static const Color away = Color(0xFFFFC107);        // زرد
+  static const Color online = Color(0xFF4CAF50); // سبز ویستا
+  static const Color typing = Color(0xFF2196F3); // آبی
+  static const Color recording = Color(0xFFE91E63); // صورتی
+  static const Color offline = Color(0xFF9E9E9E); // خاکستری
+  static const Color away = Color(0xFFFFC107); // زرد
 }
 
 /// نقطه وضعیت آنلاین با انیمیشن
@@ -117,8 +118,8 @@ class _OnlineStatusDotState extends State<OnlineStatusDot>
   @override
   Widget build(BuildContext context) {
     final color = _getStatusColor();
-    final borderColor = widget.borderColor ?? 
-        Theme.of(context).scaffoldBackgroundColor;
+    final borderColor =
+        widget.borderColor ?? Theme.of(context).scaffoldBackgroundColor;
 
     return AnimatedBuilder(
       animation: _pulseController,
@@ -230,7 +231,8 @@ class OnlineStatusText extends StatelessWidget {
               presence.displayText,
               style: (style ?? const TextStyle(fontSize: 12)).copyWith(
                 color: _getTextColor(context),
-                fontWeight: presence.isOnline ? FontWeight.w500 : FontWeight.normal,
+                fontWeight:
+                    presence.isOnline ? FontWeight.w500 : FontWeight.normal,
               ),
               overflow: TextOverflow.ellipsis,
             ),
@@ -392,10 +394,11 @@ class TelegramOnlineStatus extends ConsumerWidget {
     final theme = Theme.of(context);
     return Text(
       'آفلاین',
-      style: textStyle ?? TextStyle(
-        fontSize: 12,
-        color: theme.textTheme.bodySmall?.color,
-      ),
+      style: textStyle ??
+          TextStyle(
+            fontSize: 12,
+            color: theme.textTheme.bodySmall?.color,
+          ),
     );
   }
 
@@ -403,10 +406,11 @@ class TelegramOnlineStatus extends ConsumerWidget {
     final theme = Theme.of(context);
     return Text(
       'نامشخص',
-      style: textStyle ?? TextStyle(
-        fontSize: 12,
-        color: theme.textTheme.bodySmall?.color,
-      ),
+      style: textStyle ??
+          TextStyle(
+            fontSize: 12,
+            color: theme.textTheme.bodySmall?.color,
+          ),
     );
   }
 
@@ -467,10 +471,11 @@ class AvatarWithOnlineStatus extends ConsumerWidget {
               ),
               child: avatarUrl != null
                   ? ClipOval(
-                      child: Image.network(
-                        avatarUrl!,
+                      child: CachedNetworkImage(
+                        imageUrl: avatarUrl!,
                         fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => _buildFallback(theme),
+                        errorWidget: (context, url, error) =>
+                            _buildFallback(theme),
                       ),
                     )
                   : _buildFallback(theme),

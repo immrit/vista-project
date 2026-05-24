@@ -1,4 +1,4 @@
-﻿// lib/features/chat/models/message_reaction.dart
+// lib/features/chat/models/message_reaction.dart
 //
 // مدل‌های واکنش به پیام - الهام از ویستا
 //
@@ -133,4 +133,3 @@ class ReactionSummary {
       ..sort((a, b) => b.count.compareTo(a.count)); // مرتب‌سازی براساس تعداد
   }
 }
-

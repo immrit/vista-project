@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -219,6 +219,7 @@ class _ConversationContent extends StatelessWidget {
                     lastMessageDeliveryStatus:
                         conversation.lastMessageDeliveryStatus,
                     isTyping: isOtherUserTyping,
+                    isSecret: conversation.isSecret,
                   ),
                 ),
               ],
@@ -463,6 +464,7 @@ class _ContentWidget extends StatelessWidget {
   final String? lastMessageType;
   final MessageDeliveryStatus lastMessageDeliveryStatus;
   final bool isTyping;
+  final bool isSecret;
 
   const _ContentWidget({
     required this.displayName,
@@ -475,6 +477,7 @@ class _ContentWidget extends StatelessWidget {
     this.lastMessageType,
     this.lastMessageDeliveryStatus = MessageDeliveryStatus.sent,
     this.isTyping = false,
+    this.isSecret = false,
   });
 
   @override
@@ -515,12 +518,20 @@ class _ContentWidget extends StatelessWidget {
                         fontSize: 15,
                         fontWeight:
                             hasUnread ? FontWeight.w600 : FontWeight.w500,
-                        color: theme.textTheme.titleMedium?.color,
+                        color: isSecret ? Colors.green : theme.textTheme.titleMedium?.color,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
+                  if (isSecret) ...[
+                    const SizedBox(width: 4),
+                    const Icon(
+                      Icons.lock_rounded,
+                      size: 14,
+                      color: Colors.green,
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -577,10 +588,9 @@ class _ContentWidget extends StatelessWidget {
                                 : theme.hintColor),
                         fontWeight: isTyping
                             ? FontWeight.w600
-                            : (hasUnread
-                                ? FontWeight.w500
-                                : FontWeight.normal),
-                        fontStyle: isTyping ? FontStyle.italic : FontStyle.normal,
+                            : (hasUnread ? FontWeight.w500 : FontWeight.normal),
+                        fontStyle:
+                            isTyping ? FontStyle.italic : FontStyle.normal,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,

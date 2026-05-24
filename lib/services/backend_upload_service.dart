@@ -6,6 +6,7 @@ import 'package:dio/io.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
+import '../security/logging_utility.dart';
 import '../features/auth/providers/auth_controller.dart';
 
 class BackendUploadResult {
@@ -69,6 +70,9 @@ class BackendUploadService {
 
     final headers = _readHeaders(presign['headers']);
     headers['Content-Type'] = contentType;
+
+    logInfo('UPLOAD URL: $uploadUrl');
+    logInfo('UPLOAD HEADERS: $headers');
 
     final dio = Dio(BaseOptions(
       connectTimeout: const Duration(seconds: 15),

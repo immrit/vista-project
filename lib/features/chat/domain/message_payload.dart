@@ -17,6 +17,7 @@ class MessagePayload {
   final String? replyToContent;
   final String? replyToSenderName;
   final String? mediaGroupId;
+  final String? recipientPublicKey; // برای E2EE
 
   MessagePayload({
     required this.conversationId,
@@ -35,5 +36,6 @@ class MessagePayload {
     this.replyToContent,
     this.replyToSenderName,
     this.mediaGroupId,
+    this.recipientPublicKey,
   });
 }

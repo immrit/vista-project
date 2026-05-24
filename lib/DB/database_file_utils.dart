@@ -58,5 +58,3 @@ Future<void> deleteConversationCacheDbFile() async {
     if (await shm.exists()) await shm.delete();
   }
 }
-
-

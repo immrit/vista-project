@@ -146,7 +146,7 @@ class TelegramXDateUtils {
   // ═══════════════════════════════════════════════════════════════════════════
 
   /// فرمت اصلی Telegram-X برای نمایش تاریخ در پیام‌ها
-  /// 
+  ///
   /// منطق:
   /// - اگر امروز باشه: "14:30"
   /// - اگر دیروز باشه: "Yesterday at 14:30"
@@ -156,15 +156,16 @@ class TelegramXDateUtils {
   static String formatMessageTimestamp(DateTime messageDate) {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final messageDay = DateTime(messageDate.year, messageDate.month, messageDate.day);
-    
+    final messageDay =
+        DateTime(messageDate.year, messageDate.month, messageDate.day);
+
     final difference = today.difference(messageDay).inDays;
 
     // امروز: فقط زمان
     if (difference == 0) {
       return formatTime(messageDate);
     }
-    
+
     // دیروز
     if (difference == 1) {
       return formatWithTime(
@@ -172,7 +173,7 @@ class TelegramXDateUtils {
         messageDate,
       );
     }
-    
+
     // تا ۷ روز پیش: روز هفته
     if (difference > 1 && difference < 7) {
       return formatWithTime(
@@ -197,7 +198,7 @@ class TelegramXDateUtils {
   }
 
   /// فرمت Floating Date Header (تاریخ شناور بالای لیست)
-  /// 
+  ///
   /// مثل Telegram-X:
   /// - امروز: "Today"
   /// - دیروز: "Yesterday"
@@ -207,19 +208,19 @@ class TelegramXDateUtils {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final targetDay = DateTime(date.year, date.month, date.day);
-    
+
     final difference = today.difference(targetDay).inDays;
 
     // امروز
     if (difference == 0) {
       return _usePersian ? 'امروز' : 'Today';
     }
-    
+
     // دیروز
     if (difference == 1) {
       return _usePersian ? 'دیروز' : 'Yesterday';
     }
-    
+
     // تا ۷ روز پیش: "Monday, 15 May"
     if (difference > 1 && difference < 7) {
       return '${formatWeekday(date)}, ${formatShortDate(date)}';
@@ -230,7 +231,7 @@ class TelegramXDateUtils {
   }
 
   /// فرمت Date Divider (جداکننده تاریخ بین پیام‌ها)
-  /// 
+  ///
   /// مثل Telegram-X:
   /// - امروز: "Today"
   /// - دیروز: "Yesterday"
@@ -241,19 +242,19 @@ class TelegramXDateUtils {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final targetDay = DateTime(date.year, date.month, date.day);
-    
+
     final difference = today.difference(targetDay).inDays;
 
     // امروز
     if (difference == 0) {
       return _usePersian ? 'امروز' : 'Today';
     }
-    
+
     // دیروز
     if (difference == 1) {
       return _usePersian ? 'دیروز' : 'Yesterday';
     }
-    
+
     // تا ۷ روز پیش: روز هفته
     if (difference > 1 && difference < 7) {
       return formatWeekday(date);
@@ -269,7 +270,7 @@ class TelegramXDateUtils {
   }
 
   /// فرمت Last Seen (آخرین بازدید)
-  /// 
+  ///
   /// مثل Telegram-X:
   /// - کمتر از ۱ دقیقه: "just now"
   /// - کمتر از ۱ ساعت: "5 minutes ago"
@@ -306,7 +307,8 @@ class TelegramXDateUtils {
     }
 
     final today = DateTime(now.year, now.month, now.day);
-    final lastSeenDay = DateTime(lastSeenDate.year, lastSeenDate.month, lastSeenDate.day);
+    final lastSeenDay =
+        DateTime(lastSeenDate.year, lastSeenDate.month, lastSeenDate.day);
     final daysDifference = today.difference(lastSeenDay).inDays;
 
     // امروز
@@ -330,7 +332,7 @@ class TelegramXDateUtils {
   }
 
   /// فرمت Relative Time کوتاه (برای لیست چت‌ها)
-  /// 
+  ///
   /// مثل Telegram-X:
   /// - "5m" (۵ دقیقه پیش)
   /// - "2h" (۲ ساعت پیش)
@@ -384,12 +386,15 @@ class TelegramXDateUtils {
   }
 
   /// چک کردن اینکه آیا باید Date Divider نمایش داده بشه
-  static bool shouldShowDateDivider(DateTime? currentDate, DateTime? previousDate) {
+  static bool shouldShowDateDivider(
+      DateTime? currentDate, DateTime? previousDate) {
     if (previousDate == null) return true;
-    
-    final current = DateTime(currentDate!.year, currentDate.month, currentDate.day);
-    final previous = DateTime(previousDate.year, previousDate.month, previousDate.day);
-    
+
+    final current =
+        DateTime(currentDate!.year, currentDate.month, currentDate.day);
+    final previous =
+        DateTime(previousDate.year, previousDate.month, previousDate.day);
+
     return !current.isAtSameMomentAs(previous);
   }
 

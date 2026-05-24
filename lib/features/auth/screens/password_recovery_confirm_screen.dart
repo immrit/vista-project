@@ -103,7 +103,7 @@ class _PasswordRecoveryConfirmScreenState
         code: code,
       );
       if (!mounted) return;
-      
+
       // Navigate to the set password screen
       Navigator.pushNamed(
         context,

@@ -70,7 +70,7 @@ class VoiceDurationService {
   }) async {
     try {
       final filePath = audioFile.path;
-      
+
       logInfo('🎵 Calculating audio duration: $filePath');
 
       // بررسی کش
@@ -87,7 +87,7 @@ class VoiceDurationService {
 
       // استفاده از audio_waveforms برای محاسبه مدت زمان
       final playerController = PlayerController();
-      
+
       try {
         // آماده‌سازی player
         await playerController.preparePlayer(
@@ -100,7 +100,8 @@ class VoiceDurationService {
 
         // دریافت مدت زمان از stream
         int? durationMs;
-        final subscription = playerController.onCurrentDurationChanged.listen((duration) {
+        final subscription =
+            playerController.onCurrentDurationChanged.listen((duration) {
           if (duration > 0) {
             durationMs = duration;
           }
@@ -136,7 +137,7 @@ class VoiceDurationService {
       }
     } catch (e, stackTrace) {
       logInfo('❌ Error calculating audio duration: $e\n$stackTrace');
-      
+
       // در صورت خطا، مدت زمان پیش‌فرض برگردان
       return DurationResult.failure('خطا در محاسبه مدت زمان: ${e.toString()}');
     }
@@ -181,14 +182,13 @@ class VoiceDurationService {
     try {
       final parts = formatted.split(':');
       if (parts.length != 2) return 0;
-      
+
       final minutes = int.parse(parts[0]);
       final seconds = int.parse(parts[1]);
-      
+
       return minutes * 60 + seconds;
     } catch (e) {
       return 0;
     }
   }
 }
-

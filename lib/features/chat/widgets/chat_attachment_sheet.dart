@@ -779,7 +779,8 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
         child: Stack(
           alignment: Alignment.center,
           children: [
-            const Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 24),
+            const Icon(Icons.arrow_forward_rounded,
+                color: Colors.white, size: 24),
             Positioned(
               top: 4,
               right: 4,
@@ -1026,7 +1027,8 @@ class _ChatImagePreviewScreen extends StatefulWidget {
   });
 
   @override
-  State<_ChatImagePreviewScreen> createState() => _ChatImagePreviewScreenState();
+  State<_ChatImagePreviewScreen> createState() =>
+      _ChatImagePreviewScreenState();
 }
 
 class _ChatImagePreviewScreenState extends State<_ChatImagePreviewScreen> {
@@ -1037,9 +1039,11 @@ class _ChatImagePreviewScreenState extends State<_ChatImagePreviewScreen> {
   @override
   void initState() {
     super.initState();
-    _currentIndex = widget.initialIndex.clamp(0, widget.files.length - 1).toInt();
+    _currentIndex =
+        widget.initialIndex.clamp(0, widget.files.length - 1).toInt();
     _pageController = PageController(initialPage: _currentIndex);
-    _captionController = TextEditingController(text: widget.initialCaption ?? '');
+    _captionController =
+        TextEditingController(text: widget.initialCaption ?? '');
   }
 
   @override
@@ -1069,7 +1073,8 @@ class _ChatImagePreviewScreenState extends State<_ChatImagePreviewScreen> {
     final bottomSafeArea = mediaQuery.padding.bottom;
     final isKeyboardVisible = keyboardInset > 0;
     final showAlbumStrip = isAlbum && keyboardInset <= 0;
-    final composerBottomPadding = isKeyboardVisible ? keyboardInset : bottomSafeArea;
+    final composerBottomPadding =
+        isKeyboardVisible ? keyboardInset : bottomSafeArea;
     const composerEstimatedHeight = 92.0;
 
     return Scaffold(
@@ -1147,7 +1152,9 @@ class _ChatImagePreviewScreenState extends State<_ChatImagePreviewScreen> {
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(8),
                           border: Border.all(
-                            color: isActive ? theme.sendButtonColor : Colors.white24,
+                            color: isActive
+                                ? theme.sendButtonColor
+                                : Colors.white24,
                             width: isActive ? 2 : 1,
                           ),
                         ),

@@ -150,7 +150,7 @@ class AuthState {
   }) {
     return AuthState(
       isLoading: isLoading ?? this.isLoading,
-      error: error, 
+      error: error,
       codeSent: codeSent ?? this.codeSent,
       isLoggedIn: isLoggedIn ?? this.isLoggedIn,
       isNewUser: isNewUser ?? this.isNewUser,
@@ -221,7 +221,8 @@ class AuthController extends StateNotifier<AuthState> {
       // Ø°Ø®ÛŒØ±Ù‡ ØªÙˆÚ©Ù†â€ŒÙ‡Ø§
       await TokenStorage.saveTokens(response.session);
       await TokenStorage.saveUserId(response.user.id);
-      await SessionManagerServiceV2.instance.ensureSessionRegistered(force: true);
+      await SessionManagerServiceV2.instance
+          .ensureSessionRegistered(force: true);
 
       state = state.copyWith(
         isLoading: false,
@@ -252,7 +253,8 @@ class AuthController extends StateNotifier<AuthState> {
       // Ø°Ø®ÛŒØ±Ù‡ ØªÙˆÚ©Ù†â€ŒÙ‡Ø§
       await TokenStorage.saveTokens(response.session);
       await TokenStorage.saveUserId(response.user.id);
-      await SessionManagerServiceV2.instance.ensureSessionRegistered(force: true);
+      await SessionManagerServiceV2.instance
+          .ensureSessionRegistered(force: true);
 
       state = state.copyWith(
         isLoading: false,
@@ -324,7 +326,8 @@ class AuthController extends StateNotifier<AuthState> {
       await TokenStorage.saveTokens(auth.session);
       await TokenStorage.saveUserId(auth.user.id);
       if (!isUpdateMode) {
-        await SessionManagerServiceV2.instance.ensureSessionRegistered(force: true);
+        await SessionManagerServiceV2.instance
+            .ensureSessionRegistered(force: true);
       }
 
       if (!isUpdateMode) {
@@ -362,7 +365,8 @@ class AuthController extends StateNotifier<AuthState> {
 
       await TokenStorage.saveTokens(response.session);
       await TokenStorage.saveUserId(response.user.id);
-      await SessionManagerServiceV2.instance.ensureSessionRegistered(force: true);
+      await SessionManagerServiceV2.instance
+          .ensureSessionRegistered(force: true);
 
       state = state.copyWith(
         isLoading: false,

@@ -74,7 +74,7 @@ class _DocumentPreviewScreenState extends State<DocumentPreviewScreen>
     try {
       final dir = await getApplicationDocumentsDirectory();
       final file = File('${dir.path}/${widget.documentName}');
-      
+
       if (await file.exists()) {
         setState(() => _localFile = file);
       }
@@ -134,11 +134,14 @@ class _DocumentPreviewScreenState extends State<DocumentPreviewScreen>
                 shape: BoxShape.circle,
               ),
               child: Icon(
-                _localFile != null ? Icons.delete_outline : Icons.download_rounded,
+                _localFile != null
+                    ? Icons.delete_outline
+                    : Icons.download_rounded,
                 color: Colors.white,
               ),
             ),
-            onPressed: _localFile != null ? _deleteLocalFile : _downloadDocument,
+            onPressed:
+                _localFile != null ? _deleteLocalFile : _downloadDocument,
           ),
         ],
       ),
@@ -650,5 +653,3 @@ class _DocumentPreviewScreenState extends State<DocumentPreviewScreen>
     }
   }
 }
-
-

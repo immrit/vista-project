@@ -1,4 +1,4 @@
-﻿// lib/utils/time_utils.dart
+// lib/utils/time_utils.dart
 import 'package:flutter/material.dart';
 
 import 'package:timeago/timeago.dart' as timeago;
@@ -464,7 +464,8 @@ class TimeUtils {
         topLeft: const Radius.circular(defaultRadius),
         topRight: Radius.circular(topMerged ? smallRadius : defaultRadius),
         bottomLeft: const Radius.circular(defaultRadius),
-        bottomRight: Radius.circular(bottomMerged ? smallRadius : defaultRadius),
+        bottomRight:
+            Radius.circular(bottomMerged ? smallRadius : defaultRadius),
       );
     } else {
       return BorderRadius.only(

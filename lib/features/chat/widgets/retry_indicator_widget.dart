@@ -1,4 +1,4 @@
-﻿// lib/features/chat/widgets/retry_indicator_widget.dart
+// lib/features/chat/widgets/retry_indicator_widget.dart
 //
 // نمایش وضعیت ارسال پیام با الهام از ویستا
 //
@@ -16,11 +16,11 @@ import 'dart:math' as math;
 
 /// وضعیت پیام
 enum MessageSendStatus {
-  pending,   // در حال ارسال - ساعت
-  sent,      // ارسال شده - یک تیک
+  pending, // در حال ارسال - ساعت
+  sent, // ارسال شده - یک تیک
   delivered, // تحویل داده شده - دو تیک خاکستری
-  read,      // خوانده شده - دو تیک آبی
-  failed,    // خطا - علامت تعجب قرمز
+  read, // خوانده شده - دو تیک آبی
+  failed, // خطا - علامت تعجب قرمز
 }
 
 /// Retry Indicator به سبک ویستا
@@ -92,7 +92,7 @@ class _TelegramRetryIndicatorState extends State<TelegramRetryIndicator>
   @override
   void didUpdateWidget(TelegramRetryIndicator oldWidget) {
     super.didUpdateWidget(oldWidget);
-    
+
     if (oldWidget.status != widget.status) {
       if (widget.status == MessageSendStatus.pending) {
         _controller.repeat();
@@ -284,7 +284,7 @@ class _TelegramConnectionBannerState extends State<TelegramConnectionBanner>
   void initState() {
     super.initState();
     _setupAnimations();
-    
+
     if (!widget.isConnected) {
       _controller.forward();
     }
@@ -313,7 +313,7 @@ class _TelegramConnectionBannerState extends State<TelegramConnectionBanner>
   @override
   void didUpdateWidget(TelegramConnectionBanner oldWidget) {
     super.didUpdateWidget(oldWidget);
-    
+
     if (oldWidget.isConnected != widget.isConnected) {
       if (widget.isConnected) {
         _controller.reverse();
@@ -456,5 +456,3 @@ class TelegramPendingCounter extends StatelessWidget {
     );
   }
 }
-
-

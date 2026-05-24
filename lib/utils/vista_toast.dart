@@ -14,10 +14,10 @@ class VistaToast {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final defaultBg = isDark ? const Color(0xFF1E2130) : Colors.white;
     final defaultText = isDark ? Colors.white : Colors.black87;
-    
+
     final overlay = Overlay.of(context);
     late OverlayEntry overlayEntry;
-    
+
     overlayEntry = OverlayEntry(
       builder: (context) {
         return _VistaToastWidget(
@@ -82,7 +82,8 @@ class _VistaToastWidget extends StatefulWidget {
   State<_VistaToastWidget> createState() => _VistaToastWidgetState();
 }
 
-class _VistaToastWidgetState extends State<_VistaToastWidget> with SingleTickerProviderStateMixin {
+class _VistaToastWidgetState extends State<_VistaToastWidget>
+    with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _opacity;
   late Animation<Offset> _slide;
@@ -90,12 +91,16 @@ class _VistaToastWidgetState extends State<_VistaToastWidget> with SingleTickerP
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 300));
-    _opacity = Tween<double>(begin: 0.0, end: 1.0).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
-    _slide = Tween<Offset>(begin: const Offset(0.0, -0.5), end: Offset.zero).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutBack));
-    
+    _controller = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 300));
+    _opacity = Tween<double>(begin: 0.0, end: 1.0)
+        .animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
+    _slide = Tween<Offset>(begin: const Offset(0.0, -0.5), end: Offset.zero)
+        .animate(
+            CurvedAnimation(parent: _controller, curve: Curves.easeOutBack));
+
     _controller.forward();
-    
+
     Future.delayed(widget.duration, () {
       if (mounted) {
         _controller.reverse().then((_) => widget.onDismissed());
@@ -123,7 +128,8 @@ class _VistaToastWidgetState extends State<_VistaToastWidget> with SingleTickerP
             child: FadeTransition(
               opacity: _opacity,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                 decoration: BoxDecoration(
                   color: widget.backgroundColor,
                   borderRadius: BorderRadius.circular(16),
