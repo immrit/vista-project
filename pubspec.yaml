@@ -151,7 +151,6 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
-    - .env
     - lib/utils/images/vistalogo.png
     - lib/utils/images/vistalogo-new.png
     - lib/utils/images/headerBack.jpg
