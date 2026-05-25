@@ -2,7 +2,7 @@ import '../../../security/logging_utility.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:Vista/utils/env_config.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../auth/data/auth_repository.dart';
@@ -25,7 +25,7 @@ class _ContactUsScreenState extends State<ContactUsScreen> {
   bool _isSubmitting = false;
   late final Dio _dio = Dio(
     BaseOptions(
-      baseUrl: '${dotenv.env['BACKEND_URL'] ?? 'http://10.0.2.2:8080'}/v1',
+      baseUrl: '${EnvConfig.apiBaseUrl ?? 'http://10.0.2.2:8080'}/v1',
       connectTimeout: const Duration(seconds: 15),
       receiveTimeout: const Duration(seconds: 15),
       headers: {'Content-Type': 'application/json'},

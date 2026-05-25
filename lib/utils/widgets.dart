@@ -18,7 +18,6 @@ import '../../model/CommentModel.dart';
 import '../../model/UserModel.dart';
 import '../../model/publicPostModel.dart';
 import '../../provider/provider.dart';
-import '../../provider/theme_provider.dart';
 import 'package:Vista/features/posts/screens/profileScreen.dart';
 import 'package:Vista/widgets/verification_badge_icon.dart';
 
@@ -110,7 +109,7 @@ Widget customTextField(String hintText, TextEditingController controller,
 }
 
 Widget customButton(dynamic ontap, String text, final WidgetRef ref) {
-  final currentTheme = ref.watch(themeProvider); // دریافت تم جاری
+  final currentTheme = ref.watch(dynamicThemeProvider); // دریافت تم جاری
 
   return GestureDetector(
     onTap: ontap,
@@ -376,8 +375,8 @@ Drawer CustomDrawer(AsyncValue<Map<String, dynamic>?> getprofile,
           onChanged: (bool isDark) {
             // استفاده از سیستم تم جدید
             ref
-                .read(brightnessProvider.notifier)
-                .updateBrightness(isDark ? Brightness.dark : Brightness.light);
+                .read(themeModeProvider.notifier)
+                .updateThemeMode(isDark ? ThemeMode.dark : ThemeMode.light);
           },
           secondary: Icon(
             ref.watch(brightnessProvider) == Brightness.dark

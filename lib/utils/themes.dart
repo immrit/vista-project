@@ -1,62 +1,70 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 
 class VistaThemes {
-  // Define font family constant
   static const String fontFamily = 'Vazir';
 
-  // Light Theme
+  // Threads / X Minimalist Monochrome
+  static const Color lightPrimary = Colors.black;
+  static const Color darkPrimary = Colors.white;
+  static const Color lightBg = Color(0xFFFFFFFF); // Pure white
+  static const Color darkBg = Color(0xFF000000); // AMOLED Black
+  static const Color darkSurface = Color(0xFF121212);
+
   static final ThemeData lightTheme = ThemeData(
     brightness: Brightness.light,
-    primaryColor: Colors.black,
-    scaffoldBackgroundColor: Colors.white,
+    primaryColor: lightPrimary,
+    scaffoldBackgroundColor: lightBg,
     fontFamily: fontFamily,
     useMaterial3: true,
-
-    // Color Scheme
+    pageTransitionsTheme: const PageTransitionsTheme(
+      builders: <TargetPlatform, PageTransitionsBuilder>{
+        TargetPlatform.android: FadeUpwardsPageTransitionsBuilder(),
+        TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+      },
+    ),
     colorScheme: const ColorScheme.light(
-      primary: Colors.black,
+      primary: lightPrimary,
       onPrimary: Colors.white,
-      secondary: Colors.black,
+      secondary: Colors.grey,
       onSecondary: Colors.white,
       surface: Colors.white,
       onSurface: Colors.black,
-      error: Color(0xFFE53935),
+      error: Color(0xFFFF4B4B),
     ),
-
-    // AppBar Theme
     appBarTheme: const AppBarTheme(
-      backgroundColor: Colors.white,
-      foregroundColor: Colors.black, // Icons and text color
+      backgroundColor: Colors.transparent, // Transparent for Glassmorphism
+      foregroundColor: Color(0xFF1E1E1E),
       elevation: 0,
       centerTitle: true,
       titleTextStyle: TextStyle(
         fontFamily: fontFamily,
-        color: Colors.black,
+        color: Color(0xFF1E1E1E),
         fontSize: 20,
-        fontWeight: FontWeight.bold,
+        fontWeight: FontWeight.w700,
+        letterSpacing: -0.5,
       ),
-      iconTheme: IconThemeData(color: Colors.black),
+      iconTheme: IconThemeData(color: Color(0xFF1E1E1E)),
     ),
-
-    // Button Themes
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(
-        backgroundColor: Colors.black,
+        backgroundColor: lightPrimary,
         foregroundColor: Colors.white,
         textStyle: const TextStyle(
           fontFamily: fontFamily,
           fontWeight: FontWeight.bold,
+          letterSpacing: 0.5,
         ),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(12),
         ),
         elevation: 0,
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
       ),
     ),
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(
-        foregroundColor: Colors.black,
+        foregroundColor: lightPrimary,
         textStyle: const TextStyle(
           fontFamily: fontFamily,
           fontWeight: FontWeight.bold,
@@ -65,106 +73,66 @@ class VistaThemes {
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: OutlinedButton.styleFrom(
-        foregroundColor: Colors.black,
-        side: const BorderSide(color: Colors.black),
+        foregroundColor: lightPrimary,
+        side: const BorderSide(color: Colors.grey, width: 1.5),
         textStyle: const TextStyle(
           fontFamily: fontFamily,
           fontWeight: FontWeight.bold,
         ),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(12),
         ),
       ),
     ),
-
-    // Input Decoration
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
-      fillColor: const Color(0xFFF5F5F5), // Slight grey for input background
-      hintStyle: const TextStyle(
+      fillColor: Colors.grey.shade100,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      hintStyle: TextStyle(
         fontFamily: fontFamily,
-        color: Colors.grey,
+        color: Colors.grey.shade500,
       ),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide.none,
+        borderSide: BorderSide(color: Colors.grey.shade300),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: Colors.grey.shade300),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: Colors.black, width: 1),
+        borderSide: const BorderSide(color: Colors.black, width: 1.5),
       ),
       errorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: Color(0xFFE53935), width: 1),
+        borderSide: const BorderSide(color: Color(0xFFFF4B4B), width: 1.5),
       ),
     ),
-
-    // Text Theme
     textTheme: const TextTheme(
-      displayLarge: TextStyle(
-          fontFamily: fontFamily,
-          color: Colors.black,
-          fontFamilyFallback: [
-            'Apple Color Emoji',
-            'Segoe UI Emoji',
-            'Noto Color Emoji'
-          ]),
-      displayMedium: TextStyle(
-          fontFamily: fontFamily,
-          color: Colors.black,
-          fontFamilyFallback: [
-            'Apple Color Emoji',
-            'Segoe UI Emoji',
-            'Noto Color Emoji'
-          ]),
-      displaySmall: TextStyle(
-          fontFamily: fontFamily,
-          color: Colors.black,
-          fontFamilyFallback: [
-            'Apple Color Emoji',
-            'Segoe UI Emoji',
-            'Noto Color Emoji'
-          ]),
       headlineMedium: TextStyle(
-          fontFamily: fontFamily,
-          color: Colors.black,
-          fontWeight: FontWeight.bold,
-          fontFamilyFallback: [
-            'Apple Color Emoji',
-            'Segoe UI Emoji',
-            'Noto Color Emoji'
-          ]),
+        fontFamily: fontFamily,
+        color: Color(0xFF1E1E1E),
+        fontWeight: FontWeight.bold,
+      ),
       bodyLarge: TextStyle(
-          fontFamily: fontFamily,
-          color: Colors.black,
-          fontFamilyFallback: [
-            'Apple Color Emoji',
-            'Segoe UI Emoji',
-            'Noto Color Emoji'
-          ]),
+        fontFamily: fontFamily,
+        color: Color(0xFF1E1E1E),
+      ),
       bodyMedium: TextStyle(
-          fontFamily: fontFamily,
-          color: Colors.black87,
-          fontFamilyFallback: [
-            'Apple Color Emoji',
-            'Segoe UI Emoji',
-            'Noto Color Emoji'
-          ]),
+        fontFamily: fontFamily,
+        color: Color(0xFF4A4A4A),
+      ),
       titleMedium: TextStyle(
-          fontFamily: fontFamily,
-          color: Colors.black,
-          fontFamilyFallback: [
-            'Apple Color Emoji',
-            'Segoe UI Emoji',
-            'Noto Color Emoji'
-          ]),
+        fontFamily: fontFamily,
+        color: Color(0xFF1E1E1E),
+        fontWeight: FontWeight.w600,
+      ),
     ),
-
-    // Bottom Navigation Bar Theme
-    bottomNavigationBarTheme: const BottomNavigationBarThemeData(
-      backgroundColor: Colors.white,
-      selectedItemColor: Colors.black,
-      unselectedItemColor: Colors.grey,
+    bottomNavigationBarTheme: BottomNavigationBarThemeData(
+      backgroundColor: Colors.transparent,
+      selectedItemColor: lightPrimary,
+      unselectedItemColor: Colors.grey.shade400,
       showSelectedLabels: false,
       showUnselectedLabels: false,
       type: BottomNavigationBarType.fixed,
@@ -172,28 +140,29 @@ class VistaThemes {
     ),
   );
 
-  // Dark Theme
   static final ThemeData darkTheme = ThemeData(
     brightness: Brightness.dark,
-    primaryColor: Colors.white,
-    scaffoldBackgroundColor: Colors.black,
+    primaryColor: darkPrimary,
+    scaffoldBackgroundColor: darkBg,
     fontFamily: fontFamily,
     useMaterial3: true,
-
-    // Color Scheme
-    colorScheme: const ColorScheme.dark(
-      primary: Colors.white,
-      onPrimary: Colors.black,
-      secondary: Colors.white,
-      onSecondary: Colors.black,
-      surface: Colors.black,
-      onSurface: Colors.white,
-      error: Color(0xFFEF5350),
+    pageTransitionsTheme: const PageTransitionsTheme(
+      builders: <TargetPlatform, PageTransitionsBuilder>{
+        TargetPlatform.android: FadeUpwardsPageTransitionsBuilder(),
+        TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+      },
     ),
-
-    // AppBar Theme
+    colorScheme: const ColorScheme.dark(
+      primary: darkPrimary,
+      onPrimary: Colors.black,
+      secondary: Colors.grey,
+      onSecondary: Colors.white,
+      surface: darkSurface,
+      onSurface: Colors.white,
+      error: Color(0xFFFF6B6B),
+    ),
     appBarTheme: const AppBarTheme(
-      backgroundColor: Colors.black,
+      backgroundColor: Colors.transparent,
       foregroundColor: Colors.white,
       elevation: 0,
       centerTitle: true,
@@ -201,30 +170,30 @@ class VistaThemes {
         fontFamily: fontFamily,
         color: Colors.white,
         fontSize: 20,
-        fontWeight: FontWeight.bold,
+        fontWeight: FontWeight.w700,
+        letterSpacing: -0.5,
       ),
       iconTheme: IconThemeData(color: Colors.white),
     ),
-
-    // Button Themes
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(
-        backgroundColor: Colors.white,
+        backgroundColor: darkPrimary,
         foregroundColor: Colors.black,
         textStyle: const TextStyle(
           fontFamily: fontFamily,
           fontWeight: FontWeight.bold,
+          letterSpacing: 0.5,
         ),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(12),
         ),
         elevation: 0,
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
       ),
     ),
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(
-        foregroundColor: Colors.white,
+        foregroundColor: darkPrimary,
         textStyle: const TextStyle(
           fontFamily: fontFamily,
           fontWeight: FontWeight.bold,
@@ -234,105 +203,65 @@ class VistaThemes {
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: OutlinedButton.styleFrom(
         foregroundColor: Colors.white,
-        side: const BorderSide(color: Colors.white),
+        side: const BorderSide(color: Colors.white30, width: 1.5),
         textStyle: const TextStyle(
           fontFamily: fontFamily,
           fontWeight: FontWeight.bold,
         ),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(12),
         ),
       ),
     ),
-
-    // Input Decoration
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
-      fillColor: const Color(0xFF1A1A1A), // Dark grey for input background
-      hintStyle: const TextStyle(
+      fillColor: const Color(0xFF1E1E1E),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      hintStyle: TextStyle(
         fontFamily: fontFamily,
-        color: Colors.grey,
+        color: Colors.grey.shade600,
       ),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide.none,
+        borderSide: const BorderSide(color: Colors.white12),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: Colors.white12),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: Colors.white, width: 1),
+        borderSide: const BorderSide(color: Colors.white, width: 1.5),
       ),
       errorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: Color(0xFFEF5350), width: 1),
+        borderSide: const BorderSide(color: Color(0xFFFF6B6B), width: 1.5),
       ),
     ),
-
-    // Text Theme
     textTheme: const TextTheme(
-      displayLarge: TextStyle(
-          fontFamily: fontFamily,
-          color: Colors.white,
-          fontFamilyFallback: [
-            'Apple Color Emoji',
-            'Segoe UI Emoji',
-            'Noto Color Emoji'
-          ]),
-      displayMedium: TextStyle(
-          fontFamily: fontFamily,
-          color: Colors.white,
-          fontFamilyFallback: [
-            'Apple Color Emoji',
-            'Segoe UI Emoji',
-            'Noto Color Emoji'
-          ]),
-      displaySmall: TextStyle(
-          fontFamily: fontFamily,
-          color: Colors.white,
-          fontFamilyFallback: [
-            'Apple Color Emoji',
-            'Segoe UI Emoji',
-            'Noto Color Emoji'
-          ]),
       headlineMedium: TextStyle(
-          fontFamily: fontFamily,
-          color: Colors.white,
-          fontWeight: FontWeight.bold,
-          fontFamilyFallback: [
-            'Apple Color Emoji',
-            'Segoe UI Emoji',
-            'Noto Color Emoji'
-          ]),
+        fontFamily: fontFamily,
+        color: Colors.white,
+        fontWeight: FontWeight.bold,
+      ),
       bodyLarge: TextStyle(
-          fontFamily: fontFamily,
-          color: Colors.white,
-          fontFamilyFallback: [
-            'Apple Color Emoji',
-            'Segoe UI Emoji',
-            'Noto Color Emoji'
-          ]),
+        fontFamily: fontFamily,
+        color: Colors.white,
+      ),
       bodyMedium: TextStyle(
-          fontFamily: fontFamily,
-          color: Colors.white70,
-          fontFamilyFallback: [
-            'Apple Color Emoji',
-            'Segoe UI Emoji',
-            'Noto Color Emoji'
-          ]),
+        fontFamily: fontFamily,
+        color: Colors.white70,
+      ),
       titleMedium: TextStyle(
-          fontFamily: fontFamily,
-          color: Colors.white,
-          fontFamilyFallback: [
-            'Apple Color Emoji',
-            'Segoe UI Emoji',
-            'Noto Color Emoji'
-          ]),
+        fontFamily: fontFamily,
+        color: Colors.white,
+        fontWeight: FontWeight.w600,
+      ),
     ),
-
-    // Bottom Navigation Bar Theme
-    bottomNavigationBarTheme: const BottomNavigationBarThemeData(
-      backgroundColor: Colors.black,
+    bottomNavigationBarTheme: BottomNavigationBarThemeData(
+      backgroundColor: Colors.transparent,
       selectedItemColor: Colors.white,
-      unselectedItemColor: Colors.grey,
+      unselectedItemColor: Colors.grey.shade600,
       showSelectedLabels: false,
       showUnselectedLabels: false,
       type: BottomNavigationBarType.fixed,
@@ -341,12 +270,9 @@ class VistaThemes {
   );
 }
 
-// Helper class for specific Vista colors if needed elsewhere,
-// though we are sticking to monochrome strictly in the theme data.
 class VistaColors {
-  // Kept for backward compatibility if imports depend on it,
-  // but values aligned with monochrome vision.
-  static const Color violetPrimary = Colors.black; // Replaced purple with black
+  static const Color violetPrimary =
+      Colors.black; // Kept name for compatibility
   static const Color violetSecondary = Colors.grey;
   static const Color textSecondaryLight = Colors.grey;
   static const Color white = Colors.white;

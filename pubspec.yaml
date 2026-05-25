@@ -42,9 +42,6 @@ dependencies:
   flutter_animate: ^4.5.2
   flutter_blurhash: ^0.9.1
   flutter_cache_manager: ^3.4.1
-  flutter_dotenv: ^6.0.1
-  # NOTE: flutter_dotenv is kept for now during migration; remove once all
-  # BACKEND_URL usages are replaced with the build-time constant.
   google_fonts: ^8.1.0
   flutter_emoji: ^2.5.1
   flutter_exif_rotation: ^0.5.2
@@ -112,6 +109,7 @@ dependencies:
   riverpod_annotation: ^2.6.1
   camera: ^0.12.0+1
   mobile_scanner: ^7.1.4
+  screen_protector: ^1.5.1
 
 dependency_overrides:
   intl: ^0.19.0
@@ -161,6 +159,9 @@ flutter:
     - lib/utils/images/share_icons/
     - lib/utils/images/wallpapers/dark_wallpaper.png
     - lib/utils/images/wallpapers/light_wallpaper.png
+    - assets/images/telegram_bg.jpg
+    - assets/images/vista_custom_bg.png
+    - assets/images/vista_custom_bg_dark.png
   fonts:
     - family: Vazir
       fonts:

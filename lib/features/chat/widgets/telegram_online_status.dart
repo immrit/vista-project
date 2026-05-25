@@ -136,7 +136,7 @@ class _OnlineStatusDotState extends State<OnlineStatusDot>
                   height: widget.size,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: color.withOpacity(_opacityAnimation.value),
+                    color: color.withValues(alpha: _opacityAnimation.value),
                   ),
                 ),
               ),
@@ -155,7 +155,7 @@ class _OnlineStatusDotState extends State<OnlineStatusDot>
                 boxShadow: widget.status == UserPresenceStatus.online
                     ? [
                         BoxShadow(
-                          color: color.withOpacity(0.4),
+                          color: color.withValues(alpha: 0.4),
                           blurRadius: 4,
                           spreadRadius: 1,
                         ),
@@ -464,7 +464,7 @@ class AvatarWithOnlineStatus extends ConsumerWidget {
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: [
-                    theme.colorScheme.primary.withOpacity(0.8),
+                    theme.colorScheme.primary.withValues(alpha: 0.8),
                     theme.colorScheme.primary,
                   ],
                 ),

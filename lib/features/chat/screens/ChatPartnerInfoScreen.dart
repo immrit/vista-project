@@ -12,6 +12,7 @@ class ChatPartnerInfoScreen extends ConsumerStatefulWidget {
   final String otherUserId;
   final String otherUserName;
   final String? otherUserAvatar;
+  final bool isSecretMode;
 
   const ChatPartnerInfoScreen({
     super.key,
@@ -19,6 +20,7 @@ class ChatPartnerInfoScreen extends ConsumerStatefulWidget {
     required this.otherUserId,
     required this.otherUserName,
     this.otherUserAvatar,
+    this.isSecretMode = false,
   });
 
   @override
@@ -114,7 +116,7 @@ class _ChatPartnerInfoScreenState extends ConsumerState<ChatPartnerInfoScreen>
                   end: Alignment.bottomCenter,
                   colors: [
                     Colors.transparent,
-                    Colors.black.withOpacity(0.7),
+                    Colors.black.withValues(alpha: 0.7),
                   ],
                 ),
               ),
@@ -224,10 +226,17 @@ class _ChatPartnerInfoScreenState extends ConsumerState<ChatPartnerInfoScreen>
           Expanded(
             child: _buildActionButton(
               icon: Icons.share_outlined,
-              label: 'اشتراک‌گذاری',
+              label: widget.isSecretMode ? 'اشتراک غیرفعال' : 'اشتراک‌گذاری',
               isDark: isDark,
               onTap: () async {
-                // Share profile link
+                if (widget.isSecretMode) {
+                  if (!mounted) return;
+                  UserFriendlyErrorUtils.showErrorSnackBar(
+                    context,
+                    'اشتراک‌گذاری در گفتگوی محرمانه غیرفعال است',
+                  );
+                  return;
+                }
                 await SmartShareService().shareProfile(widget.otherUserName);
               },
             ),

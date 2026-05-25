@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:badges/badges.dart' as badges;
@@ -47,7 +48,8 @@ class ExploreFeedScreen extends ConsumerStatefulWidget {
   ConsumerState<ExploreFeedScreen> createState() => _ExploreFeedScreenState();
 }
 
-class _ExploreFeedScreenState extends ConsumerState<ExploreFeedScreen> {
+class _ExploreFeedScreenState extends ConsumerState<ExploreFeedScreen>
+    with AutomaticKeepAliveClientMixin {
   @override
   void initState() {
     super.initState();
@@ -57,6 +59,7 @@ class _ExploreFeedScreenState extends ConsumerState<ExploreFeedScreen> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final backgroundColor = isDark ? Colors.black : Colors.white;
     final textColor = isDark ? Colors.white : Colors.black;
@@ -127,6 +130,9 @@ class _ExploreFeedScreenState extends ConsumerState<ExploreFeedScreen> {
     );
   }
 
+  @override
+  bool get wantKeepAlive => true;
+
   Widget _buildNotificationBadge({required Color iconColor}) {
     final unreadCount = ref.watch(unreadNotificationCountProvider);
     return badges.Badge(
@@ -174,7 +180,7 @@ class _ForYouTab extends ConsumerWidget {
           onRefresh: () async =>
               ref.read(personalizedFeedProvider.notifier).refreshPosts(),
           child: ListView.builder(
-            cacheExtent: 1000, // Optimize rendering
+            scrollCacheExtent: ScrollCacheExtent.pixels(1000),
             padding: const EdgeInsets.symmetric(vertical: 8),
             itemCount: posts.length + (notifier.hasMorePosts() ? 1 : 0),
             itemBuilder: (context, index) {
@@ -234,7 +240,7 @@ class _FollowingTab extends ConsumerWidget {
           onRefresh: () async =>
               ref.read(fetchFollowingPostsProvider.notifier).refreshPosts(),
           child: ListView.builder(
-            cacheExtent: 1000,
+            scrollCacheExtent: ScrollCacheExtent.pixels(1000),
             padding: const EdgeInsets.symmetric(vertical: 8),
             itemCount: posts.length + (notifier.hasMorePosts() ? 1 : 0),
             itemBuilder: (context, index) {

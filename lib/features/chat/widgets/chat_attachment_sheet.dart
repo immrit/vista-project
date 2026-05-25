@@ -416,7 +416,7 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
             borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.2),
+                color: Colors.black.withValues(alpha: 0.2),
                 blurRadius: 20,
                 offset: const Offset(0, -5),
               ),
@@ -698,7 +698,7 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
               width: 64,
               height: 64,
               decoration: BoxDecoration(
-                color: color.withOpacity(0.15),
+                color: color.withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(16),
               ),
               child: Icon(icon, color: color, size: 32),
@@ -832,8 +832,9 @@ class _OptionChip extends StatelessWidget {
         duration: const Duration(milliseconds: 180),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color:
-              isSelected ? color.withOpacity(0.2) : theme.inputBackgroundColor,
+          color: isSelected
+              ? color.withValues(alpha: 0.2)
+              : theme.inputBackgroundColor,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
             color: isSelected ? color : theme.dividerColor,
@@ -1197,7 +1198,7 @@ class _ChatImagePreviewScreenState extends State<_ChatImagePreviewScreen> {
                           // Blur only when keyboard is hidden to keep keyboard transition smooth.
                           filter: ui.ImageFilter.blur(sigmaX: 10, sigmaY: 10),
                           child: Container(
-                            color: Colors.black.withOpacity(0.40),
+                            color: Colors.black.withValues(alpha: 0.40),
                           ),
                         ),
                       ),
@@ -1211,9 +1212,9 @@ class _ChatImagePreviewScreenState extends State<_ChatImagePreviewScreen> {
                             end: Alignment.bottomCenter,
                             colors: [
                               Colors.transparent,
-                              Colors.black.withOpacity(0.05),
-                              Colors.black.withOpacity(0.18),
-                              Colors.black.withOpacity(0.38),
+                              Colors.black.withValues(alpha: 0.05),
+                              Colors.black.withValues(alpha: 0.18),
+                              Colors.black.withValues(alpha: 0.38),
                             ],
                             stops: const [0.0, 0.42, 0.72, 1.0],
                           ),
@@ -1234,15 +1235,16 @@ class _ChatImagePreviewScreenState extends State<_ChatImagePreviewScreen> {
                         Expanded(
                           child: Container(
                             decoration: BoxDecoration(
-                              color: const Color(0xFF5F6169).withOpacity(0.68),
+                              color: const Color(0xFF5F6169)
+                                  .withValues(alpha: 0.68),
                               borderRadius: BorderRadius.circular(14),
                               border: Border.all(
-                                color: Colors.white.withOpacity(0.28),
+                                color: Colors.white.withValues(alpha: 0.28),
                                 width: 0.8,
                               ),
                               boxShadow: [
                                 BoxShadow(
-                                  color: Colors.black.withOpacity(0.18),
+                                  color: Colors.black.withValues(alpha: 0.18),
                                   blurRadius: 6,
                                   offset: const Offset(0, 2),
                                 ),
@@ -1263,7 +1265,7 @@ class _ChatImagePreviewScreenState extends State<_ChatImagePreviewScreen> {
                                     ? 'برای آلبوم کپشن بنویس...'
                                     : 'برای عکس کپشن بنویس...',
                                 hintStyle: TextStyle(
-                                  color: Colors.white.withOpacity(0.78),
+                                  color: Colors.white.withValues(alpha: 0.78),
                                 ),
                                 filled: false,
                                 border: InputBorder.none,

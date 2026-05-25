@@ -220,7 +220,7 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
                             child: BackdropFilter(
                               filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
                               child: Container(
-                                color: Colors.black.withOpacity(0.2),
+                                color: Colors.black.withValues(alpha: 0.2),
                               ),
                             ),
                           ),
@@ -234,8 +234,8 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
                             end: Alignment.bottomCenter,
                             colors: [
                               Colors.transparent,
-                              Colors.black.withOpacity(0.2),
-                              Colors.black.withOpacity(0.6),
+                              Colors.black.withValues(alpha: 0.2),
+                              Colors.black.withValues(alpha: 0.6),
                             ],
                             stops: const [0.0, 0.5, 1.0],
                           ),
@@ -269,7 +269,7 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.3),
+                            color: Colors.black.withValues(alpha: 0.3),
                             blurRadius: 15,
                             offset: const Offset(0, 5),
                           ),
@@ -319,14 +319,14 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
                     'در حال بررسی...',
                     style: TextStyle(
                       fontSize: 14,
-                      color: Colors.white.withOpacity(0.8),
+                      color: Colors.white.withValues(alpha: 0.8),
                     ),
                   ),
                   error: (_, __) => Text(
                     'آخرین بازدید اخیراً',
                     style: TextStyle(
                       fontSize: 14,
-                      color: Colors.white.withOpacity(0.8),
+                      color: Colors.white.withValues(alpha: 0.8),
                     ),
                   ),
                 ),
@@ -343,7 +343,7 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
               icon: Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.3),
+                  color: Colors.black.withValues(alpha: 0.3),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(
@@ -364,7 +364,7 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
               icon: Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.3),
+                  color: Colors.black.withValues(alpha: 0.3),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(
@@ -411,7 +411,7 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
       'آخرین بازدید اخیراً',
       style: TextStyle(
         fontSize: 14,
-        color: Colors.white.withOpacity(0.8),
+        color: Colors.white.withValues(alpha: 0.8),
       ),
     );
   }
@@ -519,13 +519,13 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
           padding: const EdgeInsets.symmetric(vertical: 14),
           decoration: BoxDecoration(
             color: isDark
-                ? Colors.white.withOpacity(0.08)
-                : Colors.grey.withOpacity(0.08),
+                ? Colors.white.withValues(alpha: 0.08)
+                : Colors.grey.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
               color: isDark
-                  ? Colors.white.withOpacity(0.1)
-                  : Colors.grey.withOpacity(0.15),
+                  ? Colors.white.withValues(alpha: 0.1)
+                  : Colors.grey.withValues(alpha: 0.15),
               width: 1,
             ),
           ),
@@ -877,7 +877,7 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
             decoration: BoxDecoration(
-              color: Colors.black.withOpacity(0.45),
+              color: Colors.black.withValues(alpha: 0.45),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Text(
@@ -899,8 +899,8 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
     final textColor = isDark ? Colors.white : Colors.black87;
     final subtleColor = isDark ? Colors.white70 : Colors.black54;
     final quoteBg = isDark
-        ? Colors.white.withOpacity(0.08)
-        : Colors.black.withOpacity(0.04);
+        ? Colors.white.withValues(alpha: 0.08)
+        : Colors.black.withValues(alpha: 0.04);
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
@@ -989,7 +989,7 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
                     end: Alignment.bottomCenter,
                     colors: [
                       Colors.transparent,
-                      Colors.black.withOpacity(0.58)
+                      Colors.black.withValues(alpha: 0.58)
                     ],
                   ),
                 ),
@@ -1033,7 +1033,7 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
             width: 36,
             height: 36,
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
+              color: Colors.white.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Icon(
@@ -1061,8 +1061,8 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
     final label = _sharedPostTypeLabel(kind);
 
     final bg = isDark
-        ? Colors.white.withOpacity(0.11)
-        : _primaryColor.withOpacity(0.08);
+        ? Colors.white.withValues(alpha: 0.11)
+        : _primaryColor.withValues(alpha: 0.08);
     final fg = isDark ? Colors.white70 : _primaryColor;
 
     return Container(
@@ -1365,7 +1365,7 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
                   end: Alignment.bottomCenter,
                   colors: [
                     Colors.transparent,
-                    Colors.black.withOpacity(0.5),
+                    Colors.black.withValues(alpha: 0.5),
                   ],
                 ),
               ),
@@ -1426,7 +1426,7 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
         width: 48,
         height: 48,
         decoration: BoxDecoration(
-          color: _primaryColor.withOpacity(0.15),
+          color: _primaryColor.withValues(alpha: 0.15),
           borderRadius: BorderRadius.circular(12),
         ),
         child: Icon(Icons.insert_drive_file, color: _primaryColor),
@@ -1499,7 +1499,7 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
                 width: 48,
                 height: 48,
                 decoration: BoxDecoration(
-                  color: _primaryColor.withOpacity(0.1),
+                  color: _primaryColor.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(Icons.public, color: _primaryColor),
@@ -1676,7 +1676,7 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
               width: 48,
               height: 48,
               decoration: BoxDecoration(
-                color: _primaryColor.withOpacity(0.15),
+                color: _primaryColor.withValues(alpha: 0.15),
                 shape: BoxShape.circle,
               ),
               child: isLoading && isCurrentVoice
@@ -1767,11 +1767,11 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
             padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top),
             decoration: BoxDecoration(
               color: (isDark ? _darkBg : _lightBg)
-                  .withOpacity(_headerOpacity * 0.9),
+                  .withValues(alpha: _headerOpacity * 0.9),
               border: Border(
                 bottom: BorderSide(
                   color: (isDark ? _darkDivider : _lightDivider)
-                      .withOpacity(_headerOpacity),
+                      .withValues(alpha: _headerOpacity),
                 ),
               ),
             ),
@@ -1882,7 +1882,7 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
           end: Alignment.bottomRight,
           colors: [
             _primaryColor,
-            _primaryColor.withOpacity(0.7),
+            _primaryColor.withValues(alpha: 0.7),
           ],
         ),
       ),

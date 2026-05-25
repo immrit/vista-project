@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 class MaintenanceScreen extends StatelessWidget {
-  const MaintenanceScreen({Key? key}) : super(key: key);
+  const MaintenanceScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -30,14 +30,14 @@ class MaintenanceScreen extends StatelessWidget {
                 'ما در حال ارتقا و بهبود سیستم هستیم تا تجربه بهتری را برای شما رقم بزنیم. لطفاً کمی بعد مجدداً تلاش کنید.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: Colors.white.withOpacity(0.8),
+                  color: Colors.white.withValues(alpha: 0.8),
                   fontSize: 16,
                   height: 1.5,
                   fontFamily: 'Vazir',
                 ),
               ),
               const SizedBox(height: 48),
-              CircularProgressIndicator(color: Colors.white.withOpacity(0.5)),
+              CircularProgressIndicator(color: Colors.white.withValues(alpha: 0.5)),
             ],
           ),
         ),

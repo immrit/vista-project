@@ -1031,7 +1031,7 @@ class _ActionButton extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
-                  color: enabled ? textColor : textColor.withOpacity(0.5),
+                  color: enabled ? textColor : textColor.withValues(alpha: 0.5),
                 ),
               ),
             ],
@@ -2081,7 +2081,7 @@ class _MusicListView extends StatelessWidget {
             width: 46,
             height: 46,
             decoration: BoxDecoration(
-              color: (isDark ? Colors.white : Colors.black).withOpacity(0.08),
+              color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(12),
             ),
             child: const Icon(Icons.music_note_rounded),

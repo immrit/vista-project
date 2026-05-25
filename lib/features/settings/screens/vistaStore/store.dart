@@ -242,7 +242,7 @@ class _VerificationBadgeStoreState
                     decoration: BoxDecoration(
                       gradient: RadialGradient(
                         colors: [
-                          Colors.white.withOpacity(0.7),
+                          Colors.white.withValues(alpha: 0.7),
                           Colors.transparent,
                         ],
                         stops: const [0.1, 1.0],
@@ -269,7 +269,7 @@ class _VerificationBadgeStoreState
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.amber.withOpacity(0.1),
+        color: Colors.amber.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.amber.shade300, width: 1),
       ),
@@ -355,7 +355,7 @@ class _VerificationBadgeStoreState
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
         side: BorderSide(
-          color: colorScheme.outline.withOpacity(0.2),
+          color: colorScheme.outline.withValues(alpha: 0.2),
         ),
       ),
       child: Padding(
@@ -437,7 +437,7 @@ class _VerificationBadgeStoreState
           borderRadius: BorderRadius.circular(16),
           side: isOwned
               ? BorderSide(color: colorScheme.primary, width: 2)
-              : BorderSide(color: colorScheme.outline.withOpacity(0.2)),
+              : BorderSide(color: colorScheme.outline.withValues(alpha: 0.2)),
         ),
         child: Container(
           decoration: BoxDecoration(
@@ -466,11 +466,11 @@ class _VerificationBadgeStoreState
                       child: Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: iconColor.withOpacity(0.1),
+                          color: iconColor.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(16),
                           boxShadow: [
                             BoxShadow(
-                              color: iconColor.withOpacity(0.2),
+                              color: iconColor.withValues(alpha: 0.2),
                               blurRadius: 8,
                               spreadRadius: 1,
                             ),
@@ -543,7 +543,7 @@ class _VerificationBadgeStoreState
                   style: TextStyle(
                     fontSize: 14,
                     color: isOwned
-                        ? Colors.white.withOpacity(0.9)
+                        ? Colors.white.withValues(alpha: 0.9)
                         : colorScheme.onSurface,
                     height: 1.5,
                   ),
@@ -576,7 +576,7 @@ class _VerificationBadgeStoreState
                         borderRadius: BorderRadius.circular(12),
                         boxShadow: [
                           BoxShadow(
-                            color: gradientColors[0].withOpacity(0.3),
+                            color: gradientColors[0].withValues(alpha: 0.3),
                             blurRadius: 8,
                             offset: const Offset(0, 2),
                           )
@@ -619,13 +619,13 @@ class _VerificationBadgeStoreState
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
         color: isWhiteText
-            ? Colors.white.withOpacity(0.2)
+            ? Colors.white.withValues(alpha: 0.2)
             : Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: isWhiteText
-              ? Colors.white.withOpacity(0.3)
-              : Theme.of(context).colorScheme.primary.withOpacity(0.3),
+              ? Colors.white.withValues(alpha: 0.3)
+              : Theme.of(context).colorScheme.primary.withValues(alpha: 0.3),
           width: 1,
         ),
       ),
@@ -739,11 +739,11 @@ class _VerificationBadgeStoreState
     return Card(
       elevation: 4,
       color: colorScheme.surface,
-      shadowColor: color.withOpacity(0.3),
+      shadowColor: color.withValues(alpha: 0.3),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
         side: BorderSide(
-          color: colorScheme.outline.withOpacity(0.2),
+          color: colorScheme.outline.withValues(alpha: 0.2),
         ),
       ),
       child: InkWell(
@@ -803,11 +803,11 @@ class _VerificationBadgeStoreState
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: color.withOpacity(0.2),
+            color: color.withValues(alpha: 0.2),
             blurRadius: 8,
             spreadRadius: 1,
           ),
@@ -832,11 +832,11 @@ class _VerificationBadgeStoreState
           child: Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
+              color: color.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(16),
               boxShadow: [
                 BoxShadow(
-                  color: color.withOpacity(0.3 * value),
+                  color: color.withValues(alpha: 0.3 * value),
                   blurRadius: 12 * value,
                   spreadRadius: 2 * value,
                 ),
@@ -868,7 +868,7 @@ class _VerificationBadgeStoreState
         borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         border: Border(
           top: BorderSide(
-            color: colorScheme.outline.withOpacity(0.2),
+            color: colorScheme.outline.withValues(alpha: 0.2),
           ),
         ),
       ),
@@ -880,18 +880,18 @@ class _VerificationBadgeStoreState
             height: 5,
             margin: const EdgeInsets.only(bottom: 24),
             decoration: BoxDecoration(
-              color: Colors.grey.withOpacity(0.3),
+              color: Colors.grey.withValues(alpha: 0.3),
               borderRadius: BorderRadius.circular(3),
             ),
           ),
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
+              color: color.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(24),
               boxShadow: [
                 BoxShadow(
-                  color: color.withOpacity(0.3),
+                  color: color.withValues(alpha: 0.3),
                   blurRadius: 10,
                   spreadRadius: 2,
                 ),

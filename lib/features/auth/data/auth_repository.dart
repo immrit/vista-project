@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:flutter/foundation.dart';
+import 'package:Vista/utils/env_config.dart';
 import 'dart:io';
 import 'package:device_info_plus/device_info_plus.dart';
 import '../../../security/logging_utility.dart';
@@ -228,8 +229,7 @@ class RecoveryOption {
 
 class AuthRepository {
   /// آدرس بک‌اند Go — از .env خوانده می‌شود
-  static String get _backendUrl =>
-      dotenv.env['BACKEND_URL'] ?? 'http://10.0.2.2:8080';
+  static String get _backendUrl => EnvConfig.apiBaseUrl;
 
   late final Dio _dio;
 
@@ -241,12 +241,30 @@ class AuthRepository {
       headers: {'Content-Type': 'application/json'},
     ));
 
-    // لاگ درخواست‌ها در محیط توسعه
-    _dio.interceptors.add(LogInterceptor(
-      requestBody: true,
-      responseBody: true,
-      logPrint: (obj) => logInfo('[API] $obj'),
-    ));
+    // لاگ شبکه فقط در debug و بدون داده حساس
+    if (kDebugMode) {
+      _dio.interceptors.add(InterceptorsWrapper(
+        onRequest: (options, handler) {
+          final payload = _redactSensitiveData(options.data);
+          logInfo('[API][REQ] ${options.method} ${options.path} data=$payload');
+          handler.next(options);
+        },
+        onResponse: (response, handler) {
+          final payload = _redactSensitiveData(response.data);
+          logInfo(
+              '[API][RES] ${response.statusCode} ${response.requestOptions.path} data=$payload');
+          handler.next(response);
+        },
+        onError: (error, handler) {
+          final payload = _redactSensitiveData(error.response?.data);
+          logError(
+            '[API][ERR] ${error.requestOptions.path} status=${error.response?.statusCode} data=$payload',
+            error: error,
+          );
+          handler.next(error);
+        },
+      ));
+    }
   }
 
   // ─── ثبت‌نام با ایمیل/شماره/رمز عبور ───
@@ -658,5 +676,32 @@ class AuthRepository {
 
     logError('$context API Error', error: e);
     return 'خطا در $context. لطفاً دوباره تلاش کنید';
+  }
+
+  dynamic _redactSensitiveData(dynamic data) {
+    if (data is Map) {
+      final redacted = <String, dynamic>{};
+      for (final entry in data.entries) {
+        if (_isSensitiveKey(entry.key.toString())) {
+          redacted[entry.key.toString()] = '***REDACTED***';
+        } else {
+          redacted[entry.key.toString()] = _redactSensitiveData(entry.value);
+        }
+      }
+      return redacted;
+    }
+    if (data is List) {
+      return data.map(_redactSensitiveData).toList(growable: false);
+    }
+    return data;
+  }
+
+  bool _isSensitiveKey(String key) {
+    final normalized = key.toLowerCase();
+    return normalized.contains('password') ||
+        normalized.contains('token') ||
+        normalized.contains('otp') ||
+        normalized.contains('secret') ||
+        normalized.contains('code');
   }
 }

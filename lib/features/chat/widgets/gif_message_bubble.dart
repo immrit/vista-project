@@ -39,7 +39,7 @@ class GifMessageBubble extends StatelessWidget {
             placeholder: (context, url) => Container(
               width: defaultWidth,
               height: defaultHeight,
-              color: Colors.grey.withOpacity(0.2),
+              color: Colors.grey.withValues(alpha: 0.2),
               child: const Center(
                 child: CircularProgressIndicator(strokeWidth: 2),
               ),
@@ -47,7 +47,7 @@ class GifMessageBubble extends StatelessWidget {
             errorWidget: (context, url, error) => Container(
               width: defaultWidth,
               height: defaultHeight,
-              color: Colors.grey.withOpacity(0.2),
+              color: Colors.grey.withValues(alpha: 0.2),
               child: const Icon(
                 Icons.broken_image,
                 color: Colors.grey,
@@ -63,7 +63,7 @@ class GifMessageBubble extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.5),
+                color: Colors.black.withValues(alpha: 0.5),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: const Row(
@@ -95,7 +95,7 @@ class GifMessageBubble extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.4),
+                color: Colors.black.withValues(alpha: 0.4),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Row(

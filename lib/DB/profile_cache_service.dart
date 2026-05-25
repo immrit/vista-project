@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:dio/dio.dart';
 import 'package:isar/isar.dart';
 import '../../DB/isar_database_manager.dart';
 import '../../features/profile/data/entities/profile_entity.dart' hide fastHash;
@@ -59,23 +60,44 @@ class ProfileCacheService {
 
   /// دریافت پروفایل (اول از کش، اگر نبود/منقضی بود از سرور)
   Future<ProfileModel> getProfile(String userId) async {
+    final normalizedUserId = userId.trim();
+    if (normalizedUserId.isEmpty) {
+      throw Exception('Invalid user id');
+    }
     // 1. تلاش برای خواندن از کش
-    final cachedProfile = await getCachedProfile(userId);
+    final cachedProfile = await getCachedProfile(normalizedUserId);
 
     // اگر کش معتبر است، برگردان
-    if (cachedProfile != null && (await isCacheValidAsync(userId))) {
-      logInfo('📱 Using cached profile for user: $userId');
+    if (cachedProfile != null && (await isCacheValidAsync(normalizedUserId))) {
+      logInfo('📱 Using cached profile for user: $normalizedUserId');
       return cachedProfile;
     }
 
     // 2. اگر در کش نبود یا منقضی بود، از سرور بگیر
-    logInfo('🌐 Fetching profile from server for user: $userId');
-    await cacheProfileAndPosts(userId);
+    logInfo('🌐 Fetching profile from server for user: $normalizedUserId');
+    try {
+      await cacheProfileAndPosts(normalizedUserId);
+    } catch (e) {
+      if (cachedProfile != null) {
+        logInfo(
+            '⚠️ Sync failed for $normalizedUserId, using stale cached profile instead: $e');
+        return cachedProfile;
+      }
+      rethrow;
+    }
 
     // 3. دوباره از کش بخوان (که الان آپدیت شده)
-    final freshProfile = await getCachedProfile(userId);
+    final freshProfile = await getCachedProfile(normalizedUserId);
+    if (freshProfile != null) {
+      return freshProfile;
+    }
+    if (cachedProfile != null) {
+      logInfo(
+          '⚠️ Fresh profile missing, falling back to stale cache for $normalizedUserId');
+      return cachedProfile;
+    }
     if (freshProfile == null) {
-      throw Exception('Failed to fetch profile for user: $userId');
+      throw Exception('Failed to fetch profile for user: $normalizedUserId');
     }
     return freshProfile;
   }
@@ -121,20 +143,36 @@ class ProfileCacheService {
 
   /// دریافت پست‌ها (استراتژی Cache-First)
   Future<List<PublicPostModel>> getUserPosts(String userId) async {
+    final normalizedUserId = userId.trim();
+    if (normalizedUserId.isEmpty) return const [];
+    final cachedPosts = await getCachedPosts(normalizedUserId);
+
     // 1. بررسی وضعیت کش
-    if (await isCacheValidAsync(userId)) {
-      final cachedPosts = await getCachedPosts(userId);
+    if (await isCacheValidAsync(normalizedUserId)) {
       if (cachedPosts.isNotEmpty) {
-        logInfo('📱 Using cached posts for user: $userId');
+        logInfo('📱 Using cached posts for user: $normalizedUserId');
         return cachedPosts;
       }
     }
 
     // 2. دریافت از سرور
-    logInfo('🌐 Fetching posts from server for user: $userId');
-    await cacheProfileAndPosts(userId);
+    logInfo('🌐 Fetching posts from server for user: $normalizedUserId');
+    try {
+      await cacheProfileAndPosts(normalizedUserId);
+    } catch (e) {
+      if (cachedPosts.isNotEmpty) {
+        logInfo(
+            '⚠️ Sync failed for $normalizedUserId, using stale cached posts instead: $e');
+        return cachedPosts;
+      }
+      rethrow;
+    }
 
-    return await getCachedPosts(userId);
+    final latestPosts = await getCachedPosts(userId);
+    if (latestPosts.isNotEmpty) {
+      return latestPosts;
+    }
+    return cachedPosts;
   }
 
   /// اضافه کردن یک پست جدید به کش
@@ -176,15 +214,21 @@ class ProfileCacheService {
   // ===========================================================================
 
   Future<void> cacheProfileAndPosts(String userId) async {
+    final normalizedUserId = userId.trim();
+    if (normalizedUserId.isEmpty) {
+      logInfo('⚠️ Skipping cache sync: empty userId');
+      return;
+    }
     try {
       final currentUserId = await TokenStorage.getUserId();
       if (currentUserId == null || currentUserId.isEmpty) return;
 
-      final profileData = await ProfileRepository().fetchProfileById(userId);
+      final profileData =
+          await ProfileRepository().fetchProfileById(normalizedUserId);
       final profile = ProfileModel.fromMap(profileData);
 
       final posts = await GoPostsRepository().getUserPosts(
-        userId: userId,
+        userId: normalizedUserId,
         limit: maxCachedPostsPerUser,
         offset: 0,
       );
@@ -193,16 +237,44 @@ class ProfileCacheService {
       final isar = await _db;
       await isar.writeTxn(() async {
         await isar.profileEntitys.put(ProfileEntity.fromModel(profile));
-        await isar.postEntitys.filter().userIdEqualTo(userId).deleteAll();
+        await isar.postEntitys.filter().userIdEqualTo(normalizedUserId).deleteAll();
         await isar.postEntitys.putAll(postEntities);
       });
 
       logInfo(
-          '✅ Synced profile and ${postEntities.length} posts to Isar for user: $userId');
+          '✅ Synced profile and ${postEntities.length} posts to Isar for user: $normalizedUserId');
     } catch (e) {
-      logInfo('❌ Failed to sync profile/posts for user $userId: $e');
+      if (_isRecoverableSyncError(e)) {
+        logInfo(
+            '⚠️ Recoverable sync error for $normalizedUserId, keeping existing cache: $e');
+        return;
+      }
+      logInfo('❌ Failed to sync profile/posts for user $normalizedUserId: $e');
       rethrow;
     }
+  }
+
+  bool _isRecoverableSyncError(Object error) {
+    if (error is DioException) {
+      final statusCode = error.response?.statusCode;
+      if (statusCode == 429) return true;
+      if (statusCode != null && statusCode >= 500) return true;
+      switch (error.type) {
+        case DioExceptionType.connectionError:
+        case DioExceptionType.connectionTimeout:
+        case DioExceptionType.receiveTimeout:
+        case DioExceptionType.sendTimeout:
+        case DioExceptionType.unknown:
+          return true;
+        default:
+          return false;
+      }
+    }
+    final message = error.toString().toLowerCase();
+    return message.contains('timeout') ||
+        message.contains('socket') ||
+        message.contains('connection') ||
+        message.contains('network');
   }
 
   Future<bool> isCacheValidAsync(String userId) async {

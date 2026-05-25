@@ -9,7 +9,6 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 import 'package:just_audio_platform_interface/just_audio_platform_interface.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:Vista/firebase_options.dart';
 import 'package:Vista/services/PushNotificationService.dart';
 import 'package:Vista/services/local_notification_center.dart';
@@ -24,6 +23,7 @@ import 'package:Vista/security/logging_utility.dart';
 import 'package:Vista/features/chat/performance/frame_budget_service.dart';
 import 'package:Vista/services/device_id_service.dart';
 import 'package:Vista/services/retry_queue_service.dart';
+import 'package:Vista/services/crash_reporting_service.dart';
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -63,15 +63,9 @@ class AppInitialization {
     ));
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
 
-    try {
-      await dotenv.load(fileName: ".env");
-    } catch (e) {
-      debugPrint(
-          '⚠️ Warning: .env file missing or failed to load. Using fallback environment constants: $e');
-    }
-
     // Initial Setup
     await initializeDateFormatting('fa', null);
+    await CrashReportingService.instance.initialize();
     _setupPerformanceOptimizations();
     PerformanceMonitor().startMonitoring();
     FrameBudgetService.instance.startMonitoring();

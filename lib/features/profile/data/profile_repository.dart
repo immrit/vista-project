@@ -1,13 +1,14 @@
 import 'package:dio/dio.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:Vista/utils/env_config.dart';
 
 import '../../../security/logging_utility.dart';
 import '../../../model/ProfileModel.dart';
 import '../../auth/providers/auth_controller.dart';
 
 class ProfileRepository {
-  static String get _backendUrl =>
-      dotenv.env['BACKEND_URL'] ?? 'http://10.0.2.2:8080';
+  static String get _backendUrl => EnvConfig.apiBaseUrl;
+  static Future<Map<String, dynamic>?>? _inflightSelfProfile;
+  static final Map<String, Future<Map<String, dynamic>>> _inflightByUserId = {};
 
   late final Dio _dio;
 
@@ -35,6 +36,21 @@ class ProfileRepository {
   }
 
   Future<Map<String, dynamic>?> fetchProfile(String userId) async {
+    final inflight = _inflightSelfProfile;
+    if (inflight != null) return inflight;
+
+    final future = _fetchProfileInternal(userId);
+    _inflightSelfProfile = future;
+    try {
+      return await future;
+    } finally {
+      if (identical(_inflightSelfProfile, future)) {
+        _inflightSelfProfile = null;
+      }
+    }
+  }
+
+  Future<Map<String, dynamic>?> _fetchProfileInternal(String userId) async {
     try {
       final response = await _dio.get(
         '/me/profile',
@@ -45,6 +61,13 @@ class ProfileRepository {
         Map<String, dynamic>.from(response.data as Map),
         fallbackUserId: userId,
       );
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 429) {
+        logInfo('⚠️ Profile fetch rate-limited (429) for /me/profile');
+        throw 'خطا در دریافت اطلاعات پروفایل';
+      }
+      logError('Fetch Profile Error', error: e);
+      throw 'خطا در دریافت اطلاعات پروفایل';
     } catch (e) {
       logError('Fetch Profile Error', error: e);
       throw 'خطا در دریافت اطلاعات پروفایل';
@@ -52,9 +75,30 @@ class ProfileRepository {
   }
 
   Future<Map<String, dynamic>> fetchProfileById(String userId) async {
+    final normalizedUserId = userId.trim();
+    if (normalizedUserId.isEmpty) {
+      throw 'شناسه کاربر نامعتبر است';
+    }
+
+    final inflight = _inflightByUserId[normalizedUserId];
+    if (inflight != null) return inflight;
+
+    final future = _fetchProfileByIdInternal(normalizedUserId);
+    _inflightByUserId[normalizedUserId] = future;
+    try {
+      return await future;
+    } finally {
+      if (identical(_inflightByUserId[normalizedUserId], future)) {
+        _inflightByUserId.remove(normalizedUserId);
+      }
+    }
+  }
+
+  Future<Map<String, dynamic>> _fetchProfileByIdInternal(String userId) async {
+    bool isSelf = false;
     try {
       final storedUserId = await TokenStorage.getUserId();
-      final isSelf = storedUserId == userId;
+      isSelf = storedUserId == userId;
       final response = isSelf
           ? await _dio.get('/me/profile', options: await _authOptions())
           : await _dio.get('/profiles/$userId',
@@ -65,9 +109,27 @@ class ProfileRepository {
         fallbackUserId: userId,
       );
     } on DioException catch (e) {
+      final statusCode = e.response?.statusCode;
+      // If fetching another user's profile and they are not found or we don't have access,
+      // return a default fallback profile instead of breaking the UI or session.
+      if (!isSelf && (statusCode == 401 || statusCode == 403 || statusCode == 404)) {
+        logInfo('⚠️ Falling back to default profile for user $userId (Status: $statusCode)');
+        return {
+          'id': userId,
+          'username': 'کاربر ناشناس',
+          'full_name': 'کاربر ناشناس',
+          'avatar_url': null,
+          'is_blocked': false,
+        };
+      }
+
       final data = e.response?.data;
       if (data is Map && data['message'] is String) {
         throw data['message'] as String;
+      }
+      if (statusCode == 429) {
+        logInfo('⚠️ Profile fetch rate-limited (429) for user $userId');
+        throw 'خطا در دریافت اطلاعات پروفایل';
       }
       logError('Fetch Profile By Id Error', error: e);
       throw 'خطا در دریافت اطلاعات پروفایل';

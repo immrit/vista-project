@@ -182,7 +182,7 @@ class _FileMessageBubbleState extends State<FileMessageBubble> {
                           color: (widget.isMe
                                   ? primaryForeground
                                   : theme.secondaryTextColor)
-                              .withOpacity(0.75),
+                              .withValues(alpha: 0.75),
                         ),
                       ),
                     ],
@@ -253,9 +253,9 @@ class _FileMessageBubbleState extends State<FileMessageBubble> {
     final isLightOutgoing = widget.isMe && !theme.isDark;
     final iconBgColor = widget.isMe
         ? (isLightOutgoing
-            ? theme.sendButtonColor.withOpacity(0.14)
-            : Colors.white.withOpacity(0.18))
-        : fileInfo.color.withOpacity(0.12);
+            ? theme.sendButtonColor.withValues(alpha: 0.14)
+            : Colors.white.withValues(alpha: 0.18))
+        : fileInfo.color.withValues(alpha: 0.12);
     final iconColor = widget.isMe
         ? (isLightOutgoing ? theme.sendButtonColor : Colors.white)
         : fileInfo.color;
@@ -292,7 +292,7 @@ class _FileMessageBubbleState extends State<FileMessageBubble> {
                   value: progress > 0 ? progress : null,
                   strokeWidth: 2.5,
                   color: iconColor,
-                  backgroundColor: iconColor.withOpacity(0.22),
+                  backgroundColor: iconColor.withValues(alpha: 0.22),
                 ),
               ),
             ),
@@ -310,8 +310,8 @@ class _FileMessageBubbleState extends State<FileMessageBubble> {
   }) {
     final chipBg = widget.isMe
         ? (isLightOutgoing
-            ? theme.sendButtonColor.withOpacity(0.12)
-            : Colors.white.withOpacity(0.16))
+            ? theme.sendButtonColor.withValues(alpha: 0.12)
+            : Colors.white.withValues(alpha: 0.16))
         : theme.inputBackgroundColor;
     final foreground = widget.isMe
         ? (isLightOutgoing ? theme.sendButtonColor : Colors.white)
@@ -328,7 +328,7 @@ class _FileMessageBubbleState extends State<FileMessageBubble> {
           color: chipBg,
           borderRadius: BorderRadius.circular(14),
           border: isLightOutgoing
-              ? Border.all(color: theme.sendButtonColor.withOpacity(0.24))
+              ? Border.all(color: theme.sendButtonColor.withValues(alpha: 0.24))
               : null,
         ),
         child: Row(

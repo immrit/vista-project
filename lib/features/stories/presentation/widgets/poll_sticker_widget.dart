@@ -55,7 +55,7 @@ class PollStickerWidget extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
+            color: Colors.black.withValues(alpha: 0.1),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -90,12 +90,12 @@ class PollStickerWidget extends StatelessWidget {
       width: 250,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.8),
+        color: Colors.black.withValues(alpha: 0.8),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.purpleAccent.withOpacity(0.5)),
+        border: Border.all(color: Colors.purpleAccent.withValues(alpha: 0.5)),
         boxShadow: [
           BoxShadow(
-            color: Colors.purpleAccent.withOpacity(0.2),
+            color: Colors.purpleAccent.withValues(alpha: 0.2),
             blurRadius: 16,
           ),
         ],
@@ -114,9 +114,9 @@ class PollStickerWidget extends StatelessWidget {
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 16),
-          _buildOption(option1, Colors.white.withOpacity(0.1), Colors.white),
+          _buildOption(option1, Colors.white.withValues(alpha: 0.1), Colors.white),
           const SizedBox(height: 8),
-          _buildOption(option2, Colors.white.withOpacity(0.1), Colors.white),
+          _buildOption(option2, Colors.white.withValues(alpha: 0.1), Colors.white),
         ],
       ),
     );
@@ -129,7 +129,7 @@ class PollStickerWidget extends StatelessWidget {
       width: 240,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.9),
+        color: Colors.white.withValues(alpha: 0.9),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -169,7 +169,7 @@ class PollStickerWidget extends StatelessWidget {
       decoration: BoxDecoration(
         color: bgColor,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.black.withOpacity(0.05)),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.05)),
       ),
       child: Text(
         text,

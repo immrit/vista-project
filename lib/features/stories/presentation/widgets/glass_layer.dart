@@ -34,10 +34,11 @@ class GlassLayer extends StatelessWidget {
           child: Container(
             padding: padding,
             decoration: BoxDecoration(
-              color: baseColor.withOpacity(opacity),
+              color: baseColor.withValues(alpha: opacity),
               borderRadius: borderRadius,
               border: border ??
-                  Border.all(color: Colors.white.withOpacity(0.1), width: 0.5),
+                  Border.all(
+                      color: Colors.white.withValues(alpha: 0.1), width: 0.5),
             ),
             child: child,
           ),

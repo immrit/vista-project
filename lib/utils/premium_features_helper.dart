@@ -36,7 +36,7 @@ class PremiumFeaturesHelper {
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.5),
+                color: Colors.black.withValues(alpha: 0.5),
                 blurRadius: 20,
                 offset: const Offset(0, 10),
               ),
@@ -53,7 +53,7 @@ class PremiumFeaturesHelper {
                   Container(
                     height: 120,
                     decoration: BoxDecoration(
-                      color: const Color(0xFF8774E1).withOpacity(0.2),
+                      color: const Color(0xFF8774E1).withValues(alpha: 0.2),
                       borderRadius:
                           const BorderRadius.vertical(top: Radius.circular(24)),
                     ),
@@ -71,7 +71,7 @@ class PremiumFeaturesHelper {
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: const Color(0xFF8774E1).withOpacity(0.4),
+                          color: const Color(0xFF8774E1).withValues(alpha: 0.4),
                           blurRadius: 15,
                           spreadRadius: 2,
                         ),
@@ -114,7 +114,7 @@ class PremiumFeaturesHelper {
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 14,
-                        color: Colors.white.withOpacity(0.8),
+                        color: Colors.white.withValues(alpha: 0.8),
                         height: 1.5,
                         fontFamily: 'Vazir',
                       ),
@@ -173,7 +173,7 @@ class PremiumFeaturesHelper {
         Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: const Color(0xFF8774E1).withOpacity(0.1),
+            color: const Color(0xFF8774E1).withValues(alpha: 0.1),
             shape: BoxShape.circle,
           ),
           child: Icon(icon, color: const Color(0xFF8774E1), size: 20),

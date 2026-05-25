@@ -230,7 +230,8 @@ class _BiometricLoginScreenState extends ConsumerState<BiometricLoginScreen>
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: const Color(0xFF4A80F0).withOpacity(0.3),
+                            color:
+                                const Color(0xFF4A80F0).withValues(alpha: 0.3),
                             blurRadius: 20,
                             spreadRadius: 5,
                           ),
@@ -349,7 +350,7 @@ class _BiometricLoginScreenState extends ConsumerState<BiometricLoginScreen>
         ),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF4A80F0).withOpacity(0.3),
+            color: const Color(0xFF4A80F0).withValues(alpha: 0.3),
             blurRadius: 15,
             offset: const Offset(0, 5),
           ),
@@ -401,7 +402,7 @@ class _BiometricLoginScreenState extends ConsumerState<BiometricLoginScreen>
             ),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFF4A80F0).withOpacity(0.3),
+                color: const Color(0xFF4A80F0).withValues(alpha: 0.3),
                 blurRadius: 15,
                 offset: const Offset(0, 5),
               ),
@@ -465,12 +466,12 @@ class _BiometricLoginScreenState extends ConsumerState<BiometricLoginScreen>
       padding: EdgeInsets.all(16.w),
       decoration: BoxDecoration(
         color: isDark
-            ? Colors.green.shade900.withOpacity(0.2)
+            ? Colors.green.shade900.withValues(alpha: 0.2)
             : Colors.green.shade50,
         borderRadius: BorderRadius.circular(12.r),
         border: Border.all(
           color: isDark
-              ? Colors.green.shade700.withOpacity(0.3)
+              ? Colors.green.shade700.withValues(alpha: 0.3)
               : Colors.green.shade200,
         ),
       ),

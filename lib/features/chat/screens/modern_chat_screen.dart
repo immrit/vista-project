@@ -20,11 +20,13 @@ import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gal/gal.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../../DB/profile_cache_service.dart';
 import '../../../model/ProfileModel.dart';
 import '../../../model/message_model.dart';
@@ -32,6 +34,8 @@ import '../../../utils/compat_extensions.dart';
 import '../../../utils/time_utils.dart';
 import '../providers/chat_providers.dart';
 import '../repositories/chat_repository.dart';
+import '../services/e2e_encryption_service.dart';
+import '../domain/message_payload.dart';
 
 // ✅ Theme & Widgets
 import '../theme/chat_theme.dart';
@@ -40,9 +44,9 @@ import '../widgets/telegram_reaction_picker.dart'
     show kDefaultReactions, TelegramReactionPicker;
 import '../widgets/retry_indicator_widget.dart' show TelegramConnectionBanner;
 import '../widgets/improved_animated_message_bubble.dart';
-import '../widgets/swipe_to_reply.dart';
 import '../widgets/telegram_context_menu.dart';
 import '../widgets/animated_chat_input.dart';
+import '../widgets/voice_input_state.dart';
 import '../widgets/instagram_style_post_card.dart';
 import '../widgets/date_divider.dart' as date_divider;
 import '../widgets/swipe_to_reply_wrapper.dart';
@@ -104,6 +108,7 @@ import '../services/message_actions_service.dart';
 import '../widgets/molecular_delete_animation.dart';
 import '../performance/adaptive_effects_provider.dart';
 import '../performance/chat_performance_profile.dart';
+import '../services/secret_chat_privacy_service.dart';
 // So importing the file should expose it.
 
 /// پارامترهای صفحه چت
@@ -244,6 +249,13 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   Timer? _floatingDateHideTimer;
   Timer? _activeConversationHeartbeatTimer;
   Timer? _typingDebounceTimer;
+  final List<Timer> _scheduledSendTimers = <Timer>[];
+  final Map<String, Timer> _pendingDeleteTimers = <String, Timer>{};
+  final Map<String, Timer> _secretAutoDeleteTimers = <String, Timer>{};
+  final Set<String> _secretAutoDeletingIds = <String>{};
+  final List<_SecretSystemNotice> _secretSystemNotices =
+      <_SecretSystemNotice>[];
+  int _secretAutoDeleteSeconds = 0;
   ProviderSubscription<AsyncValue<List<MessageModel>>>? _messagesListener;
   ProviderSubscription<AsyncValue<Map<String, dynamic>>>?
       _performanceSettingsListener;
@@ -261,6 +273,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     _checkBlockStatus();
     _fetchUserProfileIfNeeded();
     _loadHiddenMessages();
+    _initSecretChatPolicy();
 
     // ✅ شروع گوش دادن به Read Receipts
     _initReadReceipts();
@@ -380,7 +393,21 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
             !_hiddenMessageIds.contains(m.id) ||
             _deletingMessageIds.contains(m.id))
         .toList();
-    _latestVisibleMessages = visibleMessages;
+    
+    // فیلتر کردن پیام‌های سیستمی سکرت چت از UI
+    final displayMessages = visibleMessages.where((m) => 
+        m.messageType != 'exchange_key' && 
+        m.messageType != 'exchange_key_reply' &&
+        m.attachmentType != 'exchange_key' &&
+        m.attachmentType != 'exchange_key_reply'
+    ).toList();
+        
+    _latestVisibleMessages = displayMessages;
+    _rescheduleSecretAutoDelete(displayMessages);
+
+    if (widget.args.isSecret) {
+      _processSecretChatKeyExchange(allMessages);
+    }
 
     if (visibleMessages.any((m) => !m.isMe && !m.isSeen)) {
       unawaited(_chatRepository.markMessagesAsSeen(widget.args.conversationId));
@@ -388,7 +415,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
     _calculateUnreadCount(visibleMessages);
 
-    if (visibleMessages.isEmpty) {
+    if (displayMessages.isEmpty) {
       _latestVisibleMessages = const [];
       _lastFirstMessageId = null;
       if (_currentVisibleDate != null || _isScrolling) {
@@ -400,20 +427,88 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       return;
     }
 
-    final firstId = visibleMessages.first.id;
+    final firstId = displayMessages.first.id;
     if (_lastFirstMessageId != firstId) {
       _lastFirstMessageId = firstId;
-      _loadReactionsForMessages(visibleMessages);
+      _loadReactionsForMessages(displayMessages);
     }
     _updateReactionWindow(DateTime.now(),
-        force: true, messages: visibleMessages);
+        force: true, messages: displayMessages);
 
     if (_scrollController.hasClients && _scrollController.offset < 100) {
-      final newDate = visibleMessages.first.createdAt;
+      final newDate = displayMessages.first.createdAt;
       if (_currentVisibleDate == null ||
           !_isSameDay(_currentVisibleDate!, newDate)) {
         _showFloatingDateTemporarily(newDate);
       }
+    }
+  }
+
+  Future<void> _processSecretChatKeyExchange(List<MessageModel> messages) async {
+    final e2e = E2EEncryptionService();
+    final prefs = await SharedPreferences.getInstance();
+    final conversationId = widget.args.conversationId;
+    final peerPubB64 = prefs.getString('e2e_peer_pub_$conversationId');
+    
+    // اگر کلید طرف مقابل را داریم، دیگر نیازی به هندل کردن پیام‌های تبادل کلید نیست
+    if (peerPubB64 != null) return;
+
+    // ۱. بررسی پیام exchange_key از طرف مقابل
+    final peerKeyMessage = messages.firstWhere(
+      (m) => (m.messageType == 'exchange_key' || m.attachmentType == 'exchange_key') && !m.isMe, 
+      orElse: () => MessageModel.empty(),
+    );
+    
+    if (peerKeyMessage.id.isNotEmpty) {
+      // کلید عمومی طرف مقابل را ذخیره می‌کنیم
+      await prefs.setString('e2e_peer_pub_$conversationId', peerKeyMessage.content);
+      
+      // حالا پاسخ (کلید خودمان) را می‌فرستیم
+      final myKeyPair = await e2e.getSavedKeyPair(_currentUserId!) ?? await e2e.generateAndSaveKeyPair(_currentUserId!);
+      final myPubBytes = await e2e.getPublicKeyBytes(myKeyPair);
+      
+      await _chatRepository.sendMessage(
+        MessagePayload(
+          conversationId: conversationId,
+          content: base64Encode(myPubBytes),
+          attachmentType: 'exchange_key_reply',
+        )
+      );
+      
+      _addSecretSystemNotice('کلید امنیتی با موفقیت تبادل شد. ارتباط رمزنگاری شده برقرار است.');
+      return;
+    }
+
+    // ۲. اگر پیام از طرف مقابل نیامده، آیا خودمان قبلاً exchange_key فرستاده‌ایم؟
+    final myKeyMessage = messages.firstWhere(
+      (m) => (m.messageType == 'exchange_key' || m.attachmentType == 'exchange_key') && m.isMe,
+      orElse: () => MessageModel.empty(),
+    );
+    
+    if (myKeyMessage.id.isEmpty) {
+      // خودمان شروع کننده تبادل کلید می‌شویم
+      final myKeyPair = await e2e.getSavedKeyPair(_currentUserId!) ?? await e2e.generateAndSaveKeyPair(_currentUserId!);
+      final myPubBytes = await e2e.getPublicKeyBytes(myKeyPair);
+      
+      await _chatRepository.sendMessage(
+        MessagePayload(
+          conversationId: conversationId,
+          content: base64Encode(myPubBytes),
+          attachmentType: 'exchange_key',
+        )
+      );
+      _addSecretSystemNotice('در حال تبادل کلید رمزنگاری با طرف مقابل...');
+    }
+    
+    // ۳. آیا پاسخ (exchange_key_reply) از طرف مقابل آمده؟
+    final peerReplyMessage = messages.firstWhere(
+      (m) => (m.messageType == 'exchange_key_reply' || m.attachmentType == 'exchange_key_reply') && !m.isMe,
+      orElse: () => MessageModel.empty(),
+    );
+    
+    if (peerReplyMessage.id.isNotEmpty) {
+      await prefs.setString('e2e_peer_pub_$conversationId', peerReplyMessage.content);
+      _addSecretSystemNotice('ارتباط کاملا امن و رمزنگاری شده (E2EE) برقرار شد.');
     }
   }
 
@@ -638,6 +733,186 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     }
   }
 
+  Future<void> _initSecretChatPolicy() async {
+    if (!widget.args.isSecret) return;
+
+    await SecretChatPrivacyService.instance.enableSecureDisplay();
+    await _loadSecretAutoDeleteTimerSetting();
+    await _initE2EEncryption();
+  }
+
+  Future<void> _initE2EEncryption() async {
+    final e2e = E2EEncryptionService();
+    final userId = _currentUserId;
+    if (userId == null || userId.isEmpty) return;
+
+    // ۱. مطمئن می‌شویم که برای خودمان کلید داریم
+    var myKeyPair = await e2e.getSavedKeyPair(userId);
+    if (myKeyPair == null) {
+      myKeyPair = await e2e.generateAndSaveKeyPair(userId);
+    }
+  }
+
+  String get _secretAutoDeletePrefKey =>
+      'secret_auto_delete_seconds_${widget.args.conversationId}';
+
+  Future<void> _loadSecretAutoDeleteTimerSetting() async {
+    if (!widget.args.isSecret) return;
+    final prefs = await SharedPreferences.getInstance();
+    final seconds = prefs.getInt(_secretAutoDeletePrefKey) ?? 0;
+    if (!mounted) return;
+    setState(() {
+      _secretAutoDeleteSeconds = seconds;
+    });
+  }
+
+  Future<void> _setSecretAutoDeleteTimer(int seconds) async {
+    if (!widget.args.isSecret) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_secretAutoDeletePrefKey, seconds);
+    if (!mounted) return;
+    setState(() {
+      _secretAutoDeleteSeconds = seconds;
+    });
+    _rescheduleSecretAutoDelete(_latestVisibleMessages);
+    final label = _secretAutoDeleteLabel(seconds);
+    _addSecretSystemNotice('تایمر حذف خودکار روی $label تنظیم شد');
+    _showSuccessSnackBar('حذف خودکار: $label');
+  }
+
+  Future<void> _pickSecretAutoDeleteTimer() async {
+    if (!widget.args.isSecret) return;
+    final selected = await showModalBottomSheet<int>(
+      context: context,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+      ),
+      builder: (sheetContext) {
+        final options = <int>[0, 10, 30, 60, 60 * 5, 60 * 60, 60 * 60 * 24];
+        return SafeArea(
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              const ListTile(
+                title: Text(
+                  'تایمر حذف خودکار',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+              for (final seconds in options)
+                ListTile(
+                  title: Text(_secretAutoDeleteLabel(seconds)),
+                  trailing: Icon(
+                    _secretAutoDeleteSeconds == seconds
+                        ? Icons.radio_button_checked
+                        : Icons.radio_button_off,
+                    color: _secretAutoDeleteSeconds == seconds
+                        ? Colors.green
+                        : Theme.of(context).hintColor,
+                  ),
+                  onTap: () {
+                    Navigator.pop(sheetContext, seconds);
+                  },
+                ),
+            ],
+          ),
+        );
+      },
+    );
+    if (selected == null || selected == _secretAutoDeleteSeconds) return;
+    await _setSecretAutoDeleteTimer(selected);
+  }
+
+  String _secretAutoDeleteLabel(int seconds) {
+    if (seconds <= 0) return 'خاموش';
+    if (seconds < 60) return '$seconds ثانیه';
+    if (seconds < 3600) return '${seconds ~/ 60} دقیقه';
+    if (seconds < 86400) return '${seconds ~/ 3600} ساعت';
+    return '${seconds ~/ 86400} روز';
+  }
+
+  void _addSecretSystemNotice(String text) {
+    if (!mounted || !widget.args.isSecret) return;
+    setState(() {
+      _secretSystemNotices.insert(
+        0,
+        _SecretSystemNotice(
+          id: DateTime.now().microsecondsSinceEpoch.toString(),
+          text: text,
+          createdAt: DateTime.now(),
+        ),
+      );
+      if (_secretSystemNotices.length > 10) {
+        _secretSystemNotices.removeRange(10, _secretSystemNotices.length);
+      }
+    });
+  }
+
+  void _rescheduleSecretAutoDelete(List<MessageModel> messages) {
+    if (!widget.args.isSecret || _secretAutoDeleteSeconds <= 0) {
+      for (final timer in _secretAutoDeleteTimers.values) {
+        timer.cancel();
+      }
+      _secretAutoDeleteTimers.clear();
+      return;
+    }
+
+    final activeIds = messages.map((m) => m.id).toSet();
+    final staleIds = _secretAutoDeleteTimers.keys
+        .where((id) => !activeIds.contains(id))
+        .toList(growable: false);
+    for (final id in staleIds) {
+      _secretAutoDeleteTimers.remove(id)?.cancel();
+    }
+
+    final now = DateTime.now();
+    for (final message in messages) {
+      if (_hiddenMessageIds.contains(message.id) ||
+          _deletingMessageIds.contains(message.id) ||
+          _secretAutoDeletingIds.contains(message.id) ||
+          message.isPending ||
+          message.isFailed == true) {
+        continue;
+      }
+      if (_secretAutoDeleteTimers.containsKey(message.id)) continue;
+
+      final expiresAt =
+          message.createdAt.add(Duration(seconds: _secretAutoDeleteSeconds));
+      final delay = expiresAt.difference(now);
+      if (delay <= Duration.zero) {
+        unawaited(_runSecretAutoDelete(message.id));
+        continue;
+      }
+      _secretAutoDeleteTimers[message.id] = Timer(delay, () {
+        _secretAutoDeleteTimers.remove(message.id);
+        unawaited(_runSecretAutoDelete(message.id));
+      });
+    }
+  }
+
+  Future<void> _runSecretAutoDelete(String messageId) async {
+    if (!widget.args.isSecret || _secretAutoDeletingIds.contains(messageId)) {
+      return;
+    }
+    _secretAutoDeletingIds.add(messageId);
+    try {
+      var result =
+          await _chatRepository.deleteMessage(messageId, forEveryone: true);
+      if (!result.isSuccess) {
+        result =
+            await _chatRepository.deleteMessage(messageId, forEveryone: false);
+      }
+      if (!result.isSuccess) {
+        debugPrint('Secret auto-delete failed for $messageId: ${result.error}');
+      }
+    } catch (e) {
+      debugPrint('Secret auto-delete error for $messageId: $e');
+    } finally {
+      _secretAutoDeletingIds.remove(messageId);
+    }
+  }
+
   StreamSubscription<SseConnectionState>? _realtimeSubscription;
 
   @override
@@ -675,6 +950,19 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     _floatingDateHideTimer?.cancel();
     _activeConversationHeartbeatTimer?.cancel();
     _realtimeSubscription?.cancel();
+    for (final timer in _scheduledSendTimers) {
+      timer.cancel();
+    }
+    _scheduledSendTimers.clear();
+    for (final timer in _pendingDeleteTimers.values) {
+      timer.cancel();
+    }
+    _pendingDeleteTimers.clear();
+    for (final timer in _secretAutoDeleteTimers.values) {
+      timer.cancel();
+    }
+    _secretAutoDeleteTimers.clear();
+    _secretAutoDeletingIds.clear();
     _messagesListener?.close();
     _performanceSettingsListener?.close();
 
@@ -692,6 +980,9 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     _focusNode.dispose();
 
     _clearActiveConversationState();
+    if (widget.args.isSecret) {
+      unawaited(SecretChatPrivacyService.instance.disableSecureDisplay());
+    }
 
     super.dispose();
   }
@@ -1352,18 +1643,21 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       ),
       actions: [
         // فوروارد
-        IconButton(
-          icon: const Icon(Icons.forward_rounded, color: Colors.white),
-          onPressed:
-              _selectedMessageIds.isEmpty ? null : _forwardSelectedMessages,
-          tooltip: 'فوروارد',
-        ),
+        if (!widget.args.isSecret)
+          IconButton(
+            icon: const Icon(Icons.forward_rounded, color: Colors.white),
+            onPressed:
+                _selectedMessageIds.isEmpty ? null : _forwardSelectedMessages,
+            tooltip: 'فوروارد',
+          ),
         // کپی
-        IconButton(
-          icon: const Icon(Icons.copy_rounded, color: Colors.white),
-          onPressed: _selectedMessageIds.isEmpty ? null : _copySelectedMessages,
-          tooltip: 'کپی',
-        ),
+        if (!widget.args.isSecret)
+          IconButton(
+            icon: const Icon(Icons.copy_rounded, color: Colors.white),
+            onPressed:
+                _selectedMessageIds.isEmpty ? null : _copySelectedMessages,
+            tooltip: 'کپی',
+          ),
         // حذف
         IconButton(
           icon: const Icon(Icons.delete_outline_rounded, color: Colors.white),
@@ -1464,6 +1758,10 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   }
 
   Future<void> _forwardSelectedMessages() async {
+    if (widget.args.isSecret) {
+      _showErrorSnackBar('فوروارد در گفتگوی محرمانه غیرفعال است');
+      return;
+    }
     final result = await ForwardMessageSheet.show(
       context,
       messageIds: _selectedMessageIds.toList(),
@@ -1476,6 +1774,10 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   }
 
   Future<void> _copySelectedMessages() async {
+    if (widget.args.isSecret) {
+      _showErrorSnackBar('کپی در گفتگوی محرمانه غیرفعال است');
+      return;
+    }
     if (!mounted) return;
 
     try {
@@ -1607,15 +1909,44 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
     _startDeleteAnimation(messageIds);
     logInfo('message_delete_requested: ${messageIds.join(",")}');
-    unawaited(_persistDeleteAfterAnimation(
-      messageIds: messageIds,
-      deleteForEveryone: result.deleteForEveryone,
-    ));
+    final batchId = DateTime.now().microsecondsSinceEpoch.toString();
+    final deleteTimer = Timer(const Duration(seconds: 4), () {
+      _pendingDeleteTimers.remove(batchId);
+      unawaited(_persistDeleteAfterAnimation(
+        messageIds: messageIds,
+        deleteForEveryone: result.deleteForEveryone,
+      ));
+      if (mounted) {
+        final suffix = result.deleteForEveryone ? ' برای همه' : '';
+        _showSuccessSnackBar(
+          '${messageIds.length} پیام حذف شد$suffix'.toPersianDigit(),
+        );
+      }
+    });
+    _pendingDeleteTimers[batchId] = deleteTimer;
 
-    final suffix = result.deleteForEveryone ? ' برای همه' : '';
-    _showSuccessSnackBar(
-      '${messageIds.length} پیام حذف شد$suffix'.toPersianDigit(),
-    );
+    if (mounted) {
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+              '${messageIds.length} پیام برای حذف آماده شد'.toPersianDigit()),
+          duration: const Duration(seconds: 4),
+          action: SnackBarAction(
+            label: 'بازگردانی',
+            onPressed: () {
+              final timer = _pendingDeleteTimers.remove(batchId);
+              timer?.cancel();
+              if (!mounted) return;
+              setState(() {
+                _deletingMessageIds.removeAll(messageIds);
+                _hiddenMessageIds.removeAll(messageIds);
+              });
+            },
+          ),
+        ),
+      );
+    }
   }
 
   PreferredSizeWidget _buildAppBar(ChatTheme theme) {
@@ -1626,7 +1957,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
     return AppBar(
       elevation: 0,
-      backgroundColor: widget.args.isSecret ? const Color(0xFF1B3D2F) : theme.appBarColor,
+      backgroundColor:
+          widget.args.isSecret ? const Color(0xFF1B3D2F) : theme.appBarColor,
       surfaceTintColor: Colors.transparent,
       systemOverlayStyle:
           theme.isDark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
@@ -1649,6 +1981,40 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
           icon: Icon(Icons.more_vert, color: theme.iconColor),
           onSelected: _handleMenuAction,
           itemBuilder: (context) => [
+            if (!widget.args.isSecret &&
+                !widget.args.isGroup &&
+                widget.args.otherUserId.isNotEmpty)
+              const PopupMenuItem(
+                value: 'start_secret_chat',
+                child: Row(
+                  children: [
+                    Icon(Icons.lock_rounded, color: Colors.green, size: 20),
+                    SizedBox(width: 12),
+                    Text(
+                      'شروع گفتگوی محرمانه',
+                      style: TextStyle(color: Colors.green),
+                    ),
+                  ],
+                ),
+              ),
+            if (widget.args.isSecret)
+              PopupMenuItem(
+                value: 'secret_timer',
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.timer_outlined,
+                      color: Colors.green,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 12),
+                    Text(
+                      'تایمر حذف خودکار (${_secretAutoDeleteLabel(_secretAutoDeleteSeconds)})',
+                      style: const TextStyle(color: Colors.green),
+                    ),
+                  ],
+                ),
+              ),
             PopupMenuItem(
               value: 'search',
               child: Row(
@@ -1750,7 +2116,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                       if (widget.args.isSecret)
                         Icon(
                           Icons.lock_rounded, // 🔒 آیکون امنیتی E2EE
-                          color: theme.isDark ? Colors.greenAccent : Colors.green,
+                          color:
+                              theme.isDark ? Colors.greenAccent : Colors.green,
                           size: 14,
                         ),
                     ],
@@ -1829,7 +2196,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            theme.sendButtonColor.withOpacity(0.8),
+            theme.sendButtonColor.withValues(alpha: 0.8),
             theme.sendButtonColor,
           ],
         ),
@@ -1851,9 +2218,12 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   }
 
   Widget _buildAvatarText(ChatTheme theme) {
+    final initial = widget.args.otherUserName.trim().isNotEmpty
+        ? widget.args.otherUserName.trim()[0].toUpperCase()
+        : '?';
     return Center(
       child: Text(
-        widget.args.otherUserName[0].toUpperCase(),
+        initial,
         style: const TextStyle(
           color: Colors.white,
           fontSize: 18,
@@ -1867,6 +2237,12 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     switch (action) {
       case 'search':
         setState(() => _isSearchMode = true);
+        break;
+      case 'start_secret_chat':
+        _startSecretChat();
+        break;
+      case 'secret_timer':
+        _pickSecretAutoDeleteTimer();
         break;
       case 'details':
         _navigateToChatDetails();
@@ -1884,6 +2260,45 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         _showClearChatDialog();
         break;
     }
+  }
+
+  Future<void> _startSecretChat() async {
+    if (widget.args.isSecret ||
+        widget.args.isGroup ||
+        widget.args.otherUserId.isEmpty) {
+      return;
+    }
+
+    final result = await _chatRepository.createConversation(
+      widget.args.otherUserId,
+      isSecret: true,
+    );
+
+    if (!mounted) return;
+    if (!result.isSuccess || result.data == null) {
+      _showErrorSnackBar(result.error ?? 'ایجاد گفتگوی محرمانه انجام نشد');
+      return;
+    }
+
+    final secretConversation = result.data!;
+    final displayName =
+        (_otherUserProfile?.username ?? widget.args.otherUserName);
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ModernChatScreen(
+          args: ChatScreenArgs(
+            conversationId: secretConversation.id,
+            otherUserName: displayName,
+            otherUserAvatar:
+                _otherUserProfile?.avatarUrl ?? widget.args.otherUserAvatar,
+            otherUserId: widget.args.otherUserId,
+            isGroup: false,
+            isSecret: true,
+          ),
+        ),
+      ),
+    );
   }
 
   void _showClearChatDialog() {
@@ -1952,8 +2367,12 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         // اما پیام‌های در حال حذف را نگه دار (برای انیمیشن پودر شدن)
         final filteredMessages = allMessages
             .where((m) =>
-                !_hiddenMessageIds.contains(m.id) ||
-                _deletingMessageIds.contains(m.id))
+                (!_hiddenMessageIds.contains(m.id) ||
+                _deletingMessageIds.contains(m.id)) &&
+                m.messageType != 'exchange_key' &&
+                m.messageType != 'exchange_key_reply' &&
+                m.attachmentType != 'exchange_key' &&
+                m.attachmentType != 'exchange_key_reply')
             .toList();
 
         // Isar query is already sorted (newest first).
@@ -1968,12 +2387,9 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
         return RepaintBoundary(
             child: CustomScrollView(
+          scrollCacheExtent: const ScrollCacheExtent.pixels(300),
           controller: _scrollController,
           reverse: true,
-          // ✅ اضافه کردن cacheExtent
-          // مقدار 300 یعنی حدود ۳-۴ پیام قبل از دیده شدن در حافظه رندر شوند
-          // این کار پرش‌های ریز هنگام اسکرول سریع را حذف می‌کند
-          cacheExtent: 300,
           physics: const BouncingScrollPhysics(),
           slivers: [
             // ✅ مهم: پدینگ پایین لیست برای اینکه زیر اینپوت نرود
@@ -1982,6 +2398,23 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
               SliverPadding(
                 padding: EdgeInsets.only(bottom: bottomPadding),
                 sliver: const SliverToBoxAdapter(child: SizedBox.shrink()),
+              ),
+            if (widget.args.isSecret && _secretSystemNotices.isNotEmpty)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                  child: Column(
+                    children: _secretSystemNotices
+                        .map(
+                          (notice) => KeyedSubtree(
+                            key: ValueKey(notice.id),
+                            child: _buildSecretSystemNoticeBubble(notice),
+                          ),
+                        )
+                        .toList(growable: false),
+                  ),
+                ),
               ),
             const SliverPadding(padding: EdgeInsets.only(bottom: 10)),
             SliverList(
@@ -2404,7 +2837,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
           Icon(
             Icons.chat_bubble_outline_rounded,
             size: 64,
-            color: theme.secondaryTextColor.withOpacity(0.5),
+            color: theme.secondaryTextColor.withValues(alpha: 0.5),
           ),
           const SizedBox(height: 16),
           Text(
@@ -2418,7 +2851,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
           Text(
             'اولین پیام رو ارسال کنید!',
             style: TextStyle(
-              color: theme.secondaryTextColor.withOpacity(0.7),
+              color: theme.secondaryTextColor.withValues(alpha: 0.7),
               fontSize: 14,
             ),
           ),
@@ -2518,6 +2951,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       onSend: _sendMessage,
       onAttachment: _handleAttachment,
       onVoice: _handleVoice,
+      onScheduleMessage: _scheduleMessage,
       onChanged: _onTextChanged,
       onGifSelected: _handleGifSelected,
       replyToContent: _replyToMessage?.content,
@@ -2531,6 +2965,11 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       reduceEffects: reduceEffects,
       allowHeavyEffects: allowHeavyEffects,
       blurSigma: blurSigma,
+      voicePreset: reduceEffects
+          ? VoiceInputPreset.soft
+          : (allowHeavyEffects
+              ? VoiceInputPreset.strict
+              : VoiceInputPreset.balanced),
     );
   }
 
@@ -2603,7 +3042,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       attachmentMimeType: mimeType,
       attachmentSizeBytes: fileSize,
       duration: finalDuration,
-      recipientPublicKey: widget.args.isSecret ? _otherUserProfile?.publicKey : null,
+      recipientPublicKey:
+          widget.args.isSecret ? _otherUserProfile?.publicKey : null,
     );
 
     try {
@@ -2622,7 +3062,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                 audioAlbum: params.audioAlbum,
                 duration: params.duration,
                 replyToMessageId: params.replyToMessageId,
-                recipientPublicKey: widget.args.isSecret ? params.recipientPublicKey : null,
+                recipientPublicKey:
+                    widget.args.isSecret ? params.recipientPublicKey : null,
               );
       if (!sendResult.isSuccess) {
         await chatRepository.markUploadFailed(
@@ -2670,7 +3111,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         replyToSenderName: _replyToMessage?.senderId == _currentUserId
             ? 'شما'
             : widget.args.otherUserName,
-        recipientPublicKey: widget.args.isSecret ? _otherUserProfile?.publicKey : null,
+        recipientPublicKey:
+            widget.args.isSecret ? _otherUserProfile?.publicKey : null,
       );
 
       final result =
@@ -2680,7 +3122,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                 attachmentUrl: params.attachmentUrl,
                 attachmentType: params.attachmentType,
                 replyToMessageId: params.replyToMessageId,
-                recipientPublicKey: widget.args.isSecret ? params.recipientPublicKey : null,
+                recipientPublicKey:
+                    widget.args.isSecret ? params.recipientPublicKey : null,
               );
 
       if (!mounted) return;
@@ -2749,10 +3192,91 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     debugPrint('Autocomplete: type=$type, query=$query');
   }
 
+  Future<void> _scheduleMessage() async {
+    if (!mounted) return;
+    final content = _messageController.text.trim();
+    if (content.isEmpty) return;
+
+    final now = DateTime.now();
+    final date = await showDatePicker(
+      context: context,
+      initialDate: now,
+      firstDate: now,
+      lastDate: now.add(const Duration(days: 30)),
+      helpText: 'زمان‌بندی ارسال پیام',
+      cancelText: 'لغو',
+      confirmText: 'مرحله بعد',
+    );
+    if (!mounted || date == null) return;
+
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(now.add(const Duration(minutes: 1))),
+      cancelText: 'لغو',
+      confirmText: 'ثبت',
+      helpText: 'انتخاب ساعت',
+    );
+    if (!mounted || time == null) return;
+
+    final scheduledAt = DateTime(
+      date.year,
+      date.month,
+      date.day,
+      time.hour,
+      time.minute,
+    );
+
+    if (!scheduledAt.isAfter(now)) {
+      _showErrorSnackBar('زمان ارسال باید در آینده باشد');
+      return;
+    }
+
+    final delay = scheduledAt.difference(now);
+    final replyTo = _replyToMessage;
+
+    _messageController.clear();
+    if (mounted) {
+      setState(() => _replyToMessage = null);
+    }
+
+    final timer = Timer(delay, () async {
+      if (!mounted) return;
+      try {
+        final result =
+            await ref.read(chatActionControllerProvider.notifier).sendMessage(
+                  conversationId: widget.args.conversationId,
+                  content: content,
+                  replyToMessageId: replyTo?.id,
+                  replyToContent: replyTo?.content,
+                  replyToSenderName: replyTo?.senderId == _currentUserId
+                      ? 'شما'
+                      : widget.args.otherUserName,
+                  recipientPublicKey: widget.args.isSecret
+                      ? _otherUserProfile?.publicKey
+                      : null,
+                );
+        if (!mounted) return;
+        if (result.isSuccess) {
+          _scrollToBottom();
+        } else {
+          _showErrorSnackBar(result.error ?? 'ارسال زمان‌بندی‌شده ناموفق بود');
+        }
+      } catch (_) {
+        if (mounted) {
+          _showErrorSnackBar('خطا در ارسال زمان‌بندی‌شده');
+        }
+      }
+    });
+    _scheduledSendTimers.add(timer);
+    _showSuccessSnackBar(
+      'پیام برای ${scheduledAt.hour}:${scheduledAt.minute.toString().padLeft(2, '0')} زمان‌بندی شد',
+    );
+  }
+
   Future<void> _sendMessage() async {
     if (!mounted) return;
 
-    final content = _messageController.text.trim();
+    var content = _messageController.text.trim();
     if (content.isEmpty) return;
 
     _messageController.clear();
@@ -2763,6 +3287,30 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     }
 
     try {
+      if (widget.args.isSecret) {
+        final prefs = await SharedPreferences.getInstance();
+        final peerPubB64 = prefs.getString('e2e_peer_pub_${widget.args.conversationId}');
+        if (peerPubB64 == null) {
+          _showErrorSnackBar('درحال تبادل کلید امنیتی با مخاطب هستیم... لطفاً کمی صبر کنید');
+          return;
+        }
+        
+        final e2e = E2EEncryptionService();
+        final myKeyPair = await e2e.getSavedKeyPair(_currentUserId!);
+        if (myKeyPair == null) {
+          _showErrorSnackBar('خطا: کلید امنیتی محلی یافت نشد.');
+          return;
+        }
+        
+        final sharedSecret = await e2e.computeSharedSecret(
+          myKeyPair: myKeyPair,
+          peerPublicKeyBytes: base64Decode(peerPubB64),
+        );
+        
+        // جایگزین کردن محتوای واقعی با محتوای رمزنگاری شده
+        content = await e2e.encryptMessage(content, sharedSecret);
+      }
+
       final params = SendMessageParams(
         conversationId: widget.args.conversationId,
         content: content,
@@ -2771,7 +3319,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         replyToSenderName: replyTo?.senderId == _currentUserId
             ? 'شما'
             : widget.args.otherUserName,
-        recipientPublicKey: widget.args.isSecret ? _otherUserProfile?.publicKey : null,
+        recipientPublicKey:
+            widget.args.isSecret ? _otherUserProfile?.publicKey : null,
       );
 
       if (!mounted) return;
@@ -2783,7 +3332,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                 replyToMessageId: params.replyToMessageId,
                 replyToContent: params.replyToContent,
                 replyToSenderName: params.replyToSenderName,
-                recipientPublicKey: widget.args.isSecret ? params.recipientPublicKey : null,
+                recipientPublicKey:
+                    widget.args.isSecret ? params.recipientPublicKey : null,
               );
 
       if (!mounted) return;
@@ -2951,7 +3501,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                 audioAlbum: audioAlbum,
                 duration: durationSeconds,
                 mediaGroupId: mediaGroupId,
-                recipientPublicKey: widget.args.isSecret ? _otherUserProfile?.publicKey : null,
+                recipientPublicKey:
+                    widget.args.isSecret ? _otherUserProfile?.publicKey : null,
               );
       if (!result.isSuccess) {
         await chatRepository.markUploadFailed(
@@ -3388,7 +3939,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     await Future.delayed(const Duration(milliseconds: 60));
 
     // چک کردن mounted بعد از delay
-    if (!mounted) return;
+    if (!mounted || !bubbleContext.mounted) return;
 
     final groupedMessages = <MessageModel>[
       if (groupedMessagesOverride != null)
@@ -3471,7 +4022,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       ),
 
       // Copy (فقط برای متن)
-      if (!isGif &&
+      if (!widget.args.isSecret &&
+          !isGif &&
           !isImage &&
           !isVideo &&
           !isVoice &&
@@ -3487,7 +4039,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         ),
 
       // گزینه‌های مخصوص GIF
-      if (isGif) ...[
+      if (isGif && !widget.args.isSecret) ...[
         TelegramContextMenuItem(
           icon: Icons.gif_box_outlined,
           label: 'ذخیره GIF',
@@ -3502,14 +4054,14 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       ],
 
       // گزینه‌های مخصوص عکس/آلبوم
-      if (albumHasOnlyImages) ...[
+      if (albumHasOnlyImages && !widget.args.isSecret) ...[
         TelegramContextMenuItem(
           icon: Icons.collections_rounded,
           label: 'ذخیره آلبوم',
           onTap: () => _saveImageAlbum(albumImageMessages),
         ),
         const TelegramContextMenuItem.divider(),
-      ] else if (isImage) ...[
+      ] else if (isImage && !widget.args.isSecret) ...[
         TelegramContextMenuItem(
           icon: Icons.download_rounded,
           label: 'ذخیره عکس',
@@ -3524,7 +4076,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       ],
 
       // گزینه‌های مخصوص ویدیو
-      if (isVideo) ...[
+      if (isVideo && !widget.args.isSecret) ...[
         TelegramContextMenuItem(
           icon: Icons.download_rounded,
           label: 'ذخیره ویدیو',
@@ -3534,7 +4086,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       ],
 
       // گزینه‌های مخصوص صدا
-      if (isVoice) ...[
+      if (isVoice && !widget.args.isSecret) ...[
         TelegramContextMenuItem(
           icon: Icons.download_rounded,
           label: 'ذخیره صدا',
@@ -3544,7 +4096,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       ],
 
       // گزینه‌های مخصوص فایل
-      if (isDocument) ...[
+      if (isDocument && !widget.args.isSecret) ...[
         TelegramContextMenuItem(
           icon: Icons.download_rounded,
           label: 'دانلود فایل',
@@ -3563,11 +4115,12 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       ],
 
       // Forward
-      TelegramContextMenuItem(
-        icon: Icons.forward_rounded,
-        label: 'فوروارد',
-        onTap: () => _forwardMessagesByIds(groupedIds),
-      ),
+      if (!widget.args.isSecret)
+        TelegramContextMenuItem(
+          icon: Icons.forward_rounded,
+          label: 'فوروارد',
+          onTap: () => _forwardMessagesByIds(groupedIds),
+        ),
 
       // ✅ جزئیات پیام (گزینه جدید)
       TelegramContextMenuItem(
@@ -3657,7 +4210,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
     // 2. برای سایر پیام‌ها همان حباب معمولی
     return ImprovedAnimatedMessageBubble(
-      recipientPublicKey: widget.args.isSecret ? _otherUserProfile?.publicKey : null,
+      recipientPublicKey:
+          widget.args.isSecret ? _otherUserProfile?.publicKey : null,
       onSwipeToReply: () => setState(() => _replyToMessage = message),
       key: ValueKey('preview_${message.id}'),
       messageId: message.id,
@@ -3903,7 +4457,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
               if (!isGif) const Divider(),
 
               // ✅ گزینه‌های مخصوص GIF
-              if (isGif) ...[
+              if (isGif && !widget.args.isSecret) ...[
                 _buildOptionTile(
                   icon: Icons.gif_box_outlined,
                   label: 'ذخیره GIF',
@@ -3935,7 +4489,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
               ),
 
               // ✅ کپی فقط برای پیام‌های متنی (نه GIF)
-              if (!isGif && message.content.isNotEmpty)
+              if (!widget.args.isSecret && !isGif && message.content.isNotEmpty)
                 _buildOptionTile(
                   icon: Icons.copy_rounded,
                   label: 'کپی',
@@ -3946,14 +4500,15 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                   },
                 ),
 
-              _buildOptionTile(
-                icon: Icons.forward_rounded,
-                label: 'فوروارد',
-                onTap: () {
-                  Navigator.pop(context);
-                  _forwardMessage(message);
-                },
-              ),
+              if (!widget.args.isSecret)
+                _buildOptionTile(
+                  icon: Icons.forward_rounded,
+                  label: 'فوروارد',
+                  onTap: () {
+                    Navigator.pop(context);
+                    _forwardMessage(message);
+                  },
+                ),
               _buildOptionTile(
                 icon: Icons.check_circle_outline_rounded,
                 label: 'انتخاب',
@@ -4008,7 +4563,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: context.chatTheme.dividerColor.withOpacity(0.3),
+          color: context.chatTheme.dividerColor.withValues(alpha: 0.3),
           shape: BoxShape.circle,
         ),
         child: Text(emoji, style: const TextStyle(fontSize: 24)),
@@ -4059,10 +4614,18 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
   /// فوروارد پیام
   Future<void> _forwardMessage(MessageModel message) async {
+    if (widget.args.isSecret) {
+      _showErrorSnackBar('فوروارد در گفتگوی محرمانه غیرفعال است');
+      return;
+    }
     await _forwardMessagesByIds([message.id]);
   }
 
   Future<void> _forwardMessagesByIds(List<String> messageIds) async {
+    if (widget.args.isSecret) {
+      _showErrorSnackBar('فوروارد در گفتگوی محرمانه غیرفعال است');
+      return;
+    }
     final ids = messageIds
         .map((id) => id.trim())
         .where((id) => id.isNotEmpty)
@@ -4084,6 +4647,10 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
   /// ذخیره GIF در گالری
   Future<void> _saveGif(MessageModel message) async {
+    if (widget.args.isSecret) {
+      _showErrorSnackBar('استخراج رسانه در گفتگوی محرمانه غیرفعال است');
+      return;
+    }
     if (message.attachmentUrl == null) {
       _showErrorSnackBar('لینک گیف یافت نشد');
       return;
@@ -4142,6 +4709,10 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
   /// باز کردن GIF در مرورگر
   Future<void> _openGifInBrowser(MessageModel message) async {
+    if (widget.args.isSecret) {
+      _showErrorSnackBar('خروج رسانه از گفتگوی محرمانه غیرفعال است');
+      return;
+    }
     if (message.attachmentUrl == null) {
       _showErrorSnackBar('لینک گیف یافت نشد');
       return;
@@ -4169,6 +4740,10 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   // ═══════════════════════════════════════════════════════════════════════════
 
   Future<void> _saveImageAlbum(List<MessageModel> messages) async {
+    if (widget.args.isSecret) {
+      _showErrorSnackBar('استخراج رسانه در گفتگوی محرمانه غیرفعال است');
+      return;
+    }
     if (messages.isEmpty) {
       _showErrorSnackBar('عکسی برای ذخیره یافت نشد');
       return;
@@ -4256,6 +4831,10 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
   /// ذخیره عکس
   Future<void> _saveImage(MessageModel message) async {
+    if (widget.args.isSecret) {
+      _showErrorSnackBar('استخراج رسانه در گفتگوی محرمانه غیرفعال است');
+      return;
+    }
     if (message.attachmentUrl == null) {
       _showErrorSnackBar('لینک تصویر یافت نشد');
       return;
@@ -4265,6 +4844,10 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
   /// ذخیره ویدیو
   Future<void> _saveVideo(MessageModel message) async {
+    if (widget.args.isSecret) {
+      _showErrorSnackBar('استخراج رسانه در گفتگوی محرمانه غیرفعال است');
+      return;
+    }
     if (message.attachmentUrl == null) {
       _showErrorSnackBar('لینک ویدیو یافت نشد');
       return;
@@ -4274,6 +4857,10 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
   /// ذخیره صدا
   Future<void> _saveVoice(MessageModel message) async {
+    if (widget.args.isSecret) {
+      _showErrorSnackBar('استخراج رسانه در گفتگوی محرمانه غیرفعال است');
+      return;
+    }
     if (message.attachmentUrl == null) {
       _showErrorSnackBar('لینک صدا یافت نشد');
       return;
@@ -4284,6 +4871,10 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
   /// باز کردن در مرورگر
   Future<void> _openInBrowser(MessageModel message) async {
+    if (widget.args.isSecret) {
+      _showErrorSnackBar('خروج رسانه از گفتگوی محرمانه غیرفعال است');
+      return;
+    }
     if (message.attachmentUrl == null) {
       _showErrorSnackBar('لینک یافت نشد');
       return;
@@ -4308,6 +4899,10 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
   /// دانلود فایل
   Future<void> _downloadFile(MessageModel message) async {
+    if (widget.args.isSecret) {
+      _showErrorSnackBar('استخراج فایل در گفتگوی محرمانه غیرفعال است');
+      return;
+    }
     if (message.attachmentUrl == null) {
       _showErrorSnackBar('لینک فایل یافت نشد');
       return;
@@ -4365,6 +4960,10 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   /// متد کمکی برای ذخیره رسانه در گالری
   Future<void> _saveMediaToGallery(
       String url, String type, String typeName) async {
+    if (widget.args.isSecret) {
+      _showErrorSnackBar('استخراج رسانه در گفتگوی محرمانه غیرفعال است');
+      return;
+    }
     try {
       // نمایش loading
       if (mounted) {
@@ -4415,6 +5014,40 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     }
   }
 
+  Widget _buildSecretSystemNoticeBubble(_SecretSystemNotice notice) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1B3D2F).withValues(alpha: 0.85),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: Colors.green.withValues(alpha: 0.7)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.lock_rounded,
+                  color: Colors.greenAccent, size: 14),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  '${notice.text}  ${notice.createdAt.hour.toString().padLeft(2, '0')}:${notice.createdAt.minute.toString().padLeft(2, '0')}',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   // ═══════════════════════════════════════════════════════════════════════════
   // 📢 SNACKBARS
   // ═══════════════════════════════════════════════════════════════════════════
@@ -4434,7 +5067,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   Widget _buildBlockedBanner(ChatTheme theme) {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-      color: Colors.red.withOpacity(0.8),
+      color: Colors.red.withValues(alpha: 0.8),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -4499,7 +5132,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
           children: [
             // Backdrop
             Container(
-              color: Colors.black.withOpacity(0.2),
+              color: Colors.black.withValues(alpha: 0.2),
             ),
             // Reaction Picker
             TelegramReactionPicker(
@@ -4561,7 +5194,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       if (postData == null) {
         // Fallback به پیام متنی معمولی
         return ImprovedAnimatedMessageBubble(
-          recipientPublicKey: widget.args.isSecret ? _otherUserProfile?.publicKey : null,
+          recipientPublicKey:
+              widget.args.isSecret ? _otherUserProfile?.publicKey : null,
           onSwipeToReply: () => setState(() => _replyToMessage = message),
           key: ValueKey(message.id),
           messageId: message.id,
@@ -4664,8 +5298,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
             Positioned.fill(
               child: Container(
                 decoration: BoxDecoration(
-                  color: context.chatTheme.sendButtonColor
-                      .withOpacity(0.3), // کمی پررنگ تر برای دیده شدن روی عکس
+                  color: context.chatTheme.sendButtonColor.withValues(
+                      alpha: 0.3), // کمی پررنگ تر برای دیده شدن روی عکس
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
                     color: context.chatTheme.sendButtonColor,
@@ -4688,7 +5322,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       debugPrint('Error parsing post message: $e');
       // در صورت خطا، از ImprovedAnimatedMessageBubble استفاده کن
       return ImprovedAnimatedMessageBubble(
-        recipientPublicKey: widget.args.isSecret ? _otherUserProfile?.publicKey : null,
+        recipientPublicKey:
+            widget.args.isSecret ? _otherUserProfile?.publicKey : null,
         onSwipeToReply: () => setState(() => _replyToMessage = message),
         key: ValueKey(message.id),
         messageId: message.id,
@@ -4775,7 +5410,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
             valueListenable: _reactionNotifierFor(message.id),
             builder: (context, messageReactions, _) {
               return ImprovedAnimatedMessageBubble(
-                recipientPublicKey: widget.args.isSecret ? _otherUserProfile?.publicKey : null,
+                recipientPublicKey:
+                    widget.args.isSecret ? _otherUserProfile?.publicKey : null,
                 onSwipeToReply: () => setState(() => _replyToMessage = message),
                 key: _messageKeys[message.id] ??= GlobalKey(),
                 messageId: message.id,
@@ -4825,8 +5461,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       curve: Curves.easeOutCubic,
       decoration: BoxDecoration(
         color: isHighlighted
-            ? context.chatTheme.sendButtonColor.withOpacity(0.2)
-            : context.chatTheme.sendButtonColor.withOpacity(0.1),
+            ? context.chatTheme.sendButtonColor.withValues(alpha: 0.2)
+            : context.chatTheme.sendButtonColor.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(12),
       ),
       child: bubbleContent,
@@ -4900,8 +5536,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       curve: Curves.easeOutCubic,
       decoration: BoxDecoration(
         color: hasHighlightedMessage
-            ? context.chatTheme.sendButtonColor.withOpacity(0.2)
-            : context.chatTheme.sendButtonColor.withOpacity(0.1),
+            ? context.chatTheme.sendButtonColor.withValues(alpha: 0.2)
+            : context.chatTheme.sendButtonColor.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(12),
       ),
       child: bubble,
@@ -4955,6 +5591,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         pageBuilder: (_, __, ___) => FullScreenImageViewer(
           galleryItems: galleryItems,
           initialIndex: safeInitialIndex,
+          isSecretMode: widget.args.isSecret,
         ),
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
           return FadeTransition(opacity: animation, child: child);
@@ -5133,6 +5770,18 @@ class _ChatRenderItem {
   bool get isAlbum => messages.length > 1;
   MessageModel get primaryMessage => messages.first;
   MessageModel get oldestMessage => messages.last;
+}
+
+class _SecretSystemNotice {
+  final String id;
+  final String text;
+  final DateTime createdAt;
+
+  const _SecretSystemNotice({
+    required this.id,
+    required this.text,
+    required this.createdAt,
+  });
 }
 
 class _AlbumMediaItem {
@@ -5486,8 +6135,8 @@ class _ChatMediaAlbumBubble extends StatelessWidget {
     final textColor = overlayMode
         ? Colors.white
         : (isMe
-            ? theme.myBubbleTextColor.withOpacity(0.75)
-            : theme.otherBubbleTextColor.withOpacity(0.75));
+            ? theme.myBubbleTextColor.withValues(alpha: 0.75)
+            : theme.otherBubbleTextColor.withValues(alpha: 0.75));
 
     return Container(
       padding: EdgeInsets.symmetric(
@@ -5496,7 +6145,7 @@ class _ChatMediaAlbumBubble extends StatelessWidget {
       ),
       decoration: overlayMode
           ? BoxDecoration(
-              color: Colors.black.withOpacity(0.4),
+              color: Colors.black.withValues(alpha: 0.4),
               borderRadius: BorderRadius.circular(10),
             )
           : null,

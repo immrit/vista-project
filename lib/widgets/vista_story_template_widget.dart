@@ -66,19 +66,19 @@ class VistaStoryTemplateWidget extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.08),
+            color: Colors.black.withValues(alpha: 0.08),
             blurRadius: 20,
             offset: const Offset(0, 8),
             spreadRadius: 0,
           ),
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withValues(alpha: 0.04),
             blurRadius: 40,
             offset: const Offset(0, 16),
             spreadRadius: 0,
           ),
         ],
-        border: Border.all(color: Colors.grey.withOpacity(0.1), width: 1),
+        border: Border.all(color: Colors.grey.withValues(alpha: 0.1), width: 1),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -104,7 +104,7 @@ class VistaStoryTemplateWidget extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(20), // پدینگ بیشتر
       decoration: BoxDecoration(
-        color: Colors.grey.withOpacity(0.02),
+        color: Colors.grey.withValues(alpha: 0.02),
         borderRadius: const BorderRadius.only(
           topLeft: Radius.circular(16),
           topRight: Radius.circular(16),
@@ -117,7 +117,7 @@ class VistaStoryTemplateWidget extends StatelessWidget {
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               border: Border.all(
-                color: Colors.grey.withOpacity(0.2),
+                color: Colors.grey.withValues(alpha: 0.2),
                 width: 2, // ضخامت بیشتر
               ),
             ),
@@ -178,7 +178,7 @@ class VistaStoryTemplateWidget extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(8), // پدینگ بیشتر
             decoration: BoxDecoration(
-              color: Colors.grey.withOpacity(0.1),
+              color: Colors.grey.withValues(alpha: 0.1),
               shape: BoxShape.circle,
             ),
             child: Image.asset(

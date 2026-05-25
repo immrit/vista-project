@@ -139,7 +139,7 @@ class _CountdownInputSheetState extends State<CountdownInputSheet> {
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF009688).withOpacity(0.4),
+            color: const Color(0xFF009688).withValues(alpha: 0.4),
             blurRadius: 20,
             offset: const Offset(0, 8),
           ),
@@ -182,12 +182,13 @@ class _CountdownInputSheetState extends State<CountdownInputSheet> {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.8),
+        color: Colors.black.withValues(alpha: 0.8),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.cyanAccent.withOpacity(0.5), width: 2),
+        border: Border.all(
+            color: Colors.cyanAccent.withValues(alpha: 0.5), width: 2),
         boxShadow: [
           BoxShadow(
-            color: Colors.cyanAccent.withOpacity(0.3),
+            color: Colors.cyanAccent.withValues(alpha: 0.3),
             blurRadius: 25,
           ),
         ],
@@ -227,7 +228,7 @@ class _CountdownInputSheetState extends State<CountdownInputSheet> {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
+            color: Colors.black.withValues(alpha: 0.1),
             blurRadius: 15,
           ),
         ],
@@ -261,7 +262,7 @@ class _CountdownInputSheetState extends State<CountdownInputSheet> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.2),
+        color: Colors.white.withValues(alpha: 0.2),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Column(

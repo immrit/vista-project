@@ -250,8 +250,8 @@ class _OnboardingState extends State<Onboarding> with TickerProviderStateMixin {
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
-              currentSlide.primaryColor.withOpacity(0.1),
-              currentSlide.secondaryColor.withOpacity(0.05),
+              currentSlide.primaryColor.withValues(alpha: 0.1),
+              currentSlide.secondaryColor.withValues(alpha: 0.05),
             ],
           ),
         ),
@@ -310,7 +310,7 @@ class _OnboardingState extends State<Onboarding> with TickerProviderStateMixin {
               borderRadius: BorderRadius.circular(16.r),
               boxShadow: [
                 BoxShadow(
-                  color: slide.primaryColor.withOpacity(0.3),
+                  color: slide.primaryColor.withValues(alpha: 0.3),
                   blurRadius: 20,
                   offset: const Offset(0, 8),
                 ),
@@ -464,7 +464,7 @@ class _OnboardingState extends State<Onboarding> with TickerProviderStateMixin {
         shape: BoxShape.circle,
         boxShadow: [
           BoxShadow(
-            color: slide.primaryColor.withOpacity(0.4),
+            color: slide.primaryColor.withValues(alpha: 0.4),
             blurRadius: 40,
             offset: const Offset(0, 20),
           ),
@@ -487,7 +487,7 @@ class _OnboardingState extends State<Onboarding> with TickerProviderStateMixin {
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
+                    color: Colors.black.withValues(alpha: 0.1),
                     blurRadius: 10,
                     offset: const Offset(0, 5),
                   ),
@@ -518,7 +518,7 @@ class _OnboardingState extends State<Onboarding> with TickerProviderStateMixin {
         shape: BoxShape.circle,
         boxShadow: [
           BoxShadow(
-            color: slide.primaryColor.withOpacity(0.4),
+            color: slide.primaryColor.withValues(alpha: 0.4),
             blurRadius: 40,
             offset: const Offset(0, 20),
           ),
@@ -549,7 +549,7 @@ class _OnboardingState extends State<Onboarding> with TickerProviderStateMixin {
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
+                      color: Colors.black.withValues(alpha: 0.1),
                       blurRadius: 8,
                       offset: const Offset(0, 4),
                     ),
@@ -581,7 +581,7 @@ class _OnboardingState extends State<Onboarding> with TickerProviderStateMixin {
         shape: BoxShape.circle,
         boxShadow: [
           BoxShadow(
-            color: slide.primaryColor.withOpacity(0.4),
+            color: slide.primaryColor.withValues(alpha: 0.4),
             blurRadius: 40,
             offset: const Offset(0, 20),
           ),
@@ -604,7 +604,7 @@ class _OnboardingState extends State<Onboarding> with TickerProviderStateMixin {
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
+                    color: Colors.black.withValues(alpha: 0.1),
                     blurRadius: 10,
                     offset: const Offset(0, 5),
                   ),
@@ -629,7 +629,7 @@ class _OnboardingState extends State<Onboarding> with TickerProviderStateMixin {
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
+                    color: Colors.black.withValues(alpha: 0.1),
                     blurRadius: 8,
                     offset: const Offset(0, 4),
                   ),
@@ -660,7 +660,7 @@ class _OnboardingState extends State<Onboarding> with TickerProviderStateMixin {
         shape: BoxShape.circle,
         boxShadow: [
           BoxShadow(
-            color: slide.primaryColor.withOpacity(0.4),
+            color: slide.primaryColor.withValues(alpha: 0.4),
             blurRadius: 40,
             offset: const Offset(0, 20),
           ),
@@ -683,7 +683,7 @@ class _OnboardingState extends State<Onboarding> with TickerProviderStateMixin {
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
+                    color: Colors.black.withValues(alpha: 0.1),
                     blurRadius: 10,
                     offset: const Offset(0, 5),
                   ),
@@ -714,7 +714,7 @@ class _OnboardingState extends State<Onboarding> with TickerProviderStateMixin {
         shape: BoxShape.circle,
         boxShadow: [
           BoxShadow(
-            color: slide.primaryColor.withOpacity(0.4),
+            color: slide.primaryColor.withValues(alpha: 0.4),
             blurRadius: 40,
             offset: const Offset(0, 20),
           ),
@@ -737,7 +737,7 @@ class _OnboardingState extends State<Onboarding> with TickerProviderStateMixin {
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
+                    color: Colors.black.withValues(alpha: 0.1),
                     blurRadius: 10,
                     offset: const Offset(0, 5),
                   ),
@@ -762,7 +762,7 @@ class _OnboardingState extends State<Onboarding> with TickerProviderStateMixin {
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
+                    color: Colors.black.withValues(alpha: 0.1),
                     blurRadius: 8,
                     offset: const Offset(0, 4),
                   ),
@@ -793,7 +793,7 @@ class _OnboardingState extends State<Onboarding> with TickerProviderStateMixin {
         shape: BoxShape.circle,
         boxShadow: [
           BoxShadow(
-            color: slide.primaryColor.withOpacity(0.4),
+            color: slide.primaryColor.withValues(alpha: 0.4),
             blurRadius: 40,
             offset: const Offset(0, 20),
           ),
@@ -814,7 +814,7 @@ class _OnboardingState extends State<Onboarding> with TickerProviderStateMixin {
               child: Icon(
                 Icons.star,
                 size: 12.sp,
-                color: Colors.white.withOpacity(0.8),
+                color: Colors.white.withValues(alpha: 0.8),
               ),
             );
           }),
@@ -901,10 +901,10 @@ class _OnboardingState extends State<Onboarding> with TickerProviderStateMixin {
                     vertical: 4.h,
                   ),
                   decoration: BoxDecoration(
-                    color: slide.primaryColor.withOpacity(0.1),
+                    color: slide.primaryColor.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(12.r),
                     border: Border.all(
-                      color: slide.primaryColor.withOpacity(0.3),
+                      color: slide.primaryColor.withValues(alpha: 0.3),
                       width: 1,
                     ),
                   ),
@@ -938,15 +938,17 @@ class _OnboardingState extends State<Onboarding> with TickerProviderStateMixin {
               child: Container(
                 height: 48.h,
                 decoration: BoxDecoration(
-                  color: isDark ? Colors.white.withOpacity(0.1) : Colors.white,
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.1)
+                      : Colors.white,
                   borderRadius: BorderRadius.circular(14.r),
                   border: Border.all(
-                    color: slide.primaryColor.withOpacity(0.3),
+                    color: slide.primaryColor.withValues(alpha: 0.3),
                     width: 1,
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: slide.primaryColor.withOpacity(0.1),
+                      color: slide.primaryColor.withValues(alpha: 0.1),
                       blurRadius: 8,
                       offset: const Offset(0, 4),
                     ),
@@ -988,7 +990,7 @@ class _OnboardingState extends State<Onboarding> with TickerProviderStateMixin {
                 borderRadius: BorderRadius.circular(14.r),
                 boxShadow: [
                   BoxShadow(
-                    color: slide.primaryColor.withOpacity(0.4),
+                    color: slide.primaryColor.withValues(alpha: 0.4),
                     blurRadius: 16,
                     offset: const Offset(0, 8),
                   ),
@@ -1051,8 +1053,8 @@ class ParticleBackgroundPainter extends CustomPainter {
       final y = center.dy + math.sin(angle) * distance;
 
       final paint = Paint()
-        ..color = (i % 2 == 0 ? primaryColor : secondaryColor).withOpacity(
-          0.3 + math.sin(animation * math.pi * 2 + i) * 0.2,
+        ..color = (i % 2 == 0 ? primaryColor : secondaryColor).withValues(
+          alpha: 0.3 + math.sin(animation * math.pi * 2 + i) * 0.2,
         )
         ..style = PaintingStyle.fill;
 
@@ -1062,7 +1064,7 @@ class ParticleBackgroundPainter extends CustomPainter {
 
     // Draw connecting lines
     final linePaint = Paint()
-      ..color = primaryColor.withOpacity(0.1)
+      ..color = primaryColor.withValues(alpha: 0.1)
       ..strokeWidth = 1
       ..style = PaintingStyle.stroke;
 

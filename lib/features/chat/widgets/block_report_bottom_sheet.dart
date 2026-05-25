@@ -128,7 +128,7 @@ class _BlockReportBottomSheetState extends State<BlockReportBottomSheet>
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.2),
+                color: Colors.black.withValues(alpha: 0.2),
                 blurRadius: 20,
                 offset: const Offset(0, -5),
               ),
@@ -180,7 +180,7 @@ class _BlockReportBottomSheetState extends State<BlockReportBottomSheet>
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: _getIconColor().withOpacity(0.1),
+                color: _getIconColor().withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(
@@ -356,7 +356,7 @@ class _BlockReportBottomSheetState extends State<BlockReportBottomSheet>
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
                 borderSide: BorderSide(
-                  color: theme.dividerColor.withOpacity(0.3),
+                  color: theme.dividerColor.withValues(alpha: 0.3),
                 ),
               ),
               focusedBorder: OutlineInputBorder(
@@ -398,13 +398,13 @@ class _BlockReportBottomSheetState extends State<BlockReportBottomSheet>
         selected: isSelected,
         label: Text(reason.persianLabel),
         onSelected: (_) => onTap(),
-        selectedColor: theme.primaryColor.withOpacity(0.2),
+        selectedColor: theme.primaryColor.withValues(alpha: 0.2),
         checkmarkColor: theme.primaryColor,
         backgroundColor: theme.cardColor,
         side: BorderSide(
           color: isSelected
               ? theme.primaryColor
-              : theme.dividerColor.withOpacity(0.3),
+              : theme.dividerColor.withValues(alpha: 0.3),
           width: isSelected ? 2 : 1,
         ),
         labelStyle: TextStyle(
@@ -428,10 +428,10 @@ class _BlockReportBottomSheetState extends State<BlockReportBottomSheet>
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: color.withOpacity(isDark ? 0.1 : 0.05),
+        color: color.withValues(alpha: isDark ? 0.1 : 0.05),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: color.withOpacity(0.3),
+          color: color.withValues(alpha: 0.3),
           width: 1,
         ),
       ),
@@ -457,7 +457,7 @@ class _BlockReportBottomSheetState extends State<BlockReportBottomSheet>
             description,
             style: TextStyle(
               fontSize: 13,
-              color: color.withOpacity(0.8),
+              color: color.withValues(alpha: 0.8),
               fontWeight: FontWeight.w500,
             ),
           ),
@@ -472,7 +472,7 @@ class _BlockReportBottomSheetState extends State<BlockReportBottomSheet>
                       height: 4,
                       margin: const EdgeInsets.only(top: 7, left: 8),
                       decoration: BoxDecoration(
-                        color: color.withOpacity(0.6),
+                        color: color.withValues(alpha: 0.6),
                         shape: BoxShape.circle,
                       ),
                     ),
@@ -481,7 +481,7 @@ class _BlockReportBottomSheetState extends State<BlockReportBottomSheet>
                         item,
                         style: TextStyle(
                           fontSize: 13,
-                          color: color.withOpacity(0.7),
+                          color: color.withValues(alpha: 0.7),
                         ),
                       ),
                     ),
@@ -507,7 +507,7 @@ class _BlockReportBottomSheetState extends State<BlockReportBottomSheet>
         color: theme.cardColor,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: theme.dividerColor.withOpacity(0.3),
+          color: theme.dividerColor.withValues(alpha: 0.3),
         ),
       ),
       child: Row(
@@ -515,7 +515,7 @@ class _BlockReportBottomSheetState extends State<BlockReportBottomSheet>
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: theme.primaryColor.withOpacity(0.1),
+              color: theme.primaryColor.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Icon(icon, color: theme.primaryColor, size: 20),
@@ -561,7 +561,7 @@ class _BlockReportBottomSheetState extends State<BlockReportBottomSheet>
         color: isDark ? const Color(0xFF1A1A1A) : Colors.white,
         border: Border(
           top: BorderSide(
-            color: theme.dividerColor.withOpacity(0.3),
+            color: theme.dividerColor.withValues(alpha: 0.3),
           ),
         ),
       ),

@@ -271,8 +271,8 @@ class _GroupCreateScreenState extends ConsumerState<GroupCreateScreen> {
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: isDark
-                  ? Colors.white.withOpacity(0.05)
-                  : Colors.grey.withOpacity(0.05),
+                  ? Colors.white.withValues(alpha: 0.05)
+                  : Colors.grey.withValues(alpha: 0.05),
               borderRadius: BorderRadius.circular(16),
             ),
             child: Column(
@@ -286,7 +286,7 @@ class _GroupCreateScreenState extends ConsumerState<GroupCreateScreen> {
                       width: 56,
                       height: 56,
                       decoration: BoxDecoration(
-                        color: theme.colorScheme.primary.withOpacity(0.1),
+                        color: theme.colorScheme.primary.withValues(alpha: 0.1),
                         shape: BoxShape.circle,
                       ),
                       child: Icon(
@@ -391,7 +391,7 @@ class _GroupCreateScreenState extends ConsumerState<GroupCreateScreen> {
                             Icon(
                               Icons.person_search_rounded,
                               size: 48,
-                              color: theme.hintColor.withOpacity(0.5),
+                              color: theme.hintColor.withValues(alpha: 0.5),
                             ),
                             const SizedBox(height: 12),
                             Text(
@@ -426,7 +426,7 @@ class _GroupCreateScreenState extends ConsumerState<GroupCreateScreen> {
     return Container(
       padding: const EdgeInsets.only(left: 4, right: 10),
       decoration: BoxDecoration(
-        color: theme.colorScheme.primary.withOpacity(0.1),
+        color: theme.colorScheme.primary.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Row(
@@ -435,7 +435,7 @@ class _GroupCreateScreenState extends ConsumerState<GroupCreateScreen> {
           // آواتار کوچک
           CircleAvatar(
             radius: 14,
-            backgroundColor: theme.colorScheme.primary.withOpacity(0.2),
+            backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.2),
             backgroundImage:
                 user.avatarUrl != null ? NetworkImage(user.avatarUrl!) : null,
             child: user.avatarUrl == null
@@ -483,8 +483,8 @@ class _GroupCreateScreenState extends ConsumerState<GroupCreateScreen> {
       height: 44,
       decoration: BoxDecoration(
         color: isDark
-            ? Colors.white.withOpacity(0.08)
-            : Colors.black.withOpacity(0.05),
+            ? Colors.white.withValues(alpha: 0.08)
+            : Colors.black.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(12),
       ),
       child: TextField(
@@ -535,7 +535,8 @@ class _GroupCreateScreenState extends ConsumerState<GroupCreateScreen> {
                 // آواتار
                 CircleAvatar(
                   radius: 24,
-                  backgroundColor: theme.colorScheme.primary.withOpacity(0.1),
+                  backgroundColor:
+                      theme.colorScheme.primary.withValues(alpha: 0.1),
                   backgroundImage: user.avatarUrl != null
                       ? NetworkImage(user.avatarUrl!)
                       : null,
@@ -597,7 +598,7 @@ class _GroupCreateScreenState extends ConsumerState<GroupCreateScreen> {
                     border: Border.all(
                       color: isSelected
                           ? theme.colorScheme.primary
-                          : theme.hintColor.withOpacity(0.5),
+                          : theme.hintColor.withValues(alpha: 0.5),
                       width: 2,
                     ),
                   ),
@@ -619,7 +620,7 @@ class _GroupCreateScreenState extends ConsumerState<GroupCreateScreen> {
               thickness: 0.5,
               indent: 70,
               endIndent: 16,
-              color: theme.dividerColor.withOpacity(0.3),
+              color: theme.dividerColor.withValues(alpha: 0.3),
             ),
         ],
       ),

@@ -183,7 +183,7 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen>
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(isDark ? 0.3 : 0.08),
+            color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.08),
             blurRadius: 20,
             offset: const Offset(0, 8),
           ),
@@ -201,10 +201,10 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen>
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: Colors.green
-                      .withOpacity(0.1 + (_pulseController.value * 0.1)),
+                      .withValues(alpha: 0.1 + (_pulseController.value * 0.1)),
                   border: Border.all(
                     color: Colors.green
-                        .withOpacity(0.3 + (_pulseController.value * 0.2)),
+                        .withValues(alpha: 0.3 + (_pulseController.value * 0.2)),
                     width: 3,
                   ),
                 ),
@@ -222,7 +222,7 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen>
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             decoration: BoxDecoration(
-              color: Colors.green.withOpacity(0.15),
+              color: Colors.green.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(20),
             ),
             child: Row(

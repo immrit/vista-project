@@ -28,7 +28,7 @@ class MusicStickerWidget extends StatelessWidget {
       width: 260,
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: style == 0 ? Colors.black.withOpacity(0.7) : Colors.white,
+        color: style == 0 ? Colors.black.withValues(alpha: 0.7) : Colors.white,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: style == 0 ? Colors.white24 : Colors.black12,

@@ -287,7 +287,9 @@ class MessageTimeAndStatus extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = textColor ??
-        (isMe ? Colors.white.withOpacity(0.7) : Colors.black.withOpacity(0.5));
+        (isMe
+            ? Colors.white.withValues(alpha: 0.7)
+            : Colors.black.withValues(alpha: 0.5));
 
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -507,7 +509,7 @@ class SmoothStatusIcon extends StatelessWidget {
         Icons.access_time,
         key: const ValueKey('pending'),
         size: size,
-        color: iconColor.withOpacity(0.6),
+        color: iconColor.withValues(alpha: 0.6),
       );
     }
 

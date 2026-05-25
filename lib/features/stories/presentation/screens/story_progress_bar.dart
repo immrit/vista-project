@@ -40,7 +40,7 @@ class StoryProgressBar extends StatelessWidget {
             // پس‌زمینه
             Container(
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.3),
+                color: Colors.white.withValues(alpha: 0.3),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),

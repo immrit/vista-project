@@ -112,14 +112,14 @@ class StickerFactory {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
               color:
-                  style == 0 ? Colors.white.withOpacity(0.2) : Colors.black12,
+                  style == 0 ? Colors.white.withValues(alpha: 0.2) : Colors.black12,
               borderRadius: BorderRadius.circular(8),
             ),
             child: Text(
               'پاسخ دهید...',
               style: TextStyle(
                 color:
-                    style == 0 ? Colors.white.withOpacity(0.7) : Colors.black54,
+                    style == 0 ? Colors.white.withValues(alpha: 0.7) : Colors.black54,
                 fontSize: 12,
                 fontFamily: 'Vazir',
               ),

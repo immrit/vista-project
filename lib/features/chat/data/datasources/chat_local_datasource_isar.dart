@@ -157,7 +157,7 @@ class ChatLocalDataSourceIsar {
           ..isLastMessageFromMe = merged.isMe
           ..lastMessageSenderId = merged.senderId
           ..lastMessageDeliveryStatus = _messageDeliveryStatusToString(merged)
-          ..otherUserName = 'VISTA USER'
+          ..otherUserName = 'کاربر ناشناس'
           ..unreadCount = shouldIncrementUnread ? 1 : 0
           ..hasUnreadMessages = shouldIncrementUnread
           ..type = 'private';
@@ -233,7 +233,7 @@ class ChatLocalDataSourceIsar {
         ..id = normalizedConversationId
         ..createdAt = latestMessage.createdAt
         ..updatedAt = latestMessage.createdAt
-        ..otherUserName = 'VISTA USER'
+        ..otherUserName = 'کاربر ناشناس'
         ..type = 'private';
     }
 

@@ -4,6 +4,7 @@ import '../core/security/input_policy.dart';
 import '../features/auth/data/auth_repository.dart';
 import '../features/auth/providers/auth_controller.dart';
 import '../features/profile/data/profile_repository.dart';
+import '../DB/profile_cache_service.dart';
 import '../security/logging_utility.dart';
 
 final profileCompletionProvider =
@@ -22,7 +23,17 @@ class ProfileCompletionNotifier extends StateNotifier<bool> {
       final user = await AuthRepository().me(accessToken);
       await TokenStorage.saveUserId(user.id);
 
-      final profile = await ProfileRepository().fetchProfile(user.id);
+      // If the backend says the profile is completed, trust it immediately.
+      if (user.profileCompleted) {
+        state = true;
+        return true;
+      }
+
+      final cacheService = ProfileCacheService();
+      final cachedProfile = await cacheService.getCachedProfile(user.id);
+      Map<String, dynamic>? profile = cachedProfile?.toMap();
+      profile ??= await ProfileRepository().fetchProfile(user.id);
+
       final isComplete = _isComplete(profile ?? const <String, dynamic>{});
       state = isComplete;
       return isComplete;

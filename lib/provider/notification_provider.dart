@@ -2,7 +2,7 @@ import 'dart:convert';
 
 import 'package:dio/dio.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:Vista/utils/env_config.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -63,6 +63,7 @@ bool notificationTypeMatchesFilter(
 
 class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
   static const bool _showRealtimeLocalNotifications = false;
+  static const Duration _rateLimitCooldown = Duration(seconds: 30);
 
   NotificationsNotifier(this._ref) : super([]) {
     _bootstrap();
@@ -70,7 +71,7 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
 
   final Ref _ref;
   late final Dio _dio = Dio(BaseOptions(
-    baseUrl: '${dotenv.env['BACKEND_URL'] ?? 'http://10.0.2.2:8080'}/v1',
+    baseUrl: '${EnvConfig.apiBaseUrl}/v1',
     connectTimeout: const Duration(seconds: 15),
     receiveTimeout: const Duration(seconds: 15),
     headers: {'Content-Type': 'application/json'},
@@ -81,6 +82,7 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
   bool _isFetching = false;
   bool _hasMore = true;
   bool _isDisposed = false;
+  DateTime? _nextAllowedFetchAt;
 
   bool get hasMore => _hasMore;
   bool get isFetching => _isFetching;
@@ -110,6 +112,8 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
 
   Future<void> fetchNotifications({bool refresh = false}) async {
     if (_isFetching || _isDisposed) return;
+    final nextAllowed = _nextAllowedFetchAt;
+    if (nextAllowed != null && DateTime.now().isBefore(nextAllowed)) return;
     _isFetching = true;
 
     final userId = await _resolveUserId();
@@ -152,6 +156,15 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
 
       _hasMore = response.data['has_more'] == true;
       if (_hasMore) _page++;
+    } on DioException catch (e, st) {
+      if (e.response?.statusCode == 429) {
+        _nextAllowedFetchAt = DateTime.now().add(_rateLimitCooldown);
+        logInfo('⚠️ Notifications rate-limited (429). Cooling down requests.');
+      } else {
+        logError('Failed to fetch notifications', error: e, stackTrace: st);
+      }
+      if (refresh && !_isDisposed) state = [];
+      _hasMore = false;
     } catch (e, st) {
       logError('Failed to fetch notifications', error: e, stackTrace: st);
       if (refresh && !_isDisposed) state = [];
@@ -469,7 +482,7 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
   }
 }
 
-final notificationsProvider = StateNotifierProvider.autoDispose<
+final notificationsProvider = StateNotifierProvider<
     NotificationsNotifier, List<NotificationModel>>(
   (ref) => NotificationsNotifier(ref),
 );

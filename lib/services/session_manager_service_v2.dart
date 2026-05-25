@@ -4,7 +4,7 @@ import 'dart:io';
 
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:Vista/utils/env_config.dart';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:uuid/uuid.dart';
@@ -17,7 +17,9 @@ import '../security/logging_utility.dart';
 import '../services/current_user_service.dart';
 import '../services/device_id_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 enum SessionVerificationState { verified, pendingVerification, invalid }
+
 enum RefreshResult { success, authError, networkError }
 
 /// 🚀 Session Manager V2 — Go Backend Edition
@@ -65,7 +67,7 @@ class SessionManagerServiceV2 {
   SessionVerificationState get verificationState => _verificationState;
 
   // ─── Backend helpers ─────────────────────────────────────────
-  String get _backendUrl => dotenv.env['BACKEND_URL'] ?? 'http://10.0.2.2:8080';
+  String get _backendUrl => EnvConfig.apiBaseUrl;
 
   Uri _backendUri(String path) => Uri.parse('$_backendUrl$path');
 
@@ -126,7 +128,7 @@ class SessionManagerServiceV2 {
       }
       throw 'HTTP ${response.statusCode}: ${response.body}';
     }
-    logInfo('✅ Backend request success: ${method} ${path}');
+    logInfo('✅ Backend request success: $method $path');
     return _decodeBody(response.body);
   }
 
@@ -347,12 +349,7 @@ class SessionManagerServiceV2 {
         _verificationState = SessionVerificationState.invalid;
         return false;
       } catch (e) {
-        final s = e.toString().toLowerCase();
-        if (s.contains('network') ||
-            s.contains('timeout') ||
-            s.contains('connection') ||
-            s.contains('socket') ||
-            s.contains('failed host')) {
+        if (_isRecoverableValidationError(e)) {
           _verificationState = SessionVerificationState.pendingVerification;
           return true;
         }
@@ -364,6 +361,22 @@ class SessionManagerServiceV2 {
     }
     _verificationState = SessionVerificationState.invalid;
     return false;
+  }
+
+  bool _isRecoverableValidationError(Object error) {
+    final text = error.toString().toLowerCase();
+    if (text.contains('http 429') ||
+        text.contains('http 500') ||
+        text.contains('http 502') ||
+        text.contains('http 503') ||
+        text.contains('http 504')) {
+      return true;
+    }
+    return text.contains('network') ||
+        text.contains('timeout') ||
+        text.contains('connection') ||
+        text.contains('socket') ||
+        text.contains('failed host');
   }
 
   // ═══════════════════════════════════════════════════════════

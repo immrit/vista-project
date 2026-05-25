@@ -98,7 +98,7 @@ class ProfileAvatar extends ConsumerWidget {
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           border: Border.all(
-            color: theme.dividerColor.withOpacity(0.2),
+            color: theme.dividerColor.withValues(alpha: 0.2),
             width: 1,
           ),
         ),
@@ -136,7 +136,7 @@ class ProfileAvatar extends ConsumerWidget {
             ? [
                 BoxShadow(
                   color: const Color(0xFFD62976)
-                      .withOpacity(0.2), // Colored shadow
+                      .withValues(alpha: 0.2), // Colored shadow
                   blurRadius: 6,
                   spreadRadius: 0,
                 ),
@@ -175,7 +175,7 @@ class ProfileAvatar extends ConsumerWidget {
       height: size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: Theme.of(context).disabledColor.withOpacity(0.1),
+        color: Theme.of(context).disabledColor.withValues(alpha: 0.1),
       ),
       child: Icon(
         Icons.person_rounded,
@@ -191,7 +191,7 @@ class ProfileAvatar extends ConsumerWidget {
       fit: BoxFit.cover,
       errorBuilder: (context, error, stackTrace) {
         return Container(
-          color: Theme.of(context).primaryColor.withOpacity(0.1),
+          color: Theme.of(context).primaryColor.withValues(alpha: 0.1),
           child: Icon(
             Icons.person_rounded,
             color: Theme.of(context).primaryColor,
@@ -264,7 +264,7 @@ class ProfileInfoCard extends ConsumerWidget {
               height: avatarSize,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: theme.disabledColor.withOpacity(0.1),
+                color: theme.disabledColor.withValues(alpha: 0.1),
               ),
             ),
             const SizedBox(width: 16),
@@ -276,7 +276,7 @@ class ProfileInfoCard extends ConsumerWidget {
                     width: 120,
                     height: 16,
                     decoration: BoxDecoration(
-                      color: theme.disabledColor.withOpacity(0.1),
+                      color: theme.disabledColor.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(4),
                     ),
                   ),
@@ -285,7 +285,7 @@ class ProfileInfoCard extends ConsumerWidget {
                     width: 80,
                     height: 12,
                     decoration: BoxDecoration(
-                      color: theme.disabledColor.withOpacity(0.05),
+                      color: theme.disabledColor.withValues(alpha: 0.05),
                       borderRadius: BorderRadius.circular(4),
                     ),
                   ),

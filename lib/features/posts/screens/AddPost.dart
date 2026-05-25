@@ -186,7 +186,7 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
         color: Colors.black,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
+            color: Colors.black.withValues(alpha: 0.1),
             blurRadius: 10,
             offset: const Offset(0, 5),
           ),
@@ -251,7 +251,7 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
               child: Container(
                 padding: const EdgeInsets.all(5),
                 decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.6),
+                  color: Colors.black.withValues(alpha: 0.6),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(
@@ -275,7 +275,7 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
               child: Container(
                 padding: const EdgeInsets.all(5),
                 decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.6),
+                  color: Colors.black.withValues(alpha: 0.6),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
@@ -889,8 +889,8 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(12),
           color: isDarkMode
-              ? Colors.white.withOpacity(0.05)
-              : Colors.black.withOpacity(0.02),
+              ? Colors.white.withValues(alpha: 0.05)
+              : Colors.black.withValues(alpha: 0.02),
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -959,7 +959,9 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
     return Column(
       children: [
         Material(
-          color: isDarkMode ? Colors.white12 : Colors.black.withOpacity(0.05),
+          color: isDarkMode
+              ? Colors.white12
+              : Colors.black.withValues(alpha: 0.05),
           borderRadius: BorderRadius.circular(12),
           child: InkWell(
             onTap: onTap,
@@ -991,15 +993,15 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
     return Card(
       elevation: 0,
       color: isDarkMode
-          ? Colors.white.withOpacity(0.05)
-          : Colors.black.withOpacity(0.02),
+          ? Colors.white.withValues(alpha: 0.05)
+          : Colors.black.withValues(alpha: 0.02),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         leading: Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: primaryColor.withOpacity(0.1),
+            color: primaryColor.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Icon(
@@ -1051,7 +1053,7 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
         color: isDarkMode ? const Color(0xFF1A1A1A) : Colors.white,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 10,
             offset: const Offset(0, -5),
           ),

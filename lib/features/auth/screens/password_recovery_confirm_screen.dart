@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:Vista/core/security/input_policy.dart';
 
 import '../data/auth_repository.dart';
 import '../widgets/ribbon_background.dart';

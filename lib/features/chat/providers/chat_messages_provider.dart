@@ -6,6 +6,12 @@ import 'package:Vista/features/chat/providers/chat_providers.dart';
 
 import 'package:Vista/security/logging_utility.dart';
 import 'dart:async';
+import 'package:Vista/features/chat/services/e2e_encryption_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:cryptography/cryptography.dart';
+import 'package:Vista/core/data/cache/cache_repository.dart';
+import 'package:Vista/features/auth/providers/auth_controller.dart';
+import 'dart:convert';
 
 part 'chat_messages_provider.g.dart';
 
@@ -31,8 +37,15 @@ class ChatMessages extends _$ChatMessages {
     // Return the stream from repository directly.
     // This is the SINGLE SOURCE OF TRUTH.
     _realtimeSubscription = repository.watchMessages(conversationId).listen(
-      (messages) {
-        state = AsyncValue.data(messages);
+      (messages) async {
+        // ✅ تلاش برای رمزگشایی اگر چت از نوع سکرت باشد
+        final conversation = CacheRepository().getConversationSync(conversationId);
+        if (conversation != null && conversation.isSecret) {
+           final decryptedMessages = await _decryptMessages(messages, conversationId);
+           state = AsyncValue.data(decryptedMessages);
+        } else {
+           state = AsyncValue.data(messages);
+        }
       },
       onError: (Object error, StackTrace stackTrace) {
         logError(
@@ -46,6 +59,48 @@ class ChatMessages extends _$ChatMessages {
 
     // Initial value while stream connects (Isar usually fires immediately)
     return state.valueOrNull ?? const [];
+  }
+
+  Future<List<MessageModel>> _decryptMessages(List<MessageModel> originalMessages, String convId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final peerPubB64 = prefs.getString('e2e_peer_pub_$convId');
+    if (peerPubB64 == null) return originalMessages;
+    
+    final userId = await TokenStorage.getUserId();
+    if (userId == null) return originalMessages;
+
+    final e2e = E2EEncryptionService();
+    final myKeyPair = await e2e.getSavedKeyPair(userId);
+    if (myKeyPair == null) return originalMessages;
+    
+    SecretKey? sharedSecret;
+    try {
+      sharedSecret = await e2e.computeSharedSecret(
+        myKeyPair: myKeyPair,
+        peerPublicKeyBytes: base64Decode(peerPubB64),
+      );
+    } catch (_) {
+      return originalMessages;
+    }
+
+    final decryptedList = <MessageModel>[];
+    for (var m in originalMessages) {
+       // Only try decrypting normal text/media content, not system exchange keys
+       if (m.messageType != 'exchange_key' && m.messageType != 'exchange_key_reply' && m.content.isNotEmpty) {
+           try {
+              // Basic check if it looks like base64
+              if (m.content.length > 20 && !m.content.contains(' ')) {
+                 final decryptedContent = await e2e.decryptMessage(m.content, sharedSecret);
+                 if (decryptedContent != '[پیام غیرقابل رمزگشایی]') {
+                     decryptedList.add(m.copyWith(content: decryptedContent));
+                     continue;
+                 }
+              }
+           } catch (_) {}
+       }
+       decryptedList.add(m);
+    }
+    return decryptedList;
   }
 
   Future<void> loadMore() async {

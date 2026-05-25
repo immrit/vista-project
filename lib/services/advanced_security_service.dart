@@ -7,7 +7,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:logger/logger.dart';
 import 'package:local_auth/local_auth.dart';
-import 'current_user_service.dart';
 import '../security/logging_utility.dart';
 
 final logger = Logger(

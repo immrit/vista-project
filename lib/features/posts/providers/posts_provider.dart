@@ -1,39 +1,15 @@
 import 'dart:async';
-import 'dart:io';
-import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:isar/isar.dart';
-import 'package:Vista/DB/isar_database_manager.dart';
-import 'package:Vista/DB/entities/app_settings_entity.dart';
-import 'package:Vista/widgets/VideoPlayerConfig.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:Vista/DB/profile_cache_service.dart';
-import 'package:Vista/DB/settings_cache_service.dart';
-import 'package:Vista/services/animation_controller_service.dart';
-import 'package:Vista/services/video_autoplay_service.dart';
 import 'package:Vista/services/video_preload_service.dart';
-import 'package:Vista/services/image_quality_service.dart';
-import 'package:Vista/core/data/cache/cache_repository.dart';
-import 'package:Vista/model/SearchResut.dart';
 // import 'package:Vista/view/widgets/VideoPlayerConfig.dart';
 import 'package:Vista/model/ProfileModel.dart';
 // import 'package:Vista/model/notificationModel.dart';
 import 'package:Vista/model/publicPostModel.dart';
-import 'package:Vista/model/CommentModel.dart';
-import 'package:Vista/model/UserModel.dart';
-import 'package:Vista/widgets/verification_badge_icon.dart';
-import 'package:Vista/utils/themes.dart';
 import 'package:Vista/services/user_friendly_error_handler.dart';
-import 'package:Vista/services/voice_cache_service.dart';
-import 'package:Vista/features/auth/providers/auth_controller.dart';
 import 'package:Vista/features/profile/data/profile_repository.dart';
-import 'package:Vista/features/profile/data/services/profile_note_service.dart';
 import 'package:Vista/features/posts/data/go_posts_repository.dart';
-import 'package:Vista/features/stories/data/repositories/story_repository.dart';
-import 'package:Vista/services/comment_repository.dart';
-import 'package:Vista/provider/notification_provider.dart' as go_notifications;
 // Import security provider
 
 import 'package:Vista/provider/general_provider.dart';
@@ -42,7 +18,6 @@ export 'package:Vista/provider/security_provider.dart';
 export 'package:Vista/features/auth/providers/auth_controller.dart';
 
 export 'package:Vista/features/profile/providers/profile_controller.dart';
-import 'package:Vista/features/profile/providers/profile_controller.dart';
 // profileProvider and profileUpdateProvider moved to profile_controller.dart
 
 final fetchPublicPosts = FutureProvider<List<PublicPostModel>>((ref) async {

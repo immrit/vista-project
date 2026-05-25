@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:dio/dio.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:Vista/utils/env_config.dart';
 
 import '../features/auth/providers/auth_controller.dart';
 import '../features/chat/services/sse_manager.dart';
@@ -13,7 +13,7 @@ class TypingService {
   TypingService._internal();
 
   static String get _backendUrl =>
-      dotenv.env['BACKEND_URL'] ?? 'http://10.0.2.2:8080';
+      EnvConfig.apiBaseUrl ?? 'http://10.0.2.2:8080';
 
   static const Duration _typingTimeout = Duration(seconds: 8);
   static const Duration _typingSyncThrottle = Duration(seconds: 1);

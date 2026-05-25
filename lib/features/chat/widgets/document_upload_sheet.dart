@@ -180,7 +180,7 @@ class _DocumentUploadSheetState extends State<DocumentUploadSheet>
           leading: Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: accentColor.withOpacity(isDark ? 0.2 : 0.14),
+              color: accentColor.withValues(alpha: isDark ? 0.2 : 0.14),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(Icons.upload_file_rounded, color: accentColor),
@@ -207,9 +207,9 @@ class _DocumentUploadSheetState extends State<DocumentUploadSheet>
           child: Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: accentColor.withOpacity(isDark ? 0.16 : 0.1),
+              color: accentColor.withValues(alpha: isDark ? 0.16 : 0.1),
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: accentColor.withOpacity(0.28)),
+              border: Border.all(color: accentColor.withValues(alpha: 0.28)),
             ),
             child: Row(
               children: [
@@ -236,14 +236,14 @@ class _DocumentUploadSheetState extends State<DocumentUploadSheet>
         decoration: BoxDecoration(
           color: isDark ? const Color(0xFF2A2A2A) : _lightSurface,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: theme.dividerColor.withOpacity(0.35)),
+          border: Border.all(color: theme.dividerColor.withValues(alpha: 0.35)),
         ),
         child: Row(
           children: [
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: accentColor.withOpacity(isDark ? 0.2 : 0.14),
+                color: accentColor.withValues(alpha: isDark ? 0.2 : 0.14),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Text(_fileType?.emoji ?? '📎',
@@ -313,8 +313,8 @@ class _DocumentUploadSheetState extends State<DocumentUploadSheet>
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        border:
-            Border(top: BorderSide(color: theme.dividerColor.withOpacity(0.3))),
+        border: Border(
+            top: BorderSide(color: theme.dividerColor.withValues(alpha: 0.3))),
       ),
       child: Row(
         children: [
@@ -323,7 +323,7 @@ class _DocumentUploadSheetState extends State<DocumentUploadSheet>
               onPressed: canSend ? _pickFile : null,
               style: OutlinedButton.styleFrom(
                 foregroundColor: accentColor,
-                side: BorderSide(color: accentColor.withOpacity(0.35)),
+                side: BorderSide(color: accentColor.withValues(alpha: 0.35)),
               ),
               child: const Text('تغییر فایل'),
             ),
@@ -338,7 +338,7 @@ class _DocumentUploadSheetState extends State<DocumentUploadSheet>
                 foregroundColor: Colors.white,
                 disabledBackgroundColor:
                     (isDark ? theme.disabledColor : accentColor)
-                        .withOpacity(0.38),
+                        .withValues(alpha: 0.38),
               ),
               icon: const Icon(Icons.send_rounded),
               label: Text(canSend ? 'ارسال' : 'انتخاب فایل'),

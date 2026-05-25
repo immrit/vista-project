@@ -156,7 +156,7 @@ class _MentionInputSheetState extends State<MentionInputSheet> {
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFFDD2A7B).withOpacity(0.4),
+            color: const Color(0xFFDD2A7B).withValues(alpha: 0.4),
             blurRadius: 15,
             offset: const Offset(0, 5),
           ),

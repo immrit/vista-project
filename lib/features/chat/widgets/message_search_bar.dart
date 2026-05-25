@@ -122,7 +122,7 @@ class _MessageSearchBarState extends ConsumerState<MessageSearchBar>
           color: theme.appBarColor,
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.1),
+              color: Colors.black.withValues(alpha: 0.1),
               blurRadius: 8,
               offset: const Offset(0, 2),
             ),
@@ -192,7 +192,7 @@ class _MessageSearchBarState extends ConsumerState<MessageSearchBar>
                   Icons.keyboard_arrow_up_rounded,
                   color: searchState.canGoPrevious
                       ? theme.iconColor
-                      : theme.iconColor.withOpacity(0.3),
+                      : theme.iconColor.withValues(alpha: 0.3),
                 ),
               ),
 
@@ -203,7 +203,7 @@ class _MessageSearchBarState extends ConsumerState<MessageSearchBar>
                   Icons.keyboard_arrow_down_rounded,
                   color: searchState.canGoNext
                       ? theme.iconColor
-                      : theme.iconColor.withOpacity(0.3),
+                      : theme.iconColor.withValues(alpha: 0.3),
                 ),
               ),
             ],

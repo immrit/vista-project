@@ -78,9 +78,7 @@ class ConversationModel {
         throw Exception('فیلد created_at در JSON موجود نیست');
       }
 
-      if (json['updated_at'] == null) {
-        throw Exception('فیلد updated_at در JSON موجود نیست');
-      }
+      final updatedAtStr = json['updated_at'] ?? json['created_at'];
 
       // Parse participants and extract other user info
       List<ConversationParticipantModel> participants = [];
@@ -142,7 +140,7 @@ class ConversationModel {
         }
       }
 
-      final conversationType = json['type'] as String?;
+      final conversationType = (json['conversation_type'] ?? json['type']) as String?;
       if (conversationType == 'group') {
         otherUserName = (json['name'] as String?) ?? 'گروه';
         otherUserAvatar = json['image'] as String?;
@@ -163,8 +161,8 @@ class ConversationModel {
       return ConversationModel(
         id: json['id'] as String,
         createdAt: DateTime.parse(json['created_at'] as String),
-        updatedAt: DateTime.parse(json['updated_at'] as String),
-        lastMessage: json['last_message'] as String?,
+        updatedAt: DateTime.parse(updatedAtStr as String),
+        lastMessage: (json['last_message_text'] ?? json['last_message']) as String?,
         lastMessageTime: json['last_message_time'] != null
             ? DateTime.parse(json['last_message_time'] as String)
             : null,
@@ -198,7 +196,11 @@ class ConversationModel {
     } catch (e) {
       logInfo('❌ خطا در تبدیل JSON به ConversationModel: $e');
       logInfo('📄 JSON داده: $json');
-      rethrow;
+      return ConversationModel.empty().copyWith(
+        id: 'err_${DateTime.now().millisecondsSinceEpoch}',
+        lastMessage: 'خطا در بارگزاری: $e',
+        otherUserName: 'System Error',
+      );
     }
   }
 

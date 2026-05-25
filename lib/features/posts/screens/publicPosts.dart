@@ -6,6 +6,7 @@ import 'package:buttons_tabbar/buttons_tabbar.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'package:shamsi_date/shamsi_date.dart';
@@ -185,8 +186,8 @@ class _PublicPostsScreenState extends ConsumerState<PublicPostsScreen>
     );
 
     final shadowColor = isDarkMode
-        ? Colors.black.withOpacity(0.3)
-        : Colors.grey.withOpacity(0.2);
+        ? Colors.black.withValues(alpha: 0.3)
+        : Colors.grey.withValues(alpha: 0.2);
 
     return Stack(
       children: [
@@ -483,12 +484,12 @@ class _AllPostsPaginatedTab extends ConsumerWidget {
                 }
 
                 return ListView.builder(
+                  scrollCacheExtent: ScrollCacheExtent.pixels(500),
                   itemCount: posts.length + (notifier.hasMorePosts() ? 1 : 0),
                   physics: const ClampingScrollPhysics(),
                   addAutomaticKeepAlives: false,
                   addRepaintBoundaries: true,
                   addSemanticIndexes: false,
-                  cacheExtent: 500,
                   itemBuilder: (context, index) {
                     if (index == posts.length) {
                       notifier.loadMorePosts();
@@ -586,12 +587,12 @@ class _FollowingPostsTab extends ConsumerWidget {
               ),
               data: (posts) {
                 return ListView.builder(
+                  scrollCacheExtent: ScrollCacheExtent.pixels(500),
                   itemCount: posts.length + (_hasMore ? 1 : 0),
                   physics: const ClampingScrollPhysics(),
                   addAutomaticKeepAlives: false,
                   addRepaintBoundaries: true,
                   addSemanticIndexes: false,
-                  cacheExtent: 500,
                   itemBuilder: (context, index) {
                     if (index == posts.length) {
                       ref
@@ -809,7 +810,7 @@ Widget _buildPostItem(
                 key: Key('profile_video_${post.id}'),
                 onVisibilityChanged: (visibilityInfo) {
                   // فقط برای لاگ: میزان قابل مشاهده بودن
-                  print(
+                  debugPrint(
                       'Video ${post.id} visibility: ${visibilityInfo.visibleFraction}');
                 },
                 child: CustomVideoPlayer(
@@ -1100,9 +1101,9 @@ Widget _buildHashtags(List<String> hashtags, BuildContext context) {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
+            color: color.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: color.withOpacity(0.5)),
+            border: Border.all(color: color.withValues(alpha: 0.5)),
           ),
           child: Text(
             '#$tag',
@@ -1384,9 +1385,10 @@ void showEditPostDialog(
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Colors.orange.withOpacity(0.1),
+                      color: Colors.orange.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                      border: Border.all(
+                          color: Colors.orange.withValues(alpha: 0.3)),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1414,10 +1416,11 @@ void showEditPostDialog(
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 8, vertical: 4),
                                 decoration: BoxDecoration(
-                                  color: Colors.orange.withOpacity(0.2),
+                                  color: Colors.orange.withValues(alpha: 0.2),
                                   borderRadius: BorderRadius.circular(12),
                                   border: Border.all(
-                                      color: Colors.orange.withOpacity(0.5)),
+                                      color:
+                                          Colors.orange.withValues(alpha: 0.5)),
                                 ),
                                 child: Text(
                                   template.length > 30
@@ -1676,9 +1679,10 @@ void showEditPostDialog(
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Colors.blue.withOpacity(0.1),
+                      color: Colors.blue.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                      border:
+                          Border.all(color: Colors.blue.withValues(alpha: 0.3)),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1704,10 +1708,10 @@ void showEditPostDialog(
                           Container(
                             padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
-                              color: Colors.orange.withOpacity(0.1),
+                              color: Colors.orange.withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(6),
                               border: Border.all(
-                                  color: Colors.orange.withOpacity(0.3)),
+                                  color: Colors.orange.withValues(alpha: 0.3)),
                             ),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1943,6 +1947,7 @@ Widget _buildPostActions(
             _showReportDialog(context, ref, post.id);
           } else if (value == 'copy') {
             await Clipboard.setData(ClipboardData(text: post.content));
+            if (!context.mounted) return;
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: const Text('متن پست کپی شد'),
@@ -2021,6 +2026,7 @@ Widget _buildPostActions(
           _showReportDialog(context, ref, post.id);
         } else if (value == 'copy') {
           await Clipboard.setData(ClipboardData(text: post.content));
+          if (!context.mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: const Text('متن پست کپی شد'),
@@ -2066,6 +2072,7 @@ Widget _buildPostActions(
           _showReportDialog(context, ref, post.id);
         } else if (value == 'copy') {
           await Clipboard.setData(ClipboardData(text: post.content));
+          if (!context.mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: const Text('متن پست کپی شد'),
@@ -2415,7 +2422,7 @@ class _ConnectionStatusBarState extends State<ConnectionStatusBar>
   Widget _buildOfflineMessage(bool isDark) {
     final color = isDark ? Colors.redAccent : Colors.red[700];
     final backgroundColor =
-        isDark ? Colors.red.withOpacity(0.2) : Colors.red[50];
+        isDark ? Colors.red.withValues(alpha: 0.2) : Colors.red[50];
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -2423,7 +2430,7 @@ class _ConnectionStatusBarState extends State<ConnectionStatusBar>
         color: backgroundColor,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: color!.withOpacity(0.5),
+          color: color!.withValues(alpha: 0.5),
           width: 1,
         ),
       ),
@@ -2451,7 +2458,7 @@ class _ConnectionStatusBarState extends State<ConnectionStatusBar>
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
+                color: color.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(4),
               ),
               child: Row(
@@ -2496,7 +2503,7 @@ class _ConnectionStatusBarState extends State<ConnectionStatusBar>
     }
 
     final backgroundColor =
-        isDark ? mainColor!.withOpacity(0.2) : mainColor!.withAlpha(20);
+        isDark ? mainColor!.withValues(alpha: 0.2) : mainColor!.withAlpha(20);
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -2789,7 +2796,7 @@ class UploadTaskItem extends ConsumerWidget {
             ? Colors.black26
             : Colors.grey[100],
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: statusColor.withOpacity(0.25)),
+        border: Border.all(color: statusColor.withValues(alpha: 0.25)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2860,7 +2867,7 @@ class UploadTaskItem extends ConsumerWidget {
                   value: progress,
                   minHeight: 4,
                   color: statusColor,
-                  backgroundColor: statusColor.withOpacity(0.15),
+                  backgroundColor: statusColor.withValues(alpha: 0.15),
                 ),
                 if (task.errorMessage != null && task.errorMessage!.isNotEmpty)
                   Padding(

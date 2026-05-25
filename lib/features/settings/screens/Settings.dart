@@ -72,7 +72,7 @@ class Settings extends ConsumerWidget {
               trailing: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF8774E1).withOpacity(0.1),
+                  color: const Color(0xFF8774E1).withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Text(

@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:Vista/utils/env_config.dart';
 import 'package:dio/dio.dart';
 
 import '../model/conversation_model.dart';
@@ -48,7 +48,7 @@ class UserBlockNotifier extends StateNotifier<AsyncValue<void>> {
   UserBlockNotifier() : super(const AsyncValue.data(null));
 
   static String get _backendUrl =>
-      dotenv.env['BACKEND_URL'] ?? 'http://10.0.2.2:8080';
+      EnvConfig.apiBaseUrl ?? 'http://10.0.2.2:8080';
 
   Future<Dio?> _authedDio() async {
     final token = await TokenStorage.getAccessToken();
@@ -95,7 +95,7 @@ class UserReportNotifier extends StateNotifier<AsyncValue<void>> {
   UserReportNotifier() : super(const AsyncValue.data(null));
 
   static String get _backendUrl =>
-      dotenv.env['BACKEND_URL'] ?? 'http://10.0.2.2:8080';
+      EnvConfig.apiBaseUrl ?? 'http://10.0.2.2:8080';
 
   Future<void> reportUser(String userId, String reason) async {
     state = const AsyncValue.loading();

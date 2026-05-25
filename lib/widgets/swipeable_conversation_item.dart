@@ -232,8 +232,8 @@ class _ConversationContent extends StatelessWidget {
 
   String _getDisplayName() {
     final name = conversation.otherUserName ?? '';
-    if (name.isEmpty || name == 'کاربر' || name == 'کاربر ناشناس') {
-      return 'VISTA USER';
+    if (name.isEmpty || name == 'کاربر') {
+      return 'کاربر ناشناس';
     }
     return name;
   }
@@ -518,7 +518,9 @@ class _ContentWidget extends StatelessWidget {
                         fontSize: 15,
                         fontWeight:
                             hasUnread ? FontWeight.w600 : FontWeight.w500,
-                        color: isSecret ? Colors.green : theme.textTheme.titleMedium?.color,
+                        color: isSecret
+                            ? Colors.green
+                            : theme.textTheme.titleMedium?.color,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -601,7 +603,10 @@ class _ContentWidget extends StatelessWidget {
             ),
             if (hasUnread) ...[
               const SizedBox(width: 8),
-              _UnreadBadge(count: unreadCount, isMuted: isMuted),
+              _UnreadBadge(
+                count: unreadCount,
+                isMuted: isMuted,
+              ),
             ],
           ],
         ),
@@ -717,7 +722,7 @@ class _UnreadBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const Color badgeColor = Color(0xFF1E88E5);
+    const badgeColor = Color(0xFF1E88E5);
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),

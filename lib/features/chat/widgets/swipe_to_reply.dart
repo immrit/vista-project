@@ -42,8 +42,9 @@ class _SwipeToReplyState extends State<SwipeToReply>
   void _onHorizontalDragUpdate(DragUpdateDetails details) {
     if (widget.isMe) {
       // My messages swipe left to reply
-      if (details.primaryDelta! > 0 && _dragExtent == 0)
+      if (details.primaryDelta! > 0 && _dragExtent == 0) {
         return; // Prevent right swipe
+      }
       _dragExtent += details.primaryDelta!;
       if (_dragExtent > 0) _dragExtent = 0; // Cap at 0
 
@@ -54,8 +55,9 @@ class _SwipeToReplyState extends State<SwipeToReply>
       }
     } else {
       // Other messages swipe right to reply
-      if (details.primaryDelta! < 0 && _dragExtent == 0)
+      if (details.primaryDelta! < 0 && _dragExtent == 0) {
         return; // Prevent left swipe
+      }
       _dragExtent += details.primaryDelta!;
       if (_dragExtent < 0) _dragExtent = 0; // Cap at 0
 
@@ -104,7 +106,9 @@ class _SwipeToReplyState extends State<SwipeToReply>
                       child: Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: Theme.of(context).primaryColor.withValues(alpha: 0.1),
+                          color: Theme.of(context)
+                              .primaryColor
+                              .withValues(alpha: 0.1),
                           shape: BoxShape.circle,
                         ),
                         child: Icon(

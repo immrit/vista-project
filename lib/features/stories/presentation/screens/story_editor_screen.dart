@@ -430,13 +430,13 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
                       children: [
                         Icon(
                           Icons.keyboard_arrow_up,
-                          color: Colors.white.withOpacity(0.5),
+                          color: Colors.white.withValues(alpha: 0.5),
                           size: 24,
                         ),
                         Text(
                           'استیکرها',
                           style: TextStyle(
-                            color: Colors.white.withOpacity(0.5),
+                            color: Colors.white.withValues(alpha: 0.5),
                             fontSize: 10,
                           ),
                         ),
@@ -558,7 +558,7 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.7),
+          color: Colors.black.withValues(alpha: 0.7),
           borderRadius: BorderRadius.circular(8),
         ),
         child: Text(
@@ -629,14 +629,15 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
         decoration: BoxDecoration(
           gradient: LinearGradient(
             colors: [
-              item.color.withOpacity(0.8),
-              item.color.withOpacity(0.4),
+              item.color.withValues(alpha: 0.8),
+              item.color.withValues(alpha: 0.4),
             ],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.white.withOpacity(0.2), width: 1),
+          border:
+              Border.all(color: Colors.white.withValues(alpha: 0.2), width: 1),
         ),
         child: Text(
           item.text,

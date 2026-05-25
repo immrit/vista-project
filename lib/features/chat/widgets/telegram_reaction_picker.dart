@@ -151,7 +151,7 @@ class _TelegramReactionPickerState extends State<TelegramReactionPicker>
               borderRadius: BorderRadius.circular(30),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.15),
+                  color: Colors.black.withValues(alpha: 0.15),
                   blurRadius: 12,
                   offset: const Offset(0, 4),
                   spreadRadius: 2,
@@ -164,8 +164,8 @@ class _TelegramReactionPickerState extends State<TelegramReactionPicker>
                 filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
                 child: Container(
                   color: Theme.of(context).brightness == Brightness.dark
-                      ? const Color(0xFF252525).withOpacity(0.85)
-                      : Colors.white.withOpacity(0.85),
+                      ? const Color(0xFF252525).withValues(alpha: 0.85)
+                      : Colors.white.withValues(alpha: 0.85),
                   child: ListView.builder(
                     scrollDirection: Axis.horizontal,
                     physics: const BouncingScrollPhysics(), // افکت اسکرول iOS

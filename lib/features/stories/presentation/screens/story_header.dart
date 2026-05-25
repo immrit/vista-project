@@ -95,7 +95,7 @@ class StoryHeader extends StatelessWidget {
                         Text(
                           _getTimeAgo(story.createdAt),
                           style: TextStyle(
-                            color: Colors.white.withOpacity(0.7),
+                            color: Colors.white.withValues(alpha: 0.7),
                             fontSize: 12,
                           ),
                         ),

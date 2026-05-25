@@ -89,7 +89,7 @@ class StoryViewersSheet extends ConsumerWidget {
                 TabBar(
                   indicatorColor: textColor,
                   labelColor: textColor,
-                  unselectedLabelColor: textColor.withOpacity(0.6),
+                  unselectedLabelColor: textColor.withValues(alpha: 0.6),
                   labelStyle: const TextStyle(
                     fontFamily: 'Vazir',
                     fontWeight: FontWeight.bold,
@@ -205,7 +205,7 @@ class StoryViewersSheet extends ConsumerWidget {
               subtitle: Text(
                 _getTimeAgo(view.viewedAt),
                 style: TextStyle(
-                  color: textColor.withOpacity(0.6),
+                  color: textColor.withValues(alpha: 0.6),
                   fontSize: 12,
                   fontFamily: 'Vazir',
                 ),
@@ -298,7 +298,7 @@ class StoryViewersSheet extends ConsumerWidget {
                   Text(
                     '${result.totalVotes} رای',
                     style: TextStyle(
-                      color: textColor.withOpacity(0.65),
+                      color: textColor.withValues(alpha: 0.65),
                       fontSize: 12,
                       fontFamily: 'Vazir',
                     ),
@@ -413,7 +413,7 @@ class StoryViewersSheet extends ConsumerWidget {
                     Text(
                       _getTimeAgo(answer.createdAt),
                       style: TextStyle(
-                        color: textColor.withOpacity(0.65),
+                        color: textColor.withValues(alpha: 0.65),
                         fontSize: 11,
                         fontFamily: 'Vazir',
                       ),
@@ -545,13 +545,13 @@ class StoryViewersSheet extends ConsumerWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 56, color: textColor.withOpacity(0.35)),
+          Icon(icon, size: 56, color: textColor.withValues(alpha: 0.35)),
           const SizedBox(height: 12),
           Text(
             message,
             style: TextStyle(
               fontSize: 14,
-              color: textColor.withOpacity(0.75),
+              color: textColor.withValues(alpha: 0.75),
               fontFamily: 'Vazir',
             ),
             textAlign: TextAlign.center,

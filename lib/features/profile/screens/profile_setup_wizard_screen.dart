@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/security/input_policy.dart';
+import '../../../DB/profile_cache_service.dart';
 import '../../auth/data/auth_repository.dart';
 import '../../auth/providers/auth_controller.dart';
 import '../data/profile_repository.dart';
@@ -57,11 +58,14 @@ class _ProfileSetupWizardScreenState
       await TokenStorage.saveUserId(user.id);
       await ref.read(authControllerProvider.notifier).refreshCurrentUser();
 
-      Map<String, dynamic>? profile;
-      try {
-        profile = await ProfileRepository().fetchProfile(user.id);
-      } catch (_) {
-        profile = null;
+      final cachedProfile = await ProfileCacheService().getCachedProfile(user.id);
+      Map<String, dynamic>? profile = cachedProfile?.toMap();
+      if (profile == null) {
+        try {
+          profile = await ProfileRepository().fetchProfile(user.id);
+        } catch (_) {
+          profile = null;
+        }
       }
 
       final birthDateText = profile?['birth_date']?.toString();

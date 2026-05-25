@@ -172,7 +172,7 @@ class _ImprovedAnimatedMessageBubbleState
   @override
   void initState() {
     super.initState();
-    _currentContent = _currentContent;
+    _currentContent = widget.content;
     _checkEncryption();
     _formattedTime = widget.time.toFixedTimeLabel();
     _setupAnimations();
@@ -268,7 +268,7 @@ class _ImprovedAnimatedMessageBubbleState
   void didUpdateWidget(ImprovedAnimatedMessageBubble oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.content != oldWidget.content) {
-      _currentContent = _currentContent;
+      _currentContent = widget.content;
       _checkEncryption();
     }
     if (widget.time != oldWidget.time) {
@@ -418,7 +418,7 @@ class _ImprovedAnimatedMessageBubbleState
       decoration: BoxDecoration(
         border: Border(
           left: BorderSide(
-            color: theme.sendButtonColor.withOpacity(0.5),
+            color: theme.sendButtonColor.withValues(alpha: 0.5),
             width: 2,
           ),
         ),
@@ -431,7 +431,7 @@ class _ImprovedAnimatedMessageBubbleState
             style: TextStyle(
               fontSize: 10,
               fontStyle: FontStyle.italic,
-              color: theme.sendButtonColor.withOpacity(0.7),
+              color: theme.sendButtonColor.withValues(alpha: 0.7),
             ),
           ),
           const SizedBox(height: 2),
@@ -484,8 +484,8 @@ class _ImprovedAnimatedMessageBubbleState
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
           color: widget.isMe
-              ? Colors.white.withOpacity(0.15)
-              : Colors.black.withOpacity(0.05),
+              ? Colors.white.withValues(alpha: 0.15)
+              : Colors.black.withValues(alpha: 0.05),
           borderRadius: BorderRadius.circular(8),
           border: Border(
             right: BorderSide(
@@ -511,8 +511,8 @@ class _ImprovedAnimatedMessageBubbleState
               widget.replyToContent ?? '',
               style: TextStyle(
                 color: widget.isMe
-                    ? theme.myBubbleTextColor.withOpacity(0.8)
-                    : theme.otherBubbleTextColor.withOpacity(0.8),
+                    ? theme.myBubbleTextColor.withValues(alpha: 0.8)
+                    : theme.otherBubbleTextColor.withValues(alpha: 0.8),
                 fontSize: 13,
               ),
               maxLines: 2,
@@ -565,8 +565,8 @@ class _ImprovedAnimatedMessageBubbleState
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
           color: widget.isMe
-              ? Colors.white.withOpacity(0.12)
-              : Colors.black.withOpacity(0.05),
+              ? Colors.white.withValues(alpha: 0.12)
+              : Colors.black.withValues(alpha: 0.05),
           borderRadius: BorderRadius.circular(10),
           border: Border(
             right: BorderSide(
@@ -602,8 +602,8 @@ class _ImprovedAnimatedMessageBubbleState
                     textDirection: TextDirection.rtl,
                     style: TextStyle(
                       color: widget.isMe
-                          ? theme.myBubbleTextColor.withOpacity(0.7)
-                          : theme.otherBubbleTextColor.withOpacity(0.7),
+                          ? theme.myBubbleTextColor.withValues(alpha: 0.7)
+                          : theme.otherBubbleTextColor.withValues(alpha: 0.7),
                       fontSize: 11,
                     ),
                     maxLines: 1,
@@ -616,8 +616,8 @@ class _ImprovedAnimatedMessageBubbleState
                       textDirection: TextDirection.rtl,
                       style: TextStyle(
                         color: widget.isMe
-                            ? theme.myBubbleTextColor.withOpacity(0.8)
-                            : theme.otherBubbleTextColor.withOpacity(0.8),
+                            ? theme.myBubbleTextColor.withValues(alpha: 0.8)
+                            : theme.otherBubbleTextColor.withValues(alpha: 0.8),
                         fontSize: 11,
                       ),
                       maxLines: 1,
@@ -651,7 +651,7 @@ class _ImprovedAnimatedMessageBubbleState
               placeholder: (context, url) => Container(
                 width: 56,
                 height: 56,
-                color: theme.dividerColor.withOpacity(0.2),
+                color: theme.dividerColor.withValues(alpha: 0.2),
                 child: const Center(
                   child: SizedBox(
                     width: 16,
@@ -663,14 +663,14 @@ class _ImprovedAnimatedMessageBubbleState
               errorWidget: (context, url, error) => Container(
                 width: 56,
                 height: 56,
-                color: theme.dividerColor.withOpacity(0.2),
+                color: theme.dividerColor.withValues(alpha: 0.2),
                 child: Icon(
                   isQuestionReply
                       ? Icons.question_answer_rounded
                       : (data.storyMediaType == 'video'
                           ? Icons.videocam
                           : Icons.image),
-                  color: theme.dividerColor.withOpacity(0.6),
+                  color: theme.dividerColor.withValues(alpha: 0.6),
                   size: 24,
                 ),
               ),
@@ -679,14 +679,14 @@ class _ImprovedAnimatedMessageBubbleState
             Container(
               width: 56,
               height: 56,
-              color: theme.dividerColor.withOpacity(0.2),
+              color: theme.dividerColor.withValues(alpha: 0.2),
               child: Icon(
                 isQuestionReply
                     ? Icons.question_answer_rounded
                     : (data.storyMediaType == 'video'
                         ? Icons.videocam
                         : Icons.image),
-                color: theme.dividerColor.withOpacity(0.6),
+                color: theme.dividerColor.withValues(alpha: 0.6),
                 size: 24,
               ),
             ),
@@ -869,38 +869,67 @@ class _ImprovedAnimatedMessageBubbleState
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           Flexible(
-            child: _currentContent.isNotEmpty
-                ? TelegramEmojiRichText(
-                    text: '${_currentContent}\u200F',
-                    useTelegramEmoji:
-                        EmojiRenderPolicy.useTelegramEmojiRenderer(),
-                    textDirection: TextDirection.rtl,
-                    textAlign: TextAlign.right,
-                    baseStyle: TextStyle(
-                      color: widget.isMe
-                          ? theme.myBubbleTextColor
-                          : theme.otherBubbleTextColor,
-                      fontSize: 15,
-                      height: 1.4,
-                      fontFamily: 'Vazir',
-                      fontFamilyFallback: const [
-                        'Apple Color Emoji',
-                        'Segoe UI Emoji',
-                        'Noto Color Emoji',
-                      ],
-                    ),
-                    linkColor: Colors.blueAccent,
-                    mentionColor: Colors.blueAccent,
-                    hashtagColor: Colors.blueAccent,
-                    onMentionTap: (username) {
-                      NavigationHelper.navigateToUserProfile(context, username);
-                    },
-                    onHashtagTap: (tag) {
-                      NavigationHelper.navigateToHashtagPosts(context, tag);
-                    },
-                    onLinkTap: widget.onLinkTap,
+            child: _isDecrypting
+                ? Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            widget.isMe
+                                ? theme.myBubbleTextColor
+                                : theme.otherBubbleTextColor,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'در حال رمزگشایی...',
+                        style: TextStyle(
+                          color: widget.isMe
+                              ? theme.myBubbleTextColor
+                              : theme.otherBubbleTextColor,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
                   )
-                : const SizedBox.shrink(),
+                : _currentContent.isNotEmpty
+                    ? TelegramEmojiRichText(
+                        text: '$_currentContent\u200F',
+                        useTelegramEmoji:
+                            EmojiRenderPolicy.useTelegramEmojiRenderer(),
+                        textDirection: TextDirection.rtl,
+                        textAlign: TextAlign.right,
+                        baseStyle: TextStyle(
+                          color: widget.isMe
+                              ? theme.myBubbleTextColor
+                              : theme.otherBubbleTextColor,
+                          fontSize: 15,
+                          height: 1.4,
+                          fontFamily: 'Vazir',
+                          fontFamilyFallback: const [
+                            'Apple Color Emoji',
+                            'Segoe UI Emoji',
+                            'Noto Color Emoji',
+                          ],
+                        ),
+                        linkColor: theme.sendButtonColor,
+                        mentionColor: theme.sendButtonColor,
+                        hashtagColor: theme.sendButtonColor,
+                        onMentionTap: (username) {
+                          NavigationHelper.navigateToUserProfile(
+                              context, username);
+                        },
+                        onHashtagTap: (tag) {
+                          NavigationHelper.navigateToHashtagPosts(context, tag);
+                        },
+                        onLinkTap: widget.onLinkTap,
+                      )
+                    : const SizedBox.shrink(),
           ),
           const SizedBox(width: 8),
           _buildTimeAndStatus(theme),
@@ -1002,8 +1031,9 @@ class _ImprovedAnimatedMessageBubbleState
                 if (hasLocalImage)
                   Image.file(localFile, fit: BoxFit.cover)
                 else
-                  Container(color: theme.otherBubbleColor.withOpacity(0.3)),
-                Container(color: Colors.black.withOpacity(0.22)),
+                  Container(
+                      color: theme.otherBubbleColor.withValues(alpha: 0.3)),
+                Container(color: Colors.black.withValues(alpha: 0.22)),
                 Center(
                   child: _buildUploadProgressCircle(
                     theme: theme,
@@ -1084,8 +1114,8 @@ class _ImprovedAnimatedMessageBubbleState
             'در حال آپلود - $pct%',
             style: TextStyle(
               color: widget.isMe
-                  ? theme.myBubbleTextColor.withOpacity(0.8)
-                  : theme.otherBubbleTextColor.withOpacity(0.8),
+                  ? theme.myBubbleTextColor.withValues(alpha: 0.8)
+                  : theme.otherBubbleTextColor.withValues(alpha: 0.8),
               fontSize: 12,
               fontWeight: FontWeight.w600,
             ),
@@ -1098,8 +1128,8 @@ class _ImprovedAnimatedMessageBubbleState
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 color: widget.isMe
-                    ? theme.myBubbleTextColor.withOpacity(0.9)
-                    : theme.otherBubbleTextColor.withOpacity(0.9),
+                    ? theme.myBubbleTextColor.withValues(alpha: 0.9)
+                    : theme.otherBubbleTextColor.withValues(alpha: 0.9),
                 fontSize: 13,
               ),
             ),
@@ -1169,8 +1199,9 @@ class _ImprovedAnimatedMessageBubbleState
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           color: widget.isMe
-                              ? theme.myBubbleTextColor.withOpacity(0.75)
-                              : theme.otherBubbleTextColor.withOpacity(0.75),
+                              ? theme.myBubbleTextColor.withValues(alpha: 0.75)
+                              : theme.otherBubbleTextColor
+                                  .withValues(alpha: 0.75),
                           fontSize: 11,
                         ),
                       ),
@@ -1190,8 +1221,8 @@ class _ImprovedAnimatedMessageBubbleState
                 final barColor = isActive
                     ? theme.sendButtonColor
                     : (widget.isMe
-                        ? theme.myBubbleTextColor.withOpacity(0.22)
-                        : theme.otherBubbleTextColor.withOpacity(0.22));
+                        ? theme.myBubbleTextColor.withValues(alpha: 0.22)
+                        : theme.otherBubbleTextColor.withValues(alpha: 0.22));
                 return Container(
                   width: 3,
                   height: 8 + (waveformBars[i] * 8),
@@ -1209,8 +1240,8 @@ class _ImprovedAnimatedMessageBubbleState
             'در حال آپلود صدا - $pct%',
             style: TextStyle(
               color: widget.isMe
-                  ? theme.myBubbleTextColor.withOpacity(0.8)
-                  : theme.otherBubbleTextColor.withOpacity(0.8),
+                  ? theme.myBubbleTextColor.withValues(alpha: 0.8)
+                  : theme.otherBubbleTextColor.withValues(alpha: 0.8),
               fontSize: 12,
               fontWeight: FontWeight.w600,
             ),
@@ -1223,8 +1254,8 @@ class _ImprovedAnimatedMessageBubbleState
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 color: widget.isMe
-                    ? theme.myBubbleTextColor.withOpacity(0.9)
-                    : theme.otherBubbleTextColor.withOpacity(0.9),
+                    ? theme.myBubbleTextColor.withValues(alpha: 0.9)
+                    : theme.otherBubbleTextColor.withValues(alpha: 0.9),
                 fontSize: 13,
               ),
             ),
@@ -1244,10 +1275,10 @@ class _ImprovedAnimatedMessageBubbleState
     required String centerLabel,
   }) {
     final ringColor = widget.isMe ? Colors.white : theme.sendButtonColor;
-    final trackColor = ringColor.withOpacity(0.22);
+    final trackColor = ringColor.withValues(alpha: 0.22);
     final labelColor = widget.isMe
         ? theme.myBubbleTextColor
-        : theme.otherBubbleTextColor.withOpacity(0.9);
+        : theme.otherBubbleTextColor.withValues(alpha: 0.9);
     final normalizedProgress = progress.clamp(0.0, 1.0);
 
     return SizedBox(
@@ -1356,8 +1387,8 @@ class _ImprovedAnimatedMessageBubbleState
                 _formattedTime,
                 style: TextStyle(
                   color: widget.isMe
-                      ? theme.myBubbleTextColor.withOpacity(0.7)
-                      : theme.otherBubbleTextColor.withOpacity(0.6),
+                      ? theme.myBubbleTextColor.withValues(alpha: 0.7)
+                      : theme.otherBubbleTextColor.withValues(alpha: 0.6),
                   fontSize: 11,
                 ),
               ),
@@ -1380,8 +1411,8 @@ class _ImprovedAnimatedMessageBubbleState
           _formattedTime,
           style: TextStyle(
             color: widget.isMe
-                ? theme.myBubbleTextColor.withOpacity(0.7)
-                : theme.otherBubbleTextColor.withOpacity(0.6),
+                ? theme.myBubbleTextColor.withValues(alpha: 0.7)
+                : theme.otherBubbleTextColor.withValues(alpha: 0.6),
             fontSize: 11,
           ),
         ),
@@ -1412,7 +1443,7 @@ class _ImprovedAnimatedMessageBubbleState
         size: 12,
         customColor: status == MessageDeliveryStatus.read
             ? MessageStatusColors.read
-            : theme.myBubbleTextColor.withOpacity(0.7),
+            : theme.myBubbleTextColor.withValues(alpha: 0.7),
       ),
     );
   }
@@ -1434,49 +1465,80 @@ class _ImprovedAnimatedMessageBubbleState
   }
 
   Widget _buildReactionsSection(ChatTheme theme) {
+    final reactionsKey = widget.reactions
+        .map((reaction) =>
+            '${reaction.emoji}:${reaction.count}:${reaction.isMyReaction}')
+        .join('|');
+
     return Padding(
       padding: const EdgeInsets.only(left: 8, right: 8, bottom: 4),
-      child: Wrap(
-        spacing: 4,
-        runSpacing: 4,
-        children: widget.reactions.map((reaction) {
-          return GestureDetector(
-            onTap: () => widget.onAddReaction?.call(reaction.emoji),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: reaction.isMyReaction
-                    ? theme.sendButtonColor.withOpacity(0.2)
-                    : Colors.transparent,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: reaction.isMyReaction
-                      ? theme.sendButtonColor
-                      : theme.dividerColor.withOpacity(0.3),
-                  width: 1,
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 220),
+        switchInCurve: Curves.easeOutBack,
+        switchOutCurve: Curves.easeInCubic,
+        child: Wrap(
+          key: ValueKey(reactionsKey),
+          spacing: 4,
+          runSpacing: 4,
+          children: widget.reactions.map((reaction) {
+            return GestureDetector(
+              onTap: () {
+                HapticFeedback.selectionClick();
+                widget.onAddReaction?.call(reaction.emoji);
+              },
+              child: AnimatedScale(
+                duration: const Duration(milliseconds: 160),
+                curve: Curves.easeOutBack,
+                scale: reaction.isMyReaction ? 1.06 : 1.0,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: reaction.isMyReaction
+                        ? theme.sendButtonColor.withValues(alpha: 0.2)
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: reaction.isMyReaction
+                          ? theme.sendButtonColor
+                          : theme.dividerColor.withValues(alpha: 0.3),
+                      width: 1,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(reaction.emoji,
+                          style: const TextStyle(fontSize: 12)),
+                      if (reaction.count > 1) ...[
+                        const SizedBox(width: 4),
+                        AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 160),
+                          transitionBuilder: (child, animation) =>
+                              ScaleTransition(scale: animation, child: child),
+                          child: Text(
+                            reaction.count.toString().toPersianDigit(),
+                            key:
+                                ValueKey('${reaction.emoji}:${reaction.count}'),
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: widget.isMe
+                                  ? theme.myBubbleTextColor
+                                      .withValues(alpha: 0.7)
+                                  : theme.otherBubbleTextColor
+                                      .withValues(alpha: 0.7),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
               ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(reaction.emoji, style: const TextStyle(fontSize: 12)),
-                  if (reaction.count > 1) ...[
-                    const SizedBox(width: 4),
-                    Text(
-                      reaction.count.toString().toPersianDigit(),
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: widget.isMe
-                            ? theme.myBubbleTextColor.withOpacity(0.7)
-                            : theme.otherBubbleTextColor.withOpacity(0.7),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          );
-        }).toList(),
+            );
+          }).toList(),
+        ),
       ),
     );
   }

@@ -2,7 +2,7 @@ import '../security/logging_utility.dart';
 import 'dart:async';
 
 import 'package:dio/dio.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:Vista/utils/env_config.dart';
 
 import '../features/auth/providers/auth_controller.dart' show TokenStorage;
 
@@ -29,7 +29,7 @@ class ProfileCacheManager {
 
   late final Dio _dio = Dio(
     BaseOptions(
-      baseUrl: '${dotenv.env['BACKEND_URL'] ?? 'http://10.0.2.2:8080'}/v1',
+      baseUrl: '${EnvConfig.apiBaseUrl ?? 'http://10.0.2.2:8080'}/v1',
       connectTimeout: const Duration(seconds: 10),
       receiveTimeout: const Duration(seconds: 20),
       headers: {'Content-Type': 'application/json'},

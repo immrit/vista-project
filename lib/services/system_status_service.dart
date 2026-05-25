@@ -1,4 +1,3 @@
-import 'package:dio/dio.dart';
 import 'package:Vista/services/http_client_factory.dart';
 
 class SystemStatus {

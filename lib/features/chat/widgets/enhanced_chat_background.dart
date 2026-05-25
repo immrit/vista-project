@@ -1,4 +1,4 @@
-﻿// lib/features/chat/widgets/enhanced_chat_background.dart
+// lib/features/chat/widgets/enhanced_chat_background.dart
 //
 // بک‌گراند چت با الهام از ویستا
 //
@@ -54,7 +54,7 @@ class _EnhancedChatBackgroundState
 
     // تشخیص تم مشکی مطلق (AMOLED/Pure Black)
     // در تم مشکی مطلق، scaffoldBackgroundColor معمولاً 0xFF000000 است
-    final isPitchBlack = theme.scaffoldBackgroundColor.value == 0xFF000000;
+    final isPitchBlack = theme.scaffoldBackgroundColor.toARGB32() == 0xFF000000;
 
     // خواندن تنظیمات کاربر از provider
     final userSettingEnabled = ref.watch(chatBlurBackgroundProvider);
@@ -78,26 +78,21 @@ class _EnhancedChatBackgroundState
           color: isDark ? const Color(0xFF0F0F0F) : const Color(0xFFDFE5E9),
         ),
 
-        // 2️⃣ Local Asset Wallpaper (بدون تاخیر)
+        // 2️⃣ Vista Custom Doodle Wallpaper
         Image.asset(
-          WallpaperCacheService.getLocalWallpaperAsset(isDark),
+          isDark
+              ? 'assets/images/vista_custom_bg_dark.png'
+              : 'assets/images/vista_custom_bg.png',
           fit: BoxFit.cover,
           gaplessPlayback: true,
           errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+          color: isDark
+              ? Colors.black.withValues(alpha: 0.2)
+              : Colors.white.withValues(alpha: 0.2),
+          colorBlendMode: isDark ? BlendMode.darken : BlendMode.lighten,
         ),
 
-        // 3️⃣ Network Wallpaper با Fade Animation (مثل ویستا)
-        // حذف شد - فقط از تصویر محلی استفاده می‌کنیم
-
-        // 4️⃣ Pattern Overlay (مثل ویستا - نقش‌های ظریف)
-        if (widget.enablePattern && !reduceEffects)
-          Opacity(
-            opacity: isDark ? 0.03 : 0.05,
-            child: _buildDefaultPattern(isDark),
-          ),
-
-        // 5️⃣ Blur Effect (با رعایت شرط‌ها: تنظیمات + نه تم مشکی)
-        // ✅ بلور در هر دو تم روشن و تاریک اعمال می‌شود
+        // 3️⃣ Blur Effect
         if (shouldApplyBlur && !reduceEffects)
           ClipRect(
             child: BackdropFilter(
@@ -106,38 +101,14 @@ class _EnhancedChatBackgroundState
                 sigmaY: effectiveBlur,
               ),
               child: Container(
-                // رنگ لایه رویی بلور - متناسب با تم
                 color: isDark
-                    ? Colors.black.withOpacity(0.1)
-                    : Colors.white.withOpacity(0.1),
+                    ? Colors.black.withValues(alpha: 0.1)
+                    : Colors.white.withValues(alpha: 0.1),
               ),
             ),
           ),
 
-        // 6️⃣ Gradient Overlay (برای خوانایی بهتر - مثل ویستا)
-        Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: isDark
-                  ? [
-                      Colors.black.withOpacity(0.15),
-                      Colors.black.withOpacity(0.05),
-                      Colors.black.withOpacity(0.15),
-                    ]
-                  : [
-                      Colors.white
-                          .withOpacity(0.2), // کمی شفافیت بیشتر برای تم روشن
-                      Colors.white.withOpacity(0.0),
-                      Colors.white.withOpacity(0.2),
-                    ],
-              stops: const [0.0, 0.5, 1.0],
-            ),
-          ),
-        ),
-
-        // 7️⃣ محتوای اصلی
+        // 4️⃣ محتوای اصلی
         widget.child,
       ],
     );
@@ -161,7 +132,7 @@ class _TelegramPatternPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = (isDark ? Colors.white : Colors.black).withOpacity(0.03)
+      ..color = (isDark ? Colors.white : Colors.black).withValues(alpha: 0.03)
       ..strokeWidth = 1
       ..style = PaintingStyle.stroke;
 
@@ -222,7 +193,7 @@ class _MessagePatternPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = Colors.white.withOpacity(0.1)
+      ..color = Colors.white.withValues(alpha: 0.1)
       ..strokeWidth = 0.5;
 
     const spacing = 8.0;

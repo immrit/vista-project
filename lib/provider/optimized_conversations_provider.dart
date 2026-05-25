@@ -253,14 +253,17 @@ class OptimizedConversationsNotifier extends StateNotifier<ConversationsState> {
 
     // اول از memory cache استفاده کن (خیلی سریع)
     for (final conversation in conversations) {
-      if (_needsEnrichment(conversation) && conversation.otherUserId != null) {
+      final otherUserId = conversation.otherUserId?.trim();
+      if (_needsEnrichment(conversation) &&
+          otherUserId != null &&
+          otherUserId.isNotEmpty) {
         final cached = _profileService.getCachedProfile(
-          conversation.otherUserId!,
+          otherUserId,
         );
         if (cached != null) {
           enriched.add(_applyProfile(conversation, cached));
         } else {
-          userIdsToLoad.add(conversation.otherUserId!);
+          userIdsToLoad.add(otherUserId);
           enriched.add(conversation);
         }
       } else {
@@ -303,10 +306,12 @@ class OptimizedConversationsNotifier extends StateNotifier<ConversationsState> {
 
       // Re-enrich conversations با پروفایل‌های جدید
       final reEnriched = conversations.map((conversation) {
+        final otherUserId = conversation.otherUserId?.trim();
         if (_needsEnrichment(conversation) &&
-            conversation.otherUserId != null) {
+            otherUserId != null &&
+            otherUserId.isNotEmpty) {
           final cached = _profileService.getCachedProfile(
-            conversation.otherUserId!,
+            otherUserId,
           );
           if (cached != null) {
             return _applyProfile(conversation, cached);
@@ -336,6 +341,7 @@ class OptimizedConversationsNotifier extends StateNotifier<ConversationsState> {
     return name.isEmpty ||
         name == 'کاربر' ||
         name == 'کاربر ناشناس' ||
+        name.toUpperCase() == 'VISTA USER' ||
         name == 'Unknown User';
   }
 
@@ -344,10 +350,16 @@ class OptimizedConversationsNotifier extends StateNotifier<ConversationsState> {
     ConversationModel conversation,
     Map<String, String?> profile,
   ) {
+    final username = (profile['username'] ?? '').trim();
+    final fullName = (profile['full_name'] ?? '').trim();
+    final resolvedName =
+        username.isNotEmpty ? username : (fullName.isNotEmpty ? fullName : '');
+    final avatar = (profile['avatar_url'] ?? '').trim();
     return conversation.copyWith(
       otherUserName:
-          profile['username'] ?? profile['full_name'] ?? 'VISTA USER',
-      otherUserAvatar: profile['avatar_url'],
+          resolvedName.isNotEmpty ? resolvedName : conversation.otherUserName,
+      otherUserAvatar:
+          avatar.isNotEmpty ? avatar : conversation.otherUserAvatar,
     );
   }
 

@@ -321,10 +321,10 @@ class _StoryCreationScreenState extends ConsumerState<StoryCreationScreen>
                           labelText: 'کپشن',
                           labelStyle: const TextStyle(color: Colors.white70),
                           hintText: 'چیزی بنویسید...',
-                          hintStyle:
-                              TextStyle(color: Colors.white.withOpacity(0.5)),
+                          hintStyle: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.5)),
                           filled: true,
-                          fillColor: Colors.white.withOpacity(0.08),
+                          fillColor: Colors.white.withValues(alpha: 0.08),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
                             borderSide: BorderSide.none,
@@ -339,7 +339,7 @@ class _StoryCreationScreenState extends ConsumerState<StoryCreationScreen>
                           labelText: 'مدت نمایش',
                           labelStyle: const TextStyle(color: Colors.white70),
                           filled: true,
-                          fillColor: Colors.white.withOpacity(0.08),
+                          fillColor: Colors.white.withValues(alpha: 0.08),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
                             borderSide: BorderSide.none,
@@ -366,7 +366,7 @@ class _StoryCreationScreenState extends ConsumerState<StoryCreationScreen>
                           labelText: 'حریم خصوصی',
                           labelStyle: const TextStyle(color: Colors.white70),
                           filled: true,
-                          fillColor: Colors.white.withOpacity(0.08),
+                          fillColor: Colors.white.withValues(alpha: 0.08),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
                             borderSide: BorderSide.none,
@@ -666,7 +666,7 @@ class _StoryCreationScreenState extends ConsumerState<StoryCreationScreen>
       builder: (context, scrollController) {
         return Container(
           decoration: BoxDecoration(
-            color: Colors.black.withOpacity(0.95),
+            color: Colors.black.withValues(alpha: 0.95),
             borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
           ),
           child: Column(

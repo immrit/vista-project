@@ -1,5 +1,6 @@
 // import '../../../security/logging_utility.dart'; // ⛔️ حذف شد - دیگر استفاده نمی‌شود
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shimmer/shimmer.dart';
@@ -32,7 +33,7 @@ class ChatConversationsScreen extends ConsumerStatefulWidget {
 
 class _ChatConversationsScreenState
     extends ConsumerState<ChatConversationsScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, AutomaticKeepAliveClientMixin {
   final TextEditingController _searchController = TextEditingController();
   final UserModerationService _moderationService = UserModerationService();
   late final AnimationController _searchAnimController;
@@ -71,6 +72,7 @@ class _ChatConversationsScreenState
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     final theme = Theme.of(context);
 
     return Scaffold(
@@ -85,6 +87,9 @@ class _ChatConversationsScreenState
       ),
     );
   }
+
+  @override
+  bool get wantKeepAlive => true;
 
   // AppBar بهینه‌شده
   PreferredSizeWidget _buildAppBar(ThemeData theme) {
@@ -153,7 +158,7 @@ class _ChatConversationsScreenState
                     color: indicatorColor,
                     boxShadow: [
                       BoxShadow(
-                        color: indicatorColor.withOpacity(0.4),
+                        color: indicatorColor.withValues(alpha: 0.4),
                         blurRadius: 4,
                         spreadRadius: 1,
                       ),
@@ -212,10 +217,13 @@ class _ChatConversationsScreenState
   }
 
   Widget _buildComposeFab(ThemeData theme) {
-    return FloatingActionButton(
-      onPressed: _openNewMessageScreen,
-      backgroundColor: theme.colorScheme.primary,
-      child: const Icon(Icons.edit),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 70.0), // Lift above bottom nav
+      child: FloatingActionButton(
+        onPressed: _openNewMessageScreen,
+        backgroundColor: theme.colorScheme.primary,
+        child: const Icon(Icons.edit),
+      ),
     );
   }
 
@@ -240,6 +248,12 @@ class _ChatConversationsScreenState
           value: 'archived',
           icon: Icons.archive_outlined,
           title: 'گفتگوهای بایگانی',
+          theme: theme,
+        ),
+        _buildMenuItem(
+          value: 'secret_chat',
+          icon: Icons.lock_rounded,
+          title: 'گفتگوی محرمانه جدید',
           theme: theme,
         ),
       ],
@@ -402,7 +416,7 @@ class _ChatConversationsScreenState
       onRefresh: () =>
           ref.read(optimizedConversationsProvider.notifier).refresh(),
       child: CustomScrollView(
-        cacheExtent: 500,
+        scrollCacheExtent: const ScrollCacheExtent.pixels(500),
         slivers: [
           // ✅ بخش مکالمات پین شده
           if (pinnedConversations.isNotEmpty) ...[
@@ -515,7 +529,7 @@ class _ChatConversationsScreenState
   // ✅ دیالوگ تایید حذف
   void _showDeleteConfirmation(ConversationModel conversation) {
     final theme = Theme.of(context);
-    final displayName = conversation.otherUserName ?? 'VISTA USER';
+    final displayName = _conversationDisplayName(conversation);
 
     showDialog(
       context: context,
@@ -564,7 +578,7 @@ class _ChatConversationsScreenState
         builder: (context) => ModernChatScreen(
           args: ChatScreenArgs(
             conversationId: conversation.id,
-            otherUserName: conversation.otherUserName ?? 'VISTA USER',
+            otherUserName: _conversationDisplayName(conversation),
             otherUserAvatar: conversation.otherUserAvatar,
             otherUserId: conversation.otherUserId ?? '',
             isGroup: conversation.isGroup,
@@ -849,13 +863,21 @@ class _ChatConversationsScreenState
     }
   }
 
-  void _handleMenuAction(String action) {
-    switch (action) {
+  void _handleMenuAction(String value) {
+    switch (value) {
       case 'archived':
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => const ArchivedConversationsScreen(),
+            builder: (_) => const ArchivedConversationsScreen(),
+          ),
+        );
+        break;
+      case 'secret_chat':
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => const NewMessageScreen(),
           ),
         );
         break;
@@ -868,7 +890,7 @@ class _ChatConversationsScreenState
   // ✅ Bottom sheet گزینه‌های مکالمه (ConversationModel-based)
   Widget _buildConversationOptionsSheet(ConversationModel conversation) {
     final theme = Theme.of(context);
-    final displayName = conversation.otherUserName ?? 'VISTA USER';
+    final displayName = _conversationDisplayName(conversation);
     final canModerateUser = conversation.otherUserId?.isNotEmpty ?? false;
 
     return Container(
@@ -1071,7 +1093,7 @@ class _ChatConversationsScreenState
     final userId = conversation.otherUserId;
     if (userId == null || userId.isEmpty) return;
 
-    final displayName = conversation.otherUserName ?? 'VISTA USER';
+    final displayName = _conversationDisplayName(conversation);
     try {
       final status =
           await _moderationService.getBlockStatus(userId, useCache: false);
@@ -1098,4 +1120,12 @@ class _ChatConversationsScreenState
   }
 
   void _createNewChannel() {}
+
+  String _conversationDisplayName(ConversationModel conversation) {
+    final raw = (conversation.otherUserName ?? '').trim();
+    if (raw.isEmpty || raw.toUpperCase() == 'VISTA USER' || raw == 'کاربر') {
+      return 'کاربر ناشناس';
+    }
+    return raw;
+  }
 }

@@ -1,10 +1,9 @@
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:dio/io.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:Vista/utils/env_config.dart';
 
 import '../security/logging_utility.dart';
 import '../features/auth/providers/auth_controller.dart';
@@ -23,12 +22,10 @@ class BackendUploadResult {
 
 class BackendUploadService {
   static String get _backendUrl =>
-      dotenv.env['BACKEND_URL'] ?? 'http://10.0.2.2:8080';
+      EnvConfig.apiBaseUrl ?? 'http://10.0.2.2:8080';
 
   static String get _bucketName =>
-      dotenv.env['ARVAN_BUCKET'] ??
-      dotenv.env['ARVAN_BUCKET_NAME'] ??
-      'coffevista';
+      'vista-bucket' ?? 'vista-bucket-name' ?? 'coffevista';
 
   static final Dio _api = Dio(BaseOptions(
     baseUrl: '$_backendUrl/v1',

@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:Vista/DB/profile_cache_service.dart';
 import '../data/profile_repository.dart';
 import '../../auth/providers/auth_controller.dart';
 
@@ -20,6 +21,12 @@ final profileProvider = FutureProvider<Map<String, dynamic>?>((ref) async {
   }
 
   final repository = ref.watch(profileRepositoryProvider);
+  final cacheService = ProfileCacheService();
+  final cachedProfile = await cacheService.getCachedProfile(user.id);
+  if (cachedProfile != null) {
+    // Return cached profile immediately and let background refresh happen elsewhere.
+    return cachedProfile.toMap();
+  }
   return await repository.fetchProfile(user.id);
 });
 

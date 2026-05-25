@@ -148,7 +148,7 @@ class _TelegramRetryIndicatorState extends State<TelegramRetryIndicator>
       child: Icon(
         Icons.access_time_rounded,
         size: 14,
-        color: Colors.white.withOpacity(0.6),
+        color: Colors.white.withValues(alpha: 0.6),
         key: const ValueKey('pending'),
       ),
     );
@@ -182,7 +182,7 @@ class _TelegramRetryIndicatorState extends State<TelegramRetryIndicator>
               child: Icon(
                 Icons.check,
                 size: 14,
-                color: Colors.white.withOpacity(0.8),
+                color: Colors.white.withValues(alpha: 0.8),
               ),
             ),
             Positioned(
@@ -190,7 +190,7 @@ class _TelegramRetryIndicatorState extends State<TelegramRetryIndicator>
               child: Icon(
                 Icons.check,
                 size: 14,
-                color: Colors.white.withOpacity(0.8),
+                color: Colors.white.withValues(alpha: 0.8),
               ),
             ),
           ],
@@ -342,7 +342,7 @@ class _TelegramConnectionBannerState extends State<TelegramConnectionBanner>
             color: Colors.orange[600],
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.1),
+                color: Colors.black.withValues(alpha: 0.1),
                 blurRadius: 4,
                 offset: const Offset(0, 2),
               ),
@@ -424,7 +424,7 @@ class TelegramPendingCounter extends StatelessWidget {
           borderRadius: BorderRadius.circular(12),
           boxShadow: [
             BoxShadow(
-              color: Colors.orange.withOpacity(0.3),
+              color: Colors.orange.withValues(alpha: 0.3),
               blurRadius: 8,
               offset: const Offset(0, 2),
             ),

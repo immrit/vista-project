@@ -11,7 +11,7 @@ import 'package:isar/isar.dart';
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import '../../../../utils/env_config.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../model/conversation_model.dart';
@@ -46,8 +46,7 @@ class ChatRepositoryImpl implements ChatRepository {
   static const Duration _convSyncThrottle = Duration(seconds: 2);
   static const int _msgPageSize = 50;
 
-  static String get _base =>
-      dotenv.env['BACKEND_URL'] ?? 'http://10.0.2.2:8080';
+  static String get _base => EnvConfig.apiBaseUrl;
 
   ChatRepositoryImpl({required ChatLocalDataSourceIsar localDataSource})
       : _local = localDataSource {
@@ -863,24 +862,39 @@ class ChatRepositoryImpl implements ChatRepository {
 
   Future<ChatResult<List<ConversationModel>>> _fetchConversationsFromServer(
       String uid) async {
-    final opts = await _authOptions();
-    if (opts == null)
-      return ChatResult.failure('Ú©Ø§Ø±Ø¨Ø± ÙˆØ§Ø±Ø¯ Ù†Ø´Ø¯Ù‡ Ø§Ø³Øª');
+    int retries = 0;
+    while (retries < 2) {
+      final opts = await _authOptions();
+      if (opts == null) {
+        return ChatResult.failure('کاربر وارد نشده است');
+      }
 
-    try {
-      final res = await _dio.get(
-        '/chat/conversations',
-        queryParameters: {'limit': _msgPageSize},
-        options: opts,
-      );
-      final convs = _asList(_asMap(res.data)['conversations'])
-          .whereType<Map>()
-          .map((e) => _convFromGo(e.cast<String, dynamic>(), uid))
-          .toList();
-      return ChatResult.success(convs);
-    } on DioException catch (e) {
-      return ChatResult.failure(_dioError(e));
+      try {
+        final res = await _dio.get(
+          '/chat/conversations',
+          queryParameters: {'limit': _msgPageSize},
+          options: opts,
+        );
+        final convs = _asList(_asMap(res.data)['conversations'])
+            .whereType<Map>()
+            .map((e) => _convFromGo(e.cast<String, dynamic>(), uid))
+            .toList();
+        return ChatResult.success(convs);
+      } on DioException catch (e) {
+        if (e.response?.statusCode == 401 && retries == 0) {
+          logInfo('⚠️ 401 in _fetchConversationsFromServer. Waiting 3s for token refresh...');
+          await Future.delayed(const Duration(seconds: 3));
+          retries++;
+          continue;
+        }
+        logInfo('⚠️ DioException in _fetchConversationsFromServer: ${e.response?.statusCode} - ${e.response?.data}');
+        return ChatResult.failure(_dioError(e));
+      } catch (e) {
+        logInfo('⚠️ Exception in _fetchConversationsFromServer: $e');
+        return ChatResult.failure(e.toString());
+      }
     }
+    return ChatResult.failure('خطا در بارگزاری لیست مکالمات');
   }
 
   Future<void> _syncMessages(String conversationId, String uid) async {
@@ -1088,13 +1102,33 @@ class ChatRepositoryImpl implements ChatRepository {
   }
 
   ConversationModel _convFromGo(Map<String, dynamic> j, String uid) {
-    final peerId = j['peer_id']?.toString() ?? '';
-    final type =
-        j['conversation_type']?.toString() == 'group' ? 'group' : 'private';
+    final peerId = (j['peer_id'] ??
+            j['peerId'] ??
+            j['other_user_id'] ??
+            j['otherUserId'] ??
+            '')
+        .toString();
+    final rawType = (j['conversation_type'] ?? j['type'] ?? 'private')
+        .toString()
+        .toLowerCase();
+    final type = rawType == 'group'
+        ? 'group'
+        : (rawType == 'secret' ? 'secret' : 'private');
     final createdAt =
         j['created_at']?.toString() ?? DateTime.now().toIso8601String();
     final lastAt = j['last_message_at']?.toString() ?? createdAt;
-    return ConversationModel.fromJson({
+    final peerUsername =
+        (j['peer_username'] ?? j['other_user_username'] ?? j['username'] ?? '')
+            .toString();
+    final peerFullName =
+        (j['peer_full_name'] ?? j['other_user_full_name'] ?? '').toString();
+    final peerAvatar = (j['peer_avatar_url'] ??
+            j['other_user_avatar'] ??
+            j['avatar_url'] ??
+            j['image'])
+        ?.toString();
+
+    final conv = ConversationModel.fromJson({
       'id': j['id'],
       'created_at': createdAt,
       'updated_at': lastAt,
@@ -1105,8 +1139,8 @@ class ChatRepositoryImpl implements ChatRepository {
       'is_pinned': j['is_pinned'] ?? false,
       'is_muted': j['is_muted'] ?? false,
       'type': type,
-      'name': j['name'],
-      'image': j['image'],
+      'name': type == 'group' ? j['name'] : null,
+      'image': type == 'group' ? j['image'] : null,
       'participants': [
         {
           'id': '${j['id']}_$uid',
@@ -1125,6 +1159,19 @@ class ChatRepositoryImpl implements ChatRepository {
           },
       ],
     }, currentUserId: uid);
+    final immediateName = peerUsername.trim().isNotEmpty
+        ? peerUsername.trim()
+        : (peerFullName.trim().isNotEmpty ? peerFullName.trim() : '');
+    return conv.copyWith(
+      otherUserName:
+          immediateName.isNotEmpty ? immediateName : conv.otherUserName,
+      otherUserAvatar: (peerAvatar?.trim().isNotEmpty ?? false)
+          ? peerAvatar?.trim()
+          : conv.otherUserAvatar,
+      otherUserId: conv.otherUserId?.isNotEmpty == true
+          ? conv.otherUserId
+          : peerId.trim(),
+    );
   }
 
   MessageModel _msgFromGo(Map<String, dynamic> j, String uid) {

@@ -158,7 +158,7 @@ class _EditableStoryItemState extends State<EditableStoryItem> {
                     borderRadius: BorderRadius.circular(14),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.3),
+                        color: Colors.black.withValues(alpha: 0.3),
                         blurRadius: 8,
                         spreadRadius: 1,
                       )
@@ -301,10 +301,12 @@ class StoryTrashBin extends StatelessWidget {
       decoration: BoxDecoration(
         color: isHovering
             ? Colors.red
-            : (isActive ? Colors.red.withOpacity(0.3) : Colors.transparent),
+            : (isActive
+                ? Colors.red.withValues(alpha: 0.3)
+                : Colors.transparent),
         shape: BoxShape.circle,
         border: Border.all(
-          color: isActive ? Colors.red : Colors.white.withOpacity(0.3),
+          color: isActive ? Colors.red : Colors.white.withValues(alpha: 0.3),
           width: 2,
         ),
       ),
@@ -342,7 +344,7 @@ class AlignmentGuides extends StatelessWidget {
               child: Container(
                 width: 1,
                 height: double.infinity,
-                color: Colors.white.withOpacity(0.6),
+                color: Colors.white.withValues(alpha: 0.6),
               ),
             ),
           if (showHorizontal)
@@ -350,7 +352,7 @@ class AlignmentGuides extends StatelessWidget {
               child: Container(
                 width: double.infinity,
                 height: 1,
-                color: Colors.white.withOpacity(0.6),
+                color: Colors.white.withValues(alpha: 0.6),
               ),
             ),
         ],

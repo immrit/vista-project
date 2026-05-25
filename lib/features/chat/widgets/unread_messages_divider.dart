@@ -84,7 +84,7 @@ class _UnreadMessagesDividerState extends State<UnreadMessagesDivider>
                       gradient: LinearGradient(
                         colors: [
                           Colors.transparent,
-                          theme.sendButtonColor.withOpacity(0.5),
+                          theme.sendButtonColor.withValues(alpha: 0.5),
                         ],
                       ),
                     ),
@@ -98,10 +98,10 @@ class _UnreadMessagesDividerState extends State<UnreadMessagesDivider>
                     vertical: 8,
                   ),
                   decoration: BoxDecoration(
-                    color: theme.sendButtonColor.withOpacity(0.15),
+                    color: theme.sendButtonColor.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(
-                      color: theme.sendButtonColor.withOpacity(0.3),
+                      color: theme.sendButtonColor.withValues(alpha: 0.3),
                       width: 1,
                     ),
                   ),
@@ -135,7 +135,7 @@ class _UnreadMessagesDividerState extends State<UnreadMessagesDivider>
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         colors: [
-                          theme.sendButtonColor.withOpacity(0.5),
+                          theme.sendButtonColor.withValues(alpha: 0.5),
                           Colors.transparent,
                         ],
                       ),

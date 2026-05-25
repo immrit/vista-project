@@ -29,6 +29,7 @@ class FullScreenImageViewer extends StatefulWidget {
   final VoidCallback? onForward;
   final VoidCallback? onReply;
   final VoidCallback? onDelete;
+  final bool isSecretMode;
 
   const FullScreenImageViewer({
     super.key,
@@ -37,6 +38,7 @@ class FullScreenImageViewer extends StatefulWidget {
     this.onForward,
     this.onReply,
     this.onDelete,
+    this.isSecretMode = false,
   });
 
   @override
@@ -188,6 +190,10 @@ class _FullScreenImageViewerState extends State<FullScreenImageViewer>
   }
 
   Future<void> _saveToGallery() async {
+    if (widget.isSecretMode) {
+      _showErrorSnackBar('ذخیره رسانه در گفتگوی محرمانه غیرفعال است');
+      return;
+    }
     if (_isSaving) return;
 
     setState(() => _isSaving = true);
@@ -214,6 +220,10 @@ class _FullScreenImageViewerState extends State<FullScreenImageViewer>
   }
 
   Future<void> _shareImage() async {
+    if (widget.isSecretMode) {
+      _showErrorSnackBar('اشتراک‌گذاری در گفتگوی محرمانه غیرفعال است');
+      return;
+    }
     if (_isSharing) return;
 
     setState(() => _isSharing = true);
@@ -239,6 +249,10 @@ class _FullScreenImageViewerState extends State<FullScreenImageViewer>
   }
 
   void _handleForward() {
+    if (widget.isSecretMode) {
+      _showErrorSnackBar('فوروارد در گفتگوی محرمانه غیرفعال است');
+      return;
+    }
     if (widget.onForward != null) {
       Navigator.pop(context);
       widget.onForward!();
@@ -414,7 +428,7 @@ class _FullScreenImageViewerState extends State<FullScreenImageViewer>
                 boxShadow: isActive
                     ? [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.35),
+                          color: Colors.black.withValues(alpha: 0.35),
                           blurRadius: 8,
                           offset: const Offset(0, 2),
                         ),
@@ -542,7 +556,7 @@ class _FullScreenImageViewerState extends State<FullScreenImageViewer>
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [
-                      Colors.black.withOpacity(0.6),
+                      Colors.black.withValues(alpha: 0.6),
                       Colors.transparent,
                     ],
                   ),
@@ -560,11 +574,13 @@ class _FullScreenImageViewerState extends State<FullScreenImageViewer>
                         ),
                         const Spacer(),
                         // Forward Button
-                        IconButton(
-                          icon: const Icon(Icons.forward, color: Colors.white),
-                          onPressed: _handleForward,
-                          tooltip: 'فوروارد',
-                        ),
+                        if (!widget.isSecretMode)
+                          IconButton(
+                            icon:
+                                const Icon(Icons.forward, color: Colors.white),
+                            onPressed: _handleForward,
+                            tooltip: 'فوروارد',
+                          ),
                         // Menu Button
                         PopupMenuButton<String>(
                           icon: const Icon(
@@ -593,14 +609,16 @@ class _FullScreenImageViewerState extends State<FullScreenImageViewer>
                               value: 'reply',
                               child: Text('پاسخ'),
                             ),
-                            const PopupMenuItem<String>(
-                              value: 'save',
-                              child: Text('ذخیره در گالری'),
-                            ),
-                            const PopupMenuItem<String>(
-                              value: 'share',
-                              child: Text('اشتراک‌گذاری'),
-                            ),
+                            if (!widget.isSecretMode)
+                              const PopupMenuItem<String>(
+                                value: 'save',
+                                child: Text('ذخیره در گالری'),
+                              ),
+                            if (!widget.isSecretMode)
+                              const PopupMenuItem<String>(
+                                value: 'share',
+                                child: Text('اشتراک‌گذاری'),
+                              ),
                             const PopupMenuItem<String>(
                               value: 'delete',
                               child: Text(
@@ -637,7 +655,7 @@ class _FullScreenImageViewerState extends State<FullScreenImageViewer>
                       begin: Alignment.bottomCenter,
                       end: Alignment.topCenter,
                       colors: [
-                        Colors.black.withOpacity(0.7),
+                        Colors.black.withValues(alpha: 0.7),
                         Colors.transparent,
                       ],
                     ),

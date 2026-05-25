@@ -78,7 +78,7 @@ class _VistaQRScannerState extends ConsumerState<VistaQRScanner>
 
       try {
         // دریافت اطلاعات کاربر از دیتابیس
-        final Map<String, dynamic>? response =
+        final Map<String, dynamic> response =
             await ProfileRepository().fetchProfileById(userId);
 
         if (!mounted) return;
@@ -158,7 +158,7 @@ class _VistaQRScannerState extends ConsumerState<VistaQRScanner>
       }
 
       try {
-        final Map<String, dynamic>? response =
+        final Map<String, dynamic> response =
             await ProfileRepository().fetchProfileById(userId);
 
         if (!mounted) return;
@@ -435,7 +435,7 @@ class _VistaQRScannerState extends ConsumerState<VistaQRScanner>
                 // دکمه تغییر دوربین
                 Container(
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2),
+                    color: Colors.white.withValues(alpha: 0.2),
                     shape: BoxShape.circle,
                   ),
                   child: IconButton(
@@ -472,7 +472,7 @@ class _ScannerOverlayPainter extends CustomPainter {
     final double left = (size.width - scanAreaSize) / 2;
     final double top = (size.height - scanAreaSize) / 2;
 
-    final overlayPaint = Paint()..color = Colors.black.withOpacity(0.5);
+    final overlayPaint = Paint()..color = Colors.black.withValues(alpha: 0.5);
 
     // رسم اورلی تاریک
     canvas.drawPath(
@@ -528,9 +528,9 @@ class _ScannerOverlayPainter extends CustomPainter {
     final scanLinePaint = Paint()
       ..shader = LinearGradient(
         colors: [
-          Colors.white.withOpacity(0),
-          Colors.white.withOpacity(0.8),
-          Colors.white.withOpacity(0),
+          Colors.white.withValues(alpha: 0),
+          Colors.white.withValues(alpha: 0.8),
+          Colors.white.withValues(alpha: 0),
         ],
       ).createShader(Rect.fromLTWH(left, 0, scanAreaSize, 2));
 

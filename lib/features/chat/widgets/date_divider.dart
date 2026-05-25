@@ -17,18 +17,14 @@ class DateChipStyle {
 
   static BoxDecoration getDecoration(ChatTheme theme) {
     return BoxDecoration(
-      color: theme.isDark
-          ? Colors.black.withOpacity(0.5)
-          : Colors.black.withOpacity(0.07),
+      color: Colors.black.withValues(alpha: 0.4),
       borderRadius: BorderRadius.circular(borderRadius),
     );
   }
 
   static TextStyle getTextStyle(ChatTheme theme) {
-    return TextStyle(
-      color: theme.isDark
-          ? Colors.white.withOpacity(0.9)
-          : theme.secondaryTextColor,
+    return const TextStyle(
+      color: Colors.white,
       fontSize: fontSize,
       fontWeight: fontWeight,
     );

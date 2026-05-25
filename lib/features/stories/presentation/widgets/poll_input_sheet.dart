@@ -151,7 +151,7 @@ class _PollInputSheetState extends State<PollInputSheet> {
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.15),
+            color: Colors.black.withValues(alpha: 0.15),
             blurRadius: 20,
             offset: const Offset(0, 8),
           ),
@@ -202,10 +202,10 @@ class _PollInputSheetState extends State<PollInputSheet> {
             ),
             const SizedBox(height: 20),
             _buildOptionButton(
-                option1, Colors.purple.withOpacity(0.3), Colors.white),
+                option1, Colors.purple.withValues(alpha: 0.3), Colors.white),
             const SizedBox(height: 10),
             _buildOptionButton(
-                option2, Colors.cyan.withOpacity(0.3), Colors.white),
+                option2, Colors.cyan.withValues(alpha: 0.3), Colors.white),
           ],
         ),
       ),
@@ -217,7 +217,7 @@ class _PollInputSheetState extends State<PollInputSheet> {
       width: 240,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.95),
+        color: Colors.white.withValues(alpha: 0.95),
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(

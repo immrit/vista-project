@@ -89,7 +89,7 @@ class _CountdownStickerWidgetState extends State<CountdownStickerWidget> {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.15),
+            color: Colors.black.withValues(alpha: 0.15),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -121,9 +121,9 @@ class _CountdownStickerWidgetState extends State<CountdownStickerWidget> {
           key: key,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: BoxDecoration(
-            color: Colors.black.withOpacity(0.4),
+            color: Colors.black.withValues(alpha: 0.4),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.white.withOpacity(0.2)),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
           ),
           child: Column(
             children: [
@@ -136,7 +136,8 @@ class _CountdownStickerWidgetState extends State<CountdownStickerWidget> {
                 ),
               ),
               const SizedBox(height: 8),
-              _buildTimerRow(Colors.white.withOpacity(0.15), Colors.white),
+              _buildTimerRow(
+                  Colors.white.withValues(alpha: 0.15), Colors.white),
             ],
           ),
         ),
@@ -157,7 +158,7 @@ class _CountdownStickerWidgetState extends State<CountdownStickerWidget> {
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF4A00E0).withOpacity(0.4),
+            color: const Color(0xFF4A00E0).withValues(alpha: 0.4),
             blurRadius: 12,
             offset: const Offset(0, 6),
           ),
@@ -174,7 +175,7 @@ class _CountdownStickerWidgetState extends State<CountdownStickerWidget> {
                 fontSize: 16),
           ),
           const SizedBox(height: 10),
-          _buildTimerRow(Colors.white.withOpacity(0.2), Colors.white),
+          _buildTimerRow(Colors.white.withValues(alpha: 0.2), Colors.white),
         ],
       ),
     );
@@ -228,7 +229,7 @@ class _CountdownStickerWidgetState extends State<CountdownStickerWidget> {
         Text(
           label,
           style: TextStyle(
-            color: textColor.withOpacity(0.7),
+            color: textColor.withValues(alpha: 0.7),
             fontSize: 9,
             fontFamily: 'Vazir',
           ),

@@ -507,26 +507,26 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
             memCacheHeight: thumbSize,
             memCacheWidth: thumbSize,
             errorWidget: (_, __, ___) =>
-                Container(color: theme.otherBubbleColor.withOpacity(0.3)),
+                Container(color: theme.otherBubbleColor.withValues(alpha: 0.3)),
           )
         else
-          Container(color: theme.otherBubbleColor.withOpacity(0.3)),
+          Container(color: theme.otherBubbleColor.withValues(alpha: 0.3)),
         if (useHeavyBlur)
           BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
             child: Container(
-              color: Colors.black.withOpacity(0.1),
+              color: Colors.black.withValues(alpha: 0.1),
             ),
           )
         else
-          Container(color: Colors.black.withOpacity(0.18)),
+          Container(color: Colors.black.withValues(alpha: 0.18)),
       ],
     );
   }
 
   Widget _buildPlaceholder(ChatTheme theme) {
     return Container(
-      color: theme.otherBubbleColor.withOpacity(0.3),
+      color: theme.otherBubbleColor.withValues(alpha: 0.3),
       child: const Center(
           child: Icon(Icons.image_not_supported, color: Colors.grey)),
     );
@@ -537,7 +537,7 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
       width: 48,
       height: 48,
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.5),
+        color: Colors.black.withValues(alpha: 0.5),
         shape: BoxShape.circle,
       ),
       child: const Icon(Icons.arrow_downward, color: Colors.white, size: 28),
@@ -549,7 +549,7 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
       width: 48,
       height: 48,
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.5),
+        color: Colors.black.withValues(alpha: 0.5),
         shape: BoxShape.circle,
       ),
       padding: const EdgeInsets.all(12),
@@ -589,7 +589,7 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.55),
+        color: Colors.black.withValues(alpha: 0.55),
         borderRadius: BorderRadius.circular(14),
       ),
       child: Row(
@@ -630,7 +630,7 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.4),
+        color: Colors.black.withValues(alpha: 0.4),
         borderRadius: BorderRadius.circular(10),
       ),
       child: Row(
@@ -676,16 +676,16 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
               children: [
                 if (widget.isMe) ...[
                   _buildStatusIcon(widget.isMe
-                      ? theme.myBubbleTextColor.withOpacity(0.6)
-                      : theme.otherBubbleTextColor.withOpacity(0.6)),
+                      ? theme.myBubbleTextColor.withValues(alpha: 0.6)
+                      : theme.otherBubbleTextColor.withValues(alpha: 0.6)),
                   const SizedBox(width: 3),
                 ],
                 Text(
                   _formatTime(widget.time),
                   style: TextStyle(
                     color: widget.isMe
-                        ? theme.myBubbleTextColor.withOpacity(0.6)
-                        : theme.otherBubbleTextColor.withOpacity(0.6),
+                        ? theme.myBubbleTextColor.withValues(alpha: 0.6)
+                        : theme.otherBubbleTextColor.withValues(alpha: 0.6),
                     fontSize: 11,
                   ),
                 ),

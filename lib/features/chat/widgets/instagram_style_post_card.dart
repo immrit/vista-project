@@ -155,14 +155,14 @@ class _InstagramStylePostCardState extends State<InstagramStylePostCard>
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
                     color: theme.isDark
-                        ? Colors.white.withOpacity(0.1)
-                        : Colors.grey.withOpacity(0.2),
+                        ? Colors.white.withValues(alpha: 0.1)
+                        : Colors.grey.withValues(alpha: 0.2),
                     width: 1,
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color:
-                          Colors.black.withOpacity(theme.isDark ? 0.3 : 0.08),
+                      color: Colors.black
+                          .withValues(alpha: theme.isDark ? 0.3 : 0.08),
                       blurRadius: 16,
                       offset: const Offset(0, 4),
                     ),
@@ -388,8 +388,8 @@ class _InstagramStylePostCardState extends State<InstagramStylePostCard>
         border: Border(
           top: BorderSide(
             color: theme.isDark
-                ? Colors.white.withOpacity(0.1)
-                : Colors.grey.withOpacity(0.15),
+                ? Colors.white.withValues(alpha: 0.1)
+                : Colors.grey.withValues(alpha: 0.15),
             width: 0.5,
           ),
         ),
@@ -432,8 +432,8 @@ class _InstagramStylePostCardState extends State<InstagramStylePostCard>
                 widget.sentAt.toFixedTimeLabel(),
                 style: TextStyle(
                   color: widget.isMine
-                      ? theme.myBubbleTextColor.withOpacity(0.7)
-                      : theme.secondaryTextColor.withOpacity(0.7),
+                      ? theme.myBubbleTextColor.withValues(alpha: 0.7)
+                      : theme.secondaryTextColor.withValues(alpha: 0.7),
                   fontSize: 10,
                   fontWeight: FontWeight.w500,
                 ),
@@ -483,8 +483,8 @@ class _InstagramStylePostCardState extends State<InstagramStylePostCard>
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           decoration: BoxDecoration(
             color: theme.isDark
-                ? Colors.white.withOpacity(0.1)
-                : Colors.grey.withOpacity(0.1),
+                ? Colors.white.withValues(alpha: 0.1)
+                : Colors.grey.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Row(
@@ -522,7 +522,7 @@ class _InstagramStylePostCardState extends State<InstagramStylePostCard>
       size: 12, // کوچک‌تر و ظریف‌تر
       customColor: deliveryStatus == MessageDeliveryStatus.read
           ? MessageStatusColors.read
-          : theme.myBubbleTextColor.withOpacity(0.7),
+          : theme.myBubbleTextColor.withValues(alpha: 0.7),
     );
   }
 
@@ -630,7 +630,7 @@ class _SingleMedia extends StatelessWidget {
               child: Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.6),
+                  color: Colors.black.withValues(alpha: 0.6),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(
@@ -736,7 +736,7 @@ class _FourPlusMediaGrid extends StatelessWidget {
                       if (remaining > 0)
                         Container(
                           decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.6),
+                            color: Colors.black.withValues(alpha: 0.6),
                           ),
                           child: Center(
                             child: Text(

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 class BannedScreen extends StatelessWidget {
-  const BannedScreen({Key? key}) : super(key: key);
+  const BannedScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -29,7 +29,7 @@ class BannedScreen extends StatelessWidget {
                 'دستگاه شما به دلیل تخلف از قوانین و استفاده غیرمجاز از شبکه مسدود شده است.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: Colors.white.withOpacity(0.9),
+                  color: Colors.white.withValues(alpha: 0.9),
                   fontSize: 16,
                   height: 1.5,
                   fontFamily: 'Vazir',

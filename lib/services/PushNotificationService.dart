@@ -6,7 +6,7 @@ import 'dart:typed_data'; // ✅ برای Uint8List
 import 'package:path_provider/path_provider.dart'; // ✅ برای مسیردهی
 import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:Vista/utils/env_config.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -43,7 +43,7 @@ class PushNotificationService {
   static const int _maxPendingActions = 30;
   static const Uuid _uuid = Uuid();
   static String get _backendUrl =>
-      dotenv.env['BACKEND_URL'] ?? 'http://10.0.2.2:8080';
+      EnvConfig.apiBaseUrl ?? 'http://10.0.2.2:8080';
 
   static FlutterLocalNotificationsPlugin get notificationsPlugin =>
       LocalNotificationCenter.plugin;

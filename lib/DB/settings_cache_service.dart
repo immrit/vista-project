@@ -2,7 +2,7 @@ import '../security/logging_utility.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:dio/dio.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:Vista/utils/env_config.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../features/auth/providers/auth_controller.dart';
 import '../features/profile/data/profile_repository.dart';
@@ -33,7 +33,7 @@ class SettingsCacheService {
   final Map<String, DateTime> _lastFetch = {};
   late final Dio _dio = Dio(
     BaseOptions(
-      baseUrl: '${dotenv.env['BACKEND_URL'] ?? 'http://10.0.2.2:8080'}/v1',
+      baseUrl: '${EnvConfig.apiBaseUrl ?? 'http://10.0.2.2:8080'}/v1',
       connectTimeout: const Duration(seconds: 15),
       receiveTimeout: const Duration(seconds: 15),
       headers: {'Content-Type': 'application/json'},

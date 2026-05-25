@@ -106,7 +106,7 @@ class _DocumentPreviewScreenState extends State<DocumentPreviewScreen>
           icon: Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: Colors.black.withOpacity(0.5),
+              color: Colors.black.withValues(alpha: 0.5),
               shape: BoxShape.circle,
             ),
             child: const Icon(Icons.close, color: Colors.white),
@@ -119,7 +119,7 @@ class _DocumentPreviewScreenState extends State<DocumentPreviewScreen>
               icon: Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.5),
+                  color: Colors.black.withValues(alpha: 0.5),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(Icons.share_rounded, color: Colors.white),
@@ -130,7 +130,7 @@ class _DocumentPreviewScreenState extends State<DocumentPreviewScreen>
             icon: Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.5),
+                color: Colors.black.withValues(alpha: 0.5),
                 shape: BoxShape.circle,
               ),
               child: Icon(
@@ -301,7 +301,7 @@ class _DocumentPreviewScreenState extends State<DocumentPreviewScreen>
           Container(
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
-              color: _getFileColor(theme).withOpacity(0.2),
+              color: _getFileColor(theme).withValues(alpha: 0.2),
               shape: BoxShape.circle,
             ),
             child: Icon(
@@ -363,7 +363,7 @@ class _DocumentPreviewScreenState extends State<DocumentPreviewScreen>
           begin: Alignment.bottomCenter,
           end: Alignment.topCenter,
           colors: [
-            Colors.black.withOpacity(0.8),
+            Colors.black.withValues(alpha: 0.8),
             Colors.transparent,
           ],
         ),
@@ -389,7 +389,7 @@ class _DocumentPreviewScreenState extends State<DocumentPreviewScreen>
                     Text(
                       '${(_downloadProgress * 100).toInt()}%',
                       style: TextStyle(
-                        color: Colors.white.withOpacity(0.7),
+                        color: Colors.white.withValues(alpha: 0.7),
                         fontSize: 14,
                       ),
                     ),
@@ -398,7 +398,7 @@ class _DocumentPreviewScreenState extends State<DocumentPreviewScreen>
               ),
               CircularProgressIndicator(
                 value: _downloadProgress,
-                backgroundColor: Colors.white.withOpacity(0.2),
+                backgroundColor: Colors.white.withValues(alpha: 0.2),
                 valueColor: AlwaysStoppedAnimation(theme.primaryColor),
               ),
             ],
@@ -409,7 +409,7 @@ class _DocumentPreviewScreenState extends State<DocumentPreviewScreen>
             child: LinearProgressIndicator(
               value: _downloadProgress,
               minHeight: 8,
-              backgroundColor: Colors.white.withOpacity(0.2),
+              backgroundColor: Colors.white.withValues(alpha: 0.2),
               valueColor: AlwaysStoppedAnimation(theme.primaryColor),
             ),
           ),
@@ -426,7 +426,7 @@ class _DocumentPreviewScreenState extends State<DocumentPreviewScreen>
           begin: Alignment.bottomCenter,
           end: Alignment.topCenter,
           colors: [
-            Colors.black.withOpacity(0.8),
+            Colors.black.withValues(alpha: 0.8),
             Colors.transparent,
           ],
         ),
@@ -454,7 +454,7 @@ class _DocumentPreviewScreenState extends State<DocumentPreviewScreen>
                     vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color: _getFileColor(theme).withOpacity(0.2),
+                    color: _getFileColor(theme).withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(
@@ -472,7 +472,7 @@ class _DocumentPreviewScreenState extends State<DocumentPreviewScreen>
                     _formatFileSize(widget.fileSize!),
                     style: TextStyle(
                       fontSize: 14,
-                      color: Colors.white.withOpacity(0.7),
+                      color: Colors.white.withValues(alpha: 0.7),
                     ),
                   ),
                 ],

@@ -284,7 +284,7 @@ class _GroupDetailsScreenState extends ConsumerState<GroupDetailsScreen> {
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withValues(alpha: 0.04),
             blurRadius: 14,
             offset: const Offset(0, 8),
           ),
@@ -296,7 +296,7 @@ class _GroupDetailsScreenState extends ConsumerState<GroupDetailsScreen> {
             children: [
               CircleAvatar(
                 radius: 34,
-                backgroundColor: accent.withOpacity(0.12),
+                backgroundColor: accent.withValues(alpha: 0.12),
                 backgroundImage:
                     _groupImage != null ? NetworkImage(_groupImage!) : null,
                 child: _groupImage == null
@@ -376,7 +376,7 @@ class _GroupDetailsScreenState extends ConsumerState<GroupDetailsScreen> {
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withValues(alpha: 0.04),
             blurRadius: 14,
             offset: const Offset(0, 8),
           ),
@@ -441,7 +441,7 @@ class _GroupDetailsScreenState extends ConsumerState<GroupDetailsScreen> {
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withValues(alpha: 0.04),
             blurRadius: 14,
             offset: const Offset(0, 8),
           ),
@@ -519,7 +519,7 @@ class _GroupDetailsScreenState extends ConsumerState<GroupDetailsScreen> {
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withValues(alpha: 0.04),
             blurRadius: 14,
             offset: const Offset(0, 8),
           ),

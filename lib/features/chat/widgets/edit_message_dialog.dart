@@ -166,7 +166,7 @@ class _EditMessageDialogState extends ConsumerState<EditMessageDialog> {
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: theme.errorColor.withOpacity(0.1),
+                color: theme.errorColor.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Row(

@@ -1,50 +1,27 @@
 import 'dart:async';
-import 'dart:io';
-import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:isar/isar.dart';
-import 'package:Vista/DB/isar_database_manager.dart';
-import 'package:Vista/DB/entities/app_settings_entity.dart';
-import 'package:Vista/widgets/VideoPlayerConfig.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:Vista/DB/profile_cache_service.dart';
-import 'package:Vista/DB/settings_cache_service.dart';
-import 'package:Vista/services/animation_controller_service.dart';
-import 'package:Vista/services/video_autoplay_service.dart';
-import 'package:Vista/services/image_quality_service.dart';
-import 'package:Vista/core/data/cache/cache_repository.dart';
-import 'package:Vista/model/SearchResut.dart';
 // import 'package:Vista/view/widgets/VideoPlayerConfig.dart';
 import 'package:Vista/model/ProfileModel.dart';
 // import 'package:Vista/model/notificationModel.dart';
 import 'package:Vista/model/publicPostModel.dart';
-import 'package:Vista/model/CommentModel.dart';
 import 'package:Vista/model/UserModel.dart';
 import 'package:Vista/widgets/verification_badge_icon.dart';
-import 'package:Vista/utils/themes.dart';
-import 'package:Vista/services/user_friendly_error_handler.dart';
-import 'package:Vista/services/voice_cache_service.dart';
-import 'package:Vista/features/auth/providers/auth_controller.dart';
 import 'package:Vista/features/profile/data/profile_repository.dart';
-import 'package:Vista/features/profile/data/services/profile_note_service.dart';
-import 'package:Vista/features/posts/data/go_posts_repository.dart';
-import 'package:Vista/features/stories/data/repositories/story_repository.dart';
-import 'package:Vista/services/comment_repository.dart';
-import 'package:Vista/provider/notification_provider.dart' as go_notifications;
+import 'package:Vista/DB/profile_cache_service.dart';
 // Import security provider
 
 export 'package:Vista/provider/security_provider.dart';
 export 'package:Vista/features/auth/providers/auth_controller.dart';
 
 export 'package:Vista/features/profile/providers/profile_controller.dart';
-import 'package:Vista/features/profile/providers/profile_controller.dart';
 import 'package:Vista/features/posts/providers/posts_provider.dart';
 // profileProvider and profileUpdateProvider moved to profile_controller.dart
 
 class ProfileService {
   Future<UserModel?> getCurrentUserProfile() async {
+    final cacheService = ProfileCacheService();
     try {
       final userId = await TokenStorage.getUserId();
       if (userId == null || userId.isEmpty) return null;
@@ -53,17 +30,32 @@ class ProfileService {
 
       return UserModel.fromMap(response);
     } catch (e) {
+      final userId = await TokenStorage.getUserId();
+      if (userId != null && userId.isNotEmpty) {
+        final cached = await cacheService.getCachedProfile(userId);
+        if (cached != null) {
+          debugPrint(
+              '⚠️ [ProfileService] Using cached current profile after error: $e');
+          return UserModel.fromMap(cached.toMap());
+        }
+      }
       print('Error fetching current user profile: $e');
       return null;
     }
   }
 
   Future<UserModel?> getProfileById(String userId) async {
+    final cacheService = ProfileCacheService();
     try {
       final response = await ProfileRepository().fetchProfileById(userId);
 
       return UserModel.fromMap(response);
     } catch (e) {
+      final cached = await cacheService.getCachedProfile(userId);
+      if (cached != null) {
+        debugPrint('⚠️ [ProfileService] Using cached profile for $userId: $e');
+        return UserModel.fromMap(cached.toMap());
+      }
       print('Error fetching profile: $e');
       return null;
     }
@@ -168,7 +160,19 @@ final currentUserMapProvider =
     return null;
   }
 
-  return ProfileRepository().fetchProfileById(userId);
+  try {
+    return await ProfileRepository().fetchProfileById(userId);
+  } catch (e) {
+    final cached = await ProfileCacheService().getCachedProfile(userId);
+    if (cached != null) {
+      debugPrint(
+          '⚠️ [currentUserMapProvider] Using cached profile map after fetch failure: $e');
+      return cached.toMap();
+    }
+    // Never let a profile fetch failure invalidate session state
+    debugPrint('⚠️ [currentUserMapProvider] Profile fetch failed: $e');
+    return null;
+  }
 });
 
 class UserProfileNotifier extends StateNotifier<ProfileModel?> {
@@ -185,8 +189,20 @@ class UserProfileNotifier extends StateNotifier<ProfileModel?> {
 
   Future<void> fetchProfile(String userId) async {
     if (userId.isEmpty) return;
-    final data = await _profileRepository.fetchProfileById(userId);
-    state = ProfileModel.fromMap(data);
+    try {
+      final data = await _profileRepository.fetchProfileById(userId);
+      state = ProfileModel.fromMap(data);
+    } catch (e) {
+      final cached = await ProfileCacheService().getCachedProfile(userId);
+      if (cached != null) {
+        state = cached;
+        debugPrint(
+            '⚠️ [UserProfileNotifier] Loaded cached profile for $userId after error: $e');
+        return;
+      }
+      // Silently ignore — a profile load failure must never invalidate the session
+      debugPrint('⚠️ [UserProfileNotifier] Failed to load profile for $userId: $e');
+    }
   }
 
   Future<void> clearUserCache(String userId) async {
@@ -246,8 +262,13 @@ final userProfileProvider =
 final followRequestPendingProvider =
     FutureProvider.family<bool, String>((ref, userId) async {
   if (userId.isEmpty) return false;
-  final data = await ProfileRepository().fetchProfileById(userId);
-  return data['follow_status']?.toString() == 'requested';
+  try {
+    final data = await ProfileRepository().fetchProfileById(userId);
+    return data['follow_status']?.toString() == 'requested';
+  } catch (e) {
+    debugPrint('⚠️ [followRequestPendingProvider] Failed: $e');
+    return false;
+  }
 });
 // Provider to get the current user's UserModel based on profileProvider
 final userProvider = Provider<UserModel?>((ref) {

@@ -163,7 +163,7 @@ class ArchivedConversationsScreen extends ConsumerWidget {
         builder: (context) => ModernChatScreen(
           args: ChatScreenArgs(
             conversationId: conversation.id,
-            otherUserName: conversation.otherUserName ?? 'VISTA USER',
+            otherUserName: _displayName(conversation),
             otherUserAvatar: conversation.otherUserAvatar,
             otherUserId: conversation.otherUserId ?? '',
             isGroup: conversation.isGroup,
@@ -202,7 +202,7 @@ class ArchivedConversationsScreen extends ConsumerWidget {
     ConversationModel conversation,
   ) {
     final theme = Theme.of(context);
-    final displayName = conversation.otherUserName ?? 'VISTA USER';
+    final displayName = _displayName(conversation);
 
     showDialog(
       context: context,
@@ -267,6 +267,14 @@ class ArchivedConversationsScreen extends ConsumerWidget {
         UserFriendlyErrorUtils.showErrorSnackBar(context, e);
       }
     }
+  }
+
+  String _displayName(ConversationModel conversation) {
+    final raw = (conversation.otherUserName ?? '').trim();
+    if (raw.isEmpty || raw.toUpperCase() == 'VISTA USER' || raw == 'کاربر') {
+      return 'کاربر ناشناس';
+    }
+    return raw;
   }
 }
 
@@ -464,8 +472,8 @@ class _ArchivedConversationItem extends StatelessWidget {
 
   String _getDisplayName() {
     final name = conversation.otherUserName ?? '';
-    if (name.isEmpty || name == 'کاربر' || name == 'کاربر ناشناس') {
-      return 'VISTA USER';
+    if (name.isEmpty || name == 'کاربر') {
+      return 'کاربر ناشناس';
     }
     return name;
   }

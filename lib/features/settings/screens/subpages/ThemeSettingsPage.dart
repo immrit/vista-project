@@ -36,7 +36,7 @@ class _ThemeSettingsPageState extends ConsumerState<ThemeSettingsPage> {
         child: ListView(
           padding: const EdgeInsets.symmetric(vertical: 16.0),
           children: [
-            // سوییچ تاریک/روشن با طراحی بهبود یافته
+            // تنظیمات تم
             Container(
               margin: const EdgeInsets.symmetric(horizontal: 16.0),
               decoration: BoxDecoration(
@@ -54,94 +54,63 @@ class _ThemeSettingsPageState extends ConsumerState<ThemeSettingsPage> {
                   ),
                 ],
               ),
-              child: SwitchListTile(
-                title: Row(
-                  children: [
-                    const Text(
-                      'حالت تاریک',
-                      style:
-                          TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                    ),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: brightness == Brightness.dark
-                            ? Colors.grey.withValues(
-                                alpha:
-                                    0.2) // Changed from amber to grey for monochrome
-                            : Colors.grey
-                                .withValues(alpha: 0.2), // Changed from blue
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        brightness == Brightness.dark ? 'شب' : 'روز',
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                          color: isDark
-                              ? Colors.white
-                              : Colors.black, // Monochrome text
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Row(
+                      children: [
+                        Icon(Icons.palette_outlined, color: isDark ? Colors.white : Colors.black),
+                        const SizedBox(width: 12),
+                        const Text(
+                          'پوسته برنامه',
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                         ),
-                      ),
-                    ),
-                  ],
-                ),
-                subtitle: Text(
-                  brightness == Brightness.dark
-                      ? 'تم تاریک برای استفاده راحت در شب'
-                      : 'تم روشن برای استفاده در روز',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: isDark ? Colors.grey[400] : Colors.grey[700],
-                    fontStyle: FontStyle.italic,
-                  ),
-                ),
-                value: brightness == Brightness.dark,
-                onChanged: (value) {
-                  ref.read(brightnessProvider.notifier).updateBrightness(
-                      value ? Brightness.dark : Brightness.light);
-                },
-                secondary: AnimatedContainer(
-                  duration: const Duration(milliseconds: 300),
-                  width: 50,
-                  height: 50,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: brightness == Brightness.dark
-                          ? [Colors.grey[800]!, Colors.black]
-                          : [Colors.grey[300]!, Colors.white],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.1),
-                        blurRadius: 8,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 300),
-                    child: Icon(
-                      brightness == Brightness.dark
-                          ? Icons.nightlight_round
-                          : Icons.wb_sunny,
-                      key: ValueKey(brightness == Brightness.dark),
-                      color: isDark ? Colors.white : Colors.black,
-                      size: 24,
+                      ],
                     ),
                   ),
-                ),
-                activeThumbColor: isDark ? Colors.white : Colors.black,
-                activeTrackColor: Colors.grey,
+                  _buildDivider(),
+                  Consumer(
+                    builder: (context, ref, _) {
+                      final themeMode = ref.watch(themeModeProvider);
+                      return Column(
+                        children: [
+                          RadioListTile<ThemeMode>(
+                            title: const Text('پیروی از سیستم (تطبیقی)'),
+                            subtitle: const Text('تغییر تم هماهنگ با گوشی', style: TextStyle(fontSize: 12)),
+                            value: ThemeMode.system,
+                            groupValue: themeMode,
+                            activeColor: isDark ? Colors.white : Colors.black,
+                            onChanged: (value) {
+                              if (value != null) ref.read(themeModeProvider.notifier).updateThemeMode(value);
+                            },
+                          ),
+                          RadioListTile<ThemeMode>(
+                            title: const Text('روشن'),
+                            value: ThemeMode.light,
+                            groupValue: themeMode,
+                            activeColor: isDark ? Colors.white : Colors.black,
+                            onChanged: (value) {
+                              if (value != null) ref.read(themeModeProvider.notifier).updateThemeMode(value);
+                            },
+                          ),
+                          RadioListTile<ThemeMode>(
+                            title: const Text('تاریک'),
+                            value: ThemeMode.dark,
+                            groupValue: themeMode,
+                            activeColor: isDark ? Colors.white : Colors.black,
+                            onChanged: (value) {
+                              if (value != null) ref.read(themeModeProvider.notifier).updateThemeMode(value);
+                            },
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                ],
               ),
             ),
-
-            const SizedBox(height: 20),
 
             // REMOVED: Color Selection Container
 

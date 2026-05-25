@@ -54,7 +54,8 @@ Dio createPinnedDioClient({
         return client;
       },
       validateCertificate: (cert, host, port) {
-        if (cert == null) return false;
+        // Plain HTTP connections have no certificate — always allow.
+        if (cert == null) return true;
 
         final digest = _sha256Hex(cert.der);
         if (_pinnedFingerprints.contains(digest)) {

@@ -11,7 +11,7 @@ import 'dart:convert';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:Vista/utils/env_config.dart';
 
 import '../../auth/providers/auth_controller.dart';
 
@@ -39,7 +39,7 @@ class SseManager {
   Dio? _activeClient;
 
   static String get _backendUrl =>
-      dotenv.env['BACKEND_URL'] ?? 'http://10.0.2.2:8080';
+      EnvConfig.apiBaseUrl;
 
   // ─── Lifecycle ────────────────────────────────────────────────────
 
@@ -123,7 +123,19 @@ class SseManager {
           }
         }
       } on DioException catch (e) {
-        debugPrint('SseManager: DioException: ${e.message}');
+        final statusCode = e.response?.statusCode;
+        if (statusCode == 429) {
+          final retryAfterHeader = e.response?.headers.value('retry-after');
+          final retryAfterSeconds = int.tryParse(retryAfterHeader ?? '');
+          final enforcedCooldown = (retryAfterSeconds ?? 15).clamp(10, 120);
+          backoffSeconds = backoffSeconds < enforcedCooldown
+              ? enforcedCooldown
+              : backoffSeconds;
+          debugPrint(
+              'SseManager: rate-limited (429), cooldown ${backoffSeconds}s');
+        } else {
+          debugPrint('SseManager: DioException: ${e.message}');
+        }
       } catch (e) {
         debugPrint('SseManager: error: $e');
       }

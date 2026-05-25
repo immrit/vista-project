@@ -1,4 +1,4 @@
-﻿// lib/features/chat/theme/chat_theme.dart
+// lib/features/chat/theme/chat_theme.dart
 //
 // سیستم تم چت - هماهنگ با تم اصلی برنامه
 //
@@ -207,57 +207,65 @@ class ChatTheme {
   // ═══════════════════════════════════════════════════════════════════════════
 
   factory ChatTheme.light({Color? primaryColor}) {
-    final primary = primaryColor ?? const Color(0xFF6366F1); // Indigo
+    // Force Indigo + Violet palette, ignoring the app's global B&W primary color
+    const accent = Color(0xFF5B5CF0); // Indigo
+    const gradientEnd = Color(0xFF7C3AED); // Violet
 
     return ChatTheme(
       isDark: false,
-      backgroundColor: const Color(0xFFF8FAFC),
-      appBarColor: Colors.white.withOpacity(0.95),
-      textColor: const Color(0xFF1E293B),
+      backgroundColor: const Color(0xFFFFFFFF),
+      appBarColor: Colors.white.withValues(alpha: 0.95),
+      textColor: const Color(0xFF000000),
       secondaryTextColor: const Color(0xFF64748B),
-      dividerColor: const Color(0xFFE2E8F0),
+      dividerColor: const Color(0xFFE5E5E5),
 
-      // حباب پیام من - گرادینت زیبا
-      myBubbleColor: const Color(0xFFF5F5F5),
-      myBubbleGradient: null, // غیرفعال کردن گرادینت برای رنگ یکنواخت
-      myBubbleTextColor:
-          Colors.black87, // تغییر رنگ متن به مشکی برای خوانایی بهتر
+      // حباب پیام من - Indigo + Violet Gradient
+      myBubbleColor: accent,
+      myBubbleGradient: const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [accent, gradientEnd],
+      ),
+      myBubbleTextColor: Colors.white,
 
-      // حباب پیام دیگران
-      otherBubbleColor: Colors.white,
-      otherBubbleTextColor: const Color(0xFF1E293B),
+      // حباب پیام دیگران - سفید خالص با سایه ملایم برای تمایز بهتر
+      otherBubbleColor: const Color(0xFFFFFFFF),
+      otherBubbleTextColor: Colors.black,
 
       // وضعیت‌ها
       onlineColor: const Color(0xFF22C55E),
       offlineColor: const Color(0xFF94A3B8),
-      typingColor: const Color(0xFF3B82F6),
+      typingColor: accent,
       pendingColor: const Color(0xFFF59E0B),
       sentColor: const Color(0xFF22C55E),
       errorColor: const Color(0xFFEF4444),
 
       // Input
       inputBackgroundColor: Colors.white,
-      inputBorderColor: const Color(0xFFE2E8F0),
+      inputBorderColor: const Color(0xFFE5E5E5),
       inputHintColor: const Color(0xFF94A3B8),
-      sendButtonColor: primary,
-      iconColor: const Color(0xFF64748B),
+      sendButtonColor: accent,
+      iconColor: const Color(0xFF64748B), // Slate 500
 
       // سایه‌ها
       myBubbleShadow: BoxShadow(
-        color: primary.withOpacity(0.08),
-        blurRadius: 3,
-        offset: const Offset(0, 1),
+        color: accent.withValues(alpha: 0.15),
+        blurRadius: 4,
+        offset: const Offset(0, 2),
       ),
       otherBubbleShadow: BoxShadow(
-        color: Colors.black.withOpacity(0.03),
+        color: Colors.black.withValues(alpha: 0.03),
         blurRadius: 3,
         offset: const Offset(0, 1),
       ),
       inputShadow: BoxShadow(
-        color: Colors.black.withOpacity(0.05),
+        color: Colors.black.withValues(alpha: 0.05),
         blurRadius: 10,
         offset: const Offset(0, -2),
       ),
+      messageAppearDuration: const Duration(milliseconds: 240),
+      typingAnimationDuration: const Duration(milliseconds: 480),
+      fadeDuration: const Duration(milliseconds: 160),
     );
   }
 
@@ -266,61 +274,65 @@ class ChatTheme {
   // ═══════════════════════════════════════════════════════════════════════════
 
   factory ChatTheme.dark({Color? primaryColor}) {
-    final primary = primaryColor ?? const Color(0xFF818CF8); // Lighter Indigo
-
-    // ✅ در تم تاریک، اگر رنگ primary سفید یا خیلی روشن است، از آبی استاندارد استفاده می‌کنیم
-    final sendButtonColor = (primary.computeLuminance() > 0.8)
-        ? const Color(0xFF3390EC) // آبی استاندارد ویستا
-        : primary;
+    // Dark mode variant: Lighter accent for better contrast
+    const accent = Color(0xFF8A8CFF); // Lighter Indigo
+    const sendButtonColor = Color(0xFF8A8CFF);
 
     return ChatTheme(
       isDark: true,
-      backgroundColor: const Color(0xFF0F172A),
-      appBarColor: const Color(0xFF1E293B).withOpacity(0.95),
+      backgroundColor: const Color(0xFF000000),
+      appBarColor: const Color(0xFF000000).withValues(alpha: 0.95),
       textColor: const Color(0xFFF1F5F9),
       secondaryTextColor: const Color(0xFF94A3B8),
-      dividerColor: const Color(0xFF334155),
+      dividerColor: const Color(0xFF222222),
 
-      // حباب پیام من
-      myBubbleColor: const Color(0xFF1E1E1E),
-      myBubbleGradient: null, // غیرفعال کردن gradient
+      // حباب پیام من - gradient accent
+      myBubbleColor: accent,
+      myBubbleGradient: const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [accent, Color(0xFF6366F1)], // Indigo variation for dark mode
+      ),
       myBubbleTextColor: Colors.white,
 
-      // حباب پیام دیگران
-      otherBubbleColor: const Color(0xFF1E1E1E),
+      // حباب پیام دیگران - خاکستری روشن‌تر برای کنتراست بهتر
+      otherBubbleColor: const Color(0xFF2C2C2E), // Apple Dark Gray
       otherBubbleTextColor: Colors.white,
 
       // وضعیت‌ها
       onlineColor: const Color(0xFF4ADE80),
       offlineColor: const Color(0xFF64748B),
-      typingColor: const Color(0xFF60A5FA),
+      typingColor: const Color(0xFF8A8CFF),
       pendingColor: const Color(0xFFFBBF24),
       sentColor: const Color(0xFF4ADE80),
       errorColor: const Color(0xFFF87171),
 
       // Input
-      inputBackgroundColor: const Color(0xFF1E293B),
-      inputBorderColor: const Color(0xFF334155),
+      inputBackgroundColor: const Color(0xFF0A0A0A),
+      inputBorderColor: const Color(0xFF222222),
       inputHintColor: const Color(0xFF64748B),
-      sendButtonColor: sendButtonColor, // ✅ استفاده از رنگ اصلاح شده
-      iconColor: const Color(0xFF94A3B8),
+      sendButtonColor: sendButtonColor,
+      iconColor: const Color(0xFF94A3B8), // Slate 400
 
       // سایه‌ها
       myBubbleShadow: BoxShadow(
-        color: primary.withOpacity(0.1),
+        color: Colors.white.withValues(alpha: 0.1),
         blurRadius: 4,
         offset: const Offset(0, 1),
       ),
       otherBubbleShadow: BoxShadow(
-        color: Colors.black.withOpacity(0.15),
+        color: Colors.black.withValues(alpha: 0.2),
         blurRadius: 4,
         offset: const Offset(0, 1),
       ),
       inputShadow: BoxShadow(
-        color: Colors.black.withOpacity(0.2),
+        color: Colors.black.withValues(alpha: 0.2),
         blurRadius: 12,
         offset: const Offset(0, -2),
       ),
+      messageAppearDuration: const Duration(milliseconds: 240),
+      typingAnimationDuration: const Duration(milliseconds: 480),
+      fadeDuration: const Duration(milliseconds: 160),
     );
   }
 

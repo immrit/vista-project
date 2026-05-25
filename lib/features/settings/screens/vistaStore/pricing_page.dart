@@ -187,7 +187,7 @@ class _PricingPageState extends ConsumerState<PricingPage> {
                             center: Alignment.topCenter,
                             radius: 1.5,
                             colors: [
-                              premiumColor.withOpacity(0.3),
+                              premiumColor.withValues(alpha: 0.3),
                               Colors.transparent,
                             ],
                           ),
@@ -210,7 +210,7 @@ class _PricingPageState extends ConsumerState<PricingPage> {
                               ),
                               boxShadow: [
                                 BoxShadow(
-                                  color: premiumColor.withOpacity(0.5),
+                                  color: premiumColor.withValues(alpha: 0.5),
                                   blurRadius: 20,
                                   spreadRadius: 2,
                                 ),
@@ -266,9 +266,9 @@ class _PricingPageState extends ConsumerState<PricingPage> {
                     padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
                       color: (isDark ? Colors.black : Colors.white)
-                          .withOpacity(0.9),
+                          .withValues(alpha: 0.9),
                       border: Border(
-                          top: BorderSide(color: Colors.grey.withOpacity(0.2))),
+                          top: BorderSide(color: Colors.grey.withValues(alpha: 0.2))),
                     ),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
@@ -290,8 +290,8 @@ class _PricingPageState extends ConsumerState<PricingPage> {
                                       const EdgeInsets.symmetric(vertical: 12),
                                   decoration: BoxDecoration(
                                     color: isSelected
-                                        ? premiumColor.withOpacity(0.15)
-                                        : Colors.grey.withOpacity(0.1),
+                                        ? premiumColor.withValues(alpha: 0.15)
+                                        : Colors.grey.withValues(alpha: 0.1),
                                     borderRadius: BorderRadius.circular(12),
                                     border: Border.all(
                                       color: isSelected
@@ -356,7 +356,7 @@ class _PricingPageState extends ConsumerState<PricingPage> {
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               elevation: 5,
-                              shadowColor: premiumColor.withOpacity(0.4),
+                              shadowColor: premiumColor.withValues(alpha: 0.4),
                             ),
                             child: _isLoading
                                 ? const SizedBox(
@@ -405,7 +405,7 @@ class _PricingPageState extends ConsumerState<PricingPage> {
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: const Color(0xFF8774E1).withOpacity(0.1),
+              color: const Color(0xFF8774E1).withValues(alpha: 0.1),
               shape: BoxShape.circle,
             ),
             child:

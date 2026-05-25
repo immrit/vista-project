@@ -14,12 +14,23 @@
 
 import 'dart:async';
 import 'dart:io';
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../theme/chat_theme.dart';
 import '../services/voice_recorder_service.dart';
+import 'liquid_glass_input_shell.dart';
+import 'telegram_voice_recorder_bar.dart';
 import 'vista_emoji_panel.dart';
+import 'voice_input_state.dart';
+
+enum _VoiceHapticEvent {
+  recordStart,
+  recordLock,
+  recordCancel,
+  recordSend,
+  sendTap,
+  scheduleTap,
+}
 
 class AnimatedChatInput extends StatefulWidget {
   final TextEditingController controller;
@@ -27,6 +38,7 @@ class AnimatedChatInput extends StatefulWidget {
   final VoidCallback onSend;
   final VoidCallback? onAttachment;
   final VoidCallback? onVoice;
+  final VoidCallback? onScheduleMessage;
 
   // Restored Fields
   final ValueChanged<String>? onChanged;
@@ -49,6 +61,7 @@ class AnimatedChatInput extends StatefulWidget {
   final bool reduceEffects;
   final bool allowHeavyEffects;
   final double blurSigma;
+  final VoiceInputPreset voicePreset;
 
   const AnimatedChatInput({
     super.key,
@@ -57,6 +70,7 @@ class AnimatedChatInput extends StatefulWidget {
     required this.onSend,
     this.onAttachment,
     this.onVoice,
+    this.onScheduleMessage,
     this.onChanged,
     this.replyToContent,
     this.replyToSenderName,
@@ -72,6 +86,7 @@ class AnimatedChatInput extends StatefulWidget {
     this.reduceEffects = false,
     this.allowHeavyEffects = true,
     this.blurSigma = 8.0,
+    this.voicePreset = VoiceInputPreset.adaptive,
   });
 
   @override
@@ -80,6 +95,7 @@ class AnimatedChatInput extends StatefulWidget {
 
 class _AnimatedChatInputState extends State<AnimatedChatInput>
     with TickerProviderStateMixin, WidgetsBindingObserver {
+  static const Duration _hapticDebounce = Duration(milliseconds: 80);
   late AnimationController _sendButtonController;
   late Animation<double> _sendButtonScale;
   late Animation<double> _sendButtonRotation;
@@ -89,12 +105,15 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
 
   // Voice recording - با استفاده از VoiceRecorderService
   final _voiceRecorder = VoiceRecorderService();
-  bool _isRecording = false;
-  bool _isRecordingLocked = false;
+  final VoiceInputStateMachine _voiceStateMachine = VoiceInputStateMachine();
   int _recordingDuration = 0;
   List<double> _waveformData = [];
   Timer? _durationTimer;
   StreamSubscription<double>? _amplitudeSub;
+  Offset _voiceDragOffset = Offset.zero;
+  DateTime? _recordingStartedAt;
+  DateTime? _lastWaveUpdateAt;
+  bool _isCancelSwipeArmed = false;
 
   // Emoji
   bool _showEmojiPicker = false;
@@ -102,6 +121,40 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
   bool _hasText = false;
   double _lastReportedHeight = 0.0;
   bool _heightReportScheduled = false;
+  DateTime? _lastHapticAt;
+
+  bool get _isRecording => _voiceStateMachine.isRecording;
+  bool get _isRecordingLocked => _voiceStateMachine.isLocked;
+
+  VoiceGestureThresholds get _activeVoiceThresholds {
+    final mediaQuery = MediaQuery.of(context);
+    return VoiceGestureThresholdsResolver.resolve(
+      widget.voicePreset,
+      devicePixelRatio: mediaQuery.devicePixelRatio,
+      shortestSide: mediaQuery.size.shortestSide,
+    );
+  }
+
+  void _fireHaptic(_VoiceHapticEvent event) {
+    final now = DateTime.now();
+    if (_lastHapticAt != null &&
+        now.difference(_lastHapticAt!) < _hapticDebounce) {
+      return;
+    }
+    _lastHapticAt = now;
+
+    switch (event) {
+      case _VoiceHapticEvent.recordStart:
+      case _VoiceHapticEvent.recordLock:
+        HapticFeedback.mediumImpact();
+      case _VoiceHapticEvent.recordCancel:
+        HapticFeedback.lightImpact();
+      case _VoiceHapticEvent.recordSend:
+      case _VoiceHapticEvent.sendTap:
+      case _VoiceHapticEvent.scheduleTap:
+        HapticFeedback.selectionClick();
+    }
+  }
 
   @override
   void initState() {
@@ -176,6 +229,7 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
     final hasText = widget.controller.text.isNotEmpty;
     if (hasText != _hasText) {
       setState(() => _hasText = hasText);
+      _voiceStateMachine.setTyping(hasText);
       if (hasText) {
         _sendButtonController.forward();
       } else {
@@ -260,21 +314,37 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
   // ═══════════════════════════════════════════════════════════════════════════
 
   Future<void> _startRecording() async {
-    HapticFeedback.mediumImpact();
+    _fireHaptic(_VoiceHapticEvent.recordStart);
 
     // شروع ضبط با سرویس
     await _voiceRecorder.startRecording();
 
     if (mounted) {
-      setState(() => _isRecording = true);
+      _recordingStartedAt = DateTime.now();
+      _lastWaveUpdateAt = null;
+      _voiceStateMachine.startRecording();
+      setState(() {
+        _voiceDragOffset = Offset.zero;
+        _isCancelSwipeArmed = false;
+      });
 
       // گوش دادن به تغییرات دامنه صدا
       _amplitudeSub = _voiceRecorder.amplitudeStream.listen((amp) {
         if (mounted && _isRecording) {
+          final now = DateTime.now();
+          final reduceSampling =
+              widget.reduceEffects || !widget.allowHeavyEffects;
+          if (reduceSampling &&
+              _lastWaveUpdateAt != null &&
+              now.difference(_lastWaveUpdateAt!) <
+                  const Duration(milliseconds: 120)) {
+            return;
+          }
+          _lastWaveUpdateAt = now;
           setState(() {
             _waveformData.add(amp);
-            // نگه داشتن آخر 40 مقدار برای display
-            if (_waveformData.length > 40) {
+            final maxSamples = reduceSampling ? 20 : 40;
+            if (_waveformData.length > maxSamples) {
               _waveformData.removeAt(0);
             }
           });
@@ -295,9 +365,18 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
     _amplitudeSub?.cancel();
 
     // توقف ضبط و دریافت فایل
+    final thresholds = _activeVoiceThresholds;
+    if (_recordingStartedAt != null &&
+        DateTime.now().difference(_recordingStartedAt!) <
+            thresholds.minRecordDuration) {
+      await _cancelRecording();
+      return;
+    }
     final file = await _voiceRecorder.stopRecording();
 
     if (file != null && mounted) {
+      _voiceStateMachine.markPreviewSend();
+      _fireHaptic(_VoiceHapticEvent.recordSend);
       widget.onVoiceRecorded?.call(file, _recordingDuration);
     }
 
@@ -305,9 +384,10 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
   }
 
   Future<void> _cancelRecording() async {
-    HapticFeedback.lightImpact();
+    _fireHaptic(_VoiceHapticEvent.recordCancel);
     _durationTimer?.cancel();
     _amplitudeSub?.cancel();
+    _voiceStateMachine.markCancelSwipe();
 
     // لغو ضبط (حذف فایل)
     await _voiceRecorder.cancelRecording();
@@ -316,16 +396,18 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
 
   void _resetRecording() {
     setState(() {
-      _isRecording = false;
-      _isRecordingLocked = false;
+      _voiceStateMachine.reset(hasText: _hasText);
       _recordingDuration = 0;
       _waveformData = [];
+      _voiceDragOffset = Offset.zero;
+      _isCancelSwipeArmed = false;
+      _recordingStartedAt = null;
     });
   }
 
   void _lockRecording() {
-    HapticFeedback.mediumImpact();
-    setState(() => _isRecordingLocked = true);
+    _fireHaptic(_VoiceHapticEvent.recordLock);
+    setState(() => _voiceStateMachine.lockRecording());
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -333,7 +415,7 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
   // ═══════════════════════════════════════════════════════════════════════════
 
   void _toggleEmojiPicker() {
-    HapticFeedback.lightImpact();
+    HapticFeedback.selectionClick();
 
     if (_showEmojiPicker) {
       setState(() => _showEmojiPicker = false);
@@ -408,7 +490,8 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
                     ? const []
                     : [
                         BoxShadow(
-                          color: Colors.black.withOpacity(isDark ? 0.2 : 0.08),
+                          color: Colors.black
+                              .withValues(alpha: isDark ? 0.2 : 0.08),
                           blurRadius: 8,
                           offset: const Offset(0, 2),
                         ),
@@ -416,51 +499,23 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(24),
-                child: shouldReduceEffects
-                    ? Container(
-                        decoration: BoxDecoration(
-                          color: theme.inputBackgroundColor.withOpacity(0.9),
-                          border: Border.all(
-                            color: theme.inputBorderColor.withOpacity(0.25),
-                            width: 0.5,
-                          ),
-                        ),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            _buildReplyPreview(theme),
-                            if (_isRecording)
-                              _buildRecordingOverlay(theme)
-                            else
-                              _buildInputRow(theme),
-                          ],
-                        ),
-                      )
-                    : BackdropFilter(
-                        filter: ImageFilter.blur(
-                          sigmaX: effectiveBlurSigma,
-                          sigmaY: effectiveBlurSigma,
-                        ),
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: theme.inputBackgroundColor.withOpacity(0.75),
-                            border: Border.all(
-                              color: theme.inputBorderColor.withOpacity(0.3),
-                              width: 0.5,
-                            ),
-                          ),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              _buildReplyPreview(theme),
-                              if (_isRecording)
-                                _buildRecordingOverlay(theme)
-                              else
-                                _buildInputRow(theme),
-                            ],
-                          ),
-                        ),
-                      ),
+                child: LiquidGlassInputShell(
+                  reduceEffects: shouldReduceEffects,
+                  isDark: isDark,
+                  blurSigma: effectiveBlurSigma,
+                  background: theme.inputBackgroundColor,
+                  borderColor: theme.inputBorderColor,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _buildReplyPreview(theme),
+                      if (_isRecording)
+                        _buildRecordingOverlay(theme)
+                      else
+                        _buildInputRow(theme),
+                    ],
+                  ),
+                ),
               ),
             ),
 
@@ -492,103 +547,19 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
   }
 
   Widget _buildRecordingOverlay(ChatTheme theme) {
-    return Container(
-      height: 50, // باریک‌تر
-      margin:
-          const EdgeInsets.symmetric(horizontal: 6, vertical: 6), // فاصله کمتر
-      decoration: BoxDecoration(
-        color: theme.errorColor.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(24), // باریک‌تر
-        border: Border.all(
-          color: theme.errorColor.withOpacity(0.3),
-          width: 1,
-        ),
-      ),
-      child: Row(
-        children: [
-          // Cancel
-          IconButton(
-            onPressed: _cancelRecording,
-            icon: Icon(Icons.delete_rounded, color: theme.errorColor),
-          ),
-
-          // Duration
-          Text(
-            _formatDuration(_recordingDuration),
-            style: TextStyle(
-              color: theme.errorColor,
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              fontFeatures: const [FontFeature.tabularFigures()],
-            ),
-          ),
-
-          // Waveform indicator
-          Expanded(
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: List.generate(7, (i) {
-                final height = 4.0 +
-                    (_waveformData.isNotEmpty && i < _waveformData.length
-                        ? _waveformData[i % _waveformData.length] * 16
-                        : (i % 3 + 1) * 4.0);
-                return AnimatedContainer(
-                  duration: const Duration(milliseconds: 100),
-                  margin: const EdgeInsets.symmetric(horizontal: 2),
-                  width: 3,
-                  height: height,
-                  decoration: BoxDecoration(
-                    color: theme.errorColor,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                );
-              }),
-            ),
-          ),
-
-          // Lock or Send
-          if (_isRecordingLocked)
-            GestureDetector(
-              onTap: _stopRecording,
-              child: Container(
-                width: 44,
-                height: 44,
-                margin: const EdgeInsets.only(right: 6),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      theme.sendButtonColor,
-                      theme.sendButtonColor.withBlue(
-                        (theme.sendButtonColor.blue + 30).clamp(0, 255),
-                      ),
-                    ],
-                  ),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.send_rounded,
-                  color: Colors.white,
-                  size: 22,
-                ),
-              ),
-            )
-          else
-            IconButton(
-              onPressed: _lockRecording,
-              icon: Icon(
-                Icons.lock_outline_rounded,
-                color: theme.secondaryTextColor,
-              ),
-            ),
-        ],
-      ),
+    return TelegramVoiceRecorderBar(
+      theme: theme,
+      isLocked: _isRecordingLocked,
+      isCanceling: _isCancelSwipeArmed,
+      durationSeconds: _recordingDuration,
+      swipeProgress: _cancelProgress,
+      lockProgress: _lockProgress,
+      waveform: _waveformData,
+      onCancel: _cancelRecording,
+      onLock: _lockRecording,
+      onSend: _stopRecording,
+      onStopUnlocked: _stopRecording,
     );
-  }
-
-  String _formatDuration(int seconds) {
-    final mins = seconds ~/ 60;
-    final secs = seconds % 60;
-    return '${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
   }
 
   Widget _buildReplyPreview(ChatTheme theme) {
@@ -613,11 +584,11 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
                     12, 10, 12, 6), // پدینگ کمتر و باریک‌تر
                 decoration: BoxDecoration(
                   color: theme.dividerColor
-                      .withOpacity(0.05), // کمی رنگ پس زمینه برای ریپلای
+                      .withValues(alpha: 0.05), // کمی رنگ پس زمینه برای ریپلای
                   border: Border(
                     bottom: BorderSide(
-                      color:
-                          theme.dividerColor.withOpacity(0.1), // خط بسیار محو
+                      color: theme.dividerColor
+                          .withValues(alpha: 0.1), // خط بسیار محو
                       width: 1,
                     ),
                   ),
@@ -707,6 +678,21 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
                 : Icons.emoji_emotions_outlined,
             onTap: _toggleEmojiPicker,
             theme: theme,
+          ),
+
+          AnimatedSize(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeInOut,
+            child: _hasText
+                ? _buildIconButton(
+                    icon: Icons.schedule_send_rounded,
+                    onTap: () {
+                      _fireHaptic(_VoiceHapticEvent.scheduleTap);
+                      widget.onScheduleMessage?.call();
+                    },
+                    theme: theme,
+                  )
+                : const SizedBox.shrink(),
           ),
 
           const SizedBox(width: 3), // فاصله کمتر
@@ -843,7 +829,7 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
           filled: false, // جلوگیری از رنگ پس‌زمینه پیش‌فرض تم
           hintText: widget.hint ?? 'پیام...',
           hintStyle: TextStyle(
-            color: theme.secondaryTextColor.withOpacity(0.6),
+            color: theme.secondaryTextColor.withValues(alpha: 0.6),
             fontSize: 15, // فونت کوچک‌تر
           ),
           counterText: "", // Hide the counter
@@ -897,16 +883,8 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
           _stopRecording();
         }
       },
-      onLongPressMoveUpdate: (details) {
-        // اگه به بالا بکشه → قفل بشه
-        if (details.offsetFromOrigin.dy < -50 && !_isRecordingLocked) {
-          _lockRecording();
-        }
-        // اگه به چپ بکشه → لغو بشه
-        if (details.offsetFromOrigin.dx < -100) {
-          _cancelRecording();
-        }
-      },
+      onLongPressMoveUpdate: (details) => _handleVoiceDragUpdate(details),
+      onLongPressUp: _handleVoiceDragEnd,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         width: 40, // کوچک‌تر
@@ -914,8 +892,8 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           color: _isRecording
-              ? theme.errorColor.withOpacity(0.2)
-              : theme.sendButtonColor.withOpacity(0.1),
+              ? theme.errorColor.withValues(alpha: 0.2)
+              : theme.sendButtonColor.withValues(alpha: 0.1),
         ),
         child: Icon(
           Icons.mic_rounded,
@@ -924,6 +902,47 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
         ),
       ),
     );
+  }
+
+  void _handleVoiceDragUpdate(LongPressMoveUpdateDetails details) {
+    if (!_isRecording || _isRecordingLocked) return;
+    final drag = details.offsetFromOrigin;
+    final thresholds = _activeVoiceThresholds;
+
+    final cancelReady = drag.dx <= -thresholds.cancelDragDistance;
+    final lockReady = drag.dy <= -thresholds.lockDragDistance;
+
+    setState(() {
+      _voiceDragOffset = drag;
+      _isCancelSwipeArmed = cancelReady;
+    });
+
+    if (lockReady && !_isRecordingLocked) {
+      _lockRecording();
+    } else if (cancelReady) {
+      _cancelRecording();
+    }
+  }
+
+  void _handleVoiceDragEnd() {
+    if (!_isRecording || _isRecordingLocked) return;
+    if (_isCancelSwipeArmed) {
+      _cancelRecording();
+      return;
+    }
+    _stopRecording();
+  }
+
+  double get _cancelProgress {
+    if (_voiceDragOffset.dx >= 0) return 0;
+    return (-_voiceDragOffset.dx / _activeVoiceThresholds.cancelDragDistance)
+        .clamp(0.0, 1.0);
+  }
+
+  double get _lockProgress {
+    if (_voiceDragOffset.dy >= 0) return 0;
+    return (-_voiceDragOffset.dy / _activeVoiceThresholds.lockDragDistance)
+        .clamp(0.0, 1.0);
   }
 
   Widget _buildSendButtonWidget(ChatTheme theme) {
@@ -936,7 +955,7 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
     return GestureDetector(
       onTap: widget.enabled && _hasText
           ? () {
-              HapticFeedback.lightImpact();
+              _fireHaptic(_VoiceHapticEvent.sendTap);
               widget.onSend();
             }
           : null,
@@ -952,13 +971,13 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
             colors: [
               buttonColor,
               buttonColor.withBlue(
-                (buttonColor.blue + 20).clamp(0, 255),
+                ((buttonColor.b * 255.0).round() + 20).clamp(0, 255),
               ),
             ],
           ),
           boxShadow: [
             BoxShadow(
-              color: buttonColor.withOpacity(0.35),
+              color: buttonColor.withValues(alpha: 0.35),
               blurRadius: 6, // سایه کوچک‌تر
               offset: const Offset(0, 2),
             ),

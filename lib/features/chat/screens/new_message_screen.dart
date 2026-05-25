@@ -112,7 +112,8 @@ class _NewMessageScreenState extends ConsumerState<NewMessageScreen> {
     if (isSecret || conversationId == null || conversationId.isEmpty) {
       try {
         final repo = ref.read(chatRepositoryProvider);
-        final result = await repo.createConversation(user.id, isSecret: isSecret);
+        final result =
+            await repo.createConversation(user.id, isSecret: isSecret);
         if (result.isSuccess && result.data != null) {
           conversationId = result.data!.id;
         } else {
@@ -182,7 +183,9 @@ class _NewMessageScreenState extends ConsumerState<NewMessageScreen> {
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.w600,
-            color: _isSecretMode ? Colors.green : theme.textTheme.titleLarge?.color,
+            color: _isSecretMode
+                ? Colors.green
+                : theme.textTheme.titleLarge?.color,
           ),
         ),
         centerTitle: true,
@@ -204,14 +207,16 @@ class _NewMessageScreenState extends ConsumerState<NewMessageScreen> {
                     physics: const BouncingScrollPhysics(),
                     slivers: [
                       // دکمه ساخت گروه
-                      if (!_isSecretMode) SliverToBoxAdapter(
-                        child: _buildCreateGroupTile(theme),
-                      ),
-                      
+                      if (!_isSecretMode)
+                        SliverToBoxAdapter(
+                          child: _buildCreateGroupTile(theme),
+                        ),
+
                       // دکمه ساخت سکرت چت
-                      if (!_isSecretMode) SliverToBoxAdapter(
-                        child: _buildCreateSecretChatTile(theme),
-                      ),
+                      if (!_isSecretMode)
+                        SliverToBoxAdapter(
+                          child: _buildCreateSecretChatTile(theme),
+                        ),
 
                       // هدر لیست کاربران
                       if (filtered.isNotEmpty)
@@ -239,7 +244,8 @@ class _NewMessageScreenState extends ConsumerState<NewMessageScreen> {
                                     Icon(
                                       Icons.person_search_rounded,
                                       size: 48,
-                                      color: theme.hintColor.withOpacity(0.5),
+                                      color: theme.hintColor
+                                          .withValues(alpha: 0.5),
                                     ),
                                     const SizedBox(height: 12),
                                     Text(
@@ -287,8 +293,8 @@ class _NewMessageScreenState extends ConsumerState<NewMessageScreen> {
       height: 44,
       decoration: BoxDecoration(
         color: isDark
-            ? Colors.white.withOpacity(0.08)
-            : Colors.black.withOpacity(0.05),
+            ? Colors.white.withValues(alpha: 0.08)
+            : Colors.black.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(12),
       ),
       child: TextField(
@@ -388,7 +394,7 @@ class _NewMessageScreenState extends ConsumerState<NewMessageScreen> {
               width: 52,
               height: 52,
               decoration: BoxDecoration(
-                color: Colors.green.withOpacity(0.15),
+                color: Colors.green.withValues(alpha: 0.15),
                 shape: BoxShape.circle,
               ),
               child: const Icon(
@@ -428,7 +434,8 @@ class _NewMessageScreenState extends ConsumerState<NewMessageScreen> {
                 // آواتار ساده
                 CircleAvatar(
                   radius: 26,
-                  backgroundColor: theme.colorScheme.primary.withOpacity(0.1),
+                  backgroundColor:
+                      theme.colorScheme.primary.withValues(alpha: 0.1),
                   backgroundImage: user.avatarUrl != null
                       ? NetworkImage(user.avatarUrl!)
                       : null,
@@ -487,7 +494,7 @@ class _NewMessageScreenState extends ConsumerState<NewMessageScreen> {
               thickness: 0.5,
               indent: 72,
               endIndent: 16,
-              color: theme.dividerColor.withOpacity(0.3),
+              color: theme.dividerColor.withValues(alpha: 0.3),
             ),
         ],
       ),

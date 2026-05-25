@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:dio/dio.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:Vista/utils/env_config.dart';
 
 import '../features/auth/providers/auth_controller.dart' show TokenStorage;
 import '../features/chat/services/sse_manager.dart';
@@ -12,7 +12,7 @@ class MessageReactionService {
   MessageReactionService();
 
   static String get _backendUrl =>
-      dotenv.env['BACKEND_URL'] ?? 'http://10.0.2.2:8080';
+      EnvConfig.apiBaseUrl ?? 'http://10.0.2.2:8080';
 
   late final Dio _dio = Dio(
     BaseOptions(

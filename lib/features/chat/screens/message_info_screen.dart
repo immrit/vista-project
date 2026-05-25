@@ -80,7 +80,7 @@ class MessageInfoScreen extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 10,
             offset: const Offset(0, 2),
           ),
@@ -94,7 +94,7 @@ class MessageInfoScreen extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: theme.primaryColor.withOpacity(0.1),
+                  color: theme.primaryColor.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(
@@ -120,11 +120,12 @@ class MessageInfoScreen extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color:
-                  isMe ? theme.primaryColor.withOpacity(0.1) : theme.cardColor,
+              color: isMe
+                  ? theme.primaryColor.withValues(alpha: 0.1)
+                  : theme.cardColor,
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: theme.dividerColor.withOpacity(0.3),
+                color: theme.dividerColor.withValues(alpha: 0.3),
               ),
             ),
             child: TelegramEmojiText(
@@ -160,7 +161,7 @@ class MessageInfoScreen extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 10,
             offset: const Offset(0, 2),
           ),
@@ -245,13 +246,13 @@ class MessageInfoScreen extends StatelessWidget {
                   Expanded(
                     child: Container(
                       width: 2,
-                      color: color.withOpacity(0.3),
+                      color: color.withValues(alpha: 0.3),
                     ),
                   ),
                 Container(
                   padding: const EdgeInsets.all(6),
                   decoration: BoxDecoration(
-                    color: color.withOpacity(0.1),
+                    color: color.withValues(alpha: 0.1),
                     shape: BoxShape.circle,
                     border: Border.all(color: color, width: 2),
                   ),
@@ -261,7 +262,7 @@ class MessageInfoScreen extends StatelessWidget {
                   Expanded(
                     child: Container(
                       width: 2,
-                      color: color.withOpacity(0.3),
+                      color: color.withValues(alpha: 0.3),
                     ),
                   ),
               ],
@@ -298,7 +299,7 @@ class MessageInfoScreen extends StatelessWidget {
                     timeago.format(time, locale: 'fa'),
                     style: TextStyle(
                       fontSize: 12,
-                      color: theme.hintColor.withOpacity(0.7),
+                      color: theme.hintColor.withValues(alpha: 0.7),
                     ),
                   ),
                 ],
@@ -321,7 +322,7 @@ class MessageInfoScreen extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 10,
             offset: const Offset(0, 2),
           ),
@@ -359,7 +360,7 @@ class MessageInfoScreen extends StatelessWidget {
                   vertical: 8,
                 ),
                 decoration: BoxDecoration(
-                  color: theme.primaryColor.withOpacity(0.1),
+                  color: theme.primaryColor.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Row(

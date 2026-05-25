@@ -238,10 +238,10 @@ class _StoryStickerSheetState extends State<StoryStickerSheet>
         child: Container(
           height: MediaQuery.of(context).size.height * 0.75,
           decoration: BoxDecoration(
-            color: const Color(0xFF1C1C1E).withOpacity(0.85),
+            color: const Color(0xFF1C1C1E).withValues(alpha: 0.85),
             borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
             border: Border(
-              top: BorderSide(color: Colors.white.withOpacity(0.1), width: 1),
+              top: BorderSide(color: Colors.white.withValues(alpha: 0.1), width: 1),
             ),
           ),
           child: Column(
@@ -253,7 +253,7 @@ class _StoryStickerSheetState extends State<StoryStickerSheet>
                   width: 40,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.3),
+                    color: Colors.white.withValues(alpha: 0.3),
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -265,7 +265,7 @@ class _StoryStickerSheetState extends State<StoryStickerSheet>
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                 child: Container(
                   decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.3),
+                    color: Colors.black.withValues(alpha: 0.3),
                     borderRadius: BorderRadius.circular(16),
                   ),
                   child: TextField(
@@ -275,9 +275,9 @@ class _StoryStickerSheetState extends State<StoryStickerSheet>
                     decoration: InputDecoration(
                       hintText: 'جستجو...',
                       hintStyle:
-                          TextStyle(color: Colors.white.withOpacity(0.5)),
+                          TextStyle(color: Colors.white.withValues(alpha: 0.5)),
                       prefixIcon: Icon(Icons.search,
-                          color: Colors.white.withOpacity(0.5)),
+                          color: Colors.white.withValues(alpha: 0.5)),
                       border: InputBorder.none,
                       contentPadding: const EdgeInsets.symmetric(
                           horizontal: 16, vertical: 12),
@@ -292,7 +292,7 @@ class _StoryStickerSheetState extends State<StoryStickerSheet>
                 indicatorColor: Colors.white,
                 indicatorWeight: 3,
                 labelColor: Colors.white,
-                unselectedLabelColor: Colors.white.withOpacity(0.5),
+                unselectedLabelColor: Colors.white.withValues(alpha: 0.5),
                 labelStyle: const TextStyle(
                     fontFamily: 'Vazir', fontWeight: FontWeight.bold),
                 tabs: const [
@@ -360,7 +360,7 @@ class _StoryStickerSheetState extends State<StoryStickerSheet>
           borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
-              color: sticker.gradient.colors.first.withOpacity(0.3),
+              color: sticker.gradient.colors.first.withValues(alpha: 0.3),
               blurRadius: 8,
               offset: const Offset(0, 4),
             ),
@@ -376,7 +376,7 @@ class _StoryStickerSheetState extends State<StoryStickerSheet>
                     sigmaX: 0,
                     sigmaY: 0), // Just structural for now, optional logic
                 child: Container(
-                  color: Colors.white.withOpacity(0.1),
+                  color: Colors.white.withValues(alpha: 0.1),
                 ),
               ),
             ),
@@ -616,9 +616,9 @@ class _StoryStickerSheetState extends State<StoryStickerSheet>
                   prefixStyle: const TextStyle(
                       color: Colors.blue, fontWeight: FontWeight.bold),
                   hintText: '\u0645\u062A\u0646 \u0647\u0634\u062A\u06AF...',
-                  hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
+                  hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.3)),
                   filled: true,
-                  fillColor: Colors.white.withOpacity(0.05),
+                  fillColor: Colors.white.withValues(alpha: 0.05),
                   border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                       borderSide: BorderSide.none),

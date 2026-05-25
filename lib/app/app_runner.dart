@@ -34,6 +34,7 @@ import 'package:Vista/provider/app_settings_provider.dart';
 
 // Utils
 import 'package:Vista/utils/const.dart';
+import 'package:Vista/utils/themes.dart';
 
 // Feature Screens (Moved)
 import 'package:Vista/features/home/screens/homeScreen.dart';
@@ -56,7 +57,6 @@ import 'package:Vista/features/posts/screens/ExploreFeedScreen.dart';
 import 'package:Vista/features/posts/screens/PostDetailPage.dart';
 import 'package:Vista/features/posts/screens/profileScreen.dart';
 import 'package:Vista/features/emoji/domain/telegram_emoji_lookup.dart';
-import 'package:Vista/features/auth/providers/auth_controller.dart';
 
 // Stories Module
 import 'package:Vista/features/stories/stories.dart';
@@ -107,11 +107,29 @@ class _RootAppState extends State<RootApp> {
   Future<void> _initDeferred() async {
     await AppInitialization.loadDeferredServices();
     _checkInitialNotification();
+    await _precacheCriticalAssets();
 
     if (mounted) {
       setState(() {
         _isInitialized = true;
       });
+    }
+  }
+
+  Future<void> _precacheCriticalAssets() async {
+    if (!mounted) return;
+    final criticalAssets = <String>[
+      'assets/images/telegram_bg.jpg',
+      'assets/images/vista_custom_bg.png',
+      'assets/images/vista_custom_bg_dark.png',
+    ];
+
+    for (final asset in criticalAssets) {
+      try {
+        await precacheImage(AssetImage(asset), context);
+      } catch (e) {
+        debugPrint('Asset precache skipped for $asset: $e');
+      }
     }
   }
 
@@ -384,7 +402,9 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
             navigatorKey: navigatorKey,
             title: 'Vista',
             debugShowCheckedModeBanner: false,
-            theme: theme,
+            theme: VistaThemes.lightTheme,
+            darkTheme: VistaThemes.darkTheme,
+            themeMode: ref.watch(themeModeProvider),
             builder: (context, child) {
               final safeChild = child ?? const SizedBox.shrink();
               if (colorBlindMatrix == null) return safeChild;

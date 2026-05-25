@@ -229,8 +229,8 @@ class _TelegramContextMenuState extends State<TelegramContextMenu>
                   child: FadeTransition(
                     opacity: _fadeAnimation,
                     child: Container(
-                      color: Colors.black
-                          .withOpacity(0.6), // تاریکی بیشتر برای تمرکز روی پیام
+                      color: Colors.black.withValues(
+                          alpha: 0.6), // تاریکی بیشتر برای تمرکز روی پیام
                     ),
                   ),
                 ),
@@ -302,7 +302,7 @@ class _TelegramContextMenuState extends State<TelegramContextMenu>
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.15),
+            color: Colors.black.withValues(alpha: 0.15),
             blurRadius: 20,
             spreadRadius: 2,
             offset: const Offset(0, 8),
@@ -318,7 +318,9 @@ class _TelegramContextMenuState extends State<TelegramContextMenu>
               return Divider(
                 height: 1,
                 thickness: 0.5,
-                color: isDark ? Colors.white12 : Colors.grey.withOpacity(0.15),
+                color: isDark
+                    ? Colors.white12
+                    : Colors.grey.withValues(alpha: 0.15),
               );
             }
             return Material(
@@ -330,8 +332,8 @@ class _TelegramContextMenuState extends State<TelegramContextMenu>
                   Future.delayed(const Duration(milliseconds: 200), item.onTap);
                 },
                 overlayColor: WidgetStateProperty.all(isDark
-                    ? Colors.white.withOpacity(0.05)
-                    : Colors.black.withOpacity(0.03)),
+                    ? Colors.white.withValues(alpha: 0.05)
+                    : Colors.black.withValues(alpha: 0.03)),
                 child: Padding(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
@@ -373,7 +375,7 @@ class _TelegramContextMenuState extends State<TelegramContextMenu>
         borderRadius: BorderRadius.circular(26),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.12),
+            color: Colors.black.withValues(alpha: 0.12),
             blurRadius: 16,
             offset: const Offset(0, 6),
           )

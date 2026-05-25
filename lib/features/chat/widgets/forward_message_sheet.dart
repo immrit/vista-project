@@ -426,7 +426,7 @@ class _ForwardMessageSheetState extends ConsumerState<ForwardMessageSheet>
         color: theme.cardColor,
         border: Border(
           top: BorderSide(
-            color: theme.dividerColor.withOpacity(0.2),
+            color: theme.dividerColor.withValues(alpha: 0.2),
             width: 1,
           ),
         ),

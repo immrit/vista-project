@@ -247,19 +247,19 @@ class _VistaAboutSlideshowState extends State<VistaAboutSlideshow>
                     const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                 decoration: BoxDecoration(
                   color: isDark
-                      ? Colors.white.withOpacity(0.1)
-                      : Colors.white.withOpacity(0.8),
+                      ? Colors.white.withValues(alpha: 0.1)
+                      : Colors.white.withValues(alpha: 0.8),
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
                     color: isDark
-                        ? Colors.white.withOpacity(0.2)
-                        : Colors.black.withOpacity(0.1),
+                        ? Colors.white.withValues(alpha: 0.2)
+                        : Colors.black.withValues(alpha: 0.1),
                   ),
                   boxShadow: [
                     BoxShadow(
                       color: isDark
-                          ? Colors.black.withOpacity(0.3)
-                          : Colors.black.withOpacity(0.1),
+                          ? Colors.black.withValues(alpha: 0.3)
+                          : Colors.black.withValues(alpha: 0.1),
                       blurRadius: 20,
                       offset: const Offset(0, 10),
                     ),
@@ -270,7 +270,7 @@ class _VistaAboutSlideshowState extends State<VistaAboutSlideshow>
                     Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: _slides[_currentPage].color.withOpacity(0.2),
+                        color: _slides[_currentPage].color.withValues(alpha: 0.2),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Icon(
@@ -359,18 +359,18 @@ class _VistaAboutSlideshowState extends State<VistaAboutSlideshow>
                           height: 56,
                           decoration: BoxDecoration(
                             color: isDark
-                                ? Colors.white.withOpacity(0.1)
+                                ? Colors.white.withValues(alpha: 0.1)
                                 : Colors.white,
                             borderRadius: BorderRadius.circular(16),
                             border: Border.all(
                               color:
-                                  _slides[_currentPage].color.withOpacity(0.3),
+                                  _slides[_currentPage].color.withValues(alpha: 0.3),
                             ),
                             boxShadow: [
                               BoxShadow(
                                 color: _slides[_currentPage]
                                     .color
-                                    .withOpacity(0.2),
+                                    .withValues(alpha: 0.2),
                                 blurRadius: 10,
                                 offset: const Offset(0, 5),
                               ),
@@ -406,7 +406,7 @@ class _VistaAboutSlideshowState extends State<VistaAboutSlideshow>
                           boxShadow: [
                             BoxShadow(
                               color:
-                                  _slides[_currentPage].color.withOpacity(0.4),
+                                  _slides[_currentPage].color.withValues(alpha: 0.4),
                               blurRadius: 20,
                               offset: const Offset(0, 10),
                             ),
@@ -483,7 +483,7 @@ class _VistaAboutSlideshowState extends State<VistaAboutSlideshow>
                           shape: BoxShape.circle,
                           boxShadow: [
                             BoxShadow(
-                              color: slide.color.withOpacity(0.4),
+                              color: slide.color.withValues(alpha: 0.4),
                               blurRadius: 30,
                               offset: const Offset(0, 15),
                             ),
@@ -548,7 +548,7 @@ class ParticlePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = color.withOpacity(0.3)
+      ..color = color.withValues(alpha: 0.3)
       ..style = PaintingStyle.fill;
 
     final center = Offset(size.width / 2, size.height / 2);

@@ -1,4 +1,4 @@
-// ignore_for_file: unused_element, use_build_context_synchronously, deprecated_member_use
+// ignore_for_file: unused_element, deprecated_member_use
 
 import 'package:Vista/features/chat/screens/ChatConversationsScreen.dart'
     show ChatConversationsScreen;
@@ -20,6 +20,8 @@ import '../../../features/auth/widgets/otp_dialog.dart';
 import '../../../features/auth/data/auth_repository.dart';
 import '../../../features/auth/providers/auth_controller.dart';
 import '../../../provider/provider.dart';
+import 'package:flutter_animate/flutter_animate.dart';
+import 'package:Vista/utils/glassmorphism.dart';
 
 // ✅ Provider تعداد مکالمه‌های خوانده‌نشده
 final unreadConversationsCountProvider = Provider<int>((ref) {
@@ -58,16 +60,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   String _currentUserId = '';
   String _currentUsername = 'کاربر';
 
-  List<Widget> get _tabs => [
-        const ExploreFeedScreen(),
-        const SearchPage(),
-        const AddPublicPostScreen(),
-        const ChatConversationsScreen(),
-        ProfileScreen(
-          userId: _currentUserId,
-          username: _currentUsername,
-        ),
-      ];
+  late final List<Widget> _persistentTabs = const [
+    ExploreFeedScreen(),
+    SearchPage(),
+    AddPublicPostScreen(),
+    ChatConversationsScreen(),
+  ];
 
   @override
   void initState() {
@@ -372,21 +370,28 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     return WillPopScope(
       onWillPop: _onWillPop,
       child: Scaffold(
-        backgroundColor: isDark ? Colors.black : Colors.white,
-        body: IndexedStack(index: _selectedIndex, children: _tabs),
-        bottomNavigationBar: Container(
-          decoration: BoxDecoration(
-            color: isDark ? Colors.black : Colors.white,
-            border: Border(
-              top: BorderSide(
-                color: isDark ? Colors.grey[900]! : Colors.grey[200]!,
-                width: 0.5,
-              ),
+        extendBody: true,
+        backgroundColor: theme.scaffoldBackgroundColor,
+        body: IndexedStack(
+          index: _selectedIndex,
+          children: [
+            ..._persistentTabs,
+            ProfileScreen(
+              key: ValueKey('$_currentUserId:$_currentUsername'),
+              userId: _currentUserId,
+              username: _currentUsername,
             ),
-          ),
+          ],
+        ),
+        bottomNavigationBar: LiquidGlassContainer(
+          margin: const EdgeInsets.only(left: 16, right: 16, bottom: 20),
+          blur: 30.0,
+          opacity: isDark ? 0.05 : 0.1, // Minimal frosted glass
+          color: isDark ? Colors.black : Colors.white,
+          borderRadius: BorderRadius.circular(30),
           child: SafeArea(
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: [
@@ -469,7 +474,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 );
               },
             ),
-          ),
+          )
+              .animate(target: isSelected ? 1 : 0)
+              .scaleXY(end: 1.15, duration: 250.ms, curve: Curves.easeOutBack),
         ),
       ),
     );
@@ -527,7 +534,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 );
               },
             ),
-          ),
+          )
+              .animate(target: isSelected ? 1 : 0)
+              .scaleXY(end: 1.15, duration: 250.ms, curve: Curves.easeOutBack),
         ),
       ),
     );
@@ -563,7 +572,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             },
           ),
         ),
-      ),
+      ).animate().scaleXY(
+          begin: 0.9, end: 1.0, duration: 300.ms, curve: Curves.easeOutBack),
     );
   }
 }

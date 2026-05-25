@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:Vista/utils/env_config.dart';
 import 'current_user_service.dart';
 import '../features/auth/providers/auth_controller.dart';
 import '../security/logging_utility.dart';
@@ -12,7 +12,7 @@ class BazaarPaymentService {
   bool _isConnected = false;
 
   static String get _backendUrl =>
-      dotenv.env['BACKEND_URL'] ?? 'http://10.0.2.2:8080';
+      EnvConfig.apiBaseUrl ?? 'http://10.0.2.2:8080';
 
   Future<bool> init() async {
     print('🔄 [Flutter] Connecting to Native Poolakey...');

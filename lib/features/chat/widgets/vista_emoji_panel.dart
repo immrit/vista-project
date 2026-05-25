@@ -197,8 +197,8 @@ class _VistaEmojiPanelState extends State<VistaEmojiPanel> {
     final backgroundColor =
         isDark ? const Color(0xFF000000) : const Color(0xFFF2F2F7);
     final bottomBarColor = isDark
-        ? const Color(0xFF1C1C1E).withOpacity(0.9)
-        : const Color(0xFFF9F9F9).withOpacity(0.9);
+        ? const Color(0xFF1C1C1E).withValues(alpha: 0.9)
+        : const Color(0xFFF9F9F9).withValues(alpha: 0.9);
     final activeIconColor = const Color(0xFF3390EC);
 
     return Container(
@@ -237,7 +237,7 @@ class _VistaEmojiPanelState extends State<VistaEmojiPanel> {
                     color: bottomBarColor,
                     border: Border(
                       top: BorderSide(
-                        color: theme.dividerColor.withOpacity(0.1),
+                        color: theme.dividerColor.withValues(alpha: 0.1),
                         width: 0.5,
                       ),
                     ),
@@ -260,7 +260,7 @@ class _VistaEmojiPanelState extends State<VistaEmojiPanel> {
                       Container(
                         width: 1,
                         height: 16,
-                        color: theme.dividerColor.withOpacity(0.3),
+                        color: theme.dividerColor.withValues(alpha: 0.3),
                       ),
                       if (_currentView == PanelView.emoji)
                         Expanded(
@@ -282,7 +282,8 @@ class _VistaEmojiPanelState extends State<VistaEmojiPanel> {
                                       const EdgeInsets.symmetric(horizontal: 2),
                                   decoration: BoxDecoration(
                                     color: isSelected
-                                        ? activeIconColor.withOpacity(0.15)
+                                        ? activeIconColor.withValues(
+                                            alpha: 0.15)
                                         : Colors.transparent,
                                     borderRadius: BorderRadius.circular(8),
                                   ),

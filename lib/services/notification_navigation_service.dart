@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:Vista/utils/env_config.dart';
 import 'package:http/http.dart' as http;
 import '../model/notificationModel.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -126,7 +126,7 @@ class NotificationNavigationService {
     try {
       final token = await TokenStorage.getAccessToken();
       if (token == null || token.isEmpty) return;
-      final baseUrl = dotenv.env['BACKEND_URL'] ?? 'http://10.0.2.2:8080';
+      final baseUrl = EnvConfig.apiBaseUrl ?? 'http://10.0.2.2:8080';
       await http.post(
         Uri.parse(
           '$baseUrl/v1/notifications/${Uri.encodeComponent(notificationId)}/read',
