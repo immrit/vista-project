@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:overlay_support/overlay_support.dart';
@@ -31,10 +32,15 @@ import 'package:Vista/middleware/session_middleware.dart';
 // Providers
 import 'package:Vista/provider/theme_provider.dart';
 import 'package:Vista/provider/app_settings_provider.dart';
+import 'package:Vista/provider/locale_provider.dart';
 
 // Utils
 import 'package:Vista/utils/const.dart';
 import 'package:Vista/utils/themes.dart';
+
+// Localization
+import 'package:Vista/l10n/generated/app_localizations.dart';
+import 'package:persian_datetime_picker/persian_datetime_picker.dart';
 
 // Feature Screens (Moved)
 import 'package:Vista/features/home/screens/homeScreen.dart';
@@ -389,8 +395,9 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    final theme = ref.watch(dynamicThemeProvider);
+    ref.watch(dynamicThemeProvider);
     final colorBlindMatrix = ref.watch(colorBlindMatrixProvider);
+    final currentLocale = ref.watch(localeProvider);
 
     return ScreenUtilInit(
       designSize: Size(viewPort.width, viewPort.height),
@@ -405,6 +412,22 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
             theme: VistaThemes.lightTheme,
             darkTheme: VistaThemes.darkTheme,
             themeMode: ref.watch(themeModeProvider),
+            locale: currentLocale,
+            supportedLocales: AppLocalizations.supportedLocales,
+            localizationsDelegates: const [
+              ...AppLocalizations.localizationsDelegates,
+              PersianMaterialLocalizations.delegate,
+              PersianCupertinoLocalizations.delegate,
+            ],
+            localeResolutionCallback: (deviceLocale, supportedLocales) {
+              if (deviceLocale == null) return const Locale('fa', 'IR');
+              for (final supported in supportedLocales) {
+                if (supported.languageCode == deviceLocale.languageCode) {
+                  return supported;
+                }
+              }
+              return const Locale('fa', 'IR');
+            },
             builder: (context, child) {
               final safeChild = child ?? const SizedBox.shrink();
               if (colorBlindMatrix == null) return safeChild;

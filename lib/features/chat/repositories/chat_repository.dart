@@ -68,6 +68,11 @@ abstract class ChatRepository {
 
   Future<ChatResult<void>> toggleMuteConversation(String conversationId);
 
+  Future<ChatResult<void>> respondToMessageRequest(
+    String conversationId, {
+    required bool accept,
+  });
+
   Future<ChatResult<void>> clearConversation(
     String conversationId, {
     bool forEveryone = false,

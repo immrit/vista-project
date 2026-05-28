@@ -1,7 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'dart:ui' as ui;
 
 import 'chat_performance_profile.dart';
 import 'frame_budget_service.dart';
+import 'performance_policy_engine.dart';
 
 class AdaptiveEffectsController extends StateNotifier<AdaptiveEffectsState> {
   AdaptiveEffectsController(this._frameBudgetService)
@@ -20,8 +22,8 @@ class AdaptiveEffectsController extends StateNotifier<AdaptiveEffectsState> {
   bool _chatPerfEnabled = true;
   bool _adaptiveEffectsRolloutEnabled = true;
   bool _motionTokensEnabled = true;
+  bool _userReduceMotionEnabled = false;
 
-  static const double _fastScrollThreshold = 2200.0;
   static const double _budgetP95DeltaThresholdMs = 1.0;
   static const double _budgetJankDeltaThreshold = 0.01;
 
@@ -61,6 +63,7 @@ class AdaptiveEffectsController extends StateNotifier<AdaptiveEffectsState> {
       _chatEntryModePref =
           (animations['chat_entry_mode'] as String? ?? 'adaptive')
               .toLowerCase();
+      _userReduceMotionEnabled = animations['reduce_motion'] as bool? ?? false;
     }
     if (featureFlags != null) {
       _chatPerfEnabled = featureFlags['chat_perf_v1'] as bool? ?? true;
@@ -80,51 +83,22 @@ class AdaptiveEffectsController extends StateNotifier<AdaptiveEffectsState> {
     required ChatPerformanceProfile profile,
     required double velocity,
   }) {
-    final canRunAdaptive = _chatPerfEnabled && _adaptiveEffectsRolloutEnabled;
-    final isFast = canRunAdaptive && velocity.abs() >= _fastScrollThreshold;
-
-    ChatEffectsLevel level;
-    if (!canRunAdaptive || !_dynamicEffectsEnabled) {
-      level = ChatEffectsLevel.high;
-    } else {
-      switch (profile) {
-        case ChatPerformanceProfile.high:
-          level = ChatEffectsLevel.high;
-          break;
-        case ChatPerformanceProfile.medium:
-          level = ChatEffectsLevel.medium;
-          break;
-        case ChatPerformanceProfile.low:
-          level = ChatEffectsLevel.low;
-          break;
-      }
-      if (isFast && level != ChatEffectsLevel.low) {
-        level = ChatEffectsLevel.medium;
-      }
-      if (isFast && profile == ChatPerformanceProfile.low) {
-        level = ChatEffectsLevel.low;
-      }
-    }
-    if (!_gpuAccelerationEnabled && level == ChatEffectsLevel.high) {
-      level = ChatEffectsLevel.medium;
-    }
-
-    final blurSigma = switch (level) {
-      ChatEffectsLevel.low => 0.0,
-      ChatEffectsLevel.medium => 4.0,
-      ChatEffectsLevel.high => 8.0,
-    }
-        .clamp(0.0, _gpuAccelerationEnabled ? _maxBlurSigma : 4.0);
-
-    var chatEntryMode = _resolveEntryMode(level, isFast);
-    if (!_gpuAccelerationEnabled &&
-        chatEntryMode == ChatEntryAnimationMode.full) {
-      chatEntryMode = ChatEntryAnimationMode.minimal;
-    }
-    final enableMessageEntryAnimation =
-        chatEntryMode != ChatEntryAnimationMode.off;
-    final allowHeavyBlur =
-        _gpuAccelerationEnabled && level == ChatEffectsLevel.high && !isFast;
+    final systemReduceMotion =
+        ui.PlatformDispatcher.instance.accessibilityFeatures.disableAnimations;
+    final policy = PerformancePolicyEngine.resolve(
+      surface: OptimizationSurface.chat,
+      profile: profile,
+      velocityPxPerSec: velocity,
+      dynamicEffectsEnabled: _dynamicEffectsEnabled,
+      gpuAccelerationEnabled: _gpuAccelerationEnabled,
+      chatPerfEnabled: _chatPerfEnabled,
+      adaptiveEffectsRolloutEnabled: _adaptiveEffectsRolloutEnabled,
+      motionTokensEnabled: _motionTokensEnabled,
+      userReduceMotionEnabled: _userReduceMotionEnabled,
+      systemReduceMotionEnabled: systemReduceMotion,
+      chatEntryModePref: _chatEntryModePref,
+      maxBlurSigma: _maxBlurSigma,
+    );
 
     final shouldUpdateBudget = _shouldUpdateBudget(
       previous: state.budgetSnapshot,
@@ -135,18 +109,19 @@ class AdaptiveEffectsController extends StateNotifier<AdaptiveEffectsState> {
 
     final nextState = state.copyWith(
       profile: profile,
-      effectsLevel: level,
+      effectsLevel: policy.effectsLevel,
       chatPerfEnabled: _chatPerfEnabled,
       adaptiveEffectsRolloutEnabled: _adaptiveEffectsRolloutEnabled,
-      motionTokensEnabled: _motionTokensEnabled,
+      motionTokensEnabled: policy.motionTokensEnabled,
       dynamicEffectsEnabled: _dynamicEffectsEnabled,
-      allowHeavyBlur: allowHeavyBlur,
-      blurSigma: blurSigma,
-      isFastScrolling: isFast,
+      allowHeavyBlur: policy.allowHeavyBlur,
+      blurSigma: policy.blurSigma,
+      isFastScrolling: policy.isFastScrolling,
       scrollVelocityPxPerSec: velocity,
       budgetSnapshot: nextBudgetSnapshot,
-      chatEntryMode: chatEntryMode,
-      enableMessageEntryAnimation: enableMessageEntryAnimation,
+      chatEntryMode: policy.chatEntryMode,
+      enableMessageEntryAnimation: policy.enableMessageEntryAnimation,
+      optimizationReason: policy.reason,
     );
 
     if (_isEquivalent(state, nextState,
@@ -155,33 +130,6 @@ class AdaptiveEffectsController extends StateNotifier<AdaptiveEffectsState> {
     }
 
     state = nextState;
-  }
-
-  ChatEntryAnimationMode _resolveEntryMode(
-      ChatEffectsLevel level, bool isFastScrolling) {
-    switch (_chatEntryModePref) {
-      case 'off':
-        return ChatEntryAnimationMode.off;
-      case 'minimal':
-        return ChatEntryAnimationMode.minimal;
-      case 'full':
-        return isFastScrolling
-            ? ChatEntryAnimationMode.minimal
-            : ChatEntryAnimationMode.full;
-      case 'adaptive':
-      default:
-        if (isFastScrolling) {
-          return ChatEntryAnimationMode.off;
-        }
-        switch (level) {
-          case ChatEffectsLevel.low:
-            return ChatEntryAnimationMode.off;
-          case ChatEffectsLevel.medium:
-            return ChatEntryAnimationMode.minimal;
-          case ChatEffectsLevel.high:
-            return ChatEntryAnimationMode.full;
-        }
-    }
   }
 
   bool _shouldUpdateBudget({
@@ -212,6 +160,7 @@ class AdaptiveEffectsController extends StateNotifier<AdaptiveEffectsState> {
         a.allowHeavyBlur == b.allowHeavyBlur &&
         a.enableMessageEntryAnimation == b.enableMessageEntryAnimation &&
         a.isFastScrolling == b.isFastScrolling &&
+        a.optimizationReason == b.optimizationReason &&
         (a.blurSigma - b.blurSigma).abs() < 0.01;
     if (!sameCore) return false;
     if (!compareBudgetSnapshot) return true;

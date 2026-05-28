@@ -14,6 +14,7 @@ import 'package:flutter/foundation.dart';
 import 'package:Vista/utils/env_config.dart';
 
 import '../../auth/providers/auth_controller.dart';
+import '../../../services/session_manager_service_v2.dart';
 
 enum SseConnectionState { disconnected, connecting, connected }
 
@@ -73,6 +74,14 @@ class SseManager {
       _setState(SseConnectionState.connecting);
 
       try {
+        final sessionReady =
+            await SessionManagerServiceV2.instance.ensureValidAuthSession();
+        if (!sessionReady) {
+          debugPrint('SseManager: no valid session, waiting 5s...');
+          await Future.delayed(const Duration(seconds: 5));
+          continue;
+        }
+
         final token = await TokenStorage.getAccessToken();
         if (token == null || token.isEmpty) {
           debugPrint('SseManager: no token, waiting 5s...');
@@ -90,7 +99,11 @@ class SseManager {
           '/v1/chat/stream',
           options: Options(
             responseType: ResponseType.stream,
-            headers: {'Authorization': 'Bearer $token'},
+            headers: {
+              'Authorization': 'Bearer $token',
+              'Accept': 'text/event-stream',
+              'Cache-Control': 'no-cache',
+            },
           ),
         );
 
@@ -110,15 +123,9 @@ class SseManager {
 
             if (block.isEmpty || block.startsWith(':')) continue;
 
-            final dataLine =
-                block.startsWith('data: ') ? block.substring(6) : block;
-            try {
-              final decoded = json.decode(dataLine);
-              if (decoded is Map<String, dynamic>) {
-                _eventController.add(decoded);
-              }
-            } catch (_) {
-              // ignore malformed events
+            final parsed = _parseSseBlock(block);
+            if (parsed != null) {
+              _eventController.add(parsed);
             }
           }
         }
@@ -155,6 +162,50 @@ class SseManager {
     if (_currentState == state) return;
     _currentState = state;
     _stateController.add(state);
+  }
+
+  Map<String, dynamic>? _parseSseBlock(String block) {
+    final lines = block
+        .split('\n')
+        .map((line) => line.trim())
+        .where((line) => line.isNotEmpty)
+        .toList(growable: false);
+    if (lines.isEmpty) return null;
+
+    String? eventType;
+    final dataParts = <String>[];
+    for (final line in lines) {
+      if (line.startsWith('event:')) {
+        eventType = line.substring(6).trim();
+        continue;
+      }
+      if (line.startsWith('data:')) {
+        dataParts.add(line.substring(5).trimLeft());
+      }
+    }
+
+    // Some servers send raw JSON block without `data:` prefix.
+    final payloadRaw = dataParts.isNotEmpty ? dataParts.join('\n') : block;
+    if (payloadRaw.isEmpty) return null;
+
+    try {
+      final decoded = json.decode(payloadRaw);
+      if (decoded is Map<String, dynamic>) {
+        if ((decoded['type'] == null || decoded['type'].toString().isEmpty) &&
+            eventType != null &&
+            eventType.isNotEmpty) {
+          return <String, dynamic>{...decoded, 'type': eventType};
+        }
+        return decoded;
+      }
+      // Normalize non-map payloads so downstream listeners can still route by `type`.
+      if (eventType != null && eventType.isNotEmpty) {
+        return <String, dynamic>{'type': eventType, 'data': decoded};
+      }
+    } catch (_) {
+      // ignore malformed events
+    }
+    return null;
   }
 
   /// Filter events برای یه conversation خاص

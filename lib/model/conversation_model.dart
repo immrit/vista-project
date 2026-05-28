@@ -33,6 +33,8 @@ class ConversationModel {
       lastMessageDeliveryStatus; // وضعیت تحویل آخرین پیام
   final List<String> typingUsers; // ✅ لیست کاربرانی که در حال تایپ هستند
   final String type; // ✅ نوع مکالمه: private, group, channel
+  final bool isMessageRequest; // ✅ آیا مکالمه در پوشه درخواست پیام است
+  final String? messageRequestStatus; // ✅ pending/accepted/rejected
 
   bool get isGroup => type == 'group'; // ✅ گتر برای تشخیص گروه
   bool get isSecret => type == 'secret'; // ✅ گتر برای تشخیص سکرت چت
@@ -64,6 +66,8 @@ class ConversationModel {
     this.isVerified, // ✅ وضعیت تایید شده بودن
     this.typingUsers = const [], // ✅ مقدار پیش‌فرض برای تایپینگ
     this.type = 'private', // ✅ مقدار پیش‌فرض نوع مکالمه
+    this.isMessageRequest = false,
+    this.messageRequestStatus,
   });
 
   factory ConversationModel.fromJson(Map<String, dynamic> json,
@@ -140,7 +144,8 @@ class ConversationModel {
         }
       }
 
-      final conversationType = (json['conversation_type'] ?? json['type']) as String?;
+      final conversationType =
+          (json['conversation_type'] ?? json['type']) as String?;
       if (conversationType == 'group') {
         otherUserName = (json['name'] as String?) ?? 'گروه';
         otherUserAvatar = json['image'] as String?;
@@ -162,7 +167,8 @@ class ConversationModel {
         id: json['id'] as String,
         createdAt: DateTime.parse(json['created_at'] as String),
         updatedAt: DateTime.parse(updatedAtStr as String),
-        lastMessage: (json['last_message_text'] ?? json['last_message']) as String?,
+        lastMessage:
+            (json['last_message_text'] ?? json['last_message']) as String?,
         lastMessageTime: json['last_message_time'] != null
             ? DateTime.parse(json['last_message_time'] as String)
             : null,
@@ -192,6 +198,13 @@ class ConversationModel {
                 .toList() ??
             [],
         type: conversationType ?? 'private', // ✅ ذخیره نوع مکالمه
+        isMessageRequest: (json['is_message_request'] as bool?) ??
+            (json['message_request'] as bool?) ??
+            false,
+        messageRequestStatus: (json['message_request_status'] ??
+                json['request_status'] ??
+                json['messageRequestStatus'])
+            ?.toString(),
       );
     } catch (e) {
       logInfo('❌ خطا در تبدیل JSON به ConversationModel: $e');
@@ -274,6 +287,8 @@ class ConversationModel {
       'is_verified': isVerified,
       'typing_users': typingUsers,
       'type': type, // ✅ افزودن به خروجی JSON
+      'is_message_request': isMessageRequest,
+      'message_request_status': messageRequestStatus,
     };
   }
 
@@ -303,6 +318,8 @@ class ConversationModel {
     bool? isVerified,
     List<String>? typingUsers,
     String? type,
+    bool? isMessageRequest,
+    String? messageRequestStatus,
   }) {
     return ConversationModel(
       id: id ?? this.id,
@@ -331,6 +348,8 @@ class ConversationModel {
       isVerified: isVerified ?? this.isVerified,
       typingUsers: typingUsers ?? this.typingUsers,
       type: type ?? this.type,
+      isMessageRequest: isMessageRequest ?? this.isMessageRequest,
+      messageRequestStatus: messageRequestStatus ?? this.messageRequestStatus,
     );
   }
 
@@ -474,6 +493,8 @@ class ConversationModel {
       lastMessageDeliveryStatus: MessageDeliveryStatus.sent,
       typingUsers: [],
       type: 'private',
+      isMessageRequest: false,
+      messageRequestStatus: null,
     );
   }
 }

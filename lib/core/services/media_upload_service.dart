@@ -29,7 +29,7 @@ class MediaUploadService {
       return null;
     }
 
-    final dir = path.dirname(file.path);
+    final dir = Directory.systemTemp.path;
     final timestamp = DateTime.now().millisecondsSinceEpoch;
     final convertedFile = File('$dir/converted_$timestamp.jpg')
       ..writeAsBytesSync(img);
@@ -55,7 +55,7 @@ class MediaUploadService {
 
       if (img == null) return null;
 
-      final dir = path.dirname(file.path);
+      final dir = Directory.systemTemp.path;
       final timestamp = DateTime.now().millisecondsSinceEpoch;
       final compressedFile = File('$dir/compressed_$timestamp.jpg')
         ..writeAsBytesSync(img);

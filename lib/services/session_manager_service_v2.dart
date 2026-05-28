@@ -827,6 +827,28 @@ class SessionManagerServiceV2 {
     return await _performSessionRefresh();
   }
 
+  /// Ensures the access token is usable before chat/API calls.
+  /// Refreshes when the token is missing or close to expiry.
+  Future<bool> ensureValidAuthSession() async {
+    if (await TokenStorage.hasValidSession()) return true;
+
+    final accessToken = await TokenStorage.getAccessToken();
+    final hasRefresh = await TokenStorage.hasRefreshToken();
+    if (!hasRefresh) {
+      return accessToken != null && accessToken.isNotEmpty;
+    }
+
+    final result = await performSessionRefreshPublic();
+    switch (result) {
+      case RefreshResult.success:
+        return true;
+      case RefreshResult.networkError:
+        return accessToken != null && accessToken.isNotEmpty;
+      case RefreshResult.authError:
+        return false;
+    }
+  }
+
   /// راه‌اندازی session manager در پس‌زمینه بدون block کردن UI
   void initInBackground() {
     Future.microtask(() async {

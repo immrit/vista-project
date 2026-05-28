@@ -32,6 +32,7 @@ class ProfileModel extends Equatable {
   final String? role; // فیلد نقش کاربر
   final int postsCount;
   final String? publicKey; // کلید عمومی برای E2EE
+  final int? joinOrder; // ترتیب ثبت‌نام در ویستا
 
   const ProfileModel({
     required this.id,
@@ -48,16 +49,32 @@ class ProfileModel extends Equatable {
     this.isFollowed = false,
     this.isPrivate = false,
     this.posts = const [],
-    this.role, // پارامتر نقش کاربر
+    this.role,
     this.postsCount = 0,
     this.publicKey,
+    this.joinOrder,
   });
 
+  static String _trimmed(dynamic value) => value?.toString().trim() ?? '';
+
+  static String _firstNonEmpty(
+    Iterable<dynamic> values, {
+    required String fallback,
+  }) {
+    for (final value in values) {
+      final trimmed = _trimmed(value);
+      if (trimmed.isNotEmpty) return trimmed;
+    }
+    return fallback;
+  }
+
   factory ProfileModel.fromMap(Map<String, dynamic> map) {
-    final id = (map['id'] ?? map['user_id'])?.toString();
-    final username =
-        (map['username'] ?? map['full_name'] ?? 'user')?.toString();
-    if (id == null || id.isEmpty || username == null || username.isEmpty) {
+    final id = _firstNonEmpty([map['id'], map['user_id']], fallback: '');
+    final username = _firstNonEmpty(
+      [map['username'], map['full_name']],
+      fallback: 'user',
+    );
+    if (id.isEmpty) {
       throw ArgumentError('Missing required fields: id/user_id or username');
     }
 
@@ -88,9 +105,12 @@ class ProfileModel extends Equatable {
       posts: (map['posts'] as List<dynamic>? ?? [])
           .map((post) => PublicPostModel.fromMap(post))
           .toList(),
-      role: role, // واکشی نقش کاربر
+      role: role,
       postsCount: map['posts_count'] ?? map['post_count'] ?? 0,
       publicKey: map['public_key']?.toString(),
+      joinOrder: map['join_order'] != null
+          ? int.tryParse(map['join_order'].toString())
+          : null,
     );
   }
 
@@ -123,9 +143,10 @@ class ProfileModel extends Equatable {
       'is_followed': isFollowed,
       'is_private': isPrivate,
       'posts': posts.map((post) => post.toMap()).toList(),
-      'role': role, // ذخیره نقش کاربر
+      'role': role,
       'posts_count': postsCount,
       'public_key': publicKey,
+      'join_order': joinOrder,
     };
   }
 
@@ -146,9 +167,10 @@ class ProfileModel extends Equatable {
     bool? isFollowed,
     bool? isPrivate,
     List<PublicPostModel>? posts,
-    String? role, // اضافه کردن نقش کاربر به copyWith
+    String? role,
     int? postsCount,
     String? publicKey,
+    int? joinOrder,
   }) {
     return ProfileModel(
       id: id ?? this.id,
@@ -165,9 +187,10 @@ class ProfileModel extends Equatable {
       isFollowed: isFollowed ?? this.isFollowed,
       isPrivate: isPrivate ?? this.isPrivate,
       posts: posts ?? this.posts,
-      role: role ?? this.role, // اضافه کردن نقش کاربر
+      role: role ?? this.role,
       postsCount: postsCount ?? this.postsCount,
       publicKey: publicKey ?? this.publicKey,
+      joinOrder: joinOrder ?? this.joinOrder,
     );
   }
 
@@ -187,9 +210,10 @@ class ProfileModel extends Equatable {
         isFollowed,
         isPrivate,
         posts,
-        role, // اضافه کردن نقش کاربر به props
+        role,
         postsCount,
         publicKey,
+        joinOrder,
       ];
   bool get hasBlueBadge =>
       isVerified && verificationType == VerificationType.blueTick;

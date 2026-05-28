@@ -173,6 +173,9 @@ class UserPresenceService with WidgetsBindingObserver {
       );
       _presenceCache[userId] = state;
       _presenceStreams[userId]?.add(state);
+    } on DioException catch (e) {
+      debugPrint('Error fetching presence for $userId: ${e.response?.statusCode} - ${e.response?.data}');
+      _emitFallbackPresence(userId);
     } catch (e) {
       debugPrint('Error fetching presence for $userId: $e');
       _emitFallbackPresence(userId);

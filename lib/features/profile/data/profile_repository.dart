@@ -9,6 +9,8 @@ class ProfileRepository {
   static String get _backendUrl => EnvConfig.apiBaseUrl;
   static Future<Map<String, dynamic>?>? _inflightSelfProfile;
   static final Map<String, Future<Map<String, dynamic>>> _inflightByUserId = {};
+  static int _selfRateLimitedUntilMs = 0;
+  static final Map<String, int> _rateLimitedUntilByUserId = {};
 
   late final Dio _dio;
 
@@ -36,6 +38,10 @@ class ProfileRepository {
   }
 
   Future<Map<String, dynamic>?> fetchProfile(String userId) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (now < _selfRateLimitedUntilMs) {
+      throw 'خطا در دریافت اطلاعات پروفایل';
+    }
     final inflight = _inflightSelfProfile;
     if (inflight != null) return inflight;
 
@@ -63,6 +69,11 @@ class ProfileRepository {
       );
     } on DioException catch (e) {
       if (e.response?.statusCode == 429) {
+        final retryAfter =
+            _retryAfterSeconds(e.response?.headers.value('retry-after'));
+        _selfRateLimitedUntilMs = DateTime.now()
+            .add(Duration(seconds: retryAfter))
+            .millisecondsSinceEpoch;
         logInfo('⚠️ Profile fetch rate-limited (429) for /me/profile');
         throw 'خطا در دریافت اطلاعات پروفایل';
       }
@@ -78,6 +89,11 @@ class ProfileRepository {
     final normalizedUserId = userId.trim();
     if (normalizedUserId.isEmpty) {
       throw 'شناسه کاربر نامعتبر است';
+    }
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final cooldownUntil = _rateLimitedUntilByUserId[normalizedUserId] ?? 0;
+    if (now < cooldownUntil) {
+      throw 'خطا در دریافت اطلاعات پروفایل';
     }
 
     final inflight = _inflightByUserId[normalizedUserId];
@@ -116,8 +132,8 @@ class ProfileRepository {
         logInfo('⚠️ Falling back to default profile for user $userId (Status: $statusCode)');
         return {
           'id': userId,
-          'username': 'کاربر ناشناس',
-          'full_name': 'کاربر ناشناس',
+          'username': 'کاربر حذف شده',
+          'full_name': 'کاربر حذف شده',
           'avatar_url': null,
           'is_blocked': false,
         };
@@ -128,6 +144,15 @@ class ProfileRepository {
         throw data['message'] as String;
       }
       if (statusCode == 429) {
+        final retryAfter =
+            _retryAfterSeconds(e.response?.headers.value('retry-after'));
+        final until = DateTime.now()
+            .add(Duration(seconds: retryAfter))
+            .millisecondsSinceEpoch;
+        _rateLimitedUntilByUserId[userId] = until;
+        if (isSelf) {
+          _selfRateLimitedUntilMs = until;
+        }
         logInfo('⚠️ Profile fetch rate-limited (429) for user $userId');
         throw 'خطا در دریافت اطلاعات پروفایل';
       }
@@ -176,16 +201,35 @@ class ProfileRepository {
     return _parseProfileList(response.data);
   }
 
+  static String _trimmed(dynamic value) => value?.toString().trim() ?? '';
+
+  static String _firstNonEmpty(
+    Iterable<dynamic> values, {
+    required String fallback,
+  }) {
+    for (final value in values) {
+      final trimmed = _trimmed(value);
+      if (trimmed.isNotEmpty) return trimmed;
+    }
+    return fallback;
+  }
+
   Map<String, dynamic> _normalizeProfileMap(
     Map<String, dynamic> data, {
     required String fallbackUserId,
   }) {
-    data['id'] = data['id'] ?? data['user_id'] ?? fallbackUserId;
+    data['id'] = _firstNonEmpty(
+      [data['id'], data['user_id'], fallbackUserId],
+      fallback: fallbackUserId,
+    );
     data['followers_count'] =
         data['followers_count'] ?? data['follower_count'] ?? 0;
     data['following_count'] = data['following_count'] ?? 0;
     data['posts_count'] = data['posts_count'] ?? data['post_count'] ?? 0;
-    data['username'] = data['username'] ?? data['full_name'] ?? 'user';
+    data['username'] = _firstNonEmpty(
+      [data['username'], data['full_name']],
+      fallback: 'user',
+    );
     data['is_followed'] = data['is_followed'] ??
         (data['follow_status']?.toString().toLowerCase() == 'following');
     data['follow_status'] ??= 'none';
@@ -218,9 +262,10 @@ class ProfileRepository {
         options: await _authOptions(),
       );
 
-      final data = Map<String, dynamic>.from(response.data as Map);
-      data['id'] = data['user_id'] ?? userId;
-      return data;
+      return _normalizeProfileMap(
+        Map<String, dynamic>.from(response.data as Map),
+        fallbackUserId: userId,
+      );
     } on DioException catch (e) {
       final data = e.response?.data;
       if (data is Map && data['message'] is String) {
@@ -323,5 +368,11 @@ class ProfileRepository {
       logError('Request Verification Error', error: e);
       throw 'خطا در ثبت درخواست تایید هویت';
     }
+  }
+
+  int _retryAfterSeconds(String? retryAfterHeader) {
+    final parsed = int.tryParse(retryAfterHeader ?? '');
+    if (parsed == null || parsed <= 0) return 60;
+    return parsed.clamp(10, 180);
   }
 }

@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/models/profile_note_model.dart';
 import '../data/services/profile_note_service.dart';
+import '../../auth/providers/auth_controller.dart';
 
 /// Provider برای دریافت وضعیت یک کاربر خاص
 final profileNoteProvider =
@@ -22,8 +23,20 @@ final profileNotesMapProvider =
 class CurrentUserNoteNotifier
     extends StateNotifier<AsyncValue<ProfileNoteModel?>> {
   final ProfileNoteService _service;
+  final String _userId;
 
-  CurrentUserNoteNotifier(this._service) : super(const AsyncValue.loading());
+  CurrentUserNoteNotifier(this._service, this._userId) : super(const AsyncValue.loading()) {
+    _loadInitial();
+  }
+
+  Future<void> _loadInitial() async {
+    try {
+      final note = await _service.getActiveNote(_userId);
+      if (mounted) state = AsyncValue.data(note);
+    } catch (e, st) {
+      if (mounted) state = AsyncValue.error(e, st);
+    }
+  }
 
   /// ایجاد یا بروزرسانی وضعیت
   Future<void> createNote(String content) async {
@@ -56,5 +69,6 @@ class CurrentUserNoteNotifier
 final currentUserNoteProvider = StateNotifierProvider<CurrentUserNoteNotifier,
     AsyncValue<ProfileNoteModel?>>((ref) {
   final service = ref.watch(profileNoteServiceProvider);
-  return CurrentUserNoteNotifier(service);
+  final userId = ref.watch(authProvider)?.id ?? 'current_user';
+  return CurrentUserNoteNotifier(service, userId);
 });

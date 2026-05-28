@@ -1,24 +1,36 @@
-﻿import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+﻿import 'dart:async';
+
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:isar/isar.dart';
-import 'package:Vista/DB/isar_database_manager.dart';
 import 'package:Vista/DB/entities/recent_search_entity.dart';
+import 'package:Vista/DB/isar_database_manager.dart';
+import 'package:Vista/core/theme/app_theme.dart';
+import 'package:Vista/features/chat/widgets/message_search_bar.dart';
+import 'package:Vista/features/posts/data/go_posts_repository.dart';
+import 'package:Vista/features/posts/screens/PostDetailPage.dart';
+import 'package:Vista/features/posts/screens/profileScreen.dart';
+import 'package:Vista/features/search/screens/VistaQRScanner.dart';
+import 'package:Vista/l10n/generated/app_localizations.dart';
 import 'package:Vista/model/ProfileModel.dart';
 import 'package:Vista/model/SearchResut.dart';
-// import 'package:Vista/model/publicPostModel.dart'; // Removed unused import
+import 'package:Vista/model/publicPostModel.dart';
 import 'package:Vista/provider/provider.dart';
-import 'package:Vista/features/posts/screens/profileScreen.dart';
-import 'package:Vista/features/posts/screens/PostDetailPage.dart';
-import 'package:Vista/features/search/screens/VistaQRScanner.dart';
+import 'package:Vista/utils/glassmorphism.dart';
+import 'package:Vista/widgets/skeleton_loading.dart';
 import 'package:Vista/widgets/verification_badge_icon.dart';
-import 'dart:async';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:isar/isar.dart';
 
-/// صفحه جستجو مدرن - الهام گرفته از ویستا
 class SearchPage extends ConsumerStatefulWidget {
   final String? initialHashtag;
+  final bool openAsWorkspace;
 
-  const SearchPage({super.key, this.initialHashtag});
+  const SearchPage({
+    super.key,
+    this.initialHashtag,
+    this.openAsWorkspace = false,
+  });
 
   @override
   ConsumerState<SearchPage> createState() => _SearchPageState();
@@ -26,65 +38,181 @@ class SearchPage extends ConsumerStatefulWidget {
 
 class _SearchPageState extends ConsumerState<SearchPage>
     with SingleTickerProviderStateMixin {
-  late TabController _tabController;
+  late final TabController _tabController;
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _focusNode = FocusNode();
+  final GoPostsRepository _postsRepository = GoPostsRepository();
   Timer? _debounceTimer;
+  Timer? _suggestionDebounceTimer;
 
   Isar? _isar;
   bool _isInitialized = false;
   bool _hasQuery = false;
+  bool _didOpenWorkspaceFromLauncher = false;
+
+  List<HashtagSuggestion> _trendingHashtags = const [];
+  List<HashtagSuggestion> _hashtagSuggestions = const [];
+  bool _isLoadingTrending = false;
+  bool _isLoadingSuggestions = false;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
-    _initializeApp();
     _searchController.addListener(_onSearchChanged);
+    _initializeApp();
   }
 
   Future<void> _initializeApp() async {
     try {
       _isar = await IsarDatabaseManager().instance;
     } catch (e) {
-      debugPrint('خطا در باز کردن Isar: $e');
+      debugPrint('Error opening Isar in search page: $e');
     }
-    if (mounted) {
-      setState(() => _isInitialized = true);
-      _handleInitialHashtag();
-    }
+
+    await _loadTrendingHashtags();
+
+    if (!mounted) return;
+    setState(() => _isInitialized = true);
+    _handleInitialHashtag();
   }
 
   void _handleInitialHashtag() {
-    if (widget.initialHashtag != null && widget.initialHashtag!.isNotEmpty) {
-      final hashtag = widget.initialHashtag!.startsWith('#')
-          ? widget.initialHashtag!
-          : '#${widget.initialHashtag!}';
-      _searchController.text = hashtag;
-      _tabController.animateTo(2); // تگ‌ها
-      _performSearch(hashtag);
+    final initialHashtag = widget.initialHashtag;
+    if (initialHashtag == null || initialHashtag.trim().isEmpty) return;
+    final normalized = initialHashtag.startsWith('#')
+        ? initialHashtag.trim()
+        : '#${initialHashtag.trim()}';
+    if (!widget.openAsWorkspace && !_didOpenWorkspaceFromLauncher) {
+      _didOpenWorkspaceFromLauncher = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _openSearchWorkspace(initialQuery: normalized);
+        }
+      });
+      return;
     }
+    _applyQuery(normalized, fromSubmit: true, keepFocus: true);
   }
 
   void _onSearchChanged() {
-    setState(() => _hasQuery = _searchController.text.trim().isNotEmpty);
+    final query = _searchController.text.trim();
+    if (_hasQuery != query.isNotEmpty) {
+      setState(() => _hasQuery = query.isNotEmpty);
+    }
   }
 
-  void _performSearch(String query) {
-    _debounceTimer?.cancel();
-    _debounceTimer = Timer(const Duration(milliseconds: 500), () async {
-      if (mounted && query.isNotEmpty) {
-        await _addToRecentSearches(query);
-        ref.read(searchProvider.notifier).search(query);
+  Future<void> _loadTrendingHashtags() async {
+    if (_isLoadingTrending) return;
+    setState(() => _isLoadingTrending = true);
+    try {
+      final hashtags = await _postsRepository.getTrendingHashtags(limit: 12);
+      if (mounted) {
+        setState(() => _trendingHashtags = hashtags);
+      } else {
+        _trendingHashtags = hashtags;
+      }
+    } catch (_) {
+      // best effort only
+    } finally {
+      if (mounted) {
+        setState(() => _isLoadingTrending = false);
+      } else {
+        _isLoadingTrending = false;
+      }
+    }
+  }
+
+  void _loadHashtagSuggestions(String query) {
+    _suggestionDebounceTimer?.cancel();
+    _suggestionDebounceTimer = Timer(const Duration(milliseconds: 300), () async {
+      final keyword = query.trim().replaceFirst('#', '');
+      if (keyword.isEmpty) {
+        setState(() {
+          _hashtagSuggestions = _trendingHashtags.take(8).toList();
+          _isLoadingSuggestions = false;
+        });
+        return;
+      }
+
+      setState(() => _isLoadingSuggestions = true);
+      try {
+        final suggestions =
+            await _postsRepository.searchHashtags(keyword: keyword, limit: 10);
+        if (!mounted) return;
+        setState(() => _hashtagSuggestions = suggestions);
+      } catch (_) {
+        if (!mounted) return;
+        final lower = keyword.toLowerCase();
+        setState(() {
+          _hashtagSuggestions = _trendingHashtags
+              .where((item) => item.tag.toLowerCase().startsWith(lower))
+              .take(8)
+              .toList();
+        });
+      } finally {
+        if (mounted) {
+          setState(() => _isLoadingSuggestions = false);
+        } else {
+          _isLoadingSuggestions = false;
+        }
       }
     });
   }
 
-  Future<void> _addToRecentSearches(String query) async {
-    if (query.isEmpty || _isar == null) return;
-    final searchType =
-        query.startsWith('#') ? SearchType.hashtag : SearchType.user;
+  void _applyQuery(
+    String query, {
+    bool fromSubmit = false,
+    bool keepFocus = false,
+  }) {
+    final normalized = query.trim();
+    _searchController.value = TextEditingValue(
+      text: normalized,
+      selection: TextSelection.collapsed(offset: normalized.length),
+    );
+    _performSearch(normalized, fromSubmit: fromSubmit);
+    if (keepFocus) {
+      _focusNode.requestFocus();
+    } else {
+      _focusNode.unfocus();
+    }
+  }
 
+  void _performSearch(String query, {bool fromSubmit = false}) {
+    final normalized = query.trim();
+    _debounceTimer?.cancel();
+    _debounceTimer = Timer(
+      fromSubmit ? Duration.zero : const Duration(milliseconds: 300),
+      () async {
+        if (!mounted) return;
+        if (normalized.isEmpty) {
+          ref.read(searchProvider.notifier).clearAll();
+          setState(() {
+            _hasQuery = false;
+            _hashtagSuggestions = const [];
+          });
+          return;
+        }
+
+        if (normalized.startsWith('#')) {
+          if (_tabController.index != 2) {
+            _tabController.animateTo(2);
+          }
+          _loadHashtagSuggestions(normalized);
+        } else {
+          setState(() => _hashtagSuggestions = const []);
+        }
+
+        await ref.read(searchProvider.notifier).search(normalized);
+      },
+    );
+  }
+
+  Future<void> _saveRecentSelection({
+    required String query,
+    required SearchType searchType,
+  }) async {
+    if (query.isEmpty || _isar == null) return;
     try {
       await _isar!.writeTxn(() async {
         await _isar!.recentSearchEntitys
@@ -96,22 +224,24 @@ class _SearchPageState extends ConsumerState<SearchPage>
           ..query = query
           ..timestamp = DateTime.now()
           ..searchType = searchType;
-
         await _isar!.recentSearchEntitys.put(recentSearch);
 
         final count = await _isar!.recentSearchEntitys.count();
         if (count > 20) {
-          final oldSearches = await _isar!.recentSearchEntitys
+          final oldItems = await _isar!.recentSearchEntitys
               .where()
               .sortByTimestamp()
               .limit(count - 20)
               .findAll();
           await _isar!.recentSearchEntitys
-              .deleteAll(oldSearches.map((e) => e.id).toList());
+              .deleteAll(oldItems.map((item) => item.id).toList());
         }
       });
+      if (mounted) {
+        setState(() {});
+      }
     } catch (e) {
-      debugPrint('خطا در ذخیره جستجو: $e');
+      debugPrint('Error saving recent search: $e');
     }
   }
 
@@ -124,21 +254,69 @@ class _SearchPageState extends ConsumerState<SearchPage>
             .queryEqualTo(query)
             .deleteAll();
       });
-      setState(() {});
+      if (mounted) {
+        setState(() {});
+      }
     } catch (e) {
-      debugPrint('خطا در حذف جستجو: $e');
+      debugPrint('Error deleting recent search: $e');
+    }
+  }
+
+  Future<void> _clearRecentSearches() async {
+    if (_isar == null) return;
+    try {
+      await _isar!.writeTxn(() async {
+        await _isar!.recentSearchEntitys.clear();
+      });
+      if (mounted) {
+        setState(() {});
+      }
+    } catch (e) {
+      debugPrint('Error clearing recent searches: $e');
+    }
+  }
+
+  Future<List<RecentSearchEntity>> _getRecentSearches() async {
+    if (_isar == null) return const [];
+    try {
+      return _isar!.recentSearchEntitys.where().sortByTimestampDesc().findAll();
+    } catch (_) {
+      return const [];
     }
   }
 
   void _clearSearch() {
     _searchController.clear();
-    ref.read(searchProvider.notifier).clearHashtagResults();
-    setState(() => _hasQuery = false);
+    _debounceTimer?.cancel();
+    _suggestionDebounceTimer?.cancel();
+    ref.read(searchProvider.notifier).clearAll();
+    setState(() {
+      _hasQuery = false;
+      _hashtagSuggestions = const [];
+    });
+  }
+
+  String _highlightQuery(String rawQuery) {
+    return rawQuery.trim().replaceFirst(RegExp(r'^[@#]+'), '');
+  }
+
+  Future<void> _openSearchWorkspace({String? initialQuery}) async {
+    if (!mounted) return;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => SearchPage(
+          openAsWorkspace: true,
+          initialHashtag: initialQuery ?? widget.initialHashtag,
+        ),
+      ),
+    );
   }
 
   @override
   void dispose() {
     _debounceTimer?.cancel();
+    _suggestionDebounceTimer?.cancel();
     _tabController.dispose();
     _searchController.dispose();
     _focusNode.dispose();
@@ -147,28 +325,55 @@ class _SearchPageState extends ConsumerState<SearchPage>
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context)!;
 
     if (!_isInitialized) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
+    if (!widget.openAsWorkspace) {
+      return Scaffold(
+        backgroundColor: theme.scaffoldBackgroundColor,
+        body: SafeArea(
+          child: Column(
+            children: [
+              _buildLauncherSearchBar(theme, l10n),
+              Expanded(child: _buildLauncherBody(theme)),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (!widget.openAsWorkspace) {
+      return Scaffold(
+        backgroundColor: theme.scaffoldBackgroundColor,
+        body: SafeArea(
+          child: Column(
+            children: [
+              _buildLauncherSearchBar(theme, l10n),
+              Expanded(child: _buildLauncherBody(theme)),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
-      backgroundColor: isDark ? Colors.black : const Color(0xFFF5F5F5),
+      backgroundColor: theme.scaffoldBackgroundColor,
       body: SafeArea(
         child: Column(
           children: [
-            // نوار جستجو
-            _buildSearchBar(isDark),
-
-            // تب‌بار (فقط وقتی متن وارد شده)
-            if (_hasQuery) _buildTabBar(isDark),
-
-            // محتوا
+            _buildSearchBar(theme, l10n),
+            if (_hasQuery) _buildTabBar(),
             Expanded(
-              child: _hasQuery
-                  ? _buildSearchResults()
-                  : _buildRecentSearches(isDark),
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 200),
+                child: _hasQuery
+                    ? _buildSearchResults(theme, l10n)
+                    : _buildZeroState(theme),
+              ),
             ),
           ],
         ),
@@ -176,79 +381,125 @@ class _SearchPageState extends ConsumerState<SearchPage>
     );
   }
 
-  Widget _buildSearchBar(bool isDark) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-      color: isDark ? Colors.black : Colors.white,
-      child: Container(
-        height: 45,
-        decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF1C1C1E) : const Color(0xFFF0F0F0),
-          borderRadius: BorderRadius.circular(12),
+  Widget _buildLauncherSearchBar(ThemeData theme, AppLocalizations l10n) {
+    final isDark = theme.brightness == Brightness.dark;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: _openSearchWorkspace,
+        child: LiquidGlassContainer(
+          blur: 24,
+          opacity: isDark ? 0.18 : 0.45,
+          color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+          borderRadius: BorderRadius.circular(18),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          child: Row(
+            children: [
+              Icon(Icons.search_rounded, color: theme.colorScheme.onSurfaceVariant),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  l10n.searchUsers,
+                  style: theme.textTheme.bodyLarge?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+              const Icon(Icons.open_in_new_rounded, size: 18),
+            ],
+          ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildLauncherBody(ThemeData theme) {
+    return RefreshIndicator(
+      onRefresh: _loadTrendingHashtags,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+        children: [
+          _buildSectionHeader('ترندهای امروز'),
+          const SizedBox(height: 8),
+          if (_isLoadingTrending && _trendingHashtags.isEmpty)
+            const Center(child: CircularProgressIndicator(strokeWidth: 2))
+          else if (_trendingHashtags.isEmpty)
+            _buildEmptyState('هنوز ترندی برای نمایش نداریم')
+          else
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: _trendingHashtags.take(12).map((item) {
+                return ActionChip(
+                  avatar: const Icon(Icons.trending_up_rounded, size: 16),
+                  label: Text('#${item.tag}'),
+                  onPressed: () => _openSearchWorkspace(
+                    initialQuery: '#${item.tag}',
+                  ),
+                );
+              }).toList(),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSearchBar(ThemeData theme, AppLocalizations l10n) {
+    final isDark = theme.brightness == Brightness.dark;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      child: LiquidGlassContainer(
+        blur: 24,
+        opacity: isDark ? 0.18 : 0.45,
+        color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+        borderRadius: BorderRadius.circular(18),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         child: TextField(
           controller: _searchController,
           focusNode: _focusNode,
-          textDirection: TextDirection.rtl,
-          style: TextStyle(
-            color: isDark ? Colors.white : Colors.black,
-            fontSize: 16,
-          ),
+          textInputAction: TextInputAction.search,
+          style: theme.textTheme.bodyLarge,
           decoration: InputDecoration(
-            hintText: 'جستجو...',
-            hintStyle: TextStyle(
-              color: isDark ? Colors.grey[500] : Colors.grey[600],
-            ),
-            prefixIcon: Icon(
-              Icons.search,
-              color: isDark ? Colors.grey[500] : Colors.grey[600],
-            ),
+            hintText: l10n.searchUsers,
+            prefixIcon: const Icon(Icons.search_rounded),
             suffixIcon: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 if (_hasQuery)
                   IconButton(
-                    icon: Icon(
-                      Icons.close,
-                      color: isDark ? Colors.grey[500] : Colors.grey[600],
-                    ),
+                    icon: const Icon(Icons.close_rounded),
                     onPressed: _clearSearch,
                   ),
                 IconButton(
-                  icon: Icon(
-                    Icons.qr_code_scanner_rounded,
-                    color: isDark ? Colors.white : Colors.black,
-                  ),
+                  icon: const Icon(Icons.qr_code_scanner_rounded),
                   onPressed: () {
+                    HapticFeedback.selectionClick();
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                          builder: (context) => const VistaQRScanner()),
+                        builder: (_) => const VistaQRScanner(),
+                      ),
                     );
                   },
                 ),
               ],
             ),
             border: InputBorder.none,
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           ),
-          onChanged: _performSearch,
-          onSubmitted: _performSearch,
+          onChanged: (value) => _performSearch(value),
+          onSubmitted: (value) => _performSearch(value, fromSubmit: true),
         ),
       ),
     );
   }
 
-  Widget _buildTabBar(bool isDark) {
-    return Container(
-      color: isDark ? Colors.black : Colors.white,
+  Widget _buildTabBar() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
       child: TabBar(
         controller: _tabController,
-        labelColor: isDark ? Colors.white : Colors.black,
-        unselectedLabelColor: isDark ? Colors.grey[600] : Colors.grey[500],
-        indicatorColor: isDark ? Colors.white : Colors.black,
-        indicatorWeight: 2,
+        onTap: (index) => ref.read(searchProvider.notifier).setTab(index),
         tabs: const [
           Tab(text: 'همه'),
           Tab(text: 'افراد'),
@@ -258,54 +509,159 @@ class _SearchPageState extends ConsumerState<SearchPage>
     );
   }
 
-  Widget _buildSearchResults() {
+  Widget _buildSearchResults(ThemeData theme, AppLocalizations l10n) {
     final searchState = ref.watch(searchProvider);
-
-    if (searchState.isLoading) {
-      return const Center(child: CircularProgressIndicator());
+    if (_tabController.index != searchState.selectedTab) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _tabController.index != searchState.selectedTab) {
+          _tabController.animateTo(searchState.selectedTab);
+        }
+      });
     }
 
-    return TabBarView(
-      controller: _tabController,
+    if (searchState.isLoading) {
+      return _buildLoadingState();
+    }
+
+    return Column(
       children: [
-        // همه نتایج
-        _buildAllResults(searchState),
-        // افراد
-        _buildUserResults(searchState),
-        // تگ‌ها
-        _buildHashtagResults(searchState),
+        if (searchState.error != null && searchState.error!.isNotEmpty)
+          _buildErrorBanner(searchState.error!, l10n),
+        if (_searchController.text.trim().startsWith('#') &&
+            (_isLoadingSuggestions || _hashtagSuggestions.isNotEmpty))
+          _buildHashtagSuggestions(theme),
+        Expanded(
+          child: TabBarView(
+            controller: _tabController,
+            children: [
+              _buildAllResults(searchState, l10n),
+              _buildUserResults(searchState),
+              _buildHashtagResults(searchState),
+            ],
+          ),
+        ),
       ],
     );
   }
 
-  Widget _buildAllResults(SearchState state) {
-    final users = state.userResults;
-    final hashtags = state.hashtagResults;
+  Widget _buildErrorBanner(String error, AppLocalizations l10n) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+      child: Material(
+        color: AppColors.error.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(14),
+        child: ListTile(
+          dense: true,
+          leading: const Icon(Icons.error_outline_rounded, color: AppColors.error),
+          title: Text(
+            error,
+            style: const TextStyle(fontSize: 13),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          trailing: TextButton(
+            onPressed: () => ref.read(searchProvider.notifier).retry(),
+            child: Text(l10n.retry),
+          ),
+        ),
+      ),
+    );
+  }
 
-    if (users.isEmpty && hashtags.isEmpty) {
-      return _buildEmptyState('نتیجه‌ای یافت نشد');
+  Widget _buildHashtagSuggestions(ThemeData theme) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: theme.colorScheme.outline.withValues(alpha: 0.2)),
+      ),
+      child: _isLoadingSuggestions
+          ? const Padding(
+              padding: EdgeInsets.all(12),
+              child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+            )
+          : ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: _hashtagSuggestions.length.clamp(0, 6),
+              separatorBuilder: (_, __) =>
+                  Divider(height: 1, color: theme.dividerColor.withValues(alpha: 0.35)),
+              itemBuilder: (context, index) {
+                final item = _hashtagSuggestions[index];
+                return ListTile(
+                  dense: true,
+                  leading: const CircleAvatar(
+                    radius: 16,
+                    backgroundColor: AppColors.primary,
+                    child: Text('#', style: TextStyle(color: Colors.white)),
+                  ),
+                  title: Text('#${item.tag}'),
+                  subtitle: Text('${item.usageCount} پست'),
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    _saveRecentSelection(
+                      query: '#${item.tag}',
+                      searchType: SearchType.hashtag,
+                    );
+                    _applyQuery('#${item.tag}', fromSubmit: true);
+                  },
+                );
+              },
+            ),
+    );
+  }
+
+  Widget _buildLoadingState() {
+    return ListView(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      children: const [
+        PostCardSkeleton(),
+        PostCardSkeleton(),
+      ],
+    );
+  }
+
+  Widget _buildAllResults(SearchState state, AppLocalizations l10n) {
+    if (state.userResults.isEmpty && state.hashtagResults.isEmpty) {
+      return _buildEmptyState(l10n.noResultsFound);
     }
 
+    final query = _highlightQuery(_searchController.text);
     return ListView(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
       children: [
-        if (users.isNotEmpty) ...[
+        if (state.userResults.isNotEmpty) ...[
           _buildSectionHeader('افراد'),
-          ...users.take(5).map((user) => _UserTile(user: user)),
-          if (users.length > 5)
-            TextButton(
-              onPressed: () => _tabController.animateTo(1),
-              child: const Text('مشاهده همه افراد'),
+          ...state.userResults
+              .take(5)
+              .map(
+                (user) => _UserTile(
+                  user: user,
+                  query: query,
+                  onTap: () => _saveRecentSelection(
+                    query: '@${user.username}',
+                    searchType: SearchType.user,
+                  ),
+                ),
+              ),
+          if (state.userResults.length > 5)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                onPressed: () => _tabController.animateTo(1),
+                child: const Text('نمایش همه افراد'),
+              ),
             ),
+          const SizedBox(height: 8),
         ],
-        if (hashtags.isNotEmpty) ...[
+        if (state.hashtagResults.isNotEmpty) ...[
           _buildSectionHeader('پست‌ها'),
-          ...hashtags.take(5).map((post) => _PostTile(
-                postId: post.id,
-                imageUrl: post.imageUrl,
-                content: post.content,
-                username: post.username,
-              )),
+          _buildPostPreviewGrid(
+            state.hashtagResults.take(9).toList(),
+            currentQuery: state.currentQuery,
+          ),
         ],
       ],
     );
@@ -313,33 +669,39 @@ class _SearchPageState extends ConsumerState<SearchPage>
 
   Widget _buildUserResults(SearchState state) {
     if (state.userResults.isEmpty) {
-      if (state.isLoading) {
-        return const Center(child: CircularProgressIndicator());
-      }
       return _buildEmptyState('کاربری یافت نشد');
     }
 
+    final query = _highlightQuery(_searchController.text);
     return NotificationListener<ScrollNotification>(
-      onNotification: (ScrollNotification scrollInfo) {
+      onNotification: (notification) {
         if (state.hasMoreUsers &&
-            !state.isLoading &&
-            scrollInfo.metrics.pixels >=
-                scrollInfo.metrics.maxScrollExtent - 200) {
+            !state.isLoadingMoreUsers &&
+            notification.metrics.pixels >=
+                notification.metrics.maxScrollExtent - 240) {
           ref.read(searchProvider.notifier).loadMoreUsers();
         }
         return false;
       },
       child: ListView.builder(
         padding: const EdgeInsets.symmetric(vertical: 8),
-        itemCount: state.userResults.length + (state.hasMoreUsers ? 1 : 0),
+        itemCount: state.userResults.length + (state.isLoadingMoreUsers ? 1 : 0),
         itemBuilder: (context, index) {
-          if (index == state.userResults.length) {
+          if (index >= state.userResults.length) {
             return const Padding(
-              padding: EdgeInsets.all(16.0),
+              padding: EdgeInsets.all(16),
               child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
             );
           }
-          return _UserTile(user: state.userResults[index]);
+          final user = state.userResults[index];
+          return _UserTile(
+            user: user,
+            query: query,
+            onTap: () => _saveRecentSelection(
+              query: '@${user.username}',
+              searchType: SearchType.user,
+            ),
+          );
         },
       ),
     );
@@ -349,140 +711,163 @@ class _SearchPageState extends ConsumerState<SearchPage>
     if (state.hashtagResults.isEmpty) {
       return _buildEmptyState('پستی یافت نشد');
     }
-
-    return ListView.builder(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+    return GridView.builder(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
       itemCount: state.hashtagResults.length,
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        crossAxisSpacing: 2,
+        mainAxisSpacing: 2,
+        childAspectRatio: 1,
+      ),
       itemBuilder: (context, index) {
-        final post = state.hashtagResults[index];
-        return _PostTile(
-          postId: post.id,
-          imageUrl: post.imageUrl,
-          content: post.content,
-          username: post.username,
+        return _PostGridItem(
+          post: state.hashtagResults[index],
+          onTap: () {
+            if (state.currentQuery.startsWith('#')) {
+              _saveRecentSelection(
+                query: state.currentQuery,
+                searchType: SearchType.hashtag,
+              );
+            }
+          },
         );
       },
     );
   }
 
-  Widget _buildRecentSearches(bool isDark) {
+  Widget _buildPostPreviewGrid(
+    List<PublicPostModel> posts, {
+    required String currentQuery,
+  }) {
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: posts.length,
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        crossAxisSpacing: 2,
+        mainAxisSpacing: 2,
+        childAspectRatio: 1,
+      ),
+      itemBuilder: (context, index) {
+        return _PostGridItem(
+          post: posts[index],
+          onTap: () {
+            if (currentQuery.startsWith('#')) {
+              _saveRecentSelection(
+                query: currentQuery,
+                searchType: SearchType.hashtag,
+              );
+            }
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildZeroState(ThemeData theme) {
     return FutureBuilder<List<RecentSearchEntity>>(
       future: _getRecentSearches(),
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-
-        final searches = snapshot.data ?? [];
-
-        if (searches.isEmpty) {
-          return _buildEmptyState('جستجوی اخیری ندارید');
-        }
-
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-              child: Text(
-                'جستجوهای اخیر',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: isDark ? Colors.white : Colors.black,
+        final recents = snapshot.data ?? const <RecentSearchEntity>[];
+        return RefreshIndicator(
+          onRefresh: _loadTrendingHashtags,
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+            children: [
+              if (recents.isNotEmpty) ...[
+                Row(
+                  children: [
+                    Expanded(child: _buildSectionHeader('جستجوهای اخیر')),
+                    TextButton(
+                      onPressed: _clearRecentSearches,
+                      child: const Text('پاک کردن'),
+                    ),
+                  ],
                 ),
-              ),
-            ),
-            Expanded(
-              child: ListView.builder(
-                itemCount: searches.length,
-                itemBuilder: (context, index) {
-                  final search = searches[index];
-                  return ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor:
-                          isDark ? Colors.grey[800] : Colors.grey[200],
-                      child: Icon(
-                        search.searchType == SearchType.hashtag
-                            ? Icons.tag
-                            : Icons.person_outline,
-                        color: isDark ? Colors.grey[400] : Colors.grey[600],
-                        size: 20,
+                ...recents.take(12).map(
+                      (item) => ListTile(
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                        leading: Icon(
+                          item.searchType == SearchType.hashtag
+                              ? Icons.tag_rounded
+                              : Icons.person_search_rounded,
+                        ),
+                        title: Text(item.query),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.close_rounded, size: 18),
+                          onPressed: () => _deleteRecentSearch(item.query),
+                        ),
+                        onTap: () => _applyQuery(
+                          item.query,
+                          fromSubmit: true,
+                          keepFocus: true,
+                        ),
                       ),
                     ),
-                    title: Text(
-                      search.query,
-                      style: TextStyle(
-                        color: isDark ? Colors.white : Colors.black,
-                      ),
-                    ),
-                    trailing: IconButton(
-                      icon: Icon(
-                        Icons.close,
-                        size: 18,
-                        color: isDark ? Colors.grey[600] : Colors.grey[400],
-                      ),
-                      onPressed: () => _deleteRecentSearch(search.query),
-                    ),
-                    onTap: () {
-                      _searchController.text = search.query;
-                      _performSearch(search.query);
-                    },
-                  );
-                },
-              ),
-            ),
-          ],
+                const SizedBox(height: 12),
+              ],
+              _buildSectionHeader('ترندهای امروز'),
+              const SizedBox(height: 8),
+              if (_isLoadingTrending && _trendingHashtags.isEmpty)
+                const Center(child: CircularProgressIndicator(strokeWidth: 2))
+              else if (_trendingHashtags.isEmpty)
+                _buildEmptyState('هنوز ترندی برای نمایش نداریم')
+              else
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: _trendingHashtags.take(12).map((item) {
+                    return ActionChip(
+                      avatar: const Icon(Icons.trending_up_rounded, size: 16),
+                      label: Text('#${item.tag}'),
+                      onPressed: () {
+                        HapticFeedback.selectionClick();
+                        _saveRecentSelection(
+                          query: '#${item.tag}',
+                          searchType: SearchType.hashtag,
+                        );
+                        _applyQuery('#${item.tag}', fromSubmit: true);
+                      },
+                    );
+                  }).toList(),
+                ),
+            ],
+          ),
         );
       },
     );
   }
 
-  Future<List<RecentSearchEntity>> _getRecentSearches() async {
-    if (_isar == null) return [];
-    try {
-      return await _isar!.recentSearchEntitys
-          .where()
-          .sortByTimestampDesc()
-          .findAll();
-    } catch (e) {
-      return [];
-    }
-  }
-
   Widget _buildSectionHeader(String title) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+      padding: const EdgeInsets.only(bottom: 8),
       child: Text(
         title,
-        style: TextStyle(
-          fontSize: 14,
-          fontWeight: FontWeight.w600,
-          color: isDark ? Colors.grey[400] : Colors.grey[600],
-        ),
+        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
       ),
     );
   }
 
   Widget _buildEmptyState(String message) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(
-            Icons.search_off_outlined,
-            size: 64,
-            color: isDark ? Colors.grey[700] : Colors.grey[400],
+            Icons.search_off_rounded,
+            size: 52,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 10),
           Text(
             message,
-            style: TextStyle(
-              fontSize: 16,
-              color: isDark ? Colors.grey[500] : Colors.grey[600],
-            ),
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
           ),
         ],
       ),
@@ -490,40 +875,46 @@ class _SearchPageState extends ConsumerState<SearchPage>
   }
 }
 
-/// ویجت تایل کاربر
 class _UserTile extends StatelessWidget {
   final ProfileModel user;
+  final String query;
+  final VoidCallback onTap;
 
-  const _UserTile({required this.user});
+  const _UserTile({
+    required this.user,
+    required this.query,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final theme = Theme.of(context);
+    final displayName = user.fullName.isNotEmpty ? user.fullName : user.username;
+    final avatarUrl = user.avatarUrl;
 
     return ListTile(
       leading: CircleAvatar(
-        radius: 24,
-        backgroundColor: isDark ? Colors.grey[800] : Colors.grey[200],
-        backgroundImage: user.avatarUrl != null && user.avatarUrl!.isNotEmpty
-            ? CachedNetworkImageProvider(user.avatarUrl!)
+        radius: 23,
+        backgroundColor: theme.colorScheme.surfaceContainerHighest,
+        backgroundImage: avatarUrl != null && avatarUrl.isNotEmpty
+            ? CachedNetworkImageProvider(avatarUrl)
             : null,
-        child: user.avatarUrl == null || user.avatarUrl!.isEmpty
-            ? Icon(
-                Icons.person,
-                color: isDark ? Colors.grey[600] : Colors.grey[400],
-              )
+        child: avatarUrl == null || avatarUrl.isEmpty
+            ? Icon(Icons.person_rounded, color: theme.colorScheme.onSurfaceVariant)
             : null,
       ),
       title: Row(
         children: [
-          Flexible(
-            child: Text(
-              user.fullName.isNotEmpty ? user.fullName : user.username,
-              style: TextStyle(
-                fontWeight: FontWeight.w600,
-                color: isDark ? Colors.white : Colors.black,
+          Expanded(
+            child: HighlightedText(
+              text: displayName,
+              query: query,
+              style: theme.textTheme.titleSmall,
+              highlightStyle: theme.textTheme.titleSmall?.copyWith(
+                color: AppColors.primary,
+                fontWeight: FontWeight.w800,
               ),
-              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
             ),
           ),
           if (user.isVerified) ...[
@@ -537,22 +928,23 @@ class _UserTile extends StatelessWidget {
           ],
         ],
       ),
-      subtitle: Text(
-        '@${user.username}',
-        style: TextStyle(
-          color: isDark ? Colors.grey[500] : Colors.grey[600],
+      subtitle: HighlightedText(
+        text: '@${user.username}',
+        query: query,
+        style: theme.textTheme.bodySmall,
+        highlightStyle: theme.textTheme.bodySmall?.copyWith(
+          color: AppColors.primary,
+          fontWeight: FontWeight.w700,
         ),
+        maxLines: 1,
       ),
-      trailing: Icon(
-        Icons.chevron_left,
-        color: isDark ? Colors.grey[700] : Colors.grey[400],
-      ),
+      trailing: Icon(Icons.chevron_left_rounded, color: theme.colorScheme.outline),
       onTap: () {
+        onTap();
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (_) =>
-                ProfileScreen(userId: user.id, username: user.username),
+            builder: (_) => ProfileScreen(userId: user.id, username: user.username),
           ),
         );
       },
@@ -560,71 +952,40 @@ class _UserTile extends StatelessWidget {
   }
 }
 
-/// ویجت تایل پست
-class _PostTile extends StatelessWidget {
-  final String postId;
-  final String? imageUrl;
-  final String content;
-  final String username;
+class _PostGridItem extends StatelessWidget {
+  final PublicPostModel post;
+  final VoidCallback? onTap;
 
-  const _PostTile({
-    required this.postId,
-    this.imageUrl,
-    required this.content,
-    required this.username,
-  });
+  const _PostGridItem({required this.post, this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    return ListTile(
+    final imageUrl = post.imageUrl;
+    return GestureDetector(
       onTap: () {
+        onTap?.call();
         Navigator.push(
           context,
-          MaterialPageRoute(builder: (_) => PostDetailsPage(postId: postId)),
+          MaterialPageRoute(
+            builder: (_) => PostDetailsPage(postId: post.id),
+          ),
         );
       },
-      leading: Container(
-        width: 48,
-        height: 48,
+      child: DecoratedBox(
         decoration: BoxDecoration(
-          color: isDark ? Colors.grey[800] : Colors.grey[200],
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(8),
         ),
-        child: imageUrl != null && imageUrl!.isNotEmpty
+        child: imageUrl != null && imageUrl.isNotEmpty
             ? ClipRRect(
                 borderRadius: BorderRadius.circular(8),
                 child: CachedNetworkImage(
-                  imageUrl: imageUrl!,
+                  imageUrl: imageUrl,
                   fit: BoxFit.cover,
-                  placeholder: (_, __) => const Center(
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                  errorWidget: (_, __, ___) => Icon(
-                    Icons.image_outlined,
-                    color: isDark ? Colors.grey[600] : Colors.grey[400],
-                  ),
+                  errorWidget: (_, __, ___) => const Icon(Icons.image_outlined),
                 ),
               )
-            : Icon(
-                Icons.article_outlined,
-                color: isDark ? Colors.grey[600] : Colors.grey[400],
-              ),
-      ),
-      title: Text(
-        content.length > 50 ? '${content.substring(0, 50)}...' : content,
-        style: TextStyle(
-          color: isDark ? Colors.white : Colors.black,
-        ),
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
-      ),
-      subtitle: Text(
-        '@$username',
-        style: TextStyle(
-          color: isDark ? Colors.grey[500] : Colors.grey[600],
-        ),
+            : const Icon(Icons.article_outlined),
       ),
     );
   }

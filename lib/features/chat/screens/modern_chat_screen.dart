@@ -24,8 +24,8 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gal/gal.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:cryptography/cryptography.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../DB/profile_cache_service.dart';
 import '../../../model/ProfileModel.dart';
@@ -119,6 +119,11 @@ class ChatScreenArgs {
   final String otherUserId;
   final bool isGroup;
   final bool isSecret;
+  final String? initialReplyContent;
+  final String? initialReplySenderName;
+  final String? initialReplySenderId;
+  final bool initialReplyFromNote;
+  final String? initialDraftMessage;
 
   const ChatScreenArgs({
     required this.conversationId,
@@ -127,7 +132,26 @@ class ChatScreenArgs {
     required this.otherUserId,
     this.isGroup = false,
     this.isSecret = false,
+    this.initialReplyContent,
+    this.initialReplySenderName,
+    this.initialReplySenderId,
+    this.initialReplyFromNote = false,
+    this.initialDraftMessage,
   });
+}
+
+class _PendingReplyContext {
+  const _PendingReplyContext({
+    required this.content,
+    required this.senderName,
+    required this.senderId,
+    this.fromNote = false,
+  });
+
+  final String content;
+  final String senderName;
+  final String senderId;
+  final bool fromNote;
 }
 
 /// صفحه چت مدرن
@@ -161,6 +185,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   // ═══════════════════════════════════════════════════════════════════════════
 
   MessageModel? _replyToMessage;
+  _PendingReplyContext? _pendingReplyContext;
   bool _isNearTop = false;
   bool _showScrollToBottom = false;
   String? _currentUserId;
@@ -256,9 +281,19 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   final List<_SecretSystemNotice> _secretSystemNotices =
       <_SecretSystemNotice>[];
   int _secretAutoDeleteSeconds = 0;
+  DateTime? _secretAutoDeleteEnabledAt;
+  SecretKey? _secretSharedSecret;
+  final Map<String, String> _secretDecryptedContentByMessageId =
+      <String, String>{};
+  final Set<String> _secretDecryptInFlight = <String>{};
   ProviderSubscription<AsyncValue<List<MessageModel>>>? _messagesListener;
   ProviderSubscription<AsyncValue<Map<String, dynamic>>>?
       _performanceSettingsListener;
+  ProviderSubscription<AsyncValue<ConnectionStatus>>?
+      _connectionStatusListener;
+  ConnectionStatus _latestConnectionStatus = ConnectionStatus.connecting;
+  bool _showConnectionBannerAfterDelay = false;
+  Timer? _connectionBannerDelayTimer;
 
   @override
   void initState() {
@@ -281,7 +316,9 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     // ✅ لیسنرهای وضعیت تایپ کردن
     _initTypingListeners();
     _setupMessageSideEffectsListener();
+    _setupConnectionStatusBannerListener();
     _setupAdaptiveEffects();
+    _bootstrapInitialReplyContext();
 
     // ✅ تنظیم چت فعال برای جلوگیری از دریافت بج پیام
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -308,6 +345,87 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
     // ✅ Polling Fallback: هر 30 ثانیه برای اطمینان از دریافت پیام‌ها
     _startPolling();
+  }
+
+  void _bootstrapInitialReplyContext() {
+    final initialContent = widget.args.initialReplyContent?.trim() ?? '';
+    if (initialContent.isEmpty) return;
+
+    _pendingReplyContext = _PendingReplyContext(
+      content: initialContent,
+      senderName: (widget.args.initialReplySenderName ?? widget.args.otherUserName)
+          .trim(),
+      senderId: widget.args.initialReplySenderId ?? widget.args.otherUserId,
+      fromNote: widget.args.initialReplyFromNote,
+    );
+
+    final initialDraft = widget.args.initialDraftMessage?.trim() ?? '';
+    if (initialDraft.isNotEmpty) {
+      _messageController.text = initialDraft;
+      _messageController.selection = TextSelection.fromPosition(
+        TextPosition(offset: _messageController.text.length),
+      );
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _focusNode.requestFocus();
+    });
+  }
+
+  String? get _activeReplyContent =>
+      _replyToMessage?.content ?? _pendingReplyContext?.content;
+
+  String? get _activeReplySenderName {
+    if (_replyToMessage != null) {
+      return _replyToMessage!.senderId == _currentUserId
+          ? 'شما'
+          : widget.args.otherUserName;
+    }
+    if (_pendingReplyContext == null) return null;
+    if (_pendingReplyContext!.fromNote) {
+      return 'یادداشت ${_pendingReplyContext!.senderName}';
+    }
+    return _pendingReplyContext!.senderName;
+  }
+
+  String? _resolveReplyToMessageId({
+    MessageModel? replyTo,
+    _PendingReplyContext? pendingReply,
+  }) {
+    if (replyTo != null) return replyTo.id;
+    if (pendingReply?.fromNote == true) {
+      final noteOwnerId = pendingReply!.senderId.trim();
+      if (noteOwnerId.isNotEmpty) return 'note:$noteOwnerId';
+    }
+    return null;
+  }
+
+  String? _resolveReplyToKind({
+    MessageModel? replyTo,
+    _PendingReplyContext? pendingReply,
+  }) {
+    if (replyTo != null) return 'message';
+    if (pendingReply?.fromNote == true) return 'note';
+    return null;
+  }
+
+  bool _isSyntheticNoteReplyId(String? replyToMessageId) =>
+      (replyToMessageId?.trim().startsWith('note:') ?? false);
+
+  void _clearReplyContext() {
+    setState(() {
+      _replyToMessage = null;
+      _pendingReplyContext = null;
+    });
+  }
+
+  void _setReplyToMessage(MessageModel message) {
+    setState(() {
+      _pendingReplyContext = null;
+      _replyToMessage = message;
+    });
+    _focusNode.requestFocus();
   }
 
   void _initTypingListeners() {
@@ -353,6 +471,45 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     );
   }
 
+  void _setupConnectionStatusBannerListener() {
+    _connectionStatusListener =
+        ref.listenManual<AsyncValue<ConnectionStatus>>(
+      chatConnectionStatusProvider,
+      (previous, next) {
+        final status = next.valueOrNull;
+        if (status == null) return;
+        _latestConnectionStatus = status;
+
+        if (status == ConnectionStatus.connected) {
+          _connectionBannerDelayTimer?.cancel();
+          _connectionBannerDelayTimer = null;
+          if (_showConnectionBannerAfterDelay && mounted) {
+            setState(() {
+              _showConnectionBannerAfterDelay = false;
+            });
+          }
+          return;
+        }
+
+        if (_showConnectionBannerAfterDelay ||
+            _connectionBannerDelayTimer != null) {
+          return;
+        }
+
+        _connectionBannerDelayTimer = Timer(const Duration(seconds: 5), () {
+          _connectionBannerDelayTimer = null;
+          if (!mounted) return;
+          if (_latestConnectionStatus != ConnectionStatus.connected) {
+            setState(() {
+              _showConnectionBannerAfterDelay = true;
+            });
+          }
+        });
+      },
+      fireImmediately: true,
+    );
+  }
+
   void _setupAdaptiveEffects() {
     // Ensure frame monitoring starts for this screen.
     ref.read(frameBudgetServiceProvider);
@@ -393,17 +550,20 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
             !_hiddenMessageIds.contains(m.id) ||
             _deletingMessageIds.contains(m.id))
         .toList();
-    
+
     // فیلتر کردن پیام‌های سیستمی سکرت چت از UI
-    final displayMessages = visibleMessages.where((m) => 
-        m.messageType != 'exchange_key' && 
-        m.messageType != 'exchange_key_reply' &&
-        m.attachmentType != 'exchange_key' &&
-        m.attachmentType != 'exchange_key_reply'
-    ).toList();
-        
-    _latestVisibleMessages = displayMessages;
-    _rescheduleSecretAutoDelete(displayMessages);
+    final displayMessages = visibleMessages
+        .where((m) =>
+            m.messageType != 'exchange_key' &&
+            m.messageType != 'exchange_key_reply' &&
+            m.attachmentType != 'exchange_key' &&
+            m.attachmentType != 'exchange_key_reply')
+        .toList();
+
+    unawaited(_decryptVisibleSecretMessages(displayMessages));
+    final uiMessages = _applySecretUiContent(displayMessages);
+    _latestVisibleMessages = uiMessages;
+    _rescheduleSecretAutoDelete(uiMessages);
 
     if (widget.args.isSecret) {
       _processSecretChatKeyExchange(allMessages);
@@ -415,7 +575,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
     _calculateUnreadCount(visibleMessages);
 
-    if (displayMessages.isEmpty) {
+    if (uiMessages.isEmpty) {
       _latestVisibleMessages = const [];
       _lastFirstMessageId = null;
       if (_currentVisibleDate != null || _isScrolling) {
@@ -427,16 +587,15 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       return;
     }
 
-    final firstId = displayMessages.first.id;
+    final firstId = uiMessages.first.id;
     if (_lastFirstMessageId != firstId) {
       _lastFirstMessageId = firstId;
-      _loadReactionsForMessages(displayMessages);
+      _loadReactionsForMessages(uiMessages);
     }
-    _updateReactionWindow(DateTime.now(),
-        force: true, messages: displayMessages);
+    _updateReactionWindow(DateTime.now(), force: true, messages: uiMessages);
 
     if (_scrollController.hasClients && _scrollController.offset < 100) {
-      final newDate = displayMessages.first.createdAt;
+      final newDate = uiMessages.first.createdAt;
       if (_currentVisibleDate == null ||
           !_isSameDay(_currentVisibleDate!, newDate)) {
         _showFloatingDateTemporarily(newDate);
@@ -444,72 +603,155 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     }
   }
 
-  Future<void> _processSecretChatKeyExchange(List<MessageModel> messages) async {
+  Future<void> _processSecretChatKeyExchange(
+      List<MessageModel> messages) async {
     final e2e = E2EEncryptionService();
     final prefs = await SharedPreferences.getInstance();
     final conversationId = widget.args.conversationId;
     final peerPubB64 = prefs.getString('e2e_peer_pub_$conversationId');
-    
+
     // اگر کلید طرف مقابل را داریم، دیگر نیازی به هندل کردن پیام‌های تبادل کلید نیست
     if (peerPubB64 != null) return;
 
     // ۱. بررسی پیام exchange_key از طرف مقابل
     final peerKeyMessage = messages.firstWhere(
-      (m) => (m.messageType == 'exchange_key' || m.attachmentType == 'exchange_key') && !m.isMe, 
+      (m) =>
+          (m.messageType == 'exchange_key' ||
+              m.attachmentType == 'exchange_key') &&
+          !m.isMe,
       orElse: () => MessageModel.empty(),
     );
-    
+
     if (peerKeyMessage.id.isNotEmpty) {
       // کلید عمومی طرف مقابل را ذخیره می‌کنیم
-      await prefs.setString('e2e_peer_pub_$conversationId', peerKeyMessage.content);
-      
+      await prefs.setString(
+          'e2e_peer_pub_$conversationId', peerKeyMessage.content);
+
       // حالا پاسخ (کلید خودمان) را می‌فرستیم
-      final myKeyPair = await e2e.getSavedKeyPair(_currentUserId!) ?? await e2e.generateAndSaveKeyPair(_currentUserId!);
+      final myKeyPair = await e2e.getSavedKeyPair(_currentUserId!) ??
+          await e2e.generateAndSaveKeyPair(_currentUserId!);
       final myPubBytes = await e2e.getPublicKeyBytes(myKeyPair);
-      
-      await _chatRepository.sendMessage(
-        MessagePayload(
-          conversationId: conversationId,
-          content: base64Encode(myPubBytes),
-          attachmentType: 'exchange_key_reply',
-        )
-      );
-      
-      _addSecretSystemNotice('کلید امنیتی با موفقیت تبادل شد. ارتباط رمزنگاری شده برقرار است.');
+
+      await _chatRepository.sendMessage(MessagePayload(
+        conversationId: conversationId,
+        content: base64Encode(myPubBytes),
+        attachmentType: 'exchange_key_reply',
+      ));
+
+      _addSecretSystemNotice(
+          'کلید امنیتی با موفقیت تبادل شد. ارتباط رمزنگاری شده برقرار است.');
+      unawaited(_prepareSecretSharedSecret());
       return;
     }
 
     // ۲. اگر پیام از طرف مقابل نیامده، آیا خودمان قبلاً exchange_key فرستاده‌ایم؟
     final myKeyMessage = messages.firstWhere(
-      (m) => (m.messageType == 'exchange_key' || m.attachmentType == 'exchange_key') && m.isMe,
+      (m) =>
+          (m.messageType == 'exchange_key' ||
+              m.attachmentType == 'exchange_key') &&
+          m.isMe,
       orElse: () => MessageModel.empty(),
     );
-    
+
     if (myKeyMessage.id.isEmpty) {
       // خودمان شروع کننده تبادل کلید می‌شویم
-      final myKeyPair = await e2e.getSavedKeyPair(_currentUserId!) ?? await e2e.generateAndSaveKeyPair(_currentUserId!);
+      final myKeyPair = await e2e.getSavedKeyPair(_currentUserId!) ??
+          await e2e.generateAndSaveKeyPair(_currentUserId!);
       final myPubBytes = await e2e.getPublicKeyBytes(myKeyPair);
-      
-      await _chatRepository.sendMessage(
-        MessagePayload(
-          conversationId: conversationId,
-          content: base64Encode(myPubBytes),
-          attachmentType: 'exchange_key',
-        )
-      );
+
+      await _chatRepository.sendMessage(MessagePayload(
+        conversationId: conversationId,
+        content: base64Encode(myPubBytes),
+        attachmentType: 'exchange_key',
+      ));
       _addSecretSystemNotice('در حال تبادل کلید رمزنگاری با طرف مقابل...');
     }
-    
+
     // ۳. آیا پاسخ (exchange_key_reply) از طرف مقابل آمده؟
     final peerReplyMessage = messages.firstWhere(
-      (m) => (m.messageType == 'exchange_key_reply' || m.attachmentType == 'exchange_key_reply') && !m.isMe,
+      (m) =>
+          (m.messageType == 'exchange_key_reply' ||
+              m.attachmentType == 'exchange_key_reply') &&
+          !m.isMe,
       orElse: () => MessageModel.empty(),
     );
-    
+
     if (peerReplyMessage.id.isNotEmpty) {
-      await prefs.setString('e2e_peer_pub_$conversationId', peerReplyMessage.content);
-      _addSecretSystemNotice('ارتباط کاملا امن و رمزنگاری شده (E2EE) برقرار شد.');
+      await prefs.setString(
+          'e2e_peer_pub_$conversationId', peerReplyMessage.content);
+      _addSecretSystemNotice(
+          'ارتباط کاملا امن و رمزنگاری شده (E2EE) برقرار شد.');
+      unawaited(_prepareSecretSharedSecret());
     }
+  }
+
+  bool _looksEncryptedSecretPayload(String raw) {
+    final text = raw.trim();
+    if (text.isEmpty) return false;
+    if (text.startsWith('e2ee:v1:')) return true;
+    if (text.startsWith('{') || text.contains(' ') || text.contains('\n')) {
+      return false;
+    }
+    final base64Like = RegExp(r'^[A-Za-z0-9+/=]+$');
+    return text.length >= 32 && base64Like.hasMatch(text);
+  }
+
+  bool _canAttemptSecretDecrypt(MessageModel message) {
+    if (!widget.args.isSecret) return false;
+    final type = (message.attachmentType ?? message.messageType ?? 'text')
+        .toLowerCase()
+        .trim();
+    if (type == 'exchange_key' || type == 'exchange_key_reply') return false;
+    if (type != 'text') return false;
+    return _looksEncryptedSecretPayload(message.content);
+  }
+
+  Future<void> _decryptVisibleSecretMessages(
+      List<MessageModel> messages) async {
+    if (!widget.args.isSecret || messages.isEmpty) return;
+    if (_secretSharedSecret == null) {
+      await _prepareSecretSharedSecret();
+    }
+    final secret = _secretSharedSecret;
+    if (secret == null) return;
+
+    final e2e = E2EEncryptionService();
+    var changed = false;
+
+    for (final message in messages) {
+      if (!_canAttemptSecretDecrypt(message)) continue;
+      if (_secretDecryptedContentByMessageId.containsKey(message.id)) continue;
+      if (_secretDecryptInFlight.contains(message.id)) continue;
+
+      _secretDecryptInFlight.add(message.id);
+      try {
+        final clear = await e2e.decryptMessage(message.content, secret);
+        if (clear.isNotEmpty && clear != '[پیام غیرقابل رمزگشایی]') {
+          _secretDecryptedContentByMessageId[message.id] = clear;
+          changed = true;
+        }
+      } catch (_) {
+        // keep secure placeholder
+      } finally {
+        _secretDecryptInFlight.remove(message.id);
+      }
+    }
+
+    if (changed && mounted) {
+      setState(() {});
+    }
+  }
+
+  List<MessageModel> _applySecretUiContent(List<MessageModel> messages) {
+    if (!widget.args.isSecret || messages.isEmpty) return messages;
+    return messages.map((message) {
+      if (!_canAttemptSecretDecrypt(message)) return message;
+      final clear = _secretDecryptedContentByMessageId[message.id];
+      if (clear != null && clear.isNotEmpty) {
+        return message.copyWith(content: clear);
+      }
+      return message.copyWith(content: 'پیام رمزنگاری‌شده');
+    }).toList(growable: false);
   }
 
   void _showFloatingDateTemporarily(DateTime date) {
@@ -739,6 +981,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     await SecretChatPrivacyService.instance.enableSecureDisplay();
     await _loadSecretAutoDeleteTimerSetting();
     await _initE2EEncryption();
+    await _prepareSecretSharedSecret();
   }
 
   Future<void> _initE2EEncryption() async {
@@ -748,31 +991,84 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
     // ۱. مطمئن می‌شویم که برای خودمان کلید داریم
     var myKeyPair = await e2e.getSavedKeyPair(userId);
-    if (myKeyPair == null) {
-      myKeyPair = await e2e.generateAndSaveKeyPair(userId);
+    myKeyPair ??= await e2e.generateAndSaveKeyPair(userId);
+  }
+
+  Future<void> _prepareSecretSharedSecret() async {
+    if (!widget.args.isSecret) return;
+    final currentUserId = _currentUserId;
+    if (currentUserId == null || currentUserId.isEmpty) return;
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final peerPubB64 =
+          prefs.getString('e2e_peer_pub_${widget.args.conversationId}');
+      if (peerPubB64 == null || peerPubB64.isEmpty) {
+        _secretSharedSecret = null;
+        return;
+      }
+
+      final e2e = E2EEncryptionService();
+      final myKeyPair = await e2e.getSavedKeyPair(currentUserId);
+      if (myKeyPair == null) {
+        _secretSharedSecret = null;
+        return;
+      }
+
+      _secretSharedSecret = await e2e.computeSharedSecret(
+        myKeyPair: myKeyPair,
+        peerPublicKeyBytes: base64Decode(peerPubB64),
+      );
+    } catch (_) {
+      _secretSharedSecret = null;
     }
   }
 
   String get _secretAutoDeletePrefKey =>
       'secret_auto_delete_seconds_${widget.args.conversationId}';
+  String get _secretAutoDeleteEnabledAtPrefKey =>
+      'secret_auto_delete_enabled_at_ms_${widget.args.conversationId}';
 
   Future<void> _loadSecretAutoDeleteTimerSetting() async {
     if (!widget.args.isSecret) return;
     final prefs = await SharedPreferences.getInstance();
     final seconds = prefs.getInt(_secretAutoDeletePrefKey) ?? 0;
+    final enabledAtMs = prefs.getInt(_secretAutoDeleteEnabledAtPrefKey);
+    DateTime? enabledAt;
+    if (enabledAtMs != null && enabledAtMs > 0) {
+      enabledAt = DateTime.fromMillisecondsSinceEpoch(enabledAtMs);
+    } else if (seconds > 0) {
+      enabledAt = DateTime.now();
+      await prefs.setInt(
+        _secretAutoDeleteEnabledAtPrefKey,
+        enabledAt.millisecondsSinceEpoch,
+      );
+    }
     if (!mounted) return;
     setState(() {
       _secretAutoDeleteSeconds = seconds;
+      _secretAutoDeleteEnabledAt = seconds > 0 ? enabledAt : null;
     });
   }
 
   Future<void> _setSecretAutoDeleteTimer(int seconds) async {
     if (!widget.args.isSecret) return;
     final prefs = await SharedPreferences.getInstance();
+    final now = DateTime.now();
+    final enabledAt = seconds > 0 ? now : null;
     await prefs.setInt(_secretAutoDeletePrefKey, seconds);
+    if (enabledAt != null) {
+      await prefs.setInt(
+        _secretAutoDeleteEnabledAtPrefKey,
+        enabledAt.millisecondsSinceEpoch,
+      );
+    } else {
+      await prefs.remove(_secretAutoDeleteEnabledAtPrefKey);
+    }
     if (!mounted) return;
     setState(() {
       _secretAutoDeleteSeconds = seconds;
+      _secretAutoDeleteEnabledAt = enabledAt;
     });
     _rescheduleSecretAutoDelete(_latestVisibleMessages);
     final label = _secretAutoDeleteLabel(seconds);
@@ -832,6 +1128,11 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     return '${seconds ~/ 86400} روز';
   }
 
+  String _secretAutoDeleteStatusText() {
+    if (_secretAutoDeleteSeconds <= 0) return 'حذف خودکار خاموش';
+    return 'حذف خودکار: ${_secretAutoDeleteLabel(_secretAutoDeleteSeconds)}';
+  }
+
   void _addSecretSystemNotice(String text) {
     if (!mounted || !widget.args.isSecret) return;
     setState(() {
@@ -850,7 +1151,9 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   }
 
   void _rescheduleSecretAutoDelete(List<MessageModel> messages) {
-    if (!widget.args.isSecret || _secretAutoDeleteSeconds <= 0) {
+    if (!widget.args.isSecret ||
+        _secretAutoDeleteSeconds <= 0 ||
+        _secretAutoDeleteEnabledAt == null) {
       for (final timer in _secretAutoDeleteTimers.values) {
         timer.cancel();
       }
@@ -867,12 +1170,17 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     }
 
     final now = DateTime.now();
+    final activationTime = _secretAutoDeleteEnabledAt!;
     for (final message in messages) {
       if (_hiddenMessageIds.contains(message.id) ||
           _deletingMessageIds.contains(message.id) ||
           _secretAutoDeletingIds.contains(message.id) ||
           message.isPending ||
           message.isFailed == true) {
+        continue;
+      }
+      if (message.createdAt.isBefore(activationTime)) {
+        // پیام‌های قبل از فعال‌شدن تایمر نباید حذف شوند.
         continue;
       }
       if (_secretAutoDeleteTimers.containsKey(message.id)) continue;
@@ -896,6 +1204,13 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       return;
     }
     _secretAutoDeletingIds.add(messageId);
+    if (mounted) {
+      setState(() {
+        _deletingMessageIds.add(messageId);
+        _hiddenMessageIds.add(messageId);
+      });
+    }
+    await Future.delayed(const Duration(milliseconds: 340));
     try {
       var result =
           await _chatRepository.deleteMessage(messageId, forEveryone: true);
@@ -910,6 +1225,11 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       debugPrint('Secret auto-delete error for $messageId: $e');
     } finally {
       _secretAutoDeletingIds.remove(messageId);
+      if (mounted) {
+        setState(() {
+          _deletingMessageIds.remove(messageId);
+        });
+      }
     }
   }
 
@@ -947,6 +1267,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     _reactionsSubscriptions.clear();
 
     _pollingTimer?.cancel();
+    _connectionBannerDelayTimer?.cancel();
     _floatingDateHideTimer?.cancel();
     _activeConversationHeartbeatTimer?.cancel();
     _realtimeSubscription?.cancel();
@@ -965,6 +1286,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     _secretAutoDeletingIds.clear();
     _messagesListener?.close();
     _performanceSettingsListener?.close();
+    _connectionStatusListener?.close();
 
     for (final notifier in _messageReactionNotifiers.values) {
       notifier.dispose();
@@ -1035,8 +1357,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   }
 
   void _startPolling() {
-    // Smart fallback: repository handles periodic polling when realtime is down.
-    // Screen only triggers an immediate catch-up on disconnect events.
+    // Keep chat near real-time even when SSE is temporarily disconnected.
+    // Polling is only active while realtime is down.
     final repo = _chatRepository;
 
     _realtimeSubscription = repo.realtimeStatus.listen((status) {
@@ -1045,6 +1367,9 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         _pollingTimer = null;
       } else {
         unawaited(_triggerPollingRefresh());
+        _pollingTimer ??= Timer.periodic(const Duration(seconds: 2), (_) {
+          unawaited(_triggerPollingRefresh());
+        });
       }
     });
   }
@@ -1330,14 +1655,20 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   }
 
   String _resolveAlbumMediaSource(MessageModel message) {
-    final remote = message.attachmentUrl?.trim() ?? '';
-    if (remote.isNotEmpty) return remote;
-
     final localFile = message.localFilePath?.trim() ?? '';
-    if (localFile.isNotEmpty) return localFile;
+    if (localFile.isNotEmpty) {
+      final local = File(localFile);
+      if (local.existsSync()) return localFile;
+    }
 
     final localImage = message.localImagePath?.trim() ?? '';
-    return localImage;
+    if (localImage.isNotEmpty) {
+      final image = File(localImage);
+      if (image.existsSync()) return localImage;
+    }
+
+    final remote = message.attachmentUrl?.trim() ?? '';
+    return remote;
   }
 
   List<_AlbumMediaItem> _extractAlbumMediaItems(List<MessageModel> messages) {
@@ -1379,7 +1710,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
           imageUrl: source,
           cachedFile: isNetwork ? null : File(source),
           caption: caption.isEmpty ? null : caption,
-          heroTag: '${message.id}_$source',
+          heroTag: '${message.id}_${source.hashCode}',
         ),
       );
       indexByMessageId[id] = galleryItems.length - 1;
@@ -1477,6 +1808,13 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     final paginationState = ref.watch(
       paginationStateProvider(widget.args.conversationId),
     );
+    final connectionStatusAsync = ref.watch(chatConnectionStatusProvider);
+    final connectionStatus = connectionStatusAsync.maybeWhen(
+      data: (status) => status,
+      orElse: () => ConnectionStatus.connecting,
+    );
+    final isConnected = connectionStatus == ConnectionStatus.connected;
+    final showConnectionBanner = !isConnected && _showConnectionBannerAfterDelay;
 
     return Stack(
       children: [
@@ -1539,8 +1877,12 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                 left: 0,
                 right: 0,
                 child: TelegramConnectionBanner(
-                  isConnected: true,
-                  onRetry: () {},
+                  isConnected: !showConnectionBanner,
+                  onRetry: !showConnectionBanner
+                      ? null
+                      : () {
+                          unawaited(_triggerPollingRefresh());
+                        },
                 ),
               ),
 
@@ -2125,14 +2467,44 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                   const SizedBox(height: 2),
 
                   // ✅ وضعیت آنلاین به سبک ویستا - Real-time
-                  TelegramOnlineStatus(
-                    userId: widget.args.otherUserId,
-                    isTyping: _isOtherUserTyping, // استفاده از متغیر صحیح
-                    textStyle: TextStyle(
-                      color: theme.secondaryTextColor,
-                      fontSize: 12,
+                  if (widget.args.isSecret)
+                    Row(
+                      children: [
+                        Icon(
+                          _secretAutoDeleteSeconds > 0
+                              ? Icons.timer_rounded
+                              : Icons.timer_off_outlined,
+                          size: 13,
+                          color: _secretAutoDeleteSeconds > 0
+                              ? Colors.greenAccent
+                              : theme.secondaryTextColor,
+                        ),
+                        const SizedBox(width: 4),
+                        Flexible(
+                          child: Text(
+                            _secretAutoDeleteStatusText(),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: _secretAutoDeleteSeconds > 0
+                                  ? Colors.greenAccent
+                                  : theme.secondaryTextColor,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ],
+                    )
+                  else
+                    TelegramOnlineStatus(
+                      userId: widget.args.otherUserId,
+                      isTyping: _isOtherUserTyping, // استفاده از متغیر صحیح
+                      textStyle: TextStyle(
+                        color: theme.secondaryTextColor,
+                        fontSize: 12,
+                      ),
                     ),
-                  ),
                 ],
               ),
             ),
@@ -2368,15 +2740,18 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         final filteredMessages = allMessages
             .where((m) =>
                 (!_hiddenMessageIds.contains(m.id) ||
-                _deletingMessageIds.contains(m.id)) &&
+                    _deletingMessageIds.contains(m.id)) &&
                 m.messageType != 'exchange_key' &&
                 m.messageType != 'exchange_key_reply' &&
                 m.attachmentType != 'exchange_key' &&
                 m.attachmentType != 'exchange_key_reply')
             .toList();
 
+        unawaited(_decryptVisibleSecretMessages(filteredMessages));
+        final uiMessages = _applySecretUiContent(filteredMessages);
+
         // Isar query is already sorted (newest first).
-        final messages = filteredMessages;
+        final messages = uiMessages;
         final renderItems = _buildRenderItems(messages);
         final conversationImageGallery =
             _buildConversationImageGallery(messages);
@@ -2398,23 +2773,6 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
               SliverPadding(
                 padding: EdgeInsets.only(bottom: bottomPadding),
                 sliver: const SliverToBoxAdapter(child: SizedBox.shrink()),
-              ),
-            if (widget.args.isSecret && _secretSystemNotices.isNotEmpty)
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-                  child: Column(
-                    children: _secretSystemNotices
-                        .map(
-                          (notice) => KeyedSubtree(
-                            key: ValueKey(notice.id),
-                            child: _buildSecretSystemNoticeBubble(notice),
-                          ),
-                        )
-                        .toList(growable: false),
-                  ),
-                ),
               ),
             const SliverPadding(padding: EdgeInsets.only(bottom: 10)),
             SliverList(
@@ -2492,7 +2850,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                             },
                             child: Padding(
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: 8, vertical: 2),
+                                  horizontal: 2, vertical: 2),
                               child: RepaintBoundary(
                                 child: Row(
                                   mainAxisAlignment: isMe
@@ -2650,6 +3008,23 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                   ? _buildLoadingIndicator(theme)
                   : const SizedBox(height: 20),
             ),
+            if (widget.args.isSecret && _secretSystemNotices.isNotEmpty)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                  child: Column(
+                    children: _secretSystemNotices
+                        .map(
+                          (notice) => KeyedSubtree(
+                            key: ValueKey(notice.id),
+                            child: _buildSecretSystemNoticeBubble(notice),
+                          ),
+                        )
+                        .toList(growable: false),
+                  ),
+                ),
+              ),
           ],
         ));
       },
@@ -2954,11 +3329,9 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       onScheduleMessage: _scheduleMessage,
       onChanged: _onTextChanged,
       onGifSelected: _handleGifSelected,
-      replyToContent: _replyToMessage?.content,
-      replyToSenderName: _replyToMessage?.senderId == _currentUserId
-          ? '\u0634\u0645\u0627'
-          : widget.args.otherUserName,
-      onCancelReply: () => setState(() => _replyToMessage = null),
+      replyToContent: _activeReplyContent,
+      replyToSenderName: _activeReplySenderName,
+      onCancelReply: _clearReplyContext,
       onVoiceRecorded: _handleVoiceRecorded,
       onAutocomplete: _handleAutocomplete,
       onHeightChanged: _onInputHeightChanged,
@@ -3042,6 +3415,16 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       attachmentMimeType: mimeType,
       attachmentSizeBytes: fileSize,
       duration: finalDuration,
+      replyToMessageId: _resolveReplyToMessageId(
+        replyTo: _replyToMessage,
+        pendingReply: _pendingReplyContext,
+      ),
+      replyToContent: _activeReplyContent,
+      replyToSenderName: _activeReplySenderName,
+      replyToKind: _resolveReplyToKind(
+        replyTo: _replyToMessage,
+        pendingReply: _pendingReplyContext,
+      ),
       recipientPublicKey:
           widget.args.isSecret ? _otherUserProfile?.publicKey : null,
     );
@@ -3062,6 +3445,9 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                 audioAlbum: params.audioAlbum,
                 duration: params.duration,
                 replyToMessageId: params.replyToMessageId,
+                replyToContent: params.replyToContent,
+                replyToSenderName: params.replyToSenderName,
+                replyToKind: params.replyToKind,
                 recipientPublicKey:
                     widget.args.isSecret ? params.recipientPublicKey : null,
               );
@@ -3101,16 +3487,21 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     debugPrint('🎞️ ModernChatScreen: Sending GIF: $gifUrl');
 
     try {
+      final replyTo = _replyToMessage;
+      final pendingReply = _pendingReplyContext;
       final params = SendMessageParams(
         conversationId: widget.args.conversationId,
         content: '', // محتوای خالی برای GIF
         attachmentUrl: gifUrl,
         attachmentType: 'gif', // نوع attachment
-        replyToMessageId: _replyToMessage?.id,
-        replyToContent: _replyToMessage?.content,
-        replyToSenderName: _replyToMessage?.senderId == _currentUserId
-            ? 'شما'
-            : widget.args.otherUserName,
+        replyToMessageId:
+            _resolveReplyToMessageId(replyTo: replyTo, pendingReply: pendingReply),
+        replyToContent: replyTo?.content ?? pendingReply?.content,
+        replyToSenderName: replyTo != null
+            ? (replyTo.senderId == _currentUserId ? 'شما' : widget.args.otherUserName)
+            : pendingReply?.senderName,
+        replyToKind:
+            _resolveReplyToKind(replyTo: replyTo, pendingReply: pendingReply),
         recipientPublicKey:
             widget.args.isSecret ? _otherUserProfile?.publicKey : null,
       );
@@ -3122,6 +3513,9 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                 attachmentUrl: params.attachmentUrl,
                 attachmentType: params.attachmentType,
                 replyToMessageId: params.replyToMessageId,
+                replyToContent: params.replyToContent,
+                replyToSenderName: params.replyToSenderName,
+                replyToKind: params.replyToKind,
                 recipientPublicKey:
                     widget.args.isSecret ? params.recipientPublicKey : null,
               );
@@ -3130,8 +3524,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
       if (result.isSuccess) {
         // پاک کردن reply اگر وجود داشت
-        if (_replyToMessage != null) {
-          setState(() => _replyToMessage = null);
+        if (_replyToMessage != null || _pendingReplyContext != null) {
+          _clearReplyContext();
         }
 
         // Scroll به پایین
@@ -3233,11 +3627,10 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
     final delay = scheduledAt.difference(now);
     final replyTo = _replyToMessage;
+    final pendingReply = _pendingReplyContext;
 
     _messageController.clear();
-    if (mounted) {
-      setState(() => _replyToMessage = null);
-    }
+    if (mounted) _clearReplyContext();
 
     final timer = Timer(delay, () async {
       if (!mounted) return;
@@ -3246,11 +3639,18 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
             await ref.read(chatActionControllerProvider.notifier).sendMessage(
                   conversationId: widget.args.conversationId,
                   content: content,
-                  replyToMessageId: replyTo?.id,
-                  replyToContent: replyTo?.content,
-                  replyToSenderName: replyTo?.senderId == _currentUserId
-                      ? 'شما'
-                      : widget.args.otherUserName,
+                  replyToMessageId: _resolveReplyToMessageId(
+                    replyTo: replyTo,
+                    pendingReply: pendingReply,
+                  ),
+                  replyToContent: replyTo?.content ?? pendingReply?.content,
+                  replyToSenderName: replyTo != null
+                      ? (replyTo.senderId == _currentUserId ? 'شما' : widget.args.otherUserName)
+                      : pendingReply?.senderName,
+                  replyToKind: _resolveReplyToKind(
+                    replyTo: replyTo,
+                    pendingReply: pendingReply,
+                  ),
                   recipientPublicKey: widget.args.isSecret
                       ? _otherUserProfile?.publicKey
                       : null,
@@ -3282,43 +3682,62 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     _messageController.clear();
 
     final replyTo = _replyToMessage;
-    if (mounted) {
-      setState(() => _replyToMessage = null);
-    }
+    final pendingReply = _pendingReplyContext;
+    if (mounted) _clearReplyContext();
 
     try {
       if (widget.args.isSecret) {
         final prefs = await SharedPreferences.getInstance();
-        final peerPubB64 = prefs.getString('e2e_peer_pub_${widget.args.conversationId}');
+        final peerPubB64 =
+            prefs.getString('e2e_peer_pub_${widget.args.conversationId}');
         if (peerPubB64 == null) {
-          _showErrorSnackBar('درحال تبادل کلید امنیتی با مخاطب هستیم... لطفاً کمی صبر کنید');
+          _showErrorSnackBar(
+              'درحال تبادل کلید امنیتی با مخاطب هستیم... لطفاً کمی صبر کنید');
           return;
         }
-        
+
         final e2e = E2EEncryptionService();
         final myKeyPair = await e2e.getSavedKeyPair(_currentUserId!);
         if (myKeyPair == null) {
           _showErrorSnackBar('خطا: کلید امنیتی محلی یافت نشد.');
           return;
         }
-        
+
         final sharedSecret = await e2e.computeSharedSecret(
           myKeyPair: myKeyPair,
           peerPublicKeyBytes: base64Decode(peerPubB64),
         );
-        
+
         // جایگزین کردن محتوای واقعی با محتوای رمزنگاری شده
         content = await e2e.encryptMessage(content, sharedSecret);
       }
 
+      String targetConvId = widget.args.conversationId;
+      bool wasEmpty = targetConvId.isEmpty;
+
+      if (wasEmpty) {
+        final convResult = await _chatRepository.createConversation(
+          widget.args.otherUserId,
+          isSecret: widget.args.isSecret,
+        );
+        if (!convResult.isSuccess || convResult.data == null) {
+          _showErrorSnackBar(convResult.error ?? 'خطا در ایجاد گفتگو');
+          return;
+        }
+        targetConvId = convResult.data!.id;
+      }
+
       final params = SendMessageParams(
-        conversationId: widget.args.conversationId,
+        conversationId: targetConvId,
         content: content,
-        replyToMessageId: replyTo?.id,
-        replyToContent: replyTo?.content,
-        replyToSenderName: replyTo?.senderId == _currentUserId
-            ? 'شما'
-            : widget.args.otherUserName,
+        replyToMessageId:
+            _resolveReplyToMessageId(replyTo: replyTo, pendingReply: pendingReply),
+        replyToContent: replyTo?.content ?? pendingReply?.content,
+        replyToSenderName: replyTo != null
+            ? (replyTo.senderId == _currentUserId ? 'شما' : widget.args.otherUserName)
+            : pendingReply?.senderName,
+        replyToKind:
+            _resolveReplyToKind(replyTo: replyTo, pendingReply: pendingReply),
         recipientPublicKey:
             widget.args.isSecret ? _otherUserProfile?.publicKey : null,
       );
@@ -3332,6 +3751,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                 replyToMessageId: params.replyToMessageId,
                 replyToContent: params.replyToContent,
                 replyToSenderName: params.replyToSenderName,
+                replyToKind: params.replyToKind,
                 recipientPublicKey:
                     widget.args.isSecret ? params.recipientPublicKey : null,
               );
@@ -3339,6 +3759,24 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       if (!mounted) return;
 
       if (result.isSuccess) {
+        if (wasEmpty) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (_) => ModernChatScreen(
+                args: ChatScreenArgs(
+                  conversationId: targetConvId,
+                  otherUserId: widget.args.otherUserId,
+                  otherUserName: widget.args.otherUserName,
+                  otherUserAvatar: widget.args.otherUserAvatar,
+                  isGroup: widget.args.isGroup,
+                  isSecret: widget.args.isSecret,
+                ),
+              ),
+            ),
+          );
+          return;
+        }
         // Scroll to bottom after sending
         _scrollToBottom();
 
@@ -3387,6 +3825,21 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         sendMode == ChatSendMode.gallery && selection.files.length > 1;
     final baseCaption = selection.caption ?? '';
     final mediaGroupId = isAlbumSend ? const Uuid().v4() : null;
+
+    String targetConvId = widget.args.conversationId;
+    bool wasEmpty = targetConvId.isEmpty;
+
+    if (wasEmpty) {
+      final convResult = await _chatRepository.createConversation(
+        widget.args.otherUserId,
+        isSecret: widget.args.isSecret,
+      );
+      if (!convResult.isSuccess || convResult.data == null) {
+        _showErrorSnackBar(convResult.error ?? 'خطا در ایجاد گفتگو');
+        return;
+      }
+      targetConvId = convResult.data!.id;
+    }
 
     for (var index = 0; index < selection.files.length; index++) {
       final selected = selection.files[index];
@@ -3443,7 +3896,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       }
 
       final pending = await chatRepository.createPendingMessage(
-        conversationId: widget.args.conversationId,
+        conversationId: targetConvId,
         content: messageCaption,
         localId: localId,
         attachmentType: attachmentType,
@@ -3489,7 +3942,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       final result =
           await ref.read(chatActionControllerProvider.notifier).sendMessage(
                 id: localId,
-                conversationId: widget.args.conversationId,
+                conversationId: targetConvId,
                 content: messageCaption,
                 attachmentUrl: uploadResult.url,
                 attachmentType: attachmentType,
@@ -3517,6 +3970,24 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
           fileName: fileName,
         );
       }
+    }
+
+    if (wasEmpty && mounted) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ModernChatScreen(
+            args: ChatScreenArgs(
+              conversationId: targetConvId,
+              otherUserId: widget.args.otherUserId,
+              otherUserName: widget.args.otherUserName,
+              otherUserAvatar: widget.args.otherUserAvatar,
+              isGroup: widget.args.isGroup,
+              isSecret: widget.args.isSecret,
+            ),
+          ),
+        ),
+      );
     }
   }
 
@@ -3623,6 +4094,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
               replyToMessageId: message.replyToMessageId,
               replyToContent: message.replyToContent,
               replyToSenderName: message.replyToSenderName,
+              replyToKind:
+                  _isSyntheticNoteReplyId(message.replyToMessageId) ? 'note' : null,
             );
 
     if (!resend.isSuccess) {
@@ -3667,6 +4140,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                 replyToMessageId: message.replyToMessageId,
                 replyToContent: message.replyToContent,
                 replyToSenderName: message.replyToSenderName,
+                replyToKind:
+                    _isSyntheticNoteReplyId(message.replyToMessageId) ? 'note' : null,
               );
       if (!resend.isSuccess) {
         await chatRepository.markUploadFailed(
@@ -3752,6 +4227,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
               replyToMessageId: message.replyToMessageId,
               replyToContent: message.replyToContent,
               replyToSenderName: message.replyToSenderName,
+              replyToKind:
+                  _isSyntheticNoteReplyId(message.replyToMessageId) ? 'note' : null,
             );
 
     if (!result.isSuccess) {
@@ -4016,7 +4493,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         icon: Icons.reply_rounded,
         label: 'پاسخ',
         onTap: () {
-          setState(() => _replyToMessage = message);
+          _setReplyToMessage(message);
           _focusNode.requestFocus();
         },
       ),
@@ -4045,11 +4522,6 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
           label: 'ذخیره GIF',
           onTap: () => _saveGif(message),
         ),
-        TelegramContextMenuItem(
-          icon: Icons.open_in_browser_rounded,
-          label: 'باز کردن در مرورگر',
-          onTap: () => _openGifInBrowser(message),
-        ),
         const TelegramContextMenuItem.divider(),
       ],
 
@@ -4066,11 +4538,6 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
           icon: Icons.download_rounded,
           label: 'ذخیره عکس',
           onTap: () => _saveImage(message),
-        ),
-        TelegramContextMenuItem(
-          icon: Icons.open_in_new_rounded,
-          label: 'باز کردن در مرورگر',
-          onTap: () => _openInBrowser(message),
         ),
         const TelegramContextMenuItem.divider(),
       ],
@@ -4212,7 +4679,10 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     return ImprovedAnimatedMessageBubble(
       recipientPublicKey:
           widget.args.isSecret ? _otherUserProfile?.publicKey : null,
-      onSwipeToReply: () => setState(() => _replyToMessage = message),
+      isSecretMode: widget.args.isSecret,
+      onSwipeToReply: () {
+        _setReplyToMessage(message);
+      },
       key: ValueKey('preview_${message.id}'),
       messageId: message.id,
       content: message.content,
@@ -4466,14 +4936,6 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                     _saveGif(message);
                   },
                 ),
-                _buildOptionTile(
-                  icon: Icons.open_in_browser_rounded,
-                  label: 'باز کردن در مرورگر',
-                  onTap: () {
-                    Navigator.pop(context);
-                    _openGifInBrowser(message);
-                  },
-                ),
                 const Divider(),
               ],
 
@@ -4483,7 +4945,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                 label: 'پاسخ',
                 onTap: () {
                   Navigator.pop(context);
-                  setState(() => _replyToMessage = message);
+                  _setReplyToMessage(message);
                   _focusNode.requestFocus();
                 },
               ),
@@ -4707,34 +5169,6 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     }
   }
 
-  /// باز کردن GIF در مرورگر
-  Future<void> _openGifInBrowser(MessageModel message) async {
-    if (widget.args.isSecret) {
-      _showErrorSnackBar('خروج رسانه از گفتگوی محرمانه غیرفعال است');
-      return;
-    }
-    if (message.attachmentUrl == null) {
-      _showErrorSnackBar('لینک گیف یافت نشد');
-      return;
-    }
-
-    try {
-      final uri = Uri.parse(message.attachmentUrl!);
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-      } else {
-        if (mounted) {
-          _showErrorSnackBar('خطا در باز کردن لینک');
-        }
-      }
-    } catch (e) {
-      debugPrint('Error opening GIF in browser: $e');
-      if (mounted) {
-        _showErrorSnackBar('خطا در باز کردن لینک');
-      }
-    }
-  }
-
   // ═══════════════════════════════════════════════════════════════════════════
   // 💾 SAVE MEDIA (متدهای کمکی)
   // ═══════════════════════════════════════════════════════════════════════════
@@ -4867,34 +5301,6 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     }
     // برای صدا از downloadFile استفاده می‌کنیم
     await _downloadFile(message);
-  }
-
-  /// باز کردن در مرورگر
-  Future<void> _openInBrowser(MessageModel message) async {
-    if (widget.args.isSecret) {
-      _showErrorSnackBar('خروج رسانه از گفتگوی محرمانه غیرفعال است');
-      return;
-    }
-    if (message.attachmentUrl == null) {
-      _showErrorSnackBar('لینک یافت نشد');
-      return;
-    }
-
-    try {
-      final uri = Uri.parse(message.attachmentUrl!);
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-      } else {
-        if (mounted) {
-          _showErrorSnackBar('خطا در باز کردن لینک');
-        }
-      }
-    } catch (e) {
-      debugPrint('Error opening in browser: $e');
-      if (mounted) {
-        _showErrorSnackBar('خطا در باز کردن لینک');
-      }
-    }
   }
 
   /// دانلود فایل
@@ -5196,7 +5602,10 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         return ImprovedAnimatedMessageBubble(
           recipientPublicKey:
               widget.args.isSecret ? _otherUserProfile?.publicKey : null,
-          onSwipeToReply: () => setState(() => _replyToMessage = message),
+          isSecretMode: widget.args.isSecret,
+          onSwipeToReply: () {
+            _setReplyToMessage(message);
+          },
           key: ValueKey(message.id),
           messageId: message.id,
           content: message.content,
@@ -5324,7 +5733,10 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       return ImprovedAnimatedMessageBubble(
         recipientPublicKey:
             widget.args.isSecret ? _otherUserProfile?.publicKey : null,
-        onSwipeToReply: () => setState(() => _replyToMessage = message),
+        isSecretMode: widget.args.isSecret,
+        onSwipeToReply: () {
+          _setReplyToMessage(message);
+        },
         key: ValueKey(message.id),
         messageId: message.id,
         content: message.content,
@@ -5412,7 +5824,10 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
               return ImprovedAnimatedMessageBubble(
                 recipientPublicKey:
                     widget.args.isSecret ? _otherUserProfile?.publicKey : null,
-                onSwipeToReply: () => setState(() => _replyToMessage = message),
+                isSecretMode: widget.args.isSecret,
+                onSwipeToReply: () {
+                  _setReplyToMessage(message);
+                },
                 key: _messageKeys[message.id] ??= GlobalKey(),
                 messageId: message.id,
                 content: message.content,
@@ -5425,7 +5840,9 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                 replyToContent: message.replyToContent,
                 replyToSenderName: message.replyToSenderName,
                 replyToMessageId: message.replyToMessageId,
-                onReplyTap: () => _scrollToMessage(message.replyToMessageId),
+                onReplyTap: _isSyntheticNoteReplyId(message.replyToMessageId)
+                    ? null
+                    : () => _scrollToMessage(message.replyToMessageId),
                 onStoryReplyTap: _openStoryReply,
                 duration: message.duration,
                 reactions: _convertToOldReactionFormat(messageReactions),
@@ -5559,7 +5976,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
             caption: item.message.content.trim().isNotEmpty
                 ? item.message.content
                 : null,
-            heroTag: '${item.message.id}_${item.source}',
+            heroTag: '${item.message.id}_${item.source.hashCode}',
           ),
         )
         .toList(growable: false);
@@ -5809,6 +6226,7 @@ class _ConversationImageGalleryBundle {
 }
 
 class _ChatMediaAlbumBubble extends StatelessWidget {
+  static const double _albumTileGap = 1.0;
   final List<_AlbumMediaItem> albumItems;
   final MessageModel statusMessage;
   final bool isMe;
@@ -5915,7 +6333,7 @@ class _ChatMediaAlbumBubble extends StatelessWidget {
                 ),
               ),
             ),
-            const SizedBox(width: 2),
+            const SizedBox(width: _albumTileGap),
             Expanded(
               child: _buildTile(
                 visibleItems[1],
@@ -5947,7 +6365,7 @@ class _ChatMediaAlbumBubble extends StatelessWidget {
                 ),
               ),
             ),
-            const SizedBox(width: 2),
+            const SizedBox(width: _albumTileGap),
             Expanded(
               child: Column(
                 children: [
@@ -5960,7 +6378,7 @@ class _ChatMediaAlbumBubble extends StatelessWidget {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 2),
+                  const SizedBox(height: _albumTileGap),
                   Expanded(
                     child: _buildTile(
                       visibleItems[2],
@@ -5995,7 +6413,7 @@ class _ChatMediaAlbumBubble extends StatelessWidget {
                       ),
                     ),
                   ),
-                  const SizedBox(width: 2),
+                  const SizedBox(width: _albumTileGap),
                   Expanded(
                     child: _buildTile(
                       visibleItems[1],
@@ -6008,7 +6426,7 @@ class _ChatMediaAlbumBubble extends StatelessWidget {
                 ],
               ),
             ),
-            const SizedBox(height: 2),
+            const SizedBox(height: _albumTileGap),
             Expanded(
               child: Row(
                 children: [
@@ -6021,7 +6439,7 @@ class _ChatMediaAlbumBubble extends StatelessWidget {
                       ),
                     ),
                   ),
-                  const SizedBox(width: 2),
+                  const SizedBox(width: _albumTileGap),
                   Expanded(
                     child: _buildTile(
                       visibleItems[3],
@@ -6039,46 +6457,75 @@ class _ChatMediaAlbumBubble extends StatelessWidget {
       );
     }
 
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      itemCount: count,
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
-        crossAxisSpacing: 2,
-        mainAxisSpacing: 2,
-        childAspectRatio: 1,
-      ),
-      itemBuilder: (context, index) => _buildTile(
-        visibleItems[index],
-        index,
-        borderRadius: _gridTileRadius(
-          index: index,
-          itemCount: count,
-          crossAxisCount: 3,
-        ),
+    // Adaptive rows for 5-10 items so no trailing empty grid slot remains.
+    // Examples:
+    // 5 -> 3+2, 7 -> 3+2+2, 8 -> 3+3+2, 10 -> 3+3+2+2
+    final rows = <List<int>>[];
+    for (var i = 0; i < count; i += 3) {
+      final end = (i + 3 > count) ? count : i + 3;
+      rows.add(List<int>.generate(end - i, (offset) => i + offset));
+    }
+    if (rows.length >= 2 && rows.last.length == 1 && rows[rows.length - 2].length == 3) {
+      final moved = rows[rows.length - 2].removeLast();
+      rows.last.insert(0, moved);
+    }
+
+    final rowCount = rows.length;
+    final gridAspectRatio = 3 / rowCount;
+
+    return AspectRatio(
+      aspectRatio: gridAspectRatio,
+      child: Column(
+        children: [
+          for (var rowIndex = 0; rowIndex < rowCount; rowIndex++) ...[
+            Expanded(
+              child: Row(
+                children: [
+                  for (var colIndex = 0;
+                      colIndex < rows[rowIndex].length;
+                      colIndex++) ...[
+                    Expanded(
+                      child: _buildTile(
+                        visibleItems[rows[rowIndex][colIndex]],
+                        rows[rowIndex][colIndex],
+                        borderRadius: _adaptiveTileRadius(
+                          rowIndex: rowIndex,
+                          colIndex: colIndex,
+                          rowCount: rowCount,
+                          colCount: rows[rowIndex].length,
+                        ),
+                      ),
+                    ),
+                    if (colIndex != rows[rowIndex].length - 1)
+                      const SizedBox(width: _albumTileGap),
+                  ],
+                ],
+              ),
+            ),
+            if (rowIndex != rowCount - 1)
+              const SizedBox(height: _albumTileGap),
+          ],
+        ],
       ),
     );
   }
 
-  BorderRadius _gridTileRadius({
-    required int index,
-    required int itemCount,
-    required int crossAxisCount,
+  BorderRadius _adaptiveTileRadius({
+    required int rowIndex,
+    required int colIndex,
+    required int rowCount,
+    required int colCount,
   }) {
-    final row = index ~/ crossAxisCount;
-    final col = index % crossAxisCount;
-    final lastRow = (itemCount - 1) ~/ crossAxisCount;
-    final lastCol = (itemCount - 1) % crossAxisCount;
-
     final radius = BorderRadius.only(
-      topLeft: row == 0 && col == 0 ? const Radius.circular(12) : Radius.zero,
-      topRight: row == 0 && col == crossAxisCount - 1
+      topLeft:
+          rowIndex == 0 && colIndex == 0 ? const Radius.circular(12) : Radius.zero,
+      topRight: rowIndex == 0 && colIndex == colCount - 1
           ? const Radius.circular(12)
           : Radius.zero,
-      bottomLeft:
-          row == lastRow && col == 0 ? const Radius.circular(12) : Radius.zero,
-      bottomRight: row == lastRow && col == lastCol
+      bottomLeft: rowIndex == rowCount - 1 && colIndex == 0
+          ? const Radius.circular(12)
+          : Radius.zero,
+      bottomRight: rowIndex == rowCount - 1 && colIndex == colCount - 1
           ? const Radius.circular(12)
           : Radius.zero,
     );
@@ -6094,7 +6541,7 @@ class _ChatMediaAlbumBubble extends StatelessWidget {
     return GestureDetector(
       onTap: () => onImageTap(index),
       child: Hero(
-        tag: '${item.message.id}_${item.source}',
+        tag: '${item.message.id}_${item.source.hashCode}',
         child: ClipRRect(
           borderRadius: borderRadius,
           child: _isNetworkUrl(item.source)

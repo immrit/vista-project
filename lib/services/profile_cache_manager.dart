@@ -94,8 +94,14 @@ class ProfileCacheManager {
       }
 
       // Broadcast updates
-      if (results.isNotEmpty) {
-        _profileUpdates.add(Map.from(results));
+      final nonNullResults = <String, Map<String, String?>>{};
+      for (final entry in results.entries) {
+        if (entry.value != null) {
+          nonNullResults[entry.key] = entry.value!;
+        }
+      }
+      if (nonNullResults.isNotEmpty) {
+        _profileUpdates.add(nonNullResults);
       }
 
       return completer.future;

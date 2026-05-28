@@ -10,6 +10,7 @@ import '../model/UserModel.dart';
 import '../features/profile/data/profile_repository.dart';
 import '../features/posts/data/go_posts_repository.dart';
 import '../services/comment_repository.dart';
+import '../utils/user_friendly_error_utils.dart';
 // Import security provider
 
 export 'security_provider.dart';
@@ -83,20 +84,15 @@ class SearchService {
   final GoPostsRepository _postsRepository = GoPostsRepository();
 
   Future<List<PublicPostModel>> searchHashtag(String hashtag) async {
-    try {
-      var tag = hashtag.trim();
-      tag = tag.replaceFirst(RegExp(r'^#+'), '');
-      tag = tag.replaceAll(RegExp(r'\s+'), '').toLowerCase();
-      if (tag.isEmpty) return const [];
+    var tag = hashtag.trim();
+    tag = tag.replaceFirst(RegExp(r'^#+'), '');
+    tag = tag.replaceAll(RegExp(r'\s+'), '').toLowerCase();
+    if (tag.isEmpty) return const [];
 
-      return await _postsRepository.searchPostsByHashtag(
-        hashtag: tag,
-        limit: 60,
-      );
-    } catch (e) {
-      print('Error in searchHashtag: $e');
-      return const [];
-    }
+    return _postsRepository.searchPostsByHashtag(
+      hashtag: tag,
+      limit: 60,
+    );
   }
 }
 
@@ -115,99 +111,134 @@ class SearchNotifier extends StateNotifier<SearchState> {
   }
 
   Future<void> search(String query) async {
-    if (query.isEmpty) {
-      state = state.copyWith(
-        hashtagResults: [],
-        userResults: [],
-        isLoading: false,
-        currentQuery: '',
-        userOffset: 0,
-        hasMoreUsers: true,
-      );
+    final normalizedQuery = query.trim();
+    if (normalizedQuery.isEmpty) {
+      clearAll();
       return;
     }
 
+    final isHashtagQuery = normalizedQuery.startsWith('#');
     state = state.copyWith(
       isLoading: true,
-      currentQuery: query,
+      isLoadingMoreUsers: false,
+      currentQuery: normalizedQuery,
       userOffset: 0,
       hasMoreUsers: true,
-      userResults: [], // Clear previous results
+      selectedTab: isHashtagQuery ? 2 : state.selectedTab,
+      userResults: [],
+      hashtagResults: [],
+      clearError: true,
     );
 
     try {
-      if (query.startsWith('#')) {
-        final posts = await _searchService.searchHashtag(query);
+      if (isHashtagQuery) {
+        final posts = await _searchService.searchHashtag(normalizedQuery);
         state = state.copyWith(
           hashtagResults: posts,
           isLoading: false,
-          selectedTab: 1,
+          selectedTab: 2,
         );
       } else {
-        await _fetchUsers(query, 0);
-        state = state.copyWith(selectedTab: 0);
+        final usersFuture = _fetchUsersPage(normalizedQuery, 0);
+        final hashtagsFuture = _canSearchAsTag(normalizedQuery)
+            ? _searchService.searchHashtag(normalizedQuery)
+            : Future.value(const <PublicPostModel>[]);
+
+        final users = await usersFuture;
+        final hashtags = await hashtagsFuture;
+
+        state = state.copyWith(
+          userResults: users,
+          hashtagResults: hashtags,
+          isLoading: false,
+          selectedTab: 0,
+          userOffset: users.length,
+          hasMoreUsers: users.length >= _userLimit,
+        );
       }
     } catch (e) {
       state = state.copyWith(
-        error: e.toString(),
+        error: UserFriendlyErrorUtils.getUserFriendlyMessage(e),
         isLoading: false,
+        isLoadingMoreUsers: false,
       );
     }
   }
 
   Future<void> loadMoreUsers() async {
-    if (!state.hasMoreUsers || state.isLoading) return;
+    if (!state.hasMoreUsers ||
+        state.isLoading ||
+        state.isLoadingMoreUsers ||
+        state.currentQuery.isEmpty ||
+        state.currentQuery.startsWith('#')) {
+      return;
+    }
 
-    // Avoid rapid duplicate calls (optional debouncing could go here)
-    // For now relies on isLoading=true from search, but loadMore logic needs its own loading state?
-    // Using simple approach: assume UI triggers carefully or we check if fetching.
-    // Actually, 'isLoading' usually blocks the whole UI. For infinite scroll, we often want a bottom spinner.
-    // Let's assume the UI handles the debounce.
-
-    await _fetchUsers(state.currentQuery, state.userOffset);
-  }
-
-  Future<void> _fetchUsers(String query, int offset) async {
+    state = state.copyWith(isLoadingMoreUsers: true, clearError: true);
     try {
-      final newUsers = await ProfileRepository().searchProfiles(
-        query: query,
-        limit: _userLimit,
-        offset: offset,
-      );
-
-      // Client-side sort for fine-grained priority (Blue > Gold > Normal)
-      newUsers.sort((a, b) {
-        int getScore(ProfileModel p) {
-          if (p.hasBlueBadge) return 3;
-          if (p.hasGoldBadge) return 2;
-          return 1;
-        }
-
-        return getScore(b).compareTo(getScore(a));
-      });
-
+      final newUsers = await _fetchUsersPage(state.currentQuery, state.userOffset);
       final allUsers = [...state.userResults, ...newUsers];
-      // Re-sort entire list?
-      // Ideally yes, to ensure if a high priority user comes in late (unlikely due to DB sort) they bubble up.
-      // But DB sort 'is_verified' puts all verified first.
-      // So 'newUsers' will mostly be unverified if we passed the verified block.
-      // So simple append is fine.
 
       state = state.copyWith(
         userResults: allUsers,
-        isLoading: false,
-        userOffset: offset + newUsers.length,
+        isLoadingMoreUsers: false,
+        userOffset: state.userOffset + newUsers.length,
         hasMoreUsers: newUsers.length >= _userLimit,
       );
     } catch (e) {
-      print('Error fetching users: $e');
-      // Update state to stop loading
-      state = state.copyWith(isLoading: false);
+      state = state.copyWith(
+        isLoadingMoreUsers: false,
+        error: UserFriendlyErrorUtils.getUserFriendlyMessage(e),
+      );
     }
   }
 
-  void clearHashtagResults() {
-    state = state.copyWith(hashtagResults: []);
+  Future<List<ProfileModel>> _fetchUsersPage(String query, int offset) async {
+    final users = await ProfileRepository().searchProfiles(
+      query: query,
+      limit: _userLimit,
+      offset: offset,
+    );
+
+    users.sort((a, b) {
+      int getScore(ProfileModel profile) {
+        if (profile.hasBlueBadge) return 3;
+        if (profile.hasGoldBadge) return 2;
+        return 1;
+      }
+
+      return getScore(b).compareTo(getScore(a));
+    });
+
+    return users;
+  }
+
+  bool _canSearchAsTag(String query) {
+    final normalized = query.trim();
+    if (normalized.isEmpty) return false;
+    if (normalized.startsWith('#')) return true;
+    if (normalized.contains(' ')) return false;
+    return RegExp(r'^[\u0600-\u06FFA-Za-z0-9_]+$').hasMatch(normalized);
+  }
+
+  void clearAll() {
+    state = state.copyWith(
+      hashtagResults: [],
+      userResults: [],
+      isLoading: false,
+      isLoadingMoreUsers: false,
+      currentQuery: '',
+      userOffset: 0,
+      hasMoreUsers: true,
+      selectedTab: 0,
+      clearError: true,
+    );
+  }
+
+  Future<void> retry() async {
+    final query = state.currentQuery;
+    if (query.isEmpty) return;
+    await search(query);
   }
 }
 

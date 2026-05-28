@@ -74,8 +74,8 @@ class OptimizedConversationsNotifier extends StateNotifier<ConversationsState> {
   bool _hasReceivedSseStatusEvent = false;
   String _lastConversationsFingerprint = '';
   final Set<String> _profilePreloadInFlight = <String>{};
-  static const Duration _fallbackRefreshInterval = Duration(seconds: 2);
-  static const Duration _minRefreshGap = Duration(milliseconds: 1200);
+  static const Duration _fallbackRefreshInterval = Duration(seconds: 15);
+  static const Duration _minRefreshGap = Duration(seconds: 5);
 
   OptimizedConversationsNotifier(this._ref, this._userId)
       : super(const ConversationsState()) {
@@ -139,37 +139,37 @@ class OptimizedConversationsNotifier extends StateNotifier<ConversationsState> {
     );
   }
 
-  Future<void> _updateConversations(
+  void _updateConversations(
     List<ConversationModel> conversations,
-  ) async {
+  ) {
     if (_disposed) return;
     final updateToken = ++_latestUpdateToken;
+    _processConversations(conversations, updateToken: updateToken);
+  }
 
-    // Fast-path: show latest local conversation changes immediately.
-    final sorted = _sortConversations(conversations);
-    final sortedFingerprint = _fingerprintConversations(sorted);
-    if (sortedFingerprint != _lastConversationsFingerprint ||
-        state.status != ConversationsStatus.loaded) {
-      _lastConversationsFingerprint = sortedFingerprint;
-      state = state.copyWith(
-        conversations: sorted,
-        status: ConversationsStatus.loaded,
-      );
-    }
+  void _processConversations(
+    List<ConversationModel> conversations, {
+    required int updateToken,
+  }) {
+    if (_disposed || updateToken != _latestUpdateToken) return;
 
-    // Enrich with profiles in background.
-    final enriched = await _enrichConversations(
+    // 1. اول به صورت همزمان (Synchronous) مکالمات رو با کش مموری Enrich می‌کنیم
+    final enriched = _enrichConversationsSync(
       conversations,
       updateToken: updateToken,
     );
     if (_disposed || updateToken != _latestUpdateToken) return;
-    final enrichedSorted = _sortConversations(enriched);
-    final enrichedFingerprint = _fingerprintConversations(enrichedSorted);
-    if (enrichedFingerprint != _lastConversationsFingerprint ||
+
+    // 2. مرتب‌سازی مکالماتِ Enrich شده
+    final sorted = _sortConversations(enriched);
+    final fingerprint = _fingerprintConversations(sorted);
+
+    // 3. در صورت تغییر، استیت رو آپدیت می‌کنیم (بدون فلیکر و قطعی)
+    if (fingerprint != _lastConversationsFingerprint ||
         state.status != ConversationsStatus.loaded) {
-      _lastConversationsFingerprint = enrichedFingerprint;
+      _lastConversationsFingerprint = fingerprint;
       state = state.copyWith(
-        conversations: enrichedSorted,
+        conversations: sorted,
         status: ConversationsStatus.loaded,
       );
     }
@@ -241,11 +241,11 @@ class OptimizedConversationsNotifier extends StateNotifier<ConversationsState> {
     _fallbackPollingTimer = null;
   }
 
-  /// Enrich مکالمات با اطلاعات پروفایل
-  Future<List<ConversationModel>> _enrichConversations(
+  /// Enrich مکالمات با اطلاعات پروفایل به صورت همزمان
+  List<ConversationModel> _enrichConversationsSync(
     List<ConversationModel> conversations, {
     required int updateToken,
-  }) async {
+  }) {
     if (conversations.isEmpty) return [];
 
     final enriched = <ConversationModel>[];
@@ -273,11 +273,11 @@ class OptimizedConversationsNotifier extends StateNotifier<ConversationsState> {
 
     // اگر پروفایل‌هایی نیاز به لود دارن، در background انجام بده
     if (userIdsToLoad.isNotEmpty) {
-      _loadMissingProfiles(
+      unawaited(_loadMissingProfiles(
         userIdsToLoad,
         conversations,
         updateToken: updateToken,
-      );
+      ));
     }
 
     return enriched;
@@ -367,7 +367,15 @@ class OptimizedConversationsNotifier extends StateNotifier<ConversationsState> {
   List<ConversationModel> _sortConversations(
     List<ConversationModel> conversations,
   ) {
-    final sorted = List<ConversationModel>.from(conversations);
+    // فیلتر کردن مکالماتی که صراحتاً حذف شده‌اند (کاربر حذف شده)
+    final validConversations = conversations.where((c) {
+      if (c.isGroup) return true;
+      final name = (c.otherUserName ?? '').trim();
+      if (name == 'کاربر حذف شده') return false; // مخفی کردن کاربرانی که قطعا پاک شده اند
+      return true;
+    }).toList();
+
+    final sorted = List<ConversationModel>.from(validConversations);
     sorted.sort((a, b) {
       // پین شده‌ها اول
       if (a.isPinned && !b.isPinned) return -1;
@@ -399,6 +407,10 @@ class OptimizedConversationsNotifier extends StateNotifier<ConversationsState> {
         ..write(c.hasUnreadMessages ? '1' : '0')
         ..write('|')
         ..write(c.lastMessageDeliveryStatus.name)
+        ..write('|')
+        ..write(c.otherUserName ?? '')
+        ..write('|')
+        ..write(c.otherUserAvatar ?? '')
         ..write(';');
     }
     return buffer.toString();

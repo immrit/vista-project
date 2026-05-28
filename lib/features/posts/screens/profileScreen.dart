@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'dart:async';
+import 'package:shimmer/shimmer.dart';
 
 import '../../../model/ProfileModel.dart';
 import '../../../model/publicPostModel.dart';
@@ -43,6 +44,7 @@ import 'package:Vista/features/posts/widgets/post_music_bubble.dart';
 import 'package:Vista/widgets/verification_badge_icon.dart';
 import 'package:Vista/widgets/ReelsScreen.dart';
 import 'package:get_thumbnail_video/video_thumbnail.dart';
+import 'package:Vista/l10n/generated/app_localizations.dart';
 
 /// صفحه پروفایل ویستا - طراحی مدرن Instagram/Threads
 class ProfileScreen extends ConsumerStatefulWidget {
@@ -106,18 +108,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: _buildAppBar(profileState, isDark, isCurrentUserProfile),
       body: profileState == null
-          ? Center(
-              child: CircularProgressIndicator(
-                color: isDark ? Colors.white : Colors.black,
-              ),
-            )
+          ? _ProfilePageShimmer(isDark: isDark)
           : RefreshIndicator(
               onRefresh: _refreshProfile,
               color: isDark ? Colors.white : Colors.black,
               child: NestedScrollView(
                 headerSliverBuilder: (context, innerBoxIsScrolled) {
                   return [
-                    // Header Section
                     SliverToBoxAdapter(
                       child: Column(
                         children: [
@@ -167,10 +164,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
 
   AppBar _buildAppBar(ProfileModel? profile, bool isDark, bool isOwnProfile) {
     return AppBar(
-      backgroundColor: Theme.of(context).appBarTheme.backgroundColor ??
-          Theme.of(context).scaffoldBackgroundColor,
-      foregroundColor: Theme.of(context).iconTheme.color,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       elevation: 0,
+      scrolledUnderElevation: 0,
       centerTitle: false,
       title: Row(
         mainAxisSize: MainAxisSize.min,
@@ -194,12 +190,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
       ),
       actions: [
         IconButton(
-          icon: const Icon(Icons.more_horiz),
+          icon: Icon(Icons.more_horiz, color: isDark ? Colors.white : Colors.black),
           onPressed: () => _showOptionsMenu(context, isDark),
         ),
         if (isOwnProfile)
           IconButton(
-            icon: const Icon(Icons.settings_outlined),
+            icon: Icon(Icons.settings_outlined, color: isDark ? Colors.white : Colors.black),
             onPressed: () => Navigator.push(
               context,
               MaterialPageRoute(builder: (_) => const Settings()),
@@ -266,10 +262,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
           data: (posts) {
             if (posts.isEmpty) {
               return _EmptyPlaceholder(
-                title: 'هنوز پستی نیست',
+                title: AppLocalizations.of(context)?.noPostsYet ?? 'هنوز پستی نیست',
                 subtitle: isCurrentUser
-                    ? 'اولین پست خود را به اشتراک بگذارید'
-                    : 'این کاربر هنوز پستی منتشر نکرده',
+                    ? (AppLocalizations.of(context)?.shareFirstPost ?? 'اولین پست خود را به اشتراک بگذارید')
+                    : (AppLocalizations.of(context)?.userHasNoPosts ?? 'این کاربر هنوز پستی منتشر نکرده'),
                 icon: Icons.camera_alt_outlined,
                 isDark: isDark,
               );
@@ -282,19 +278,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
             );
           },
           loading: () => Center(
-            child: CircularProgressIndicator(
-              color: isDark ? Colors.white : Colors.black,
-            ),
+            child: _PostsTabShimmer(isDark: isDark),
           ),
-          error: (_, __) => const Center(child: Text('خطا در بارگذاری پست‌ها')),
+          error: (_, __) => Center(child: Text(AppLocalizations.of(context)?.errorLoadingPosts ?? 'خطا در بارگذاری پست‌ها')),
         );
       },
       loading: () => Center(
-        child: CircularProgressIndicator(
-          color: isDark ? Colors.white : Colors.black,
-        ),
+        child: _PostsTabShimmer(isDark: isDark),
       ),
-      error: (_, __) => const Center(child: Text('خطا در بارگذاری')),
+      error: (_, __) => Center(child: Text(AppLocalizations.of(context)?.errorLoading ?? 'خطا در بارگذاری')),
     );
   }
 
@@ -321,10 +313,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
             final reels = posts.where((p) => p.hasVideo).toList();
             if (reels.isEmpty) {
               return _EmptyPlaceholder(
-                title: 'هنوز کلیپی نیست',
+                title: AppLocalizations.of(context)?.noReelsYet ?? 'هنوز کلیپی نیست',
                 subtitle: isCurrentUser
-                    ? 'اولین کلیپ خود را به اشتراک بگذارید'
-                    : 'این کاربر هنوز کلیپی منتشر نکرده',
+                    ? (AppLocalizations.of(context)?.shareFirstReel ?? 'اولین کلیپ خود را به اشتراک بگذارید')
+                    : (AppLocalizations.of(context)?.userHasNoReels ?? 'این کاربر هنوز کلیپی منتشر نکرده'),
                 icon: Icons.play_circle_outline,
                 isDark: isDark,
               );
@@ -332,20 +324,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
             return _ReelsGridView(reels: reels, isDark: isDark);
           },
           loading: () => Center(
-            child: CircularProgressIndicator(
-              color: isDark ? Colors.white : Colors.black,
-            ),
+            child: _ReelsTabShimmer(isDark: isDark),
           ),
           error: (_, __) =>
-              const Center(child: Text('خطا در بارگذاری کلیپ‌ها')),
+              Center(child: Text(AppLocalizations.of(context)?.errorLoadingReels ?? 'خطا در بارگذاری کلیپ‌ها')),
         );
       },
       loading: () => Center(
-        child: CircularProgressIndicator(
-          color: isDark ? Colors.white : Colors.black,
-        ),
+        child: _ReelsTabShimmer(isDark: isDark),
       ),
-      error: (_, __) => const Center(child: Text('خطا در بارگذاری')),
+      error: (_, __) => Center(child: Text(AppLocalizations.of(context)?.errorLoading ?? 'خطا در بارگذاری')),
     );
   }
 
@@ -375,10 +363,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                 .toList();
             if (musicPosts.isEmpty) {
               return _EmptyPlaceholder(
-                title: 'هنوز موزیکی نیست',
+                title: AppLocalizations.of(context)?.noMusicYet ?? 'هنوز موزیکی نیست',
                 subtitle: isCurrentUser
-                    ? 'برای پست‌هایتان موزیک اضافه کنید'
-                    : 'این کاربر هنوز موزیکی منتشر نکرده',
+                    ? (AppLocalizations.of(context)?.addMusicToPosts ?? 'برای پست‌هایتان موزیک اضافه کنید')
+                    : (AppLocalizations.of(context)?.userHasNoMusic ?? 'این کاربر هنوز موزیکی منتشر نکرده'),
                 icon: Icons.music_note_outlined,
                 isDark: isDark,
               );
@@ -386,20 +374,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
             return _MusicListView(posts: musicPosts, isDark: isDark);
           },
           loading: () => Center(
-            child: CircularProgressIndicator(
-              color: isDark ? Colors.white : Colors.black,
-            ),
+            child: _MusicTabShimmer(isDark: isDark),
           ),
           error: (_, __) =>
-              const Center(child: Text('خطا در بارگذاری موزیک‌ها')),
+              Center(child: Text(AppLocalizations.of(context)?.errorLoadingMusic ?? 'خطا در بارگذاری موزیک‌ها')),
         );
       },
       loading: () => Center(
-        child: CircularProgressIndicator(
-          color: isDark ? Colors.white : Colors.black,
-        ),
+        child: _MusicTabShimmer(isDark: isDark),
       ),
-      error: (_, __) => const Center(child: Text('خطا در بارگذاری')),
+      error: (_, __) => Center(child: Text(AppLocalizations.of(context)?.errorLoading ?? 'خطا در بارگذاری')),
     );
   }
 
@@ -492,7 +476,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                 color: isDark ? Colors.white : Colors.black,
               ),
               title: Text(
-                'اشتراک‌گذاری پروفایل',
+                AppLocalizations.of(context)?.shareProfile ?? 'اشتراک‌گذاری پروفایل',
                 style: TextStyle(color: isDark ? Colors.white : Colors.black),
               ),
               onTap: () {
@@ -503,7 +487,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                         .trim();
                 if (username.isEmpty) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('نام کاربری در دسترس نیست')),
+                    SnackBar(content: Text(AppLocalizations.of(context)?.usernameNotAvailable ?? 'نام کاربری در دسترس نیست')),
                   );
                   return;
                 }
@@ -516,7 +500,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                 color: isDark ? Colors.white : Colors.black,
               ),
               title: Text(
-                'کپی لینک پروفایل',
+                AppLocalizations.of(context)?.copyProfileLink ?? 'کپی لینک پروفایل',
                 style: TextStyle(color: isDark ? Colors.white : Colors.black),
               ),
               onTap: () {
@@ -534,17 +518,17 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                 final profileUrl = 'https://cafevista.ir/profile/$username';
                 Clipboard.setData(ClipboardData(text: profileUrl));
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('لینک پروفایل کپی شد')),
+                  SnackBar(content: Text(AppLocalizations.of(context)?.profileLinkCopied ?? 'لینک پروفایل کپی شد')),
                 );
               },
             ),
             ListTile(
               leading: const Icon(Icons.report_outlined, color: Colors.red),
-              title: const Text('گزارش', style: TextStyle(color: Colors.red)),
+              title: Text(AppLocalizations.of(context)?.report ?? 'گزارش', style: const TextStyle(color: Colors.red)),
               onTap: () {
                 Navigator.pop(context);
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('گزارش کاربر ثبت شد')),
+                  SnackBar(content: Text(AppLocalizations.of(context)?.userReportSubmitted ?? 'گزارش کاربر ثبت شد')),
                 );
               },
             ),
@@ -581,6 +565,7 @@ class _ProfileHeader extends ConsumerWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final textColor = isDark ? Colors.white : Colors.black;
     final subtitleColor = isDark ? Colors.grey[400] : Colors.grey[600];
+    final isRtl = Directionality.of(context) == TextDirection.rtl;
 
     // Watch profile note for this user
     final noteAsync = ref.watch(profileNoteProvider(profile.id));
@@ -599,16 +584,17 @@ class _ProfileHeader extends ConsumerWidget {
                 data: (note) {
                   if (note != null && !note.isExpired) {
                     final isLong = note.content.length > 20;
-                    return Positioned(
+                    return PositionedDirectional(
                       // حالت متن بلند: پایین، کنار دکمه پلاس
-                      // حالت متن کوتاه: برمی‌گردیم به سمت راست (left: 55) اما خیلی بالاتر (top: -40)
+                      // حالت متن کوتاه: نزدیک آواتار و کمی بالاتر
                       // تا بالای عدد پست‌ها قرار گیرد و تداخل نکند.
                       top: isLong ? 65 : -16,
-                      left: isLong ? 70 : 60,
+                      start: isLong ? 70 : 60,
                       child: ThoughtBubbleWidget(
                         note: note,
                         isCurrentUser: isCurrentUser,
                         tailAtTop: isLong,
+                        tailOnRight: isRtl,
                         onTap: () {
                           if (isCurrentUser) {
                             _showNoteInputSheet(context, ref, note.content);
@@ -643,9 +629,9 @@ class _ProfileHeader extends ConsumerWidget {
                         showOnlineStatus: false,
                       ),
                       if (isCurrentUser)
-                        Positioned(
+                        PositionedDirectional(
                           bottom: 0,
-                          right: 0,
+                          end: 0,
                           child: GestureDetector(
                             onTap: () => _showContentTypePicker(context, ref),
                             child: Container(
@@ -679,7 +665,7 @@ class _ProfileHeader extends ConsumerWidget {
                       children: [
                         _StatItem(
                           count: _formatCount(profile.postsCount),
-                          label: 'پست',
+                          label: AppLocalizations.of(context)?.post ?? 'پست',
                           textColor: textColor,
                           subtitleColor: subtitleColor!,
                         ),
@@ -687,7 +673,7 @@ class _ProfileHeader extends ConsumerWidget {
                           onTap: onFollowersTap,
                           child: _StatItem(
                             count: _formatCount(profile.followersCount),
-                            label: 'دنبال‌کننده',
+                            label: AppLocalizations.of(context)?.followers ?? 'دنبال‌کننده',
                             textColor: textColor,
                             subtitleColor: subtitleColor,
                           ),
@@ -696,7 +682,7 @@ class _ProfileHeader extends ConsumerWidget {
                           onTap: onFollowingTap,
                           child: _StatItem(
                             count: _formatCount(profile.followingCount),
-                            label: 'دنبال‌شونده',
+                            label: AppLocalizations.of(context)?.followingCount ?? 'دنبال‌شونده',
                             textColor: textColor,
                             subtitleColor: subtitleColor,
                           ),
@@ -739,16 +725,44 @@ class _ProfileHeader extends ConsumerWidget {
           // Bio
           if (profile.bio != null && profile.bio!.isNotEmpty) ...[
             const SizedBox(height: 6),
-            Text(
-              profile.bio!,
-              style: TextStyle(
-                fontSize: 14,
-                color: textColor,
-                height: 1.4,
-              ),
-              maxLines: 4,
-              overflow: TextOverflow.ellipsis,
+            Builder(
+              builder: (context) {
+                final text = profile.bio!;
+                final firstChar = text.trim().isNotEmpty ? text.trim()[0] : '';
+                final isPersian = RegExp(r'[\u0600-\u06FF]').hasMatch(firstChar);
+                return Directionality(
+                  textDirection: isPersian ? TextDirection.rtl : TextDirection.ltr,
+                  child: HashtagRichText(
+                    text: text,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: textColor,
+                      height: 1.4,
+                    ),
+                    hashtagStyle: TextStyle(
+                      color: isDark ? Colors.blue[300] : Colors.blue[700],
+                      fontWeight: FontWeight.w600,
+                    ),
+                    maxLines: 5,
+                    overflow: TextOverflow.ellipsis,
+                    onHashtagTap: (tag) {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => SearchPage(initialHashtag: '#$tag'),
+                        ),
+                      );
+                    },
+                  ),
+                );
+              },
             ),
+          ],
+
+          // Member order badge
+          if (profile.joinOrder != null && profile.joinOrder! > 0) ...[
+            const SizedBox(height: 10),
+            _MemberOrderBadge(joinOrder: profile.joinOrder!, isDark: isDark),
           ],
         ],
       ),
@@ -842,6 +856,149 @@ class _StatItem extends StatelessWidget {
       ],
     );
   }
+}
+
+/// بج ترتیب عضویت در ویستا
+class _MemberOrderBadge extends StatelessWidget {
+  final int joinOrder;
+  final bool isDark;
+
+  const _MemberOrderBadge({required this.joinOrder, required this.isDark});
+
+  /// تعریف تیرهای رنگ بر اساس ترتیب عضویت
+  _BadgeTier get _tier {
+    if (joinOrder <= 100) return _BadgeTier.founding;
+    if (joinOrder <= 1000) return _BadgeTier.early;
+    if (joinOrder <= 10000) return _BadgeTier.pioneer;
+    return _BadgeTier.member;
+  }
+
+  String _formatNumber(int n) {
+    if (n >= 1000000) return '${(n / 1000000).toStringAsFixed(1)}M';
+    if (n >= 1000) return '${(n / 1000).toStringAsFixed(1)}K';
+    return n.toString();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tier = _tier;
+    final label = _buildLabel(tier);
+    final icon = _buildIcon(tier);
+    final colors = _buildColors(tier, isDark);
+
+    return Align(
+      alignment: AlignmentDirectional.centerStart,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          gradient: colors.gradient,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: colors.border, width: 1),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(icon, style: const TextStyle(fontSize: 12)),
+            const SizedBox(width: 5),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: colors.text,
+                letterSpacing: 0.2,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _buildLabel(_BadgeTier tier) {
+    final formatted = _formatNumber(joinOrder);
+    switch (tier) {
+      case _BadgeTier.founding:
+        return 'عضو بنیان‌گذار ویستا  #$formatted';
+      case _BadgeTier.early:
+        return 'از اولین هزار نفر ویستا  #$formatted';
+      case _BadgeTier.pioneer:
+        return 'عضو پیشگام ویستا  #$formatted';
+      case _BadgeTier.member:
+        return 'عضو شماره  #$formatted  ویستا';
+    }
+  }
+
+  String _buildIcon(_BadgeTier tier) {
+    switch (tier) {
+      case _BadgeTier.founding:
+        return '👑';
+      case _BadgeTier.early:
+        return '🚀';
+      case _BadgeTier.pioneer:
+        return '⚡';
+      case _BadgeTier.member:
+        return '✦';
+    }
+  }
+
+  _BadgeColors _buildColors(_BadgeTier tier, bool isDark) {
+    switch (tier) {
+      case _BadgeTier.founding:
+        return _BadgeColors(
+          gradient: LinearGradient(
+            colors: isDark
+                ? [const Color(0xFF3D2800), const Color(0xFF5A3A00)]
+                : [const Color(0xFFFFF3CD), const Color(0xFFFFE082)],
+          ),
+          border: isDark ? const Color(0xFFB8860B) : const Color(0xFFD4A017),
+          text: isDark ? const Color(0xFFFFD700) : const Color(0xFF8B6914),
+        );
+      case _BadgeTier.early:
+        return _BadgeColors(
+          gradient: LinearGradient(
+            colors: isDark
+                ? [const Color(0xFF001A3D), const Color(0xFF002D6B)]
+                : [const Color(0xFFE3EEFF), const Color(0xFFCCDFFF)],
+          ),
+          border: isDark ? const Color(0xFF1565C0) : const Color(0xFF90B8F8),
+          text: isDark ? const Color(0xFF82BBFF) : const Color(0xFF1A5FBB),
+        );
+      case _BadgeTier.pioneer:
+        return _BadgeColors(
+          gradient: LinearGradient(
+            colors: isDark
+                ? [const Color(0xFF1A0030), const Color(0xFF2D0050)]
+                : [const Color(0xFFF3E8FF), const Color(0xFFE9D5FF)],
+          ),
+          border: isDark ? const Color(0xFF7B2FBE) : const Color(0xFFB794F4),
+          text: isDark ? const Color(0xFFD08BFF) : const Color(0xFF6B21A8),
+        );
+      case _BadgeTier.member:
+        return _BadgeColors(
+          gradient: LinearGradient(
+            colors: isDark
+                ? [const Color(0xFF1A1A1A), const Color(0xFF252525)]
+                : [const Color(0xFFF5F5F5), const Color(0xFFEEEEEE)],
+          ),
+          border: isDark ? const Color(0xFF404040) : const Color(0xFFCCCCCC),
+          text: isDark ? const Color(0xFF999999) : const Color(0xFF666666),
+        );
+    }
+  }
+}
+
+enum _BadgeTier { founding, early, pioneer, member }
+
+class _BadgeColors {
+  final LinearGradient gradient;
+  final Color border;
+  final Color text;
+  const _BadgeColors({
+    required this.gradient,
+    required this.border,
+    required this.text,
+  });
 }
 
 /// نوار دکمه‌های عملیاتی
@@ -1320,6 +1477,297 @@ class _EmptyPlaceholder extends StatelessWidget {
   }
 }
 
+class _ShimmerBox extends StatelessWidget {
+  const _ShimmerBox({
+    required this.width,
+    required this.height,
+    this.radius = 10,
+    this.shape = BoxShape.rectangle,
+  });
+
+  final double width;
+  final double height;
+  final double radius;
+  final BoxShape shape;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        shape: shape,
+        borderRadius: shape == BoxShape.circle
+            ? null
+            : BorderRadius.circular(radius),
+      ),
+    );
+  }
+}
+
+class _ProfilePageShimmer extends StatelessWidget {
+  const _ProfilePageShimmer({required this.isDark});
+
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context) {
+    final baseColor = isDark ? const Color(0xFF2A2A2A) : Colors.grey.shade300;
+    final highlightColor =
+        isDark ? const Color(0xFF3A3A3A) : Colors.grey.shade100;
+
+    return Shimmer.fromColors(
+      baseColor: baseColor,
+      highlightColor: highlightColor,
+      child: ListView(
+        physics: const NeverScrollableScrollPhysics(),
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Row(
+                  children: [
+                    _ShimmerBox(
+                      width: 84,
+                      height: 84,
+                      shape: BoxShape.circle,
+                    ),
+                    SizedBox(width: 20),
+                    Expanded(
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceAround,
+                        children: [
+                          _ShimmerBox(width: 52, height: 40),
+                          _ShimmerBox(width: 52, height: 40),
+                          _ShimmerBox(width: 52, height: 40),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                const _ShimmerBox(width: 140, height: 16),
+                const SizedBox(height: 8),
+                const _ShimmerBox(width: 210, height: 13),
+                const SizedBox(height: 5),
+                const _ShimmerBox(width: 170, height: 13),
+                const SizedBox(height: 16),
+                const Row(
+                  children: [
+                    Expanded(child: _ShimmerBox(width: double.infinity, height: 36)),
+                    SizedBox(width: 8),
+                    Expanded(child: _ShimmerBox(width: double.infinity, height: 36)),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          Divider(height: 1, color: isDark ? Colors.white10 : Colors.black12),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _ShimmerBox(width: 24, height: 24, radius: 6),
+                _ShimmerBox(width: 24, height: 24, radius: 6),
+                _ShimmerBox(width: 24, height: 24, radius: 6),
+              ],
+            ),
+          ),
+          Divider(height: 1, color: isDark ? Colors.white10 : Colors.black12),
+          const SizedBox(height: 8),
+          const _PostsTabShimmer(
+            isDark: false,
+            useInheritedTheme: true,
+            scrollable: false,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PostsTabShimmer extends StatelessWidget {
+  const _PostsTabShimmer({
+    required this.isDark,
+    this.useInheritedTheme = false,
+    this.scrollable = true,
+  });
+
+  final bool isDark;
+  final bool useInheritedTheme;
+  final bool scrollable;
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = useInheritedTheme
+        ? Theme.of(context).brightness == Brightness.dark
+        : isDark;
+    final baseColor = dark ? const Color(0xFF2A2A2A) : Colors.grey.shade300;
+    final highlightColor = dark ? const Color(0xFF3A3A3A) : Colors.grey.shade100;
+
+    final rows = List.generate(4, (_) => const SizedBox.shrink());
+    final child = scrollable
+        ? ListView.separated(
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: rows.length,
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            separatorBuilder: (_, __) => Divider(
+              height: 1,
+              color: dark ? Colors.white10 : Colors.black12,
+            ),
+            itemBuilder: (_, __) => const _PostTabShimmerRow(),
+          )
+        : Column(
+            children: [
+              for (int i = 0; i < rows.length; i++) ...[
+                const _PostTabShimmerRow(),
+                if (i != rows.length - 1)
+                  Divider(
+                    height: 1,
+                    color: dark ? Colors.white10 : Colors.black12,
+                  ),
+              ],
+            ],
+          );
+
+    return Shimmer.fromColors(
+      baseColor: baseColor,
+      highlightColor: highlightColor,
+      child: child,
+    );
+  }
+}
+
+class _PostTabShimmerRow extends StatelessWidget {
+  const _PostTabShimmerRow();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _ShimmerBox(width: 44, height: 44, shape: BoxShape.circle),
+          SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _ShimmerBox(width: 120, height: 14),
+                SizedBox(height: 8),
+                _ShimmerBox(width: double.infinity, height: 12),
+                SizedBox(height: 6),
+                _ShimmerBox(width: 170, height: 12),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ReelsTabShimmer extends StatelessWidget {
+  const _ReelsTabShimmer({required this.isDark});
+
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context) {
+    final baseColor = isDark ? const Color(0xFF2A2A2A) : Colors.grey.shade300;
+    final highlightColor = isDark ? const Color(0xFF3A3A3A) : Colors.grey.shade100;
+
+    return Shimmer.fromColors(
+      baseColor: baseColor,
+      highlightColor: highlightColor,
+      child: GridView.builder(
+        physics: const NeverScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(1),
+        itemCount: 12,
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 3,
+          crossAxisSpacing: 1,
+          mainAxisSpacing: 1,
+          childAspectRatio: 9 / 16,
+        ),
+        itemBuilder: (_, __) => const _ShimmerBox(
+          width: double.infinity,
+          height: double.infinity,
+          radius: 0,
+        ),
+      ),
+    );
+  }
+}
+
+class _MusicTabShimmer extends StatelessWidget {
+  const _MusicTabShimmer({required this.isDark});
+
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context) {
+    final baseColor = isDark ? const Color(0xFF2A2A2A) : Colors.grey.shade300;
+    final highlightColor = isDark ? const Color(0xFF3A3A3A) : Colors.grey.shade100;
+
+    return Shimmer.fromColors(
+      baseColor: baseColor,
+      highlightColor: highlightColor,
+      child: ListView.separated(
+        physics: const NeverScrollableScrollPhysics(),
+        itemCount: 7,
+        separatorBuilder: (_, __) =>
+            Divider(height: 1, color: isDark ? Colors.white10 : Colors.black12),
+        itemBuilder: (_, __) => const ListTile(
+          leading: _ShimmerBox(width: 46, height: 46, radius: 12),
+          title: _ShimmerBox(width: 150, height: 12),
+          subtitle: Padding(
+            padding: EdgeInsets.only(top: 8),
+            child: _ShimmerBox(width: 90, height: 10),
+          ),
+          trailing: _ShimmerBox(width: 22, height: 22, radius: 8),
+        ),
+      ),
+    );
+  }
+}
+
+class _MediaShimmer extends StatelessWidget {
+  const _MediaShimmer({
+    required this.isDark,
+    this.borderRadius,
+    this.height,
+  });
+
+  final bool isDark;
+  final BorderRadius? borderRadius;
+  final double? height;
+
+  @override
+  Widget build(BuildContext context) {
+    final baseColor = isDark ? const Color(0xFF2A2A2A) : Colors.grey.shade300;
+    final highlightColor =
+        isDark ? const Color(0xFF3A3A3A) : Colors.grey.shade100;
+
+    return Shimmer.fromColors(
+      baseColor: baseColor,
+      highlightColor: highlightColor,
+      child: Container(
+        height: height,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: borderRadius,
+        ),
+      ),
+    );
+  }
+}
+
 /// گرید پست‌ها
 class _PostsGridView extends ConsumerStatefulWidget {
   final List<PublicPostModel> posts;
@@ -1543,20 +1991,21 @@ class _PostListItem extends ConsumerWidget {
                           maxHeight: 280,
                           minWidth: double.infinity,
                         ),
-                        child: CachedNetworkImage(
-                          imageUrl: post.imageUrl!,
-                          fit: BoxFit.cover,
-                          placeholder: (_, __) => Container(
-                            height: 180,
-                            color: isDark ? Colors.grey[800] : Colors.grey[200],
-                            child: const Center(
-                                child:
-                                    CircularProgressIndicator(strokeWidth: 2)),
-                          ),
-                          errorWidget: (_, __, ___) => Container(
-                            height: 180,
-                            color: isDark ? Colors.grey[800] : Colors.grey[200],
-                            child: const Icon(Icons.broken_image),
+                        child: Hero(
+                          tag: 'post_image_${post.id}',
+                          child: CachedNetworkImage(
+                            imageUrl: post.imageUrl!,
+                            fit: BoxFit.cover,
+                            placeholder: (_, __) => _MediaShimmer(
+                              isDark: isDark,
+                              height: 180,
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            errorWidget: (_, __, ___) => Container(
+                              height: 180,
+                              color: isDark ? Colors.grey[800] : Colors.grey[200],
+                              child: const Icon(Icons.broken_image),
+                            ),
                           ),
                         ),
                       ),
@@ -2206,9 +2655,9 @@ class _ReelGridItem extends StatelessWidget {
           _buildThumbnail(),
 
           // Play icon overlay
-          Positioned(
+          PositionedDirectional(
             bottom: 8,
-            left: 8,
+            start: 8,
             child: Row(
               children: [
                 const Icon(
@@ -2236,9 +2685,7 @@ class _ReelGridItem extends StatelessWidget {
   }
 
   Widget _buildThumbnail() {
-    final fallback = Container(
-      color: isDark ? Colors.grey[900] : Colors.grey[200],
-    );
+    final fallback = _MediaShimmer(isDark: isDark);
 
     if (reel.imageUrl != null && reel.imageUrl!.isNotEmpty) {
       return CachedNetworkImage(

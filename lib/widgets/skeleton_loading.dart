@@ -40,74 +40,126 @@ class PostCardSkeleton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.symmetric(
-          vertical: AppSpacing.sm, horizontal: AppSpacing.md),
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.md),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const BaseSkeletonWidget(
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final baseColor = isDark ? const Color(0xFF2A3040) : Colors.grey[300]!;
+    final highlightColor = isDark ? const Color(0xFF3D4D66) : Colors.grey[100]!;
+
+    Widget sh(double w, double h, {double r = 8, bool circle = false}) {
+      return Shimmer.fromColors(
+        baseColor: baseColor,
+        highlightColor: highlightColor,
+        child: Container(
+          width: w,
+          height: h,
+          decoration: BoxDecoration(
+            color: baseColor,
+            // BoxShape.circle و borderRadius نمی‌توانند همزمان تنظیم شوند
+            borderRadius: circle ? null : BorderRadius.circular(r),
+            shape: circle ? BoxShape.circle : BoxShape.rectangle,
+          ),
+        ),
+      );
+    }
+
+    // دقیقاً مشابه _ThreadPostItem:
+    // Row بیرونی RTL: [avatar RIGHT | content column LEFT]
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            textDirection: TextDirection.rtl,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ─── آواتار (radius 22) ───
+              Shimmer.fromColors(
+                baseColor: baseColor,
+                highlightColor: highlightColor,
+                child: Container(
                   width: 44,
                   height: 44,
-                  borderRadius: BorderRadius.all(Radius.circular(22)),
+                  decoration: BoxDecoration(color: baseColor, shape: BoxShape.circle),
                 ),
-                const SizedBox(width: AppSpacing.sm),
-                Column(
+              ),
+              const SizedBox(width: 12),
+              // ─── ستون محتوا ───
+              Expanded(
+                child: Column(
+                  textDirection: TextDirection.rtl,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const BaseSkeletonWidget(width: 120, height: 14),
-                    const SizedBox(height: AppSpacing.xs),
-                    BaseSkeletonWidget(
-                        width: 80,
-                        height: 10,
-                        borderRadius: BorderRadius.circular(4)),
+                    // هدر: نام + • + زمان (بدون دکمه follow)
+                    Row(
+                      textDirection: TextDirection.rtl,
+                      children: [
+                        sh(90, 14, r: 6),       // نام
+                        const SizedBox(width: 8),
+                        sh(8, 8, circle: true), // نقطه جدا‌کننده •
+                        const SizedBox(width: 8),
+                        sh(28, 12, r: 4),       // زمان (مثل "2h")
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    // متن پست - خط ۱
+                    sh(double.infinity, 14),
+                    const SizedBox(height: 5),
+                    // متن پست - خط ۲
+                    sh(double.infinity, 14),
+                    const SizedBox(height: 5),
+                    // متن پست - خط ۳ (کوتاه‌تر)
+                    sh(180, 14),
+                    const SizedBox(height: 12),
+                    // تصویر (اختیاری - بعضی پست‌ها دارن)
+                    sh(double.infinity, 200, r: 14),
+                    const SizedBox(height: 12),
+                    // ردیف اکشن (مطابق اسکرین‌شات):
+                    // RTL → [like❤️ RIGHT] [0 comment💬] [bookmark] [share] ... [•••circle LEFT]
+                    Row(
+                      textDirection: TextDirection.rtl,
+                      children: [
+                        // like + عدد
+                        sh(20, 20, r: 4),
+                        const SizedBox(width: 4),
+                        sh(16, 12, r: 4),
+                        const SizedBox(width: 14),
+                        // comment + عدد
+                        sh(20, 20, r: 4),
+                        const SizedBox(width: 4),
+                        sh(16, 12, r: 4),
+                        const SizedBox(width: 14),
+                        // bookmark
+                        sh(20, 20, r: 4),
+                        const SizedBox(width: 14),
+                        // share
+                        sh(20, 20, r: 4),
+                        const Spacer(),
+                        // ••• داخل دایره خاکستری
+                        Shimmer.fromColors(
+                          baseColor: baseColor,
+                          highlightColor: highlightColor,
+                          child: Container(
+                            width: 34,
+                            height: 34,
+                            decoration: BoxDecoration(
+                              color: baseColor,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ],
                 ),
-              ],
-            ),
-            const SizedBox(height: AppSpacing.md),
-            const BaseSkeletonWidget(width: double.infinity, height: 14),
-            const SizedBox(height: AppSpacing.xs),
-            const BaseSkeletonWidget(width: 200, height: 14),
-            const SizedBox(height: AppSpacing.md),
-            const BaseSkeletonWidget(
-              width: double.infinity,
-              height: 250,
-              borderRadius: BorderRadius.all(Radius.circular(12)),
-            ),
-            const SizedBox(height: AppSpacing.md),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  children: [
-                    BaseSkeletonWidget(
-                        width: 50,
-                        height: 24,
-                        borderRadius: BorderRadius.circular(12)),
-                    const SizedBox(width: AppSpacing.sm),
-                    BaseSkeletonWidget(
-                        width: 50,
-                        height: 24,
-                        borderRadius: BorderRadius.circular(12)),
-                  ],
-                ),
-                BaseSkeletonWidget(
-                    width: 30,
-                    height: 24,
-                    borderRadius: BorderRadius.circular(12)),
-              ],
-            )
-          ],
-        ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
 }
+
 
 class StoryCircleSkeleton extends StatelessWidget {
   const StoryCircleSkeleton({super.key});

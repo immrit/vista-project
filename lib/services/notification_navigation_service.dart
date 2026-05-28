@@ -7,8 +7,62 @@ import '../model/notificationModel.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../features/auth/providers/auth_controller.dart' show TokenStorage;
 import '../features/chat/providers/chat_providers.dart';
+import '../utils/const.dart';
+import 'notification_action_resolver.dart';
 
 class NotificationNavigationService {
+  static bool _isHandlingTap = false;
+  static DateTime? _lastHandledAt;
+
+  static NavigatorState? _resolveNavigator([BuildContext? fallbackContext]) {
+    final keyedNavigator = navigatorKey.currentState;
+    if (keyedNavigator != null) return keyedNavigator;
+    if (fallbackContext == null) return null;
+    try {
+      return Navigator.of(fallbackContext, rootNavigator: true);
+    } catch (_) {
+      try {
+        return Navigator.of(fallbackContext);
+      } catch (_) {
+        return null;
+      }
+    }
+  }
+
+  static BuildContext? _resolveContext([BuildContext? fallbackContext]) {
+    return navigatorKey.currentContext ?? fallbackContext;
+  }
+
+  static Future<void> _ensureRootOnHome([BuildContext? fallbackContext]) async {
+    final navigator = _resolveNavigator(fallbackContext);
+    if (navigator == null) return;
+
+    final routeName =
+        ModalRoute.of(_resolveContext(fallbackContext) ?? navigator.context)
+            ?.settings
+            .name;
+    if (routeName == '/home') return;
+
+    navigator.pushNamedAndRemoveUntil('/home', (route) => false);
+    await Future.delayed(const Duration(milliseconds: 350));
+  }
+
+  static bool _canHandleTap() {
+    final now = DateTime.now();
+    final last = _lastHandledAt;
+    if (_isHandlingTap) return false;
+    if (last != null && now.difference(last) < const Duration(milliseconds: 350)) {
+      return false;
+    }
+    _isHandlingTap = true;
+    _lastHandledAt = now;
+    return true;
+  }
+
+  static void _releaseTapLock() {
+    _isHandlingTap = false;
+  }
+
   /// هدایت به صفحه مناسب بر اساس نوع اعلان
   static Future<void> handleNotificationNavigation({
     required BuildContext context,
@@ -24,6 +78,11 @@ class NotificationNavigationService {
     print('   SenderID: ${notification.senderId}');
     print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
+    if (!_canHandleTap()) {
+      print('⏳ Navigation ignored (tap lock)');
+      return;
+    }
+
     try {
       // ✅ علامت‌گذاری به عنوان خوانده شده
       try {
@@ -33,82 +92,58 @@ class NotificationNavigationService {
         print('⚠️ خطا در علامت‌گذاری خوانده شده: $e');
       }
 
-      // ✅ Navigation بر اساس نوع
-      final type = NotificationModel.canonicalType(notification.type);
+      // ✅ Resolve action then execute (coordinator style)
+      final action = NotificationActionResolver.resolve(notification);
+      print('🧩 Resolved action: ${action.type}');
 
-      switch (type) {
-        case 'message':
-          print('📬 نوع پیام - شروع navigation به چت');
-          print('   ConversationID: ${notification.conversationId}');
+      switch (action.type) {
+        case NotificationActionType.openChat:
+          print('📬 navigation به چت');
           await _navigateToChat(context, notification);
           break;
-
-        case 'like':
-          print('❤️ نوع لایک - navigation به پست');
-          await _navigateToPost(context, notification.postId);
+        case NotificationActionType.openPost:
+          print('❤️ navigation به پست');
+          await _navigateToPost(context, action.postId ?? notification.postId);
           break;
-
-        case 'comment':
-          print('💬 نوع کامنت - navigation به کامنت‌ها');
+        case NotificationActionType.openPostComments:
+          print('💬 navigation به کامنت‌ها');
           await _navigateToPostComments(
             context,
-            notification.postId,
-            notification.commentId,
+            action.postId ?? notification.postId,
+            action.commentId ?? notification.commentId,
           );
           break;
-
-        case 'comment_reply':
-          print('↩️ نوع پاسخ کامنت - navigation به کامنت‌ها');
+        case NotificationActionType.openCommentReply:
+          print('↩️ navigation به پاسخ کامنت');
           await _navigateToCommentReply(
             context,
-            notification.postId,
-            notification.commentId,
-            notification.parentCommentId,
+            action.postId ?? notification.postId,
+            action.commentId ?? notification.commentId,
+            action.parentCommentId ?? notification.parentCommentId,
           );
           break;
-
-        case 'follow':
-        case 'follow_request':
-        case 'follow_request_accepted':
-          print('👤 نوع follow - navigation به پروفایل');
-          await _navigateToProfile(context, notification.senderId);
+        case NotificationActionType.openProfile:
+          print('👤 navigation به پروفایل');
+          await _navigateToProfile(context, action.userId ?? notification.senderId);
           break;
-
-        case 'reaction':
-          print('😊 نوع reaction - navigation به چت');
-          await _navigateToChat(context, notification);
-          break;
-
-        case 'mention':
-          if (notification.postId != null) {
-            print('📝 نوع mention - navigation به پست');
-            await _navigateToPost(context, notification.postId);
-          } else {
-            print('⚠️ Mention بدون postId - navigation به اعلان‌ها');
-            await _navigateToNotifications(context);
-          }
-          break;
-
-        case 'suggest_follow':
+        case NotificationActionType.openSuggestedFollow:
           await _navigateToSuggestedFollow(context, notification);
           break;
-
-        case 'suggest_post':
+        case NotificationActionType.openSuggestedPost:
           await _navigateToSuggestedPost(context, notification);
           break;
-
-        case 'daily_suggestion_digest':
+        case NotificationActionType.openSuggestionDigest:
           await _navigateToSuggestionDigest(context, notification);
           break;
-
-        default:
-          print('⚠️ نوع ناشناخته: ${notification.type}');
-          final deeplink = notification.deeplink;
-          if (deeplink != null && deeplink.isNotEmpty) {
-            await _navigateByDeepLink(context, deeplink);
-          } else {
-            await _navigateToNotifications(context);
-          }
+        case NotificationActionType.openDeepLink:
+          await _navigateByDeepLink(
+            context,
+            action.deeplink ?? notification.deeplink ?? '',
+          );
+          break;
+        case NotificationActionType.openNotifications:
+          await _navigateToNotifications(context);
+          break;
       }
       print('✅ Navigation completed');
       print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -118,6 +153,8 @@ class NotificationNavigationService {
       print('   Stack: $stack');
       print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       await _navigateToNotifications(context);
+    } finally {
+      _releaseTapLock();
     }
   }
 
@@ -126,7 +163,7 @@ class NotificationNavigationService {
     try {
       final token = await TokenStorage.getAccessToken();
       if (token == null || token.isEmpty) return;
-      final baseUrl = EnvConfig.apiBaseUrl ?? 'http://10.0.2.2:8080';
+      final baseUrl = EnvConfig.apiBaseUrl;
       await http.post(
         Uri.parse(
           '$baseUrl/v1/notifications/${Uri.encodeComponent(notificationId)}/read',
@@ -149,20 +186,10 @@ class NotificationNavigationService {
     }
 
     try {
-      // بررسی موجود بودن route
-      final currentRoute = ModalRoute.of(context)?.settings.name;
-
-      if (currentRoute != '/home') {
-        Navigator.of(context).pushNamedAndRemoveUntil(
-          '/home',
-          (route) => false,
-        );
-        await Future.delayed(const Duration(milliseconds: 400));
-      }
-      if (!context.mounted) return;
-
-      // باز کردن جزئیات پست
-      Navigator.of(context).pushNamed(
+      await _ensureRootOnHome(context);
+      final navigator = _resolveNavigator(context);
+      if (navigator == null) return;
+      navigator.pushNamed(
         '/post-detail',
         arguments: {'postId': postId},
       );
@@ -186,20 +213,13 @@ class NotificationNavigationService {
     }
 
     try {
-      final currentRoute = ModalRoute.of(context)?.settings.name;
-
-      if (currentRoute != '/home') {
-        Navigator.of(context).pushNamedAndRemoveUntil(
-          '/home',
-          (route) => false,
-        );
-        await Future.delayed(const Duration(milliseconds: 400));
-      }
-      if (!context.mounted) return;
+      await _ensureRootOnHome(context);
+      final navigator = _resolveNavigator(context);
+      if (navigator == null) return;
 
       // اگر ID کامنت خاص داریم
       if (commentId != null && commentId.isNotEmpty) {
-        Navigator.of(context).pushNamed(
+        navigator.pushNamed(
           '/post-detail',
           arguments: {
             'postId': postId,
@@ -207,7 +227,7 @@ class NotificationNavigationService {
           },
         );
       } else {
-        Navigator.of(context).pushNamed(
+        navigator.pushNamed(
           '/post-detail',
           arguments: {'postId': postId},
         );
@@ -244,22 +264,15 @@ class NotificationNavigationService {
 
     try {
       final currentUserId = await TokenStorage.getUserId();
-      final currentRoute = ModalRoute.of(context)?.settings.name;
-
-      if (currentRoute != '/home') {
-        Navigator.of(context).pushNamedAndRemoveUntil(
-          '/home',
-          (route) => false,
-        );
-        await Future.delayed(const Duration(milliseconds: 400));
-      }
-      if (!context.mounted) return;
+      await _ensureRootOnHome(context);
+      final navigator = _resolveNavigator(context);
+      if (navigator == null) return;
 
       // اگر خودش بود، به پروفایل شخصی برود
       if (userId == currentUserId) {
-        Navigator.of(context).pushNamed('/profile');
+        navigator.pushNamed('/profile');
       } else {
-        Navigator.of(context).pushNamed(
+        navigator.pushNamed(
           '/profile',
           arguments: {'username': '', 'userId': userId},
         );
@@ -285,18 +298,11 @@ class NotificationNavigationService {
     if (notification.conversationId != null &&
         notification.conversationId!.isNotEmpty) {
       print('✅ استفاده از conversationId از payload');
-      final currentRoute = ModalRoute.of(context)?.settings.name;
+      await _ensureRootOnHome(context);
+      final navigator = _resolveNavigator(context);
+      if (navigator == null) return;
 
-      if (currentRoute != '/home') {
-        Navigator.of(context).pushNamedAndRemoveUntil(
-          '/home',
-          (route) => false,
-        );
-        await Future.delayed(const Duration(milliseconds: 400));
-      }
-      if (!context.mounted) return;
-
-      Navigator.of(context).pushNamed(
+      navigator.pushNamed(
         '/chat',
         arguments: {
           'conversationId': notification.conversationId,
@@ -322,7 +328,8 @@ class NotificationNavigationService {
         '🔄 ConversationID خالی است - تلاش برای یافتن conversation با sender_id...');
     try {
       // پیدا کردن conversationId از userId
-      final container = ProviderScope.containerOf(context, listen: false);
+      final providerContext = _resolveContext(context) ?? context;
+      final container = ProviderScope.containerOf(providerContext, listen: false);
       final result = await container
           .read(chatRepositoryProvider)
           .createConversation(userId);
@@ -339,19 +346,12 @@ class NotificationNavigationService {
 
       print('✅ Conversation پیدا شد: $conversationId');
 
-      final currentRoute = ModalRoute.of(context)?.settings.name;
-
-      if (currentRoute != '/home') {
-        Navigator.of(context).pushNamedAndRemoveUntil(
-          '/home',
-          (route) => false,
-        );
-        await Future.delayed(const Duration(milliseconds: 400));
-      }
-      if (!context.mounted) return;
+      await _ensureRootOnHome(context);
+      final navigator = _resolveNavigator(context);
+      if (navigator == null) return;
 
       // باز کردن چت با کاربر
-      Navigator.of(context).pushNamed(
+      navigator.pushNamed(
         '/chat',
         arguments: {
           'conversationId': conversationId,
@@ -371,16 +371,7 @@ class NotificationNavigationService {
   /// هدایت به صفحه اعلان‌ها (پیش‌فرض)
   static Future<void> _navigateToNotifications(BuildContext context) async {
     try {
-      final currentRoute = ModalRoute.of(context)?.settings.name;
-
-      if (currentRoute != '/home') {
-        Navigator.of(context).pushNamedAndRemoveUntil(
-          '/home',
-          (route) => false,
-        );
-        await Future.delayed(const Duration(milliseconds: 400));
-      }
-      if (!context.mounted) return;
+      await _ensureRootOnHome(context);
 
       // اگر route برای notifications وجود دارد
       // Navigator.of(context).pushNamed('/notifications');
@@ -601,7 +592,8 @@ class NotificationNavigationService {
       // این کار باعث می‌شود به محض باز شدن چت، پیام در آنجا باشد
       try {
         print('⏳ Starting optimistic save for notification message...');
-        final container = ProviderScope.containerOf(context);
+        final providerContext = _resolveContext(context) ?? context;
+        final container = ProviderScope.containerOf(providerContext);
         await container
             .read(chatRepositoryProvider)
             .handleNotificationMessage(data);
@@ -622,19 +614,12 @@ class NotificationNavigationService {
 
       // هدایت به صفحه چت
       // استفاده از ChatScreen قدیمی (چون در route استفاده می‌شود)
-      final currentRoute = ModalRoute.of(context)?.settings.name;
-
-      if (currentRoute != '/home') {
-        Navigator.of(context).pushNamedAndRemoveUntil(
-          '/home',
-          (route) => false,
-        );
-        await Future.delayed(const Duration(milliseconds: 400));
-      }
-      if (!context.mounted) return;
+      await _ensureRootOnHome(context);
+      final navigator = _resolveNavigator(context);
+      if (navigator == null) return;
 
       // استفاده از route برای سازگاری با سیستم موجود
-      Navigator.of(context).pushNamed(
+      navigator.pushNamed(
         '/chat',
         arguments: {
           'conversationId': conversationId,

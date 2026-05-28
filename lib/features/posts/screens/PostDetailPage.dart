@@ -11,7 +11,6 @@ import '../../../model/publicPostModel.dart';
 import 'package:Vista/utils/widgets.dart';
 import 'package:Vista/features/search/screens/searchPage.dart';
 import 'profileScreen.dart';
-import 'publicPosts.dart' as public_posts;
 import '../../../model/CommentModel.dart';
 import '../../../model/UserModel.dart';
 import '../../../provider/provider.dart';
@@ -22,6 +21,7 @@ import '../../../services/smart_share_service.dart';
 import '../../../services/current_user_service.dart';
 import '../../profile/data/profile_repository.dart';
 import '../providers/saved_posts_provider.dart';
+import '../widgets/standard_edit_post_dialog.dart';
 import 'package:Vista/widgets/verification_badge_icon.dart';
 
 class PostDetailsPage extends ConsumerStatefulWidget {
@@ -115,9 +115,12 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
                 ),
               );
             },
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: _buildImageWithRetry(post.imageUrl!),
+            child: Hero(
+              tag: 'post_image_${post.id}',
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: _buildImageWithRetry(post.imageUrl!),
+              ),
             ),
           );
         },
@@ -429,8 +432,14 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
                     break;
                   case 'edit':
                     if (canEditPost) {
-                      // Use the same edit dialog from publicPosts.dart
-                      public_posts.showEditPostDialog(context, ref, post);
+                      showStandardEditDialog(
+                        context: context,
+                        ref: ref,
+                        post: post,
+                        onSuccess: () {
+                          ref.invalidate(postProvider(widget.postId));
+                        },
+                      );
                     } else {
                       // نمایش دیالوگ پریمیوم اگر دسترسی ندارد
                       if (isCurrentUserPost) {

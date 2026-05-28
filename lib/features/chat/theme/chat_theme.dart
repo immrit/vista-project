@@ -10,6 +10,7 @@
 //
 
 import 'package:flutter/material.dart';
+import 'package:Vista/core/theme/app_theme.dart';
 
 /// تم چت
 class ChatTheme {
@@ -207,9 +208,9 @@ class ChatTheme {
   // ═══════════════════════════════════════════════════════════════════════════
 
   factory ChatTheme.light({Color? primaryColor}) {
-    // Force Indigo + Violet palette, ignoring the app's global B&W primary color
-    const accent = Color(0xFF5B5CF0); // Indigo
-    const gradientEnd = Color(0xFF7C3AED); // Violet
+    // Sync with Vista Brand (AppColors)
+    final accent = AppColors.primary; // Indigo
+    final gradientEnd = AppColors.secondary; // Violet
 
     return ChatTheme(
       isDark: false,
@@ -219,9 +220,9 @@ class ChatTheme {
       secondaryTextColor: const Color(0xFF64748B),
       dividerColor: const Color(0xFFE5E5E5),
 
-      // حباب پیام من - Indigo + Violet Gradient
+      // حباب پیام من - Vista Brand Gradient
       myBubbleColor: accent,
-      myBubbleGradient: const LinearGradient(
+      myBubbleGradient: LinearGradient(
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
         colors: [accent, gradientEnd],
@@ -229,7 +230,7 @@ class ChatTheme {
       myBubbleTextColor: Colors.white,
 
       // حباب پیام دیگران - سفید خالص با سایه ملایم برای تمایز بهتر
-      otherBubbleColor: const Color(0xFFFFFFFF),
+      otherBubbleColor: const Color(0xFFF1F5F9), // Slight gray for better contrast against white background
       otherBubbleTextColor: Colors.black,
 
       // وضعیت‌ها
@@ -241,8 +242,8 @@ class ChatTheme {
       errorColor: const Color(0xFFEF4444),
 
       // Input
-      inputBackgroundColor: Colors.white,
-      inputBorderColor: const Color(0xFFE5E5E5),
+      inputBackgroundColor: AppColors.glassBackgroundLight, // Glass effect
+      inputBorderColor: AppColors.glassBorderLight,
       inputHintColor: const Color(0xFF94A3B8),
       sendButtonColor: accent,
       iconColor: const Color(0xFF64748B), // Slate 500
@@ -274,9 +275,9 @@ class ChatTheme {
   // ═══════════════════════════════════════════════════════════════════════════
 
   factory ChatTheme.dark({Color? primaryColor}) {
-    // Dark mode variant: Lighter accent for better contrast
-    const accent = Color(0xFF8A8CFF); // Lighter Indigo
-    const sendButtonColor = Color(0xFF8A8CFF);
+    // Sync with Vista Brand (AppColors)
+    final accent = AppColors.primary; // Indigo
+    final gradientEnd = AppColors.secondary; // Violet
 
     return ChatTheme(
       isDark: true,
@@ -286,32 +287,32 @@ class ChatTheme {
       secondaryTextColor: const Color(0xFF94A3B8),
       dividerColor: const Color(0xFF222222),
 
-      // حباب پیام من - gradient accent
+      // حباب پیام من - Vista Brand Gradient
       myBubbleColor: accent,
-      myBubbleGradient: const LinearGradient(
+      myBubbleGradient: LinearGradient(
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
-        colors: [accent, Color(0xFF6366F1)], // Indigo variation for dark mode
+        colors: [accent, gradientEnd], 
       ),
       myBubbleTextColor: Colors.white,
 
       // حباب پیام دیگران - خاکستری روشن‌تر برای کنتراست بهتر
-      otherBubbleColor: const Color(0xFF2C2C2E), // Apple Dark Gray
+      otherBubbleColor: const Color(0xFF1E1E1E), // Slightly darker for glass look
       otherBubbleTextColor: Colors.white,
 
       // وضعیت‌ها
       onlineColor: const Color(0xFF4ADE80),
       offlineColor: const Color(0xFF64748B),
-      typingColor: const Color(0xFF8A8CFF),
+      typingColor: accent,
       pendingColor: const Color(0xFFFBBF24),
       sentColor: const Color(0xFF4ADE80),
       errorColor: const Color(0xFFF87171),
 
       // Input
-      inputBackgroundColor: const Color(0xFF0A0A0A),
-      inputBorderColor: const Color(0xFF222222),
+      inputBackgroundColor: AppColors.glassBackgroundDark, // Glass effect
+      inputBorderColor: AppColors.glassBorderDark,
       inputHintColor: const Color(0xFF64748B),
-      sendButtonColor: sendButtonColor,
+      sendButtonColor: accent,
       iconColor: const Color(0xFF94A3B8), // Slate 400
 
       // سایه‌ها

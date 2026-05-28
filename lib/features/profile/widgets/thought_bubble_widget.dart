@@ -18,17 +18,39 @@ class ThoughtBubbleWidget extends StatelessWidget {
   /// اگر false باشد، دم به پایین وصل می‌شود (برای وقتی حباب بالای آواتار است)
   final bool tailAtTop;
 
+  /// اگر true باشد، دم حباب در سمت راست نمایش داده می‌شود.
+  /// این حالت برای چیدمان RTL (وقتی آواتار سمت راست است) استفاده می‌شود.
+  final bool tailOnRight;
+
   const ThoughtBubbleWidget({
     super.key,
     required this.note,
     this.onTap,
     this.isCurrentUser = false,
     this.tailAtTop = false,
+    this.tailOnRight = false,
   });
+
+  TextDirection _resolveTextDirection(BuildContext context, String text) {
+    final trimmed = text.trim();
+    if (trimmed.isEmpty) return Directionality.of(context);
+
+    for (final rune in trimmed.runes) {
+      final char = String.fromCharCode(rune);
+      if (RegExp(r'[\u0600-\u06FF]').hasMatch(char)) {
+        return TextDirection.rtl;
+      }
+      if (RegExp(r'[A-Za-z]').hasMatch(char)) {
+        return TextDirection.ltr;
+      }
+    }
+    return Directionality.of(context);
+  }
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final textDirection = _resolveTextDirection(context, note.content);
 
     final bubbleContent = Container(
       constraints: const BoxConstraints(
@@ -60,7 +82,7 @@ class ThoughtBubbleWidget extends StatelessWidget {
           fontFamily: 'Vazir',
         ),
         textAlign: TextAlign.center,
-        textDirection: TextDirection.rtl,
+        textDirection: textDirection,
         maxLines: 2, // حداکثر ۲ خط نمایش داده شود
         overflow: TextOverflow.ellipsis, // بقیه متن سه نقطه شود
       ),
@@ -69,21 +91,42 @@ class ThoughtBubbleWidget extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Row(
+        textDirection: TextDirection.ltr,
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment:
             tailAtTop ? CrossAxisAlignment.start : CrossAxisAlignment.end,
         children: [
-          // Tail on the Left (pointing to avatar)
-          Padding(
-            // تنظیم فاصله عمودی دم برای زیبایی بیشتر
-            padding: EdgeInsets.only(
-              bottom: tailAtTop ? 0 : 8.0,
-              top: tailAtTop ? 8.0 : 0,
+          if (!tailOnRight) ...[
+            Padding(
+              // تنظیم فاصله عمودی دم برای زیبایی بیشتر
+              padding: EdgeInsets.only(
+                bottom: tailAtTop ? 0 : 8.0,
+                top: tailAtTop ? 8.0 : 0,
+              ),
+              child: _BubbleTail(
+                isDark: isDark,
+                isTop: tailAtTop,
+                pointToRight: false,
+              ),
             ),
-            child: _BubbleTail(isDark: isDark, isTop: tailAtTop),
-          ),
-          const SizedBox(width: 3),
-          bubbleContent,
+            const SizedBox(width: 3),
+            bubbleContent,
+          ] else ...[
+            bubbleContent,
+            const SizedBox(width: 3),
+            Padding(
+              // تنظیم فاصله عمودی دم برای زیبایی بیشتر
+              padding: EdgeInsets.only(
+                bottom: tailAtTop ? 0 : 8.0,
+                top: tailAtTop ? 8.0 : 0,
+              ),
+              child: _BubbleTail(
+                isDark: isDark,
+                isTop: tailAtTop,
+                pointToRight: true,
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -94,8 +137,13 @@ class ThoughtBubbleWidget extends StatelessWidget {
 class _BubbleTail extends StatelessWidget {
   final bool isDark;
   final bool isTop;
+  final bool pointToRight;
 
-  const _BubbleTail({required this.isDark, required this.isTop});
+  const _BubbleTail({
+    required this.isDark,
+    required this.isTop,
+    required this.pointToRight,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -136,18 +184,25 @@ class _BubbleTail extends StatelessWidget {
       ),
     );
 
-    // Horizontal layout
-    // اگر دم بالا باشد (isTop)، باید کمی به سمت پایین بیاید تا به آواتار برسد؟
-    // ترتیب افقی همیشه کوچک -> بزرگ -> حباب است
+    final bubbleSideCircle = mediumCircle;
+    final avatarSideCircle = smallCircle;
+
     return Row(
+      textDirection: TextDirection.ltr,
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment:
           isTop ? CrossAxisAlignment.start : CrossAxisAlignment.end,
-      children: [
-        smallCircle,
-        const SizedBox(width: 2),
-        mediumCircle,
-      ],
+      children: pointToRight
+          ? [
+              bubbleSideCircle,
+              const SizedBox(width: 2),
+              avatarSideCircle,
+            ]
+          : [
+              avatarSideCircle,
+              const SizedBox(width: 2),
+              bubbleSideCircle,
+            ],
     );
   }
 }
@@ -166,6 +221,7 @@ class CompactThoughtBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final textDirection = _resolveTextDirection(context, content);
 
     return GestureDetector(
       onTap: onTap,
@@ -196,11 +252,27 @@ class CompactThoughtBubble extends StatelessWidget {
             color: isDark ? Colors.white70 : Colors.black87,
           ),
           textAlign: TextAlign.center,
-          textDirection: TextDirection.rtl,
+          textDirection: textDirection,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
       ),
     );
+  }
+
+  TextDirection _resolveTextDirection(BuildContext context, String text) {
+    final trimmed = text.trim();
+    if (trimmed.isEmpty) return Directionality.of(context);
+
+    for (final rune in trimmed.runes) {
+      final char = String.fromCharCode(rune);
+      if (RegExp(r'[\u0600-\u06FF]').hasMatch(char)) {
+        return TextDirection.rtl;
+      }
+      if (RegExp(r'[A-Za-z]').hasMatch(char)) {
+        return TextDirection.ltr;
+      }
+    }
+    return Directionality.of(context);
   }
 }

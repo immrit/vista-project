@@ -1,203 +1,20 @@
 import 'dart:async';
 
-import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:Vista/services/video_preload_service.dart';
 // import 'package:Vista/view/widgets/VideoPlayerConfig.dart';
 import 'package:Vista/model/ProfileModel.dart';
 // import 'package:Vista/model/notificationModel.dart';
 import 'package:Vista/model/publicPostModel.dart';
-import 'package:Vista/services/user_friendly_error_handler.dart';
 import 'package:Vista/features/profile/data/profile_repository.dart';
 import 'package:Vista/features/posts/data/go_posts_repository.dart';
 // Import security provider
 
-import 'package:Vista/provider/general_provider.dart';
-import 'package:Vista/features/profile/providers/user_profile_provider.dart';
 export 'package:Vista/provider/security_provider.dart';
 export 'package:Vista/features/auth/providers/auth_controller.dart';
 
 export 'package:Vista/features/profile/providers/profile_controller.dart';
 // profileProvider and profileUpdateProvider moved to profile_controller.dart
-
-final fetchPublicPosts = FutureProvider<List<PublicPostModel>>((ref) async {
-  return GoPostsRepository().getFeed(limit: 50, offset: 0);
-});
-
-final postsProvider = StateProvider<List<PublicPostModel>>((ref) {
-  final posts = ref.watch(fetchPublicPosts);
-  return posts.value ?? [];
-});
-
-class PublicPostsNotifier
-    extends StateNotifier<AsyncValue<List<PublicPostModel>>> {
-  final GoPostsRepository _postsRepository = GoPostsRepository();
-  final int _limit = 15;
-  dynamic _offset = 0;
-  bool _hasMore = true;
-  bool _isLoading = false;
-
-  PublicPostsNotifier() : super(const AsyncValue.loading()) {
-    _loadInitialPosts();
-  }
-
-  Future<void> _loadInitialPosts() async {
-    state = const AsyncValue.loading();
-    _offset = 0;
-    _hasMore = true;
-    _isLoading = false;
-    await _loadMorePosts(replace: true);
-  }
-
-  Future<void> _loadMorePosts({bool replace = false}) async {
-    if (!_hasMore || _isLoading) return;
-    _isLoading = true;
-
-    try {
-      final posts = await _postsRepository.getFeed(
-        limit: _limit,
-        offset: _offset,
-      );
-      if (posts.isNotEmpty) {
-        _offset = posts.last.createdAt.toUtc().toIso8601String();
-      }
-      _hasMore = posts.length == _limit;
-
-      if (replace) {
-        state = AsyncValue.data(posts);
-      } else {
-        final currentPosts = state.value ?? [];
-        state = AsyncValue.data([...currentPosts, ...posts]);
-      }
-
-      // پیش‌بارگذاری ویدیوها در پس‌زمینه
-      final videoUrls = posts
-          .map((p) => p.videoUrl)
-          .where((url) => url != null && url.isNotEmpty)
-          .cast<String>()
-          .toList();
-      VideoPreloadService().preloadVideos(videoUrls);
-    } catch (e, stackTrace) {
-      UserFriendlyErrorHandler.logError(
-        e,
-        context: 'posts_loading',
-        stackTrace: stackTrace,
-      );
-      final errorMessage = UserFriendlyErrorHandler.getFriendlyMessage(
-        e,
-        context: 'posts_loading',
-      );
-      state = AsyncValue.error(errorMessage, stackTrace);
-    } finally {
-      _isLoading = false;
-    }
-  }
-
-  bool hasMorePosts() => _hasMore;
-  bool isLoading() => _isLoading;
-
-  Future<void> refreshPosts() async {
-    await _loadInitialPosts();
-  }
-
-  Future<void> loadMorePosts() async {
-    await _loadMorePosts();
-  }
-
-  void updatePost(PublicPostModel updatedPost) {
-    state.whenData((posts) {
-      final index = posts.indexWhere((post) => post.id == updatedPost.id);
-      if (index != -1) {
-        final updatedPosts = List<PublicPostModel>.from(posts);
-        updatedPosts[index] = updatedPost;
-        state = AsyncValue.data(updatedPosts);
-      }
-    });
-  }
-
-  void updatePostLike(String postId, bool isLiked) {
-    state.whenData((posts) {
-      final index = posts.indexWhere((post) => post.id == postId);
-      if (index != -1) {
-        final current = posts[index];
-        final updatedPost = current.copyWith(
-          isLiked: isLiked,
-          likeCount: isLiked
-              ? current.likeCount + 1
-              : (current.likeCount > 0 ? current.likeCount - 1 : 0),
-        );
-        final newPosts = List<PublicPostModel>.from(posts);
-        newPosts[index] = updatedPost;
-        state = AsyncValue.data(newPosts);
-      }
-    });
-  }
-
-  Future<void> toggleLike({
-    required String postId,
-    required String ownerId,
-    required WidgetRef ref,
-  }) async {
-    PublicPostModel? currentPost;
-    final currentPosts = state.value ?? [];
-    final postIndex = currentPosts.indexWhere((post) => post.id == postId);
-    if (postIndex != -1) {
-      currentPost = currentPosts[postIndex];
-      final optimisticLiked = !currentPost.isLiked;
-      ref.read(likeStateProvider.notifier).updateLikeState(
-            postId,
-            optimisticLiked,
-          );
-      updatePost(
-        currentPost.copyWith(
-          isLiked: optimisticLiked,
-          likeCount: optimisticLiked
-              ? currentPost.likeCount + 1
-              : (currentPost.likeCount > 0 ? currentPost.likeCount - 1 : 0),
-        ),
-      );
-    }
-
-    try {
-      final result = await _postsRepository.toggleLike(
-        postId: postId,
-        ownerId: ownerId,
-      );
-      ref.read(likeStateProvider.notifier).updateLikeState(
-            postId,
-            result.isLiked,
-          );
-
-      if (currentPost != null) {
-        final updatedPost = currentPost.copyWith(
-          isLiked: result.isLiked,
-          likeCount: result.likeCount,
-        );
-        updatePost(updatedPost);
-        if (ref.exists(userProfileProvider(ownerId))) {
-          ref
-              .read(userProfileProvider(ownerId).notifier)
-              .updatePost(updatedPost);
-        }
-      }
-    } catch (e) {
-      if (currentPost != null) {
-        updatePost(currentPost);
-        ref.read(likeStateProvider.notifier).updateLikeState(
-              postId,
-              currentPost.isLiked,
-            );
-      }
-      debugPrint('Error in toggleLike: $e');
-      rethrow;
-    }
-  }
-}
-
-final publicPostsProvider = StateNotifierProvider<PublicPostsNotifier,
-    AsyncValue<List<PublicPostModel>>>((ref) {
-  return PublicPostsNotifier();
-});
 
 class PostActionsService {
   final GoPostsRepository _postsRepository = GoPostsRepository();
@@ -211,7 +28,6 @@ class PostActionsService {
     required WidgetRef ref,
   }) async {
     await _postsRepository.toggleLike(postId: postId, ownerId: ownerId);
-    ref.invalidate(fetchPublicPosts);
   }
 
   Future<String> followUserQuick({required String targetUserId}) {
@@ -243,8 +59,6 @@ class PostActionsService {
 
   Future<void> deletePost(WidgetRef ref, String postId) async {
     await _postsRepository.deletePost(postId);
-    ref.invalidate(fetchPublicPosts);
-    ref.invalidate(publicPostsProvider);
   }
 
   Future<List<ProfileModel>> fetchFollowers(String userId) {

@@ -1,7 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../data/services/profile_note_service.dart';
+import '../providers/profile_note_provider.dart';
 
 /// باتم‌شیت ورود متن وضعیت با طراحی مدرن (Glassmorphism)
 class NoteInputSheet extends ConsumerStatefulWidget {
@@ -36,6 +36,22 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet>
   bool _isLoading = false;
   static const int _maxLength = 60;
 
+  TextDirection _resolveTextDirection(BuildContext context, String text) {
+    final trimmed = text.trim();
+    if (trimmed.isEmpty) return Directionality.of(context);
+
+    for (final rune in trimmed.runes) {
+      final char = String.fromCharCode(rune);
+      if (RegExp(r'[\u0600-\u06FF]').hasMatch(char)) {
+        return TextDirection.rtl;
+      }
+      if (RegExp(r'[A-Za-z]').hasMatch(char)) {
+        return TextDirection.ltr;
+      }
+    }
+    return Directionality.of(context);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -68,8 +84,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet>
     setState(() => _isLoading = true);
 
     try {
-      final service = ref.read(profileNoteServiceProvider);
-      await service.upsertNote(content);
+      await ref.read(currentUserNoteProvider.notifier).createNote(content);
 
       if (mounted) {
         Navigator.pop(context, true);
@@ -95,8 +110,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet>
     setState(() => _isLoading = true);
 
     try {
-      final service = ref.read(profileNoteServiceProvider);
-      await service.deleteNote();
+      await ref.read(currentUserNoteProvider.notifier).deleteNote();
 
       if (mounted) {
         Navigator.pop(context, true);
@@ -120,6 +134,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet>
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
+    final noteDirection = _resolveTextDirection(context, _controller.text);
     final screenHeight = MediaQuery.of(context).size.height;
 
     return Stack(
@@ -268,7 +283,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet>
                               height: 1.3,
                             ),
                             textAlign: TextAlign.center,
-                            textDirection: TextDirection.rtl,
+                            textDirection: noteDirection,
                           ),
                         ),
 
@@ -355,7 +370,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet>
                         minLines: 1,
                         autofocus: true,
                         textAlign: TextAlign.center,
-                        textDirection: TextDirection.rtl,
+                        textDirection: noteDirection,
                         style: TextStyle(
                           fontSize: 16,
                           color: isDark ? Colors.white : Colors.black,

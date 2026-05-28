@@ -83,6 +83,7 @@ class ChatAttachmentSheet extends StatefulWidget {
 
 class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
     with TickerProviderStateMixin {
+  static const int _maxAlbumItems = 10;
   static const Color _galleryLightColor = Color(0xFF7C3AED);
   static const Color _galleryDarkColor = Color(0xFFC4B5FD);
   static const Color _cameraLightColor = Color(0xFF0EA5E9);
@@ -98,7 +99,7 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
   List<AssetPathEntity> _albums = [];
   AssetPathEntity? _currentAlbum;
   List<AssetEntity> _mediaList = [];
-  final Set<AssetEntity> _selectedAssets = {};
+  final List<AssetEntity> _selectedAssets = <AssetEntity>[];
 
   bool _isLoading = true;
   bool _isLoadingMore = false;
@@ -215,14 +216,15 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
   void _toggleSelection(AssetEntity asset) {
     HapticFeedback.selectionClick();
     setState(() {
-      if (_selectedAssets.contains(asset)) {
-        _selectedAssets.remove(asset);
-      } else if (_selectedAssets.length < 10) {
+      final existingIndex = _selectedAssets.indexWhere((a) => a.id == asset.id);
+      if (existingIndex != -1) {
+        _selectedAssets.removeAt(existingIndex);
+      } else if (_selectedAssets.length < _maxAlbumItems) {
         _selectedAssets.add(asset);
       } else {
         UserFriendlyErrorUtils.showErrorSnackBar(
           context,
-          'حداکثر ۱۰ تصویر می‌توانید انتخاب کنید',
+          'حداکثر $_maxAlbumItems تصویر می‌توانید انتخاب کنید',
         );
       }
     });
@@ -261,8 +263,21 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
 
   Future<void> _openSelectedAssetsPreview() async {
     if (_selectedAssets.isEmpty) return;
-    final ordered = _selectedAssets.toList(growable: false);
+    final ordered = List<AssetEntity>.from(_selectedAssets, growable: false);
     await _openAssetPreviewFlow(assets: ordered, initialIndex: 0);
+  }
+
+  void _reorderSelectedAssets(int oldIndex, int newIndex) {
+    if (oldIndex < 0 || oldIndex >= _selectedAssets.length) return;
+    var target = newIndex;
+    if (target > oldIndex) target -= 1;
+    if (target < 0 || target >= _selectedAssets.length) return;
+    if (target == oldIndex) return;
+
+    setState(() {
+      final moved = _selectedAssets.removeAt(oldIndex);
+      _selectedAssets.insert(target, moved);
+    });
   }
 
   Future<void> _openAssetPreviewFlow({
@@ -270,6 +285,13 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
     required int initialIndex,
   }) async {
     if (assets.isEmpty || !mounted) return;
+    if (assets.length > _maxAlbumItems) {
+      UserFriendlyErrorUtils.showErrorSnackBar(
+        context,
+        'حداکثر $_maxAlbumItems تصویر در هر آلبوم مجاز است',
+      );
+      return;
+    }
 
     HapticFeedback.lightImpact();
     setState(() => _isPreparingPreview = true);
@@ -727,14 +749,25 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
             child: Row(
               children: [
                 Expanded(
-                  child: ListView.builder(
+                  child: ReorderableListView.builder(
                     scrollDirection: Axis.horizontal,
+                    buildDefaultDragHandles: false,
+                    onReorder: _reorderSelectedAssets,
                     itemCount: _selectedAssets.length,
                     itemBuilder: (_, index) {
-                      final asset = _selectedAssets.elementAt(index);
-                      return _SelectedThumbnail(
-                        asset: asset,
-                        onRemove: () => _toggleSelection(asset),
+                      final asset = _selectedAssets[index];
+                      return Container(
+                        key: ValueKey('selected_${asset.id}'),
+                        width: 72,
+                        alignment: Alignment.center,
+                        child: ReorderableDelayedDragStartListener(
+                          index: index,
+                          child: _SelectedThumbnail(
+                            asset: asset,
+                            orderLabel: '${index + 1}',
+                            onRemove: () => _toggleSelection(asset),
+                          ),
+                        ),
                       );
                     },
                   ),
@@ -960,10 +993,12 @@ class _GalleryItem extends StatelessWidget {
 
 class _SelectedThumbnail extends StatelessWidget {
   final AssetEntity asset;
+  final String orderLabel;
   final VoidCallback onRemove;
 
   const _SelectedThumbnail({
     required this.asset,
+    required this.orderLabel,
     required this.onRemove,
   });
 
@@ -1008,6 +1043,42 @@ class _SelectedThumbnail extends StatelessWidget {
               ),
             ),
           ),
+          Positioned(
+            bottom: 4,
+            left: 4,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.6),
+                borderRadius: BorderRadius.circular(7),
+              ),
+              child: Text(
+                orderLabel,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            bottom: 4,
+            right: 4,
+            child: Container(
+              width: 16,
+              height: 16,
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.6),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.drag_handle_rounded,
+                color: Colors.white,
+                size: 11,
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -1033,15 +1104,19 @@ class _ChatImagePreviewScreen extends StatefulWidget {
 }
 
 class _ChatImagePreviewScreenState extends State<_ChatImagePreviewScreen> {
+  static const int _maxAlbumItems = 10;
   late final PageController _pageController;
   late final TextEditingController _captionController;
+  late final List<SelectedAttachmentFile> _previewFiles;
   late int _currentIndex;
 
   @override
   void initState() {
     super.initState();
-    _currentIndex =
-        widget.initialIndex.clamp(0, widget.files.length - 1).toInt();
+    _previewFiles = List<SelectedAttachmentFile>.from(widget.files);
+    _currentIndex = _previewFiles.isEmpty
+        ? 0
+        : widget.initialIndex.clamp(0, _previewFiles.length - 1).toInt();
     _pageController = PageController(initialPage: _currentIndex);
     _captionController =
         TextEditingController(text: widget.initialCaption ?? '');
@@ -1055,20 +1130,88 @@ class _ChatImagePreviewScreenState extends State<_ChatImagePreviewScreen> {
   }
 
   void _send() {
+    if (_previewFiles.isEmpty) return;
+    if (_previewFiles.length > _maxAlbumItems) {
+      UserFriendlyErrorUtils.showErrorSnackBar(
+        context,
+        'حداکثر $_maxAlbumItems تصویر در هر آلبوم مجاز است',
+      );
+      return;
+    }
     final caption = _captionController.text.trim();
     Navigator.of(context).pop(
       AttachmentSelection(
         type: widget.type,
-        files: widget.files,
+        files: _previewFiles,
         caption: caption.isEmpty ? null : caption,
       ),
     );
   }
 
+  void _removeAt(int index) {
+    if (index < 0 || index >= _previewFiles.length) return;
+    HapticFeedback.selectionClick();
+
+    if (_previewFiles.length == 1) {
+      Navigator.of(context).pop();
+      return;
+    }
+
+    setState(() {
+      _previewFiles.removeAt(index);
+      if (_currentIndex >= _previewFiles.length) {
+        _currentIndex = _previewFiles.length - 1;
+      } else if (index < _currentIndex) {
+        _currentIndex -= 1;
+      }
+    });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_pageController.hasClients || _previewFiles.isEmpty) {
+        return;
+      }
+      _pageController.jumpToPage(_currentIndex);
+    });
+  }
+
+  void _reorderPreviewFiles(int oldIndex, int newIndex) {
+    if (oldIndex < 0 || oldIndex >= _previewFiles.length) return;
+    var targetIndex = newIndex;
+    if (targetIndex > oldIndex) {
+      targetIndex -= 1;
+    }
+    if (targetIndex < 0 || targetIndex >= _previewFiles.length) return;
+    if (targetIndex == oldIndex) return;
+
+    setState(() {
+      final moved = _previewFiles.removeAt(oldIndex);
+      _previewFiles.insert(targetIndex, moved);
+
+      if (_currentIndex == oldIndex) {
+        _currentIndex = targetIndex;
+      } else if (oldIndex < _currentIndex && targetIndex >= _currentIndex) {
+        _currentIndex -= 1;
+      } else if (oldIndex > _currentIndex && targetIndex <= _currentIndex) {
+        _currentIndex += 1;
+      }
+    });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_pageController.hasClients || _previewFiles.isEmpty) {
+        return;
+      }
+      _pageController.jumpToPage(_currentIndex);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (_previewFiles.isEmpty) {
+      return const Scaffold(backgroundColor: Colors.black);
+    }
+
     final theme = context.chatTheme;
-    final isAlbum = widget.files.length > 1;
+    final isAlbum = _previewFiles.length > 1;
     final mediaQuery = MediaQuery.of(context);
     final keyboardInset = mediaQuery.viewInsets.bottom;
     final bottomSafeArea = mediaQuery.padding.bottom;
@@ -1076,7 +1219,6 @@ class _ChatImagePreviewScreenState extends State<_ChatImagePreviewScreen> {
     final showAlbumStrip = isAlbum && keyboardInset <= 0;
     final composerBottomPadding =
         isKeyboardVisible ? keyboardInset : bottomSafeArea;
-    const composerEstimatedHeight = 92.0;
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -1085,27 +1227,51 @@ class _ChatImagePreviewScreenState extends State<_ChatImagePreviewScreen> {
         backgroundColor: Colors.black,
         elevation: 0,
         title: Text(
-          isAlbum ? 'آلبوم • ${widget.files.length} عکس' : 'پیش‌نمایش عکس',
+          isAlbum ? 'پیش‌نمایش آلبوم' : 'پیش‌نمایش عکس',
           style: const TextStyle(color: Colors.white),
         ),
         iconTheme: const IconThemeData(color: Colors.white),
-        actions: [
-          IconButton(
-            tooltip: 'ارسال',
-            onPressed: _send,
-            icon: const Icon(Icons.send_rounded, color: Colors.white),
-          ),
-        ],
+        actions: isAlbum
+            ? [
+                Padding(
+                  padding: const EdgeInsetsDirectional.only(end: 12),
+                  child: Center(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.14),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.24),
+                          width: 0.8,
+                        ),
+                      ),
+                      child: Text(
+                        '${_currentIndex + 1}/${_previewFiles.length}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ]
+            : null,
       ),
       body: Stack(
         children: [
           Positioned.fill(
             child: PageView.builder(
               controller: _pageController,
-              itemCount: widget.files.length,
+              itemCount: _previewFiles.length,
               onPageChanged: (index) => setState(() => _currentIndex = index),
               itemBuilder: (_, index) {
-                final file = widget.files[index].file;
+                final file = _previewFiles[index].file;
                 return InteractiveViewer(
                   minScale: 0.8,
                   maxScale: 4.0,
@@ -1125,54 +1291,6 @@ class _ChatImagePreviewScreenState extends State<_ChatImagePreviewScreen> {
               },
             ),
           ),
-          if (showAlbumStrip)
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: composerEstimatedHeight + bottomSafeArea,
-              child: SizedBox(
-                height: 78,
-                child: ListView.builder(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  scrollDirection: Axis.horizontal,
-                  itemCount: widget.files.length,
-                  itemBuilder: (_, index) {
-                    final isActive = index == _currentIndex;
-                    final file = widget.files[index].file;
-                    return GestureDetector(
-                      onTap: () {
-                        _pageController.animateToPage(
-                          index,
-                          duration: const Duration(milliseconds: 220),
-                          curve: Curves.easeOutCubic,
-                        );
-                      },
-                      child: Container(
-                        width: 62,
-                        margin: const EdgeInsets.symmetric(horizontal: 4),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                            color: isActive
-                                ? theme.sendButtonColor
-                                : Colors.white24,
-                            width: isActive ? 2 : 1,
-                          ),
-                        ),
-                        clipBehavior: Clip.antiAlias,
-                        child: Image.file(
-                          file,
-                          fit: BoxFit.cover,
-                          filterQuality: FilterQuality.low,
-                          cacheWidth: 220,
-                          cacheHeight: 220,
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ),
           Positioned(
             left: 0,
             right: 0,
@@ -1225,74 +1343,216 @@ class _ChatImagePreviewScreenState extends State<_ChatImagePreviewScreen> {
                   Padding(
                     padding: EdgeInsets.fromLTRB(
                       12,
-                      18,
+                      showAlbumStrip ? 12 : 18,
                       12,
                       10 + composerBottomPadding,
                     ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.end,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Expanded(
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF5F6169)
-                                  .withValues(alpha: 0.68),
-                              borderRadius: BorderRadius.circular(14),
-                              border: Border.all(
-                                color: Colors.white.withValues(alpha: 0.28),
-                                width: 0.8,
-                              ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.18),
-                                  blurRadius: 6,
-                                  offset: const Offset(0, 2),
-                                ),
-                              ],
-                            ),
-                            child: TextField(
-                              controller: _captionController,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w400,
-                              ),
-                              cursorColor: Colors.white,
-                              maxLines: 3,
-                              minLines: 1,
-                              textInputAction: TextInputAction.newline,
-                              decoration: InputDecoration(
-                                hintText: isAlbum
-                                    ? 'برای آلبوم کپشن بنویس...'
-                                    : 'برای عکس کپشن بنویس...',
-                                hintStyle: TextStyle(
-                                  color: Colors.white.withValues(alpha: 0.78),
-                                ),
-                                filled: false,
-                                border: InputBorder.none,
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 14,
-                                  vertical: 10,
-                                ),
-                              ),
+                        if (showAlbumStrip)
+                          SizedBox(
+                            height: 70,
+                            child: ReorderableListView.builder(
+                              scrollDirection: Axis.horizontal,
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
+                              buildDefaultDragHandles: false,
+                              onReorder: _reorderPreviewFiles,
+                              itemCount: _previewFiles.length,
+                              itemBuilder: (_, index) {
+                                final isActive = index == _currentIndex;
+                                final file = _previewFiles[index].file;
+                                return Container(
+                                  key: ValueKey(
+                                      'preview_${_previewFiles[index].file.path}'),
+                                  width: 64,
+                                  margin:
+                                      const EdgeInsets.symmetric(horizontal: 3),
+                                  child: ReorderableDelayedDragStartListener(
+                                    index: index,
+                                    child: GestureDetector(
+                                      onTap: () {
+                                        _pageController.animateToPage(
+                                          index,
+                                          duration:
+                                              const Duration(milliseconds: 220),
+                                          curve: Curves.easeOutCubic,
+                                        );
+                                      },
+                                      child: Container(
+                                        decoration: BoxDecoration(
+                                          borderRadius:
+                                              BorderRadius.circular(10),
+                                          border: Border.all(
+                                            color: isActive
+                                                ? theme.sendButtonColor
+                                                : Colors.white24,
+                                            width: isActive ? 2 : 1,
+                                          ),
+                                        ),
+                                        clipBehavior: Clip.antiAlias,
+                                        child: Stack(
+                                          fit: StackFit.expand,
+                                          children: [
+                                            Image.file(
+                                              file,
+                                              fit: BoxFit.cover,
+                                              filterQuality: FilterQuality.low,
+                                              cacheWidth: 220,
+                                              cacheHeight: 220,
+                                            ),
+                                            if (isActive)
+                                              Container(
+                                                color: Colors.black26,
+                                                child: const Center(
+                                                  child: Icon(
+                                                    Icons.check_circle_rounded,
+                                                    color: Colors.white,
+                                                    size: 18,
+                                                  ),
+                                                ),
+                                              ),
+                                            Positioned(
+                                              top: 4,
+                                              left: 4,
+                                              child: Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                  horizontal: 5,
+                                                  vertical: 2,
+                                                ),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.black.withValues(
+                                                      alpha: 0.55),
+                                                  borderRadius:
+                                                      BorderRadius.circular(8),
+                                                ),
+                                                child: Text(
+                                                  '${index + 1}',
+                                                  style: const TextStyle(
+                                                    color: Colors.white,
+                                                    fontSize: 10,
+                                                    fontWeight: FontWeight.w700,
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                            Positioned(
+                                              bottom: 4,
+                                              left: 4,
+                                              child: Container(
+                                                width: 18,
+                                                height: 18,
+                                                decoration: BoxDecoration(
+                                                  color: Colors.black
+                                                      .withValues(alpha: 0.55),
+                                                  shape: BoxShape.circle,
+                                                ),
+                                                child: const Icon(
+                                                  Icons.drag_handle_rounded,
+                                                  size: 12,
+                                                  color: Colors.white,
+                                                ),
+                                              ),
+                                            ),
+                                            Positioned(
+                                              top: 4,
+                                              right: 4,
+                                              child: GestureDetector(
+                                                onTap: () => _removeAt(index),
+                                                child: Container(
+                                                  width: 18,
+                                                  height: 18,
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.black
+                                                        .withValues(alpha: 0.62),
+                                                    shape: BoxShape.circle,
+                                                  ),
+                                                  child: const Icon(
+                                                    Icons.close,
+                                                    size: 12,
+                                                    color: Colors.white,
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              },
                             ),
                           ),
-                        ),
-                        const SizedBox(width: 10),
-                        SizedBox(
-                          width: 52,
-                          height: 52,
-                          child: ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: theme.sendButtonColor,
-                              foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(14),
+                        if (showAlbumStrip) const SizedBox(height: 8),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Expanded(
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF5F6169)
+                                      .withValues(alpha: 0.68),
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(
+                                    color: Colors.white.withValues(alpha: 0.28),
+                                    width: 0.8,
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withValues(alpha: 0.18),
+                                      blurRadius: 6,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                                child: TextField(
+                                  controller: _captionController,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w400,
+                                  ),
+                                  cursorColor: Colors.white,
+                                  maxLines: 3,
+                                  minLines: 1,
+                                  textInputAction: TextInputAction.newline,
+                                  decoration: InputDecoration(
+                                    hintText: isAlbum
+                                        ? 'نوشتن کپشن برای آلبوم...'
+                                        : 'نوشتن کپشن...',
+                                    hintStyle: TextStyle(
+                                      color: Colors.white.withValues(alpha: 0.78),
+                                    ),
+                                    filled: false,
+                                    border: InputBorder.none,
+                                    contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 14,
+                                      vertical: 10,
+                                    ),
+                                  ),
+                                ),
                               ),
-                              padding: EdgeInsets.zero,
                             ),
-                            onPressed: _send,
-                            child: const Icon(Icons.send_rounded),
-                          ),
+                            const SizedBox(width: 10),
+                            SizedBox(
+                              width: 52,
+                              height: 52,
+                              child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: theme.sendButtonColor,
+                                  foregroundColor: Colors.white,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(14),
+                                  ),
+                                  padding: EdgeInsets.zero,
+                                ),
+                                onPressed: _send,
+                                child: const Icon(Icons.send_rounded),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),

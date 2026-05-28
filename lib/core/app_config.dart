@@ -10,6 +10,5 @@ import 'package:flutter/foundation.dart';
 
 const String backendUrl = String.fromEnvironment(
   'BACKEND_URL',
-  defaultValue:
-      kReleaseMode ? 'https://api.coffevista.ir' : 'http://10.0.2.2:8080',
+  defaultValue: 'https://api.coffevista.ir',
 );

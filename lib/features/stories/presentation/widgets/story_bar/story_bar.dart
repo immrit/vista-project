@@ -252,10 +252,9 @@ class _AnimatedStoryRingState extends State<_AnimatedStoryRing>
     // ✅ گرادیانت برای دیده‌نشده (رنگ‌های جذاب)، خاکستری برای دیده‌شده
     final gradientColors = hasUnseenStories
         ? const [
-            Color(0xFF962FBF), // Purple
-            Color(0xFFD62976), // Pink
-            Color(0xFFFA7E1E), // Orange
-            Color(0xFFFEDA75), // Yellow
+            Color(0xFF6366F1), // Indigo (برند Vista)
+            Color(0xFF8B5CF6), // Violet
+            Color(0xFFEC4899), // Pink
           ]
         : [
             isDarkMode ? const Color(0xFF424242) : const Color(0xFFE0E0E0),
@@ -276,9 +275,9 @@ class _AnimatedStoryRingState extends State<_AnimatedStoryRing>
         boxShadow: hasUnseenStories
             ? [
                 BoxShadow(
-                  color: const Color(0xFFD62976)
-                      .withValues(alpha: 0.2), // Colored shadow
-                  blurRadius: 6,
+                  color: const Color(0xFF8B5CF6)
+                      .withValues(alpha: 0.3), // Vista violet shadow
+                  blurRadius: 8,
                   spreadRadius: 0,
                 ),
               ]
@@ -431,20 +430,24 @@ class AddStoryButton extends StatelessWidget {
                   shape: BoxShape.circle,
                 ),
                 child: Center(
-                  child: Container(
-                    width: 28,
-                    height: 28,
-                    decoration: BoxDecoration(
-                      color: isDarkMode ? Colors.white : Colors.black,
-                      shape: BoxShape.circle,
+                child: Container(
+                  width: 28,
+                  height: 28,
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)], // برند
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
                     ),
-                    child: Icon(
-                      Icons.add,
-                      size: 20,
-                      color: isDarkMode ? Colors.black : Colors.white,
-                    ),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.add,
+                    size: 20,
+                    color: Colors.white,
                   ),
                 ),
+              ),
               ),
             ),
             const SizedBox(height: 4),

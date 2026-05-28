@@ -225,7 +225,11 @@ class ProfileCacheService {
 
       final profileData =
           await ProfileRepository().fetchProfileById(normalizedUserId);
-      final profile = ProfileModel.fromMap(profileData);
+      final profile = ProfileModel.fromMap({
+        ...profileData,
+        'id': profileData['id'] ?? profileData['user_id'] ?? normalizedUserId,
+        'user_id': profileData['user_id'] ?? normalizedUserId,
+      });
 
       final posts = await GoPostsRepository().getUserPosts(
         userId: normalizedUserId,
@@ -269,6 +273,10 @@ class ProfileCacheService {
         default:
           return false;
       }
+    }
+    if (error is ArgumentError) {
+      final message = error.message?.toString().toLowerCase() ?? '';
+      if (message.contains('missing required fields')) return true;
     }
     final message = error.toString().toLowerCase();
     return message.contains('timeout') ||

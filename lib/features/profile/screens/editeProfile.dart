@@ -5,9 +5,10 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:shamsi_date/shamsi_date.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import '../../../provider/locale_provider.dart';
 import '../../../provider/ProfileImageUploadService.dart';
+import '../../../utils/birth_date_picker.dart';
 import '../../../services/user_friendly_error_handler.dart';
 import '../../../core/security/input_policy.dart';
 import '../../auth/data/auth_repository.dart';
@@ -53,187 +54,31 @@ class _EditProfileState extends ConsumerState<EditProfile> {
         emailController.text = data['email'] ?? "";
         _phoneController.text = data['phone_number'] ?? "";
         if (data['birth_date'] != null) {
-          _birthDate = data['birth_date'];
-          try {
-            final dateParts = _birthDate!.split('/');
-            if (dateParts.length == 3) {
-              final year = int.parse(dateParts[0]);
-              final month = int.parse(dateParts[1]);
-              final day = int.parse(dateParts[2]);
-              final jalali = Jalali(year, month, day);
-              _selectedDate = jalali.toDateTime();
-            }
-          } catch (e) {
-            logInfo('خطا در تبدیل تاریخ: $e');
-          }
+          _birthDate = data['birth_date']?.toString();
+          _selectedDate = parseBirthDate(_birthDate);
         }
       });
     }
   }
 
-  // نمایش انتخابگر تاریخ شمسی
-  void _showDatePicker() async {
-    final now = Jalali.now();
-
-    showDialog(
-      context: context,
-      builder: (context) {
-        int selectedYear = _selectedDate != null
-            ? Jalali.fromDateTime(_selectedDate!).year
-            : now.year - 20;
-        int selectedMonth = _selectedDate != null
-            ? Jalali.fromDateTime(_selectedDate!).month
-            : now.month;
-        int selectedDay = _selectedDate != null
-            ? Jalali.fromDateTime(_selectedDate!).day
-            : now.day;
-
-        return AlertDialog(
-          title: const Text('تاریخ تولد خود را انتخاب کنید',
-              textAlign: TextAlign.right),
-          content: StatefulBuilder(
-            builder: (BuildContext context, StateSetter setState) {
-              return SizedBox(
-                height: 250,
-                child: Column(
-                  children: [
-                    // سال
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              const Text('سال:'),
-                              DropdownButton<int>(
-                                isExpanded: true,
-                                value: selectedYear,
-                                items: List.generate(100, (index) {
-                                  final year = now.year - index;
-                                  return DropdownMenuItem(
-                                    value: year,
-                                    child: Text(year.toString()),
-                                  );
-                                }),
-                                onChanged: (int? value) {
-                                  setState(() => selectedYear = value!);
-                                },
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                    // ماه و روز
-                    Row(
-                      children: [
-                        // روز
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              const Text('روز:'),
-                              DropdownButton<int>(
-                                isExpanded: true,
-                                value: selectedDay,
-                                items: List.generate(
-                                  Jalali(selectedYear, selectedMonth, 1)
-                                      .monthLength,
-                                  (index) => DropdownMenuItem(
-                                    value: index + 1,
-                                    child: Text((index + 1).toString()),
-                                  ),
-                                ),
-                                onChanged: (int? value) {
-                                  setState(() => selectedDay = value!);
-                                },
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        // ماه
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              const Text('ماه:'),
-                              DropdownButton<int>(
-                                isExpanded: true,
-                                value: selectedMonth,
-                                items: List.generate(12, (index) {
-                                  final monthNames = [
-                                    'فروردین',
-                                    'اردیبهشت',
-                                    'خرداد',
-                                    'تیر',
-                                    'مرداد',
-                                    'شهریور',
-                                    'مهر',
-                                    'آبان',
-                                    'آذر',
-                                    'دی',
-                                    'بهمن',
-                                    'اسفند'
-                                  ];
-                                  return DropdownMenuItem(
-                                    value: index + 1,
-                                    child: Text(monthNames[index]),
-                                  );
-                                }),
-                                onChanged: (int? value) {
-                                  setState(() {
-                                    selectedMonth = value!;
-                                    // تنظیم مجدد روز اگر روز فعلی از طول ماه جدید بیشتر باشد
-                                    final monthLength =
-                                        Jalali(selectedYear, selectedMonth, 1)
-                                            .monthLength;
-                                    if (selectedDay > monthLength) {
-                                      selectedDay = monthLength;
-                                    }
-                                  });
-                                },
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              );
-            },
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-              },
-              style: TextButton.styleFrom(
-                foregroundColor: const Color.fromARGB(255, 25, 25, 25),
-              ),
-              child: const Text('لغو'),
-            ),
-            FilledButton(
-              onPressed: () {
-                final selectedJalali =
-                    Jalali(selectedYear, selectedMonth, selectedDay);
-                setState(() {
-                  _selectedDate = selectedJalali.toDateTime();
-                  _birthDate =
-                      '${selectedJalali.year}/${selectedJalali.month}/${selectedJalali.day}';
-                });
-                Navigator.pop(context);
-              },
-              style: FilledButton.styleFrom(
-                backgroundColor: const Color.fromARGB(255, 25, 25, 25),
-              ),
-              child: const Text('تایید'),
-            ),
-          ],
-        );
-      },
+  Future<void> _showDatePicker() async {
+    final locale =
+        resolveBirthDateLocale(context, ref.read(localeProvider));
+    final picked = await pickBirthDate(
+      context,
+      locale: locale,
+      initialDate: _selectedDate,
+      helpText: isPersianLocale(locale)
+          ? 'تاریخ تولد خود را انتخاب کنید'
+          : 'Select your date of birth',
+      confirmText: isPersianLocale(locale) ? 'تایید' : 'OK',
+      cancelText: isPersianLocale(locale) ? 'لغو' : 'Cancel',
     );
+    if (picked == null) return;
+    setState(() {
+      _selectedDate = picked;
+      _birthDate = formatBirthDateForStorage(picked);
+    });
   }
 
   // متد برای نمایش دیالوگ
@@ -744,7 +589,8 @@ class _EditProfileState extends ConsumerState<EditProfile> {
               bioController.text = data['bio'] ?? "";
             }
             if (_birthDate == null && data['birth_date'] != null) {
-              _birthDate = data['birth_date'];
+              _birthDate = data['birth_date']?.toString();
+              _selectedDate = parseBirthDate(_birthDate);
             }
 
             return _isLoading
@@ -938,32 +784,13 @@ class _EditProfileState extends ConsumerState<EditProfile> {
     );
   }
 
-  // تبدیل فرمت تاریخ به نمایش دوستانه
-  // تاریخ تولد را با فرمت خواناتر نمایش می‌دهد
   String _formatBirthDate(String date) {
-    try {
-      final parts = date.split('/');
-      if (parts.length == 3) {
-        final monthNames = [
-          'فروردین',
-          'اردیبهشت',
-          'خرداد',
-          'تیر',
-          'مرداد',
-          'شهریور',
-          'مهر',
-          'آبان',
-          'آذر',
-          'دی',
-          'بهمن',
-          'اسفند'
-        ];
-        return '${parts[2]} ${monthNames[int.parse(parts[1]) - 1]} ${parts[0]}';
-      }
-    } catch (e) {
-      logInfo('خطا در فرمت تاریخ: $e');
-    }
-    return date;
+    final parsed = parseBirthDate(date);
+    if (parsed == null) return date;
+    return formatBirthDateForDisplay(
+      parsed,
+      resolveBirthDateLocale(context, ref.read(localeProvider)),
+    );
   }
 
   // ساخت فیلد ورودی پروفایل با استایل یکسان

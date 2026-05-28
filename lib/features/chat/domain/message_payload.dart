@@ -16,6 +16,7 @@ class MessagePayload {
   final String? replyToMessageId;
   final String? replyToContent;
   final String? replyToSenderName;
+  final String? replyToKind;
   final String? mediaGroupId;
   final String? recipientPublicKey; // برای E2EE
 
@@ -35,6 +36,7 @@ class MessagePayload {
     this.replyToMessageId,
     this.replyToContent,
     this.replyToSenderName,
+    this.replyToKind,
     this.mediaGroupId,
     this.recipientPublicKey,
   });

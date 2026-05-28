@@ -23,14 +23,14 @@ class EnvConfig {
     }
 
     if (kIsWeb) {
-      return 'http://localhost:8080';
+      return 'https://api.coffevista.ir';
     }
 
     if (Platform.isAndroid) {
-      return 'http://10.0.2.2:8080';
+      return 'https://api.coffevista.ir';
     }
 
-    return 'http://localhost:8080';
+    return 'https://api.coffevista.ir';
   }
 
   static String get wsBaseUrl {
@@ -45,14 +45,14 @@ class EnvConfig {
     }
 
     if (kIsWeb) {
-      return 'ws://localhost:8080';
+      return 'wss://api.coffevista.ir';
     }
 
     if (Platform.isAndroid) {
-      return 'ws://10.0.2.2:8080';
+      return 'wss://api.coffevista.ir';
     }
 
-    return 'ws://localhost:8080';
+    return 'wss://api.coffevista.ir';
   }
 
   static const String supabaseUrl =

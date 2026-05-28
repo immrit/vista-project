@@ -90,6 +90,7 @@ class NotificationModel extends Equatable {
       case 'reply_comment':
         return 'comment_reply';
       case 'new_message':
+      case 'chat_message':
         return 'message';
       case 'message_reaction':
         return 'reaction';

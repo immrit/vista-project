@@ -93,6 +93,7 @@ class ImprovedAnimatedMessageBubble extends StatefulWidget {
   final int? duration; // For voice messages
   final List<GalleryItem>? conversationGalleryItems;
   final int? initialGalleryIndex;
+  final bool isSecretMode;
 
   // Forwarding
   final bool isForwarded;
@@ -136,6 +137,7 @@ class ImprovedAnimatedMessageBubble extends StatefulWidget {
     this.duration,
     this.conversationGalleryItems,
     this.initialGalleryIndex,
+    this.isSecretMode = false,
     this.isForwarded = false,
     this.forwardedFrom,
     this.onRetryUpload,
@@ -315,8 +317,8 @@ class _ImprovedAnimatedMessageBubbleState
   Widget build(BuildContext context) {
     super.build(context);
     final theme = context.chatTheme;
-    const edgeInset = 1.0;
-    const oppositeInset = 30.0;
+    const edgeInset = 0.0;
+    const oppositeInset = 18.0;
 
     Widget child = RepaintBoundary(
       child: FadeTransition(
@@ -392,7 +394,8 @@ class _ImprovedAnimatedMessageBubbleState
     return Container(
       clipBehavior: isMedia ? Clip.antiAlias : Clip.none,
       decoration: BoxDecoration(
-        color: widget.isMe ? theme.myBubbleColor : theme.otherBubbleColor,
+        color: widget.isMe && theme.myBubbleGradient == null ? theme.myBubbleColor : (widget.isMe ? null : theme.otherBubbleColor),
+        gradient: widget.isMe ? theme.myBubbleGradient : null,
         borderRadius: _getBorderRadius(theme),
       ),
       child: Column(
@@ -477,6 +480,14 @@ class _ImprovedAnimatedMessageBubbleState
   }
 
   Widget _buildReplySection(ChatTheme theme) {
+    final replySender = widget.replyToSenderName ?? 'کاربر';
+    final rawReplyTarget = widget.replyToMessageId?.trim() ?? '';
+    final hasDirectReplyTarget =
+        rawReplyTarget.isNotEmpty && !rawReplyTarget.startsWith('note:');
+    final isNoteReply = replySender.trim().startsWith('یادداشت') ||
+        (!hasDirectReplyTarget &&
+            (widget.replyToContent?.trim().isNotEmpty ?? false) &&
+            (widget.replyToSenderName?.trim().isNotEmpty ?? false));
     return GestureDetector(
       onTap: widget.onReplyTap,
       child: Container(
@@ -498,13 +509,56 @@ class _ImprovedAnimatedMessageBubbleState
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              widget.replyToSenderName ?? 'کاربر',
-              style: TextStyle(
-                color: theme.sendButtonColor,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
+            if (isNoteReply) ...[
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: theme.sendButtonColor.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.sticky_note_2_outlined,
+                      size: 12,
+                      color: theme.sendButtonColor,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      'پاسخ به یادداشت',
+                      style: TextStyle(
+                        color: theme.sendButtonColor,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
               ),
+              const SizedBox(height: 6),
+            ],
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (!isNoteReply) ...[
+                  Icon(
+                    Icons.reply_rounded,
+                    size: 12,
+                    color: theme.sendButtonColor,
+                  ),
+                  const SizedBox(width: 4),
+                ],
+                Text(
+                  replySender,
+                  style: TextStyle(
+                    color: theme.sendButtonColor,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 4),
             Text(
@@ -829,6 +883,7 @@ class _ImprovedAnimatedMessageBubbleState
         mediaType: isVideo ? MediaType.video : MediaType.image,
         isMe: widget.isMe,
         time: widget.time,
+        isSecretMode: widget.isSecretMode,
         caption: _currentContent.isNotEmpty ? _currentContent : null,
         videoDuration: isVideo ? widget.duration : null,
         isUploading: widget.status == MessageStatus.pending ||
@@ -908,9 +963,9 @@ class _ImprovedAnimatedMessageBubbleState
                           color: widget.isMe
                               ? theme.myBubbleTextColor
                               : theme.otherBubbleTextColor,
-                          fontSize: 15,
-                          height: 1.4,
-                          fontFamily: 'Vazir',
+                          fontSize: 14.5,
+                          height: 1.5,
+                          fontFamily: 'Vazirmatn',
                           fontFamilyFallback: const [
                             'Apple Color Emoji',
                             'Segoe UI Emoji',
@@ -1426,7 +1481,7 @@ class _ImprovedAnimatedMessageBubbleState
 
   Widget _buildStatusIconFromDeliveryStatus(
       ChatTheme theme, MessageDeliveryStatus status) {
-    return AnimatedSwitcher(
+    final statusIcon = AnimatedSwitcher(
       duration: const Duration(milliseconds: 200),
       transitionBuilder: (child, animation) {
         return FadeTransition(
@@ -1445,6 +1500,19 @@ class _ImprovedAnimatedMessageBubbleState
             ? MessageStatusColors.read
             : theme.myBubbleTextColor.withValues(alpha: 0.7),
       ),
+    );
+
+    final canRetryFromStatusIcon = widget.isMe &&
+        status == MessageDeliveryStatus.failed &&
+        widget.onRetryUpload != null;
+    if (!canRetryFromStatusIcon) return statusIcon;
+
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.lightImpact();
+        widget.onRetryUpload?.call();
+      },
+      child: statusIcon,
     );
   }
 

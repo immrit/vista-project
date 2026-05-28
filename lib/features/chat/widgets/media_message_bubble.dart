@@ -41,6 +41,7 @@ class MediaMessageBubble extends ConsumerStatefulWidget {
   final int? videoDuration;
   final ChatEffectsLevel effectsLevel;
   final bool allowHeavyEffects;
+  final bool isSecretMode;
   final List<GalleryItem>? conversationGalleryItems;
   final int? initialGalleryIndex;
 
@@ -60,6 +61,7 @@ class MediaMessageBubble extends ConsumerStatefulWidget {
     this.videoDuration,
     this.effectsLevel = ChatEffectsLevel.high,
     this.allowHeavyEffects = true,
+    this.isSecretMode = false,
     this.conversationGalleryItems,
     this.initialGalleryIndex,
   });
@@ -114,6 +116,7 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
   }
 
   Future<void> _bindTransferTask() async {
+    if (widget.isSecretMode) return;
     final preferredLocalPath = _preferredLocalPath;
     if (preferredLocalPath != null && preferredLocalPath.isNotEmpty) {
       final localFile = File(preferredLocalPath);
@@ -205,6 +208,7 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
 
   bool _shouldAutoDownload(
       ConnectivityResult connType, Map<String, dynamic> settings) {
+    if (widget.isSecretMode) return true;
     if (_isFileCached || _isManuallyDownloading || widget.isUploading) {
       return true;
     }
@@ -241,7 +245,7 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
           : <GalleryItem>[
               GalleryItem(
                 imageUrl: widget.mediaUrl,
-                cachedFile: _cachedFile,
+                cachedFile: (_cachedFile?.existsSync() ?? false) ? _cachedFile : null,
                 caption: widget.caption,
                 heroTag: heroTag,
               ),
@@ -263,6 +267,7 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
           pageBuilder: (_, __, ___) => FullScreenImageViewer(
             galleryItems: galleryItems,
             initialIndex: initialIndex,
+            isSecretMode: widget.isSecretMode,
             onForward: () {
               // اینجا می‌توانید متد فوروارد ویستا را صدا بزنید
               // مثلا: ForwardMessageSheet.show(...)
@@ -285,6 +290,14 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
   }
 
   Future<void> _handleTransferAction() async {
+    if (widget.isSecretMode) {
+      _openFullScreenViewer(
+        widget.message != null
+            ? '${widget.message!.id}_${widget.mediaUrl}'
+            : widget.mediaUrl,
+      );
+      return;
+    }
     final status = _transferTask?.status;
     if (_offlineFile != null && _offlineFile!.existsSync()) {
       _openFullScreenViewer(
@@ -340,8 +353,8 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
 
     // ✅ ساخت تگ یکتا برای جلوگیری از خطای Multiple Heroes
     final String uniqueHeroTag = widget.message != null
-        ? '${widget.message!.id}_${widget.mediaUrl}'
-        : widget.mediaUrl;
+        ? '${widget.message!.id}_${widget.mediaUrl.hashCode}'
+        : 'media_${widget.mediaUrl.hashCode}';
 
     // ✅ شرط مهم: بررسی اینکه آیا واقعاً متنی برای نمایش وجود دارد یا خیر
     final bool hasCaption =
@@ -383,13 +396,14 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
 
                 if (!_isFileCached &&
                     !shouldDownload &&
-                    !_isManuallyDownloading)
+                    !_isManuallyDownloading &&
+                    !widget.isSecretMode)
                   _buildDownloadButton(),
 
                 if (_isManuallyDownloading && !_isFileCached)
                   _buildLoadingIndicator(),
 
-                if (_isNetworkUrl && _transferTask != null)
+                if (!widget.isSecretMode && _isNetworkUrl && _transferTask != null)
                   Positioned(
                     left: 8,
                     bottom: 8,

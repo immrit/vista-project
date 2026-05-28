@@ -30,8 +30,15 @@ class AddPublicPostScreen extends ConsumerStatefulWidget {
 class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
   final TextEditingController contentController = TextEditingController();
   bool isLoading = false;
-  static const int maxCharLength = 300;
-  int remainingChars = maxCharLength;
+
+  int get _maxCharLength {
+    final currentUser = ref.read(userProvider);
+    if (currentUser?.isVerified == true) {
+      if (currentUser?.verificationType == 'blueTick') return 2000;
+      if (currentUser?.verificationType == 'goldTick') return 500;
+    }
+    return 200;
+  }
   File? _selectedImage;
   Uint8List? _selectedImageBytes; // برای وب
   String? _selectedImageName; // برای وب
@@ -47,6 +54,9 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
   @override
   void initState() {
     super.initState();
+    contentController.addListener(() {
+      if (mounted) setState(() {});
+    });
     // ... existing initState logic if any
   }
 
@@ -75,13 +85,13 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
   }
 
   double _calculateProgress() {
-    return (contentController.text.length / maxCharLength).clamp(0.0, 1.0);
+    return (contentController.text.length / _maxCharLength).clamp(0.0, 1.0);
   }
 
   Color _getCharCountColor() {
     final int count = contentController.text.length;
-    if (count > maxCharLength) return Colors.redAccent;
-    if (count > maxCharLength * 0.8) return Colors.orangeAccent;
+    if (count > _maxCharLength) return Colors.redAccent;
+    if (count > _maxCharLength * 0.8) return Colors.orangeAccent;
     return Theme.of(context).brightness == Brightness.dark
         ? Colors.white70
         : Colors.black54;
@@ -440,8 +450,8 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
       return;
     }
 
-    if (content.length > maxCharLength) {
-      _showSnackBar('متن پست نمی‌تواند بیشتر از $maxCharLength کاراکتر باشد');
+    if (content.length > _maxCharLength) {
+      _showSnackBar('متن پست نمی‌تواند بیشتر از $_maxCharLength کاراکتر باشد');
       return;
     }
 
@@ -1064,28 +1074,48 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             // نمایشگر تعداد کاراکترها
-            Stack(
-              alignment: Alignment.center,
-              children: [
-                SizedBox(
-                  width: 42,
-                  height: 42,
-                  child: CircularProgressIndicator(
-                    value: _calculateProgress(),
-                    strokeWidth: 3,
-                    backgroundColor:
-                        isDarkMode ? Colors.white12 : Colors.black12,
-                    color: _getCharCountColor(),
-                  ),
-                ),
-                Text(
-                  remainingChars.toString(),
-                  style: TextStyle(
-                    fontWeight: FontWeight.w500,
-                    color: _getCharCountColor(),
-                  ),
-                ),
-              ],
+            ValueListenableBuilder<TextEditingValue>(
+              valueListenable: contentController,
+              builder: (context, value, _) {
+                final maxLen = _maxCharLength;
+                final count = value.text.length;
+                final progress = (count / maxLen).clamp(0.0, 1.0);
+                final remaining = maxLen - count;
+
+                Color indicatorColor;
+                if (count > maxLen) {
+                  indicatorColor = Colors.redAccent;
+                } else if (count > maxLen * 0.8) {
+                  indicatorColor = Colors.orangeAccent;
+                } else {
+                  indicatorColor = isDarkMode ? Colors.white70 : Colors.black54;
+                }
+
+                return Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    SizedBox(
+                      width: 42,
+                      height: 42,
+                      child: CircularProgressIndicator(
+                        value: progress,
+                        strokeWidth: 3,
+                        backgroundColor:
+                            isDarkMode ? Colors.white12 : Colors.black12,
+                        color: indicatorColor,
+                      ),
+                    ),
+                    Text(
+                      remaining.toString(),
+                      style: TextStyle(
+                        fontWeight: FontWeight.w500,
+                        fontSize: remaining.abs() >= 100 ? 10 : 13,
+                        color: indicatorColor,
+                      ),
+                    ),
+                  ],
+                );
+              },
             ),
 
             // دکمه‌های اکشن

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/security/input_policy.dart';
 import '../../../DB/profile_cache_service.dart';
+import '../../../utils/birth_date_picker.dart';
 import '../../auth/data/auth_repository.dart';
 import '../../auth/providers/auth_controller.dart';
 import '../data/profile_repository.dart';
@@ -31,6 +32,8 @@ class _ProfileSetupWizardScreenState
   DateTime? _birthDate;
 
   static const _stepCount = 3;
+  /// این صفحه همیشه فارسی است؛ تقویم هم همیشه شمسی.
+  static const _calendarLocale = Locale('fa', 'IR');
 
   @override
   void initState() {
@@ -68,10 +71,8 @@ class _ProfileSetupWizardScreenState
         }
       }
 
-      final birthDateText = profile?['birth_date']?.toString();
-      final parsedBirthDate = birthDateText == null || birthDateText.isEmpty
-          ? null
-          : DateTime.tryParse(birthDateText);
+      final parsedBirthDate =
+          parseBirthDate(profile?['birth_date']?.toString());
 
       if (!mounted) return;
       setState(() {
@@ -165,14 +166,10 @@ class _ProfileSetupWizardScreenState
   }
 
   Future<void> _pickBirthDate() async {
-    final now = DateTime.now();
-    final initialDate =
-        _birthDate ?? DateTime(now.year - 18, now.month, now.day);
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: initialDate,
-      firstDate: DateTime(now.year - 100),
-      lastDate: DateTime(now.year - 13, now.month, now.day),
+    final picked = await pickBirthDate(
+      context,
+      locale: _calendarLocale,
+      initialDate: _birthDate,
       helpText: 'تاریخ تولد',
       confirmText: 'تایید',
       cancelText: 'انصراف',
@@ -202,7 +199,7 @@ class _ProfileSetupWizardScreenState
     final payload = <String, dynamic>{
       'username': _usernameController.text.trim().toLowerCase(),
       'full_name': _fullNameController.text.trim(),
-      'birth_date': _formatDate(_birthDate!),
+      'birth_date': formatBirthDateForStorage(_birthDate!),
       if (email.isNotEmpty) 'email': email,
     };
 
@@ -261,12 +258,6 @@ class _ProfileSetupWizardScreenState
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
     );
-  }
-
-  String _formatDate(DateTime date) {
-    final month = date.month.toString().padLeft(2, '0');
-    final day = date.day.toString().padLeft(2, '0');
-    return '${date.year}-$month-$day';
   }
 
   @override
@@ -441,8 +432,9 @@ class _ProfileSetupWizardScreenState
   }
 
   Widget _buildBirthDateStep(ThemeData theme) {
-    final birthDateLabel =
-        _birthDate == null ? 'انتخاب تاریخ تولد' : _formatDate(_birthDate!);
+    final birthDateLabel = _birthDate == null
+        ? 'انتخاب تاریخ تولد'
+        : formatBirthDateForDisplay(_birthDate!, _calendarLocale);
 
     return _buildPagePadding(
       child: Column(
@@ -502,7 +494,9 @@ class _ProfileSetupWizardScreenState
           _SummaryRow(label: 'نام کامل', value: _fullNameController.text),
           _SummaryRow(
             label: 'تاریخ تولد',
-            value: _birthDate == null ? '-' : _formatDate(_birthDate!),
+            value: _birthDate == null
+                ? '-'
+                : formatBirthDateForDisplay(_birthDate!, _calendarLocale),
           ),
           if ((_phoneNumber ?? '').isNotEmpty)
             _SummaryRow(label: 'شماره موبایل', value: _phoneNumber!),

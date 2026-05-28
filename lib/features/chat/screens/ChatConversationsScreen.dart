@@ -20,8 +20,10 @@ import '../../../features/chat/widgets/block_report_bottom_sheet.dart';
 import '../../../features/chat/services/user_moderation_service.dart';
 // ✅ ویجت Swipeable برای آیتم مکالمه
 import 'package:Vista/widgets/swipeable_conversation_item.dart';
-// ✅ نشانگر وضعیت شبکه
-// ✅ نشانگر وضعیت شبکه
+import 'package:Vista/core/theme/app_theme.dart';
+// ✅ ویجت سینی یادداشت‌ها (شبیه اینستاگرام)
+import '../../../features/chat/widgets/notes_tray.dart';
+import 'package:Vista/l10n/generated/app_localizations.dart';
 
 class ChatConversationsScreen extends ConsumerStatefulWidget {
   const ChatConversationsScreen({super.key});
@@ -36,6 +38,7 @@ class _ChatConversationsScreenState
     with SingleTickerProviderStateMixin, AutomaticKeepAliveClientMixin {
   final TextEditingController _searchController = TextEditingController();
   final UserModerationService _moderationService = UserModerationService();
+  final Set<String> _requestActionLoading = <String>{};
   late final AnimationController _searchAnimController;
   String _searchQuery = '';
   bool _isSearchVisible = false;
@@ -78,6 +81,7 @@ class _ChatConversationsScreenState
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: _buildAppBar(theme),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       floatingActionButton: _buildComposeFab(theme),
       body: Column(
         children: [
@@ -104,7 +108,7 @@ class _ChatConversationsScreenState
             : Brightness.light,
       ),
       title: Text(
-        'پیام‌ها',
+        AppLocalizations.of(context)?.messages ?? 'پیام‌ها',
         style: theme.appBarTheme.titleTextStyle?.copyWith(
               fontSize: 22,
               fontWeight: FontWeight.w700,
@@ -212,17 +216,42 @@ class _ChatConversationsScreenState
         ),
       ),
       onPressed: _toggleSearch,
-      tooltip: _isSearchVisible ? 'بستن جستجو' : 'جستجو',
+      tooltip: _isSearchVisible ? (AppLocalizations.of(context)?.closeSearch ?? 'بستن جستجو') : (AppLocalizations.of(context)?.search ?? 'جستجو'),
     );
   }
 
   Widget _buildComposeFab(ThemeData theme) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 70.0), // Lift above bottom nav
-      child: FloatingActionButton(
-        onPressed: _openNewMessageScreen,
-        backgroundColor: theme.colorScheme.primary,
-        child: const Icon(Icons.edit),
+    final bottomInset = MediaQuery.of(context).padding.bottom;
+    final minimumBottomPadding = bottomInset + 64;
+    return SafeArea(
+      minimum: EdgeInsets.only(bottom: minimumBottomPadding),
+      child: Container(
+        width: 56,
+        height: 56,
+        decoration: BoxDecoration(
+          gradient: AppColors.primaryGradient,
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.primary.withValues(alpha: 0.4),
+              blurRadius: 16,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: Material(
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(18),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(18),
+            onTap: _openNewMessageScreen,
+            child: const Icon(
+              Icons.edit_rounded,
+              color: Colors.white,
+              size: 22,
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -247,13 +276,13 @@ class _ChatConversationsScreenState
         _buildMenuItem(
           value: 'archived',
           icon: Icons.archive_outlined,
-          title: 'گفتگوهای بایگانی',
+          title: AppLocalizations.of(context)?.archivedChats ?? 'گفتگوهای بایگانی',
           theme: theme,
         ),
         _buildMenuItem(
           value: 'secret_chat',
           icon: Icons.lock_rounded,
-          title: 'گفتگوی محرمانه جدید',
+          title: AppLocalizations.of(context)?.newSecretChat ?? 'گفتگوی محرمانه جدید',
           theme: theme,
         ),
       ],
@@ -315,7 +344,7 @@ class _ChatConversationsScreenState
               color: theme.textTheme.bodyLarge?.color,
             ),
             decoration: InputDecoration(
-              hintText: 'جستجو در پیام‌ها و کانال‌ها...',
+              hintText: AppLocalizations.of(context)?.searchInMessagesAndChannels ?? 'جستجو در پیام‌ها و کانال‌ها...',
               hintStyle: TextStyle(
                 color: theme.hintColor,
                 fontSize: 16,
@@ -368,14 +397,14 @@ class _ChatConversationsScreenState
             conversations.isEmpty) {
           return _buildErrorState(
             theme,
-            conversationsState.errorMessage ?? 'خطا در بارگذاری گفتگوها',
+            conversationsState.errorMessage ?? (AppLocalizations.of(context)?.errorLoadingConversations ?? 'خطا در بارگذاری گفتگوها'),
           );
         }
 
         if (conversations.isEmpty) {
           return _buildEmptyState(
             theme,
-            'هیچ گفتگویی وجود ندارد',
+            AppLocalizations.of(context)?.noConversations ?? 'هیچ گفتگویی وجود ندارد',
             Icons.chat_bubble_outline_rounded,
           );
         }
@@ -399,18 +428,39 @@ class _ChatConversationsScreenState
           }).toList();
 
     if (filteredConversations.isEmpty) {
-      return _buildEmptyState(
-        theme,
-        _searchQuery.isEmpty ? 'هیچ گفتگویی وجود ندارد' : 'نتیجه‌ای یافت نشد',
-        Icons.chat_bubble_outline_rounded,
+      return CustomScrollView(
+        slivers: [
+          if (_searchQuery.isEmpty)
+            const SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.only(top: 8, bottom: 8),
+                child: NotesTray(),
+              ),
+            ),
+          SliverFillRemaining(
+            hasScrollBody: false,
+            child: _buildEmptyState(
+              theme,
+              _searchQuery.isEmpty
+                  ? (AppLocalizations.of(context)?.noConversations ?? 'هیچ گفتگویی وجود ندارد')
+                  : (AppLocalizations.of(context)?.noResultsFound ?? 'نتیجه‌ای یافت نشد'),
+              Icons.chat_bubble_outline_rounded,
+            ),
+          ),
+        ],
       );
     }
 
-    // ✅ جداسازی مکالمات پین شده و عادی
+    // ✅ جداسازی درخواست پیام، مکالمات پین شده و عادی
+    final requestConversations = filteredConversations
+        .where((c) => c.isMessageRequest && !c.isArchived)
+        .toList();
+    final nonRequestConversations =
+        filteredConversations.where((c) => !c.isMessageRequest).toList();
     final pinnedConversations =
-        filteredConversations.where((c) => c.isPinned).toList();
+        nonRequestConversations.where((c) => c.isPinned).toList();
     final regularConversations =
-        filteredConversations.where((c) => !c.isPinned).toList();
+        nonRequestConversations.where((c) => !c.isPinned).toList();
 
     return RefreshIndicator(
       onRefresh: () =>
@@ -418,11 +468,49 @@ class _ChatConversationsScreenState
       child: CustomScrollView(
         scrollCacheExtent: const ScrollCacheExtent.pixels(500),
         slivers: [
+          // ✅ بخش یادداشت‌ها (Notes) - فقط اگر در حالت جستجو نباشیم
+          if (_searchQuery.isEmpty)
+            const SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.only(top: 8, bottom: 8),
+                child: NotesTray(),
+              ),
+            ),
+
+          // ✅ بخش درخواست پیام (Instagram/X style)
+          if (requestConversations.isNotEmpty) ...[
+            SliverToBoxAdapter(
+              child: _buildSectionHeader(
+                theme,
+                AppLocalizations.of(context)?.messageRequests ?? 'درخواست پیام',
+                Icons.mark_email_unread_outlined,
+              ),
+            ),
+            SliverList(
+              delegate: SliverChildBuilderDelegate(
+                (context, index) {
+                  final conversation = requestConversations[index];
+                  return _buildSwipeableItem(
+                    theme,
+                    conversation,
+                    index,
+                    requestConversations.length,
+                    isPinnedSection: false,
+                  );
+                },
+                childCount: requestConversations.length,
+              ),
+            ),
+          ],
+
           // ✅ بخش مکالمات پین شده
           if (pinnedConversations.isNotEmpty) ...[
             SliverToBoxAdapter(
-              child:
-                  _buildSectionHeader(theme, 'پین شده', Icons.push_pin_rounded),
+              child: _buildSectionHeader(
+                theme,
+                AppLocalizations.of(context)?.pinned ?? 'پین شده',
+                Icons.push_pin_rounded,
+              ),
             ),
             SliverList(
               delegate: SliverChildBuilderDelegate(
@@ -442,7 +530,7 @@ class _ChatConversationsScreenState
             if (pinnedConversations.isNotEmpty)
               SliverToBoxAdapter(
                 child: _buildSectionHeader(
-                    theme, 'همه گفتگوها', Icons.chat_rounded),
+                    theme, AppLocalizations.of(context)?.allConversations ?? 'همه گفتگوها', Icons.chat_rounded),
               ),
             SliverList(
               delegate: SliverChildBuilderDelegate(
@@ -500,6 +588,7 @@ class _ChatConversationsScreenState
     int totalCount, {
     required bool isPinnedSection,
   }) {
+    final showRequestActions = conversation.isMessageRequest;
     return Column(
       children: [
         SwipeableConversationItem(
@@ -513,6 +602,8 @@ class _ChatConversationsScreenState
           onMute: () => _toggleMuteConversation(conversation),
           onBlock: () => _handleConversationBlock(conversation),
         ),
+        if (showRequestActions)
+          _buildMessageRequestActions(theme, conversation),
         // Divider
         if (index < totalCount - 1)
           Divider(
@@ -523,6 +614,45 @@ class _ChatConversationsScreenState
             color: theme.dividerColor.withValues(alpha: 0.3),
           ),
       ],
+    );
+  }
+
+  Widget _buildMessageRequestActions(
+      ThemeData theme, ConversationModel conversation) {
+    final isLoading = _requestActionLoading.contains(conversation.id);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      child: Row(
+        children: [
+          Expanded(
+            child: OutlinedButton(
+              onPressed:
+                  isLoading ? null : () => _respondToMessageRequest(conversation, false),
+              style: OutlinedButton.styleFrom(
+                side: BorderSide(
+                  color: theme.colorScheme.error.withValues(alpha: 0.5),
+                ),
+                foregroundColor: theme.colorScheme.error,
+              ),
+              child: const Text('رد'),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: FilledButton(
+              onPressed:
+                  isLoading ? null : () => _respondToMessageRequest(conversation, true),
+              child: isLoading
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('قبول'),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -539,7 +669,7 @@ class _ChatConversationsScreenState
           children: [
             Icon(Icons.delete_outline_rounded, color: theme.colorScheme.error),
             const SizedBox(width: 8),
-            const Text('حذف گفتگو'),
+            Text(AppLocalizations.of(context)?.deleteConversation ?? 'حذف گفتگو'),
           ],
         ),
         content: Text(
@@ -550,7 +680,7 @@ class _ChatConversationsScreenState
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: Text(
-              'انصراف',
+              AppLocalizations.of(context)?.cancel ?? 'انصراف',
               style: TextStyle(color: theme.hintColor),
             ),
           ),
@@ -563,7 +693,7 @@ class _ChatConversationsScreenState
               backgroundColor: theme.colorScheme.error,
               foregroundColor: Colors.white,
             ),
-            child: const Text('حذف'),
+            child: Text(AppLocalizations.of(context)?.delete ?? 'حذف'),
           ),
         ],
       ),
@@ -607,18 +737,60 @@ class _ChatConversationsScreenState
         if (result.isSuccess) {
           UserFriendlyErrorUtils.showSuccessSnackBar(
             context,
-            'گفتگو با موفقیت حذف شد',
+            AppLocalizations.of(context)?.conversationDeleted ?? 'گفتگو با موفقیت حذف شد',
           );
         } else {
           UserFriendlyErrorUtils.showErrorSnackBar(
             context,
-            result.error ?? 'حذف گفتگو انجام نشد',
+            result.error ?? (AppLocalizations.of(context)?.conversationDeleteFailed ?? 'حذف گفتگو انجام نشد'),
           );
         }
       }
     } catch (e) {
       if (mounted) {
         UserFriendlyErrorUtils.showErrorSnackBar(context, e);
+      }
+    }
+  }
+
+  Future<void> _respondToMessageRequest(
+      ConversationModel conversation, bool accept) async {
+    final conversationId = conversation.id;
+    if (_requestActionLoading.contains(conversationId)) return;
+
+    setState(() {
+      _requestActionLoading.add(conversationId);
+    });
+
+    try {
+      final result = await ref.read(chatRepositoryProvider).respondToMessageRequest(
+            conversationId,
+            accept: accept,
+          );
+      if (!mounted) return;
+
+      if (result.isSuccess) {
+        await ref.read(optimizedConversationsProvider.notifier).refresh();
+        if (!mounted) return;
+        UserFriendlyErrorUtils.showSuccessSnackBar(
+          context,
+          accept ? 'درخواست پیام پذیرفته شد' : 'درخواست پیام رد شد',
+        );
+      } else {
+        UserFriendlyErrorUtils.showErrorSnackBar(
+          context,
+          result.error ?? 'پاسخ به درخواست پیام انجام نشد',
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        UserFriendlyErrorUtils.showErrorSnackBar(context, e);
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _requestActionLoading.remove(conversationId);
+        });
       }
     }
   }

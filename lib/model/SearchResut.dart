@@ -4,6 +4,7 @@ import 'publicPostModel.dart';
 
 class SearchState {
   final bool isLoading;
+  final bool isLoadingMoreUsers;
   final String currentQuery;
   final List<PublicPostModel> hashtagResults;
   final List<ProfileModel> userResults;
@@ -14,6 +15,7 @@ class SearchState {
 
   const SearchState({
     this.isLoading = false,
+    this.isLoadingMoreUsers = false,
     this.currentQuery = '',
     this.hashtagResults = const [],
     this.userResults = const [],
@@ -25,20 +27,23 @@ class SearchState {
 
   SearchState copyWith({
     bool? isLoading,
+    bool? isLoadingMoreUsers,
     String? currentQuery,
     List<PublicPostModel>? hashtagResults,
     List<ProfileModel>? userResults,
     String? error,
+    bool clearError = false,
     int? selectedTab,
     int? userOffset,
     bool? hasMoreUsers,
   }) {
     return SearchState(
       isLoading: isLoading ?? this.isLoading,
+      isLoadingMoreUsers: isLoadingMoreUsers ?? this.isLoadingMoreUsers,
       currentQuery: currentQuery ?? this.currentQuery,
       hashtagResults: hashtagResults ?? this.hashtagResults,
       userResults: userResults ?? this.userResults,
-      error: error ?? this.error,
+      error: clearError ? null : (error ?? this.error),
       selectedTab: selectedTab ?? this.selectedTab,
       userOffset: userOffset ?? this.userOffset,
       hasMoreUsers: hasMoreUsers ?? this.hasMoreUsers,

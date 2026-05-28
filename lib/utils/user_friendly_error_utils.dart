@@ -187,7 +187,10 @@ class UserFriendlyErrorUtils {
     if (lower.contains('story_reply_not_allowed')) {
       return 'ارسال پاسخ به این استوری مجاز نیست.';
     }
-    if (lower.contains('authentication_required')) {
+    if (lower.contains('authentication_required') ||
+        lower.contains('user not logged in') ||
+        lower.contains('not authenticated') ||
+        lower.contains('کاربر وارد نشده')) {
       return 'برای انجام این عملیات باید وارد حساب کاربری شوید.';
     }
     if (lower.contains('invalid_reply_permission')) {

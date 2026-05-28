@@ -1,23 +1,21 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:cached_network_image/cached_network_image.dart';
-import '../../../utils/vista_dialog.dart';
 import '../../../provider/provider.dart';
-import '../../../services/secure_logout_service.dart';
-import '../../profile/screens/updatePassword.dart' show ChangePasswordWidget;
-import '../../posts/screens/saved_posts_screen.dart';
-import 'subpages/ThemeSettingsPage.dart';
-import 'subpages/privacy_security_page.dart';
-import 'subpages/notification_settings_page.dart';
-import 'subpages/data_storage_settings_page.dart';
-import 'subpages/AboutSettingsPage.dart';
-import 'subpages/AboutSettingsPage.dart';
-import 'subpages/VerificationRequestPage.dart';
-import 'vistaStore/pricing_page.dart';
-import 'TermsAndConditions.dart';
 import '../../../services/AppInfoService.dart';
+import '../../../services/secure_logout_service.dart';
+import '../../../utils/vista_dialog.dart';
+import '../../posts/screens/saved_posts_screen.dart';
+import '../../profile/screens/updatePassword.dart' show ChangePasswordWidget;
+import 'TermsAndConditions.dart';
+import 'subpages/AboutSettingsPage.dart';
+import 'subpages/ThemeSettingsPage.dart';
+import 'subpages/data_storage_settings_page.dart';
+import 'subpages/notification_settings_page.dart';
+import 'subpages/privacy_security_page.dart';
+import 'package:Vista/l10n/generated/app_localizations.dart';
+import '../../../provider/locale_provider.dart';
 
-/// صفحه تنظیمات ساده و تمیز - الهام گرفته از ویستا
 class Settings extends ConsumerWidget {
   const Settings({super.key});
 
@@ -27,9 +25,9 @@ class Settings extends ConsumerWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: isDark ? Colors.black : const Color(0xFFF5F5F5),
+      backgroundColor: isDark ? Colors.black : const Color(0xFFF6F6F8),
       appBar: AppBar(
-        title: const Text('تنظیمات'),
+        title: Text(AppLocalizations.of(context)?.settings ?? 'تنظیمات'),
         centerTitle: true,
         elevation: 0,
         backgroundColor: isDark ? Colors.black : Colors.white,
@@ -38,125 +36,60 @@ class Settings extends ConsumerWidget {
       body: SafeArea(
         top: false,
         child: profileAsync.when(
-          data: (profile) => _buildSettingsList(context, ref, profile, isDark),
+          data: (profile) => _buildBody(context, ref, profile, isDark),
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (_, __) => const Center(child: Text('خطا در بارگذاری')),
+          error: (_, __) =>
+              const Center(child: Text('خطا در بارگذاری تنظیمات')),
         ),
       ),
     );
   }
 
-  Widget _buildSettingsList(
+  Widget _buildBody(
     BuildContext context,
     WidgetRef ref,
     Map<String, dynamic>? profile,
     bool isDark,
   ) {
     return ListView(
-      padding: const EdgeInsets.symmetric(vertical: 16),
+      padding: const EdgeInsets.symmetric(vertical: 14),
       children: [
-        // کارت پروفایل
         _buildProfileCard(context, profile, isDark),
-        const SizedBox(height: 24),
-
-        // بخش ویستا پریمیوم (اضافه شده مجدد)
-        _buildSectionHeader('ویستا پریمیوم', isDark),
-        _buildSettingsGroup(
-          isDark: isDark,
-          children: [
-            _SettingsTile(
-              icon: Icons.star_rounded,
-              title: 'ویستا پریمیوم',
-              iconColor: const Color(0xFF8774E1), // رنگ بنفش پریمیوم
-              titleColor: const Color(0xFF8774E1),
-              trailing: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF8774E1).withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Text(
-                  'ویژه',
-                  style: TextStyle(
-                    color: Color(0xFF8774E1),
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const PricingPage()),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 24),
-
-        // بخش حساب کاربری
-        _buildSectionHeader('حساب کاربری', isDark),
-        _buildSettingsGroup(
+        const SizedBox(height: 12),
+        _buildGroup(
           isDark: isDark,
           children: [
             _SettingsTile(
               icon: Icons.person_outline,
-              title: 'ویرایش پروفایل',
+              title: AppLocalizations.of(context)?.account ?? 'حساب کاربری',
               onTap: () => Navigator.pushNamed(context, '/editeProfile'),
             ),
             _SettingsTile(
-              icon: Icons.lock_outline,
-              title: 'امنیت و گذرواژه',
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => ChangePasswordWidget()),
-              ),
-            ),
-            _SettingsTile(
-              icon: Icons.verified_outlined,
-              title: 'درخواست تیک آبی',
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                    builder: (_) => const VerificationRequestPage()),
-              ),
-            ),
-            _SettingsTile(
-              icon: Icons.bookmark_border_rounded,
-              title: 'پست‌های ذخیره‌شده',
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const SavedPostsScreen()),
-              ),
-            ),
-            _SettingsTile(
               icon: Icons.shield_outlined,
-              title: 'حریم خصوصی',
+              title: AppLocalizations.of(context)?.privacySecurity ?? 'حریم خصوصی و امنیت',
               onTap: () => Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => const PrivacySecurityPage()),
               ),
             ),
-          ],
-        ),
-        const SizedBox(height: 24),
-
-        // بخش برنامه
-        _buildSectionHeader('برنامه', isDark),
-        _buildSettingsGroup(
-          isDark: isDark,
-          children: [
             _SettingsTile(
               icon: Icons.notifications_none_outlined,
-              title: 'اعلان‌ها',
+              title: AppLocalizations.of(context)?.notifications ?? 'اعلان‌ها',
               onTap: () => Navigator.push(
                 context,
                 MaterialPageRoute(
-                    builder: (_) => const NotificationSettingsPage()),
+                  builder: (_) => const NotificationSettingsPage(),
+                ),
               ),
             ),
             _SettingsTile(
+              icon: Icons.language_outlined,
+              title: AppLocalizations.of(context)?.language ?? 'زبان',
+              onTap: () => _showLanguageSelector(context, ref, isDark),
+            ),
+            _SettingsTile(
               icon: Icons.palette_outlined,
-              title: 'ظاهر و تم',
+              title: AppLocalizations.of(context)?.theme ?? 'ظاهر',
               onTap: () => Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => const ThemeSettingsPage()),
@@ -164,37 +97,49 @@ class Settings extends ConsumerWidget {
             ),
             _SettingsTile(
               icon: Icons.storage_outlined,
-              title: 'داده‌ها و ذخیره‌سازی',
+              title: AppLocalizations.of(context)?.dataStorage ?? 'داده و ذخیره‌سازی',
               onTap: () => Navigator.push(
                 context,
                 MaterialPageRoute(
-                    builder: (_) => const DataStorageSettingsPage()),
+                  builder: (_) => const DataStorageSettingsPage(),
+                ),
+              ),
+            ),
+            _SettingsTile(
+              icon: Icons.bookmark_border_rounded,
+              title: AppLocalizations.of(context)?.savedItems ?? 'ذخیره‌شده‌ها',
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const SavedPostsScreen()),
+              ),
+            ),
+            _SettingsTile(
+              icon: Icons.lock_outline,
+              title: AppLocalizations.of(context)?.changePassword ?? 'تغییر گذرواژه',
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => ChangePasswordWidget()),
               ),
             ),
           ],
         ),
-        const SizedBox(height: 24),
-
-        // بخش پشتیبانی
-        _buildSectionHeader('پشتیبانی', isDark),
-        _buildSettingsGroup(
+        const SizedBox(height: 12),
+        _buildGroup(
           isDark: isDark,
           children: [
             _SettingsTile(
               icon: Icons.description_outlined,
-              title: 'قوانین و مقررات',
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const TermsAndConditionsScreen(),
-                  ),
-                );
-              },
+              title: AppLocalizations.of(context)?.termsAndConditions ?? 'قوانین و مقررات',
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const TermsAndConditionsScreen(),
+                ),
+              ),
             ),
             _SettingsTile(
               icon: Icons.info_outline,
-              title: 'درباره ویستا',
+              title: AppLocalizations.of(context)?.aboutVista ?? 'درباره ویستا',
               onTap: () => Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => const AboutSettingsPage()),
@@ -202,49 +147,23 @@ class Settings extends ConsumerWidget {
             ),
           ],
         ),
-        const SizedBox(height: 24),
-
-        // دکمه خروج
-        _buildSettingsGroup(
+        const SizedBox(height: 12),
+        _buildGroup(
           isDark: isDark,
           children: [
             _SettingsTile(
               icon: Icons.logout,
-              title: 'خروج از حساب',
+              title: AppLocalizations.of(context)?.logout ?? 'خروج از حساب',
               titleColor: Colors.red,
               iconColor: Colors.red,
               onTap: () => _showLogoutDialog(context, ref),
             ),
           ],
         ),
-        const SizedBox(height: 40),
-
-        // نسخه برنامه
+        const SizedBox(height: 26),
         _buildAppVersionLabel(isDark),
-        const SizedBox(height: 20),
+        const SizedBox(height: 12),
       ],
-    );
-  }
-
-  Widget _buildAppVersionLabel(bool isDark) {
-    return FutureBuilder<String>(
-      future: AppInfoService.getPubspecVersion(),
-      builder: (context, snapshot) {
-        final version =
-            (snapshot.data != null && snapshot.data!.trim().isNotEmpty)
-                ? snapshot.data!.trim()
-                : '--';
-
-        return Center(
-          child: Text(
-            'نسخه $version',
-            style: TextStyle(
-              color: isDark ? Colors.grey[600] : Colors.grey[500],
-              fontSize: 12,
-            ),
-          ),
-        );
-      },
     );
   }
 
@@ -259,45 +178,49 @@ class Settings extends ConsumerWidget {
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF1C1C1E) : Colors.white,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(14),
       ),
       child: Row(
         children: [
           CircleAvatar(
-            radius: 30,
-            backgroundColor: isDark ? Colors.grey[800] : Colors.grey[200],
+            radius: 24,
+            backgroundColor: isDark ? Colors.grey[850] : Colors.grey[200],
             backgroundImage: avatarUrl != null
                 ? CachedNetworkImageProvider(avatarUrl)
                 : null,
             child: avatarUrl == null
                 ? Icon(
                     Icons.person,
-                    size: 30,
+                    size: 24,
                     color: isDark ? Colors.grey[600] : Colors.grey[400],
                   )
                 : null,
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   username,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontSize: 18,
+                    fontSize: 16,
                     fontWeight: FontWeight.w600,
                     color: isDark ? Colors.white : Colors.black,
                   ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 2),
                 Text(
                   email,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontSize: 14,
+                    fontSize: 13,
                     color: isDark ? Colors.grey[400] : Colors.grey[600],
                   ),
                 ),
@@ -308,7 +231,7 @@ class Settings extends ConsumerWidget {
             onPressed: () => Navigator.pushNamed(context, '/editeProfile'),
             icon: Icon(
               Icons.chevron_left,
-              color: isDark ? Colors.grey[600] : Colors.grey[400],
+              color: isDark ? Colors.grey[500] : Colors.grey[500],
             ),
           ),
         ],
@@ -316,21 +239,7 @@ class Settings extends ConsumerWidget {
     );
   }
 
-  Widget _buildSectionHeader(String title, bool isDark) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(32, 0, 32, 8),
-      child: Text(
-        title,
-        style: TextStyle(
-          fontSize: 13,
-          fontWeight: FontWeight.w600,
-          color: isDark ? Colors.grey[500] : Colors.grey[600],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSettingsGroup({
+  Widget _buildGroup({
     required bool isDark,
     required List<Widget> children,
   }) {
@@ -338,7 +247,7 @@ class Settings extends ConsumerWidget {
       margin: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF1C1C1E) : Colors.white,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(14),
       ),
       child: Column(
         children: List.generate(children.length, (index) {
@@ -358,23 +267,108 @@ class Settings extends ConsumerWidget {
     );
   }
 
-  void _showLogoutDialog(BuildContext context, WidgetRef ref) async {
-    final confirmed = await VistaDialog.showLogoutDialog(context);
+  Widget _buildAppVersionLabel(bool isDark) {
+    return FutureBuilder<String>(
+      future: AppInfoService.getPubspecVersion(),
+      builder: (context, snapshot) {
+        final version =
+            (snapshot.data != null && snapshot.data!.trim().isNotEmpty)
+                ? snapshot.data!.trim()
+                : '--';
+        return Center(
+          child: Text(
+            'نسخه $version',
+            style: TextStyle(
+              color: isDark ? Colors.grey[600] : Colors.grey[500],
+              fontSize: 12,
+            ),
+          ),
+        );
+      },
+    );
+  }
 
+  Future<void> _showLogoutDialog(BuildContext context, WidgetRef ref) async {
+    final confirmed = await VistaDialog.showLogoutDialog(context);
     if (confirmed == true && context.mounted) {
       await SecureLogoutService.performLogout(context, ref);
     }
   }
+
+  void _showLanguageSelector(BuildContext context, WidgetRef ref, bool isDark) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: isDark ? const Color(0xFF1C1C1E) : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) {
+        final currentLocale = ref.read(localeProvider);
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 12),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[600],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                AppLocalizations.of(context)?.selectLanguage ?? 'انتخاب زبان',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white : Colors.black,
+                ),
+              ),
+              const SizedBox(height: 16),
+              ListTile(
+                leading: const Icon(Icons.language),
+                trailing: currentLocale.languageCode == 'fa' ? const Icon(Icons.check, color: Colors.blue) : null,
+                title: Text('فارسی', style: TextStyle(color: isDark ? Colors.white : Colors.black)),
+                onTap: () {
+                  ref.read(localeProvider.notifier).setLocale('fa');
+                  Navigator.pop(context);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.language),
+                trailing: currentLocale.languageCode == 'en' ? const Icon(Icons.check, color: Colors.blue) : null,
+                title: Text('English', style: TextStyle(color: isDark ? Colors.white : Colors.black)),
+                onTap: () {
+                  ref.read(localeProvider.notifier).setLocale('en');
+                  Navigator.pop(context);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.language),
+                trailing: currentLocale.languageCode == 'ar' ? const Icon(Icons.check, color: Colors.blue) : null,
+                title: Text('العربية', style: TextStyle(color: isDark ? Colors.white : Colors.black)),
+                onTap: () {
+                  ref.read(localeProvider.notifier).setLocale('ar');
+                  Navigator.pop(context);
+                },
+              ),
+              const SizedBox(height: 16),
+            ],
+          ),
+        );
+      },
+    );
+  }
 }
 
-/// ویجت آیتم تنظیمات
 class _SettingsTile extends StatelessWidget {
   final IconData icon;
   final String title;
   final VoidCallback onTap;
   final Color? titleColor;
   final Color? iconColor;
-  final Widget? trailing;
 
   const _SettingsTile({
     required this.icon,
@@ -382,7 +376,6 @@ class _SettingsTile extends StatelessWidget {
     required this.onTap,
     this.titleColor,
     this.iconColor,
-    this.trailing,
   });
 
   @override
@@ -395,23 +388,23 @@ class _SettingsTile extends StatelessWidget {
       leading: Icon(
         icon,
         color: iconColor ?? defaultIconColor,
-        size: 24,
+        size: 22,
       ),
       title: Text(
         title,
         style: TextStyle(
-          fontSize: 16,
+          fontSize: 15,
+          fontWeight: FontWeight.w500,
           color: titleColor ?? defaultTextColor,
         ),
       ),
-      trailing: trailing ??
-          Icon(
-            Icons.chevron_left,
-            color: isDark ? Colors.grey[700] : Colors.grey[400],
-            size: 20,
-          ),
+      trailing: Icon(
+        Icons.chevron_left,
+        color: isDark ? Colors.grey[700] : Colors.grey[400],
+        size: 20,
+      ),
       onTap: onTap,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 1),
     );
   }
 }

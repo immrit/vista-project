@@ -42,6 +42,13 @@ class NoopChatRepository implements ChatRepository {
       _failure();
 
   @override
+  Future<ChatResult<void>> respondToMessageRequest(
+    String conversationId, {
+    required bool accept,
+  }) async =>
+      _failure();
+
+  @override
   Future<ChatResult<void>> clearConversation(String conversationId,
           {bool forEveryone = false}) async =>
       _failure();

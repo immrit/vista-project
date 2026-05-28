@@ -45,6 +45,7 @@ class NoteViewerSheet extends ConsumerWidget {
     final backgroundColor = isDark ? const Color(0xFF1C1C1E) : Colors.white;
     final textColor = isDark ? Colors.white : Colors.black;
     final subtitleColor = isDark ? Colors.grey[400] : Colors.grey[600];
+    final noteTextDirection = _resolveTextDirection(context, note.content);
 
     return Container(
       decoration: BoxDecoration(
@@ -134,7 +135,7 @@ class NoteViewerSheet extends ConsumerWidget {
                   height: 1.4,
                 ),
                 textAlign: TextAlign.center,
-                textDirection: TextDirection.rtl,
+                textDirection: noteTextDirection,
               ),
             ),
 
@@ -198,5 +199,22 @@ class NoteViewerSheet extends ConsumerWidget {
     } else {
       return 'لحظاتی پیش';
     }
+  }
+
+  TextDirection _resolveTextDirection(BuildContext context, String text) {
+    final trimmed = text.trim();
+    if (trimmed.isEmpty) return Directionality.of(context);
+
+    for (final rune in trimmed.runes) {
+      final char = String.fromCharCode(rune);
+      if (RegExp(r'[\u0600-\u06FF]').hasMatch(char)) {
+        return TextDirection.rtl;
+      }
+      if (RegExp(r'[A-Za-z]').hasMatch(char)) {
+        return TextDirection.ltr;
+      }
+    }
+
+    return Directionality.of(context);
   }
 }

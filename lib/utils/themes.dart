@@ -1,279 +1,87 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:Vista/core/theme/app_theme.dart';
 
+// ─── Vista Page Transition ────────────────────────────────────────────────────
+/// Smooth slide-from-right transition (مناسب RTL: از چپ می‌آید)
+class VistaPageTransitionsBuilder extends PageTransitionsBuilder {
+  const VistaPageTransitionsBuilder();
+
+  @override
+  Widget buildTransitions<T>(
+    PageRoute<T> route,
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) {
+    // Fade + Slide (مشابه iOS ولی سریع‌تر)
+    final tween = Tween<Offset>(
+      begin: const Offset(0.08, 0), // ورود از راست (کوچک)
+      end: Offset.zero,
+    ).chain(CurveTween(curve: Curves.easeOutCubic));
+
+    final fadeTween = Tween<double>(begin: 0.0, end: 1.0)
+        .chain(CurveTween(curve: const Interval(0.0, 0.6)));
+
+    final secondaryTween = Tween<Offset>(
+      begin: Offset.zero,
+      end: const Offset(-0.04, 0), // صفحه قبل کمی به چپ می‌رود
+    ).chain(CurveTween(curve: Curves.easeInCubic));
+
+    return SlideTransition(
+      position: secondaryAnimation.drive(secondaryTween),
+      child: FadeTransition(
+        opacity: animation.drive(fadeTween),
+        child: SlideTransition(
+          position: animation.drive(tween),
+          child: child,
+        ),
+      ),
+    );
+  }
+}
+
+const _vistaTransitions = PageTransitionsTheme(
+  builders: <TargetPlatform, PageTransitionsBuilder>{
+    TargetPlatform.android: VistaPageTransitionsBuilder(),
+    TargetPlatform.iOS:     CupertinoPageTransitionsBuilder(),
+    TargetPlatform.windows: VistaPageTransitionsBuilder(),
+    TargetPlatform.linux:   VistaPageTransitionsBuilder(),
+    TargetPlatform.macOS:   CupertinoPageTransitionsBuilder(),
+  },
+);
+
+// ─── VistaThemes ─────────────────────────────────────────────────────────────
+/// نقطه‌ی ورود اصلی تم — app_runner از اینجا استفاده می‌کند
 class VistaThemes {
-  static const String fontFamily = 'Vazir';
+  static const String fontFamily = 'Vazirmatn'; // ✅ یکپارچه‌سازی فونت
 
-  // Threads / X Minimalist Monochrome
-  static const Color lightPrimary = Colors.black;
-  static const Color darkPrimary = Colors.white;
-  static const Color lightBg = Color(0xFFFFFFFF); // Pure white
-  static const Color darkBg = Color(0xFF000000); // AMOLED Black
-  static const Color darkSurface = Color(0xFF121212);
+  // ── رنگ‌های سازگار با قدیم ──────────────────────────────────────────────
+  static const Color lightPrimary = AppColors.primary;
+  static const Color darkPrimary  = AppColors.primary;
+  static const Color lightBg      = AppColors.lightBackground;
+  static const Color darkBg       = AppColors.darkBackground;
+  static const Color darkSurface  = AppColors.darkSurface;
 
-  static final ThemeData lightTheme = ThemeData(
-    brightness: Brightness.light,
-    primaryColor: lightPrimary,
-    scaffoldBackgroundColor: lightBg,
-    fontFamily: fontFamily,
-    useMaterial3: true,
-    pageTransitionsTheme: const PageTransitionsTheme(
-      builders: <TargetPlatform, PageTransitionsBuilder>{
-        TargetPlatform.android: FadeUpwardsPageTransitionsBuilder(),
-        TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
-      },
-    ),
-    colorScheme: const ColorScheme.light(
-      primary: lightPrimary,
-      onPrimary: Colors.white,
-      secondary: Colors.grey,
-      onSecondary: Colors.white,
-      surface: Colors.white,
-      onSurface: Colors.black,
-      error: Color(0xFFFF4B4B),
-    ),
-    appBarTheme: const AppBarTheme(
-      backgroundColor: Colors.transparent, // Transparent for Glassmorphism
-      foregroundColor: Color(0xFF1E1E1E),
-      elevation: 0,
-      centerTitle: true,
-      titleTextStyle: TextStyle(
-        fontFamily: fontFamily,
-        color: Color(0xFF1E1E1E),
-        fontSize: 20,
-        fontWeight: FontWeight.w700,
-        letterSpacing: -0.5,
-      ),
-      iconTheme: IconThemeData(color: Color(0xFF1E1E1E)),
-    ),
-    elevatedButtonTheme: ElevatedButtonThemeData(
-      style: ElevatedButton.styleFrom(
-        backgroundColor: lightPrimary,
-        foregroundColor: Colors.white,
-        textStyle: const TextStyle(
-          fontFamily: fontFamily,
-          fontWeight: FontWeight.bold,
-          letterSpacing: 0.5,
-        ),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-        elevation: 0,
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-      ),
-    ),
-    textButtonTheme: TextButtonThemeData(
-      style: TextButton.styleFrom(
-        foregroundColor: lightPrimary,
-        textStyle: const TextStyle(
-          fontFamily: fontFamily,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
-    ),
-    outlinedButtonTheme: OutlinedButtonThemeData(
-      style: OutlinedButton.styleFrom(
-        foregroundColor: lightPrimary,
-        side: const BorderSide(color: Colors.grey, width: 1.5),
-        textStyle: const TextStyle(
-          fontFamily: fontFamily,
-          fontWeight: FontWeight.bold,
-        ),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-      ),
-    ),
-    inputDecorationTheme: InputDecorationTheme(
-      filled: true,
-      fillColor: Colors.grey.shade100,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-      hintStyle: TextStyle(
-        fontFamily: fontFamily,
-        color: Colors.grey.shade500,
-      ),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: Colors.grey.shade300),
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: Colors.grey.shade300),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: Colors.black, width: 1.5),
-      ),
-      errorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: Color(0xFFFF4B4B), width: 1.5),
-      ),
-    ),
-    textTheme: const TextTheme(
-      headlineMedium: TextStyle(
-        fontFamily: fontFamily,
-        color: Color(0xFF1E1E1E),
-        fontWeight: FontWeight.bold,
-      ),
-      bodyLarge: TextStyle(
-        fontFamily: fontFamily,
-        color: Color(0xFF1E1E1E),
-      ),
-      bodyMedium: TextStyle(
-        fontFamily: fontFamily,
-        color: Color(0xFF4A4A4A),
-      ),
-      titleMedium: TextStyle(
-        fontFamily: fontFamily,
-        color: Color(0xFF1E1E1E),
-        fontWeight: FontWeight.w600,
-      ),
-    ),
-    bottomNavigationBarTheme: BottomNavigationBarThemeData(
-      backgroundColor: Colors.transparent,
-      selectedItemColor: lightPrimary,
-      unselectedItemColor: Colors.grey.shade400,
-      showSelectedLabels: false,
-      showUnselectedLabels: false,
-      type: BottomNavigationBarType.fixed,
-      elevation: 0,
-    ),
+  // ── Light Theme ──────────────────────────────────────────────────────────
+  static final ThemeData lightTheme = AppTheme.lightTheme.copyWith(
+    pageTransitionsTheme: _vistaTransitions,
   );
 
-  static final ThemeData darkTheme = ThemeData(
-    brightness: Brightness.dark,
-    primaryColor: darkPrimary,
-    scaffoldBackgroundColor: darkBg,
-    fontFamily: fontFamily,
-    useMaterial3: true,
-    pageTransitionsTheme: const PageTransitionsTheme(
-      builders: <TargetPlatform, PageTransitionsBuilder>{
-        TargetPlatform.android: FadeUpwardsPageTransitionsBuilder(),
-        TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
-      },
-    ),
-    colorScheme: const ColorScheme.dark(
-      primary: darkPrimary,
-      onPrimary: Colors.black,
-      secondary: Colors.grey,
-      onSecondary: Colors.white,
-      surface: darkSurface,
-      onSurface: Colors.white,
-      error: Color(0xFFFF6B6B),
-    ),
-    appBarTheme: const AppBarTheme(
-      backgroundColor: Colors.transparent,
-      foregroundColor: Colors.white,
-      elevation: 0,
-      centerTitle: true,
-      titleTextStyle: TextStyle(
-        fontFamily: fontFamily,
-        color: Colors.white,
-        fontSize: 20,
-        fontWeight: FontWeight.w700,
-        letterSpacing: -0.5,
-      ),
-      iconTheme: IconThemeData(color: Colors.white),
-    ),
-    elevatedButtonTheme: ElevatedButtonThemeData(
-      style: ElevatedButton.styleFrom(
-        backgroundColor: darkPrimary,
-        foregroundColor: Colors.black,
-        textStyle: const TextStyle(
-          fontFamily: fontFamily,
-          fontWeight: FontWeight.bold,
-          letterSpacing: 0.5,
-        ),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-        elevation: 0,
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-      ),
-    ),
-    textButtonTheme: TextButtonThemeData(
-      style: TextButton.styleFrom(
-        foregroundColor: darkPrimary,
-        textStyle: const TextStyle(
-          fontFamily: fontFamily,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
-    ),
-    outlinedButtonTheme: OutlinedButtonThemeData(
-      style: OutlinedButton.styleFrom(
-        foregroundColor: Colors.white,
-        side: const BorderSide(color: Colors.white30, width: 1.5),
-        textStyle: const TextStyle(
-          fontFamily: fontFamily,
-          fontWeight: FontWeight.bold,
-        ),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-      ),
-    ),
-    inputDecorationTheme: InputDecorationTheme(
-      filled: true,
-      fillColor: const Color(0xFF1E1E1E),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-      hintStyle: TextStyle(
-        fontFamily: fontFamily,
-        color: Colors.grey.shade600,
-      ),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: Colors.white12),
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: Colors.white12),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: Colors.white, width: 1.5),
-      ),
-      errorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: Color(0xFFFF6B6B), width: 1.5),
-      ),
-    ),
-    textTheme: const TextTheme(
-      headlineMedium: TextStyle(
-        fontFamily: fontFamily,
-        color: Colors.white,
-        fontWeight: FontWeight.bold,
-      ),
-      bodyLarge: TextStyle(
-        fontFamily: fontFamily,
-        color: Colors.white,
-      ),
-      bodyMedium: TextStyle(
-        fontFamily: fontFamily,
-        color: Colors.white70,
-      ),
-      titleMedium: TextStyle(
-        fontFamily: fontFamily,
-        color: Colors.white,
-        fontWeight: FontWeight.w600,
-      ),
-    ),
-    bottomNavigationBarTheme: BottomNavigationBarThemeData(
-      backgroundColor: Colors.transparent,
-      selectedItemColor: Colors.white,
-      unselectedItemColor: Colors.grey.shade600,
-      showSelectedLabels: false,
-      showUnselectedLabels: false,
-      type: BottomNavigationBarType.fixed,
-      elevation: 0,
-    ),
+  // ── Dark Theme ───────────────────────────────────────────────────────────
+  static final ThemeData darkTheme = AppTheme.darkTheme.copyWith(
+    pageTransitionsTheme: _vistaTransitions,
   );
 }
 
+// ─── VistaColors ─────────────────────────────────────────────────────────────
+/// رنگ‌های کمکی برای سازگاری با کدهای قدیمی
 class VistaColors {
-  static const Color violetPrimary =
-      Colors.black; // Kept name for compatibility
-  static const Color violetSecondary = Colors.grey;
-  static const Color textSecondaryLight = Colors.grey;
-  static const Color white = Colors.white;
+  static const Color violetPrimary   = AppColors.primary;
+  static const Color violetSecondary = AppColors.primaryEnd;
+  static const Color textSecondaryLight = AppColors.lightTextSecondary;
+  static const Color textSecondaryDark  = AppColors.darkTextSecondary;
+  static const Color white           = Colors.white;
+  static const Color accent          = AppColors.accent;
 }

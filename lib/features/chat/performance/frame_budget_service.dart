@@ -1,9 +1,11 @@
 import 'dart:math';
+import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
 
 import 'chat_performance_profile.dart';
+import 'device_capability_service.dart';
 
 class FrameBudgetService {
   FrameBudgetService._();
@@ -15,6 +17,9 @@ class FrameBudgetService {
   final List<int> _framesMicros = <int>[];
   bool _isMonitoring = false;
   bool _hasCallback = false;
+  bool _didApplyWarmStart = false;
+  DevicePerformanceTier _deviceTier = DevicePerformanceTier.medium;
+  String _warmStartReason = 'pending';
 
   final ValueNotifier<FrameBudgetSnapshot> snapshotNotifier =
       ValueNotifier<FrameBudgetSnapshot>(const FrameBudgetSnapshot.empty());
@@ -22,10 +27,13 @@ class FrameBudgetService {
       ValueNotifier<ChatPerformanceProfile>(ChatPerformanceProfile.high);
 
   bool get isMonitoring => _isMonitoring;
+  DevicePerformanceTier get deviceTier => _deviceTier;
+  String get warmStartReason => _warmStartReason;
 
   void startMonitoring() {
     if (_isMonitoring) return;
     _isMonitoring = true;
+    _applyWarmStartProfileIfNeeded();
     if (!_hasCallback) {
       SchedulerBinding.instance.addTimingsCallback(_onTimings);
       _hasCallback = true;
@@ -72,7 +80,11 @@ class FrameBudgetService {
     );
     snapshotNotifier.value = snapshot;
 
-    profileNotifier.value = _toProfile(snapshot.p95Ms);
+    profileNotifier.value = _toProfile(
+      p95Ms: snapshot.p95Ms,
+      jankRatio: snapshot.jankRatio,
+      currentProfile: profileNotifier.value,
+    );
   }
 
   int _percentile(List<int> sorted, double p) {
@@ -81,13 +93,105 @@ class FrameBudgetService {
     return sorted[index];
   }
 
-  ChatPerformanceProfile _toProfile(double p95Ms) {
-    if (p95Ms <= 16.7) {
-      return ChatPerformanceProfile.high;
+  ChatPerformanceProfile _toProfile({
+    required double p95Ms,
+    required double jankRatio,
+    required ChatPerformanceProfile currentProfile,
+  }) {
+    // Hard guard for obvious instability.
+    if (jankRatio >= 0.25 || p95Ms >= 32.0) {
+      return ChatPerformanceProfile.low;
     }
-    if (p95Ms <= 24.0) {
-      return ChatPerformanceProfile.medium;
+
+    // Hysteresis: avoid profile flapping on noisy frame windows.
+    switch (currentProfile) {
+      case ChatPerformanceProfile.high:
+        if (p95Ms > 19.0) return ChatPerformanceProfile.medium;
+        return ChatPerformanceProfile.high;
+      case ChatPerformanceProfile.medium:
+        if (p95Ms > 27.0) return ChatPerformanceProfile.low;
+        if (p95Ms < 15.5 && jankRatio < 0.08) {
+          return ChatPerformanceProfile.high;
+        }
+        return ChatPerformanceProfile.medium;
+      case ChatPerformanceProfile.low:
+        if (p95Ms < 22.0 && jankRatio < 0.14) {
+          return ChatPerformanceProfile.medium;
+        }
+        return ChatPerformanceProfile.low;
     }
-    return ChatPerformanceProfile.low;
+  }
+
+  void _applyWarmStartProfileIfNeeded() {
+    if (_didApplyWarmStart) return;
+    final view = ui.PlatformDispatcher.instance.views.isNotEmpty
+        ? ui.PlatformDispatcher.instance.views.first
+        : null;
+    if (view == null) {
+      _deviceTier = DevicePerformanceTier.medium;
+      _warmStartReason = 'no_view_fallback';
+      _didApplyWarmStart = true;
+      return;
+    }
+
+    final physicalSize = view.physicalSize;
+    final dpr = view.devicePixelRatio;
+    final shortestSide =
+        min(physicalSize.width / dpr, physicalSize.height / dpr);
+    final totalPhysicalPixels = physicalSize.width * physicalSize.height;
+
+    _warmStartReason = 'detecting';
+    DeviceCapabilityService.instance
+        .detectTier(
+      shortestLogicalSide: shortestSide,
+      totalPhysicalPixels: totalPhysicalPixels,
+      devicePixelRatio: dpr,
+    )
+        .then((snapshot) {
+      _deviceTier = snapshot.tier;
+      _warmStartReason = snapshot.reason;
+      final warmProfile = switch (_deviceTier) {
+        DevicePerformanceTier.high => ChatPerformanceProfile.high,
+        DevicePerformanceTier.medium => ChatPerformanceProfile.medium,
+        DevicePerformanceTier.low => ChatPerformanceProfile.low,
+      };
+      if (_framesMicros.length < 12) {
+        profileNotifier.value = warmProfile;
+      }
+    }).catchError((_) {
+      _deviceTier = DevicePerformanceTier.medium;
+      _warmStartReason = 'device_capability_error';
+      if (_framesMicros.length < 12) {
+        profileNotifier.value = ChatPerformanceProfile.medium;
+      }
+    });
+
+    // Conservative immediate fallback until async capability probe finishes.
+    final fallbackTier =
+        _detectFallbackTier(shortestSide, totalPhysicalPixels, dpr);
+    _deviceTier = fallbackTier;
+    _warmStartReason = 'screen_cpu_fallback';
+    profileNotifier.value = switch (_deviceTier) {
+      DevicePerformanceTier.high => ChatPerformanceProfile.high,
+      DevicePerformanceTier.medium => ChatPerformanceProfile.medium,
+      DevicePerformanceTier.low => ChatPerformanceProfile.low,
+    };
+    _didApplyWarmStart = true;
+  }
+
+  DevicePerformanceTier _detectFallbackTier(
+    double shortestSide,
+    double totalPhysicalPixels,
+    double devicePixelRatio,
+  ) {
+    if (shortestSide < 380 || totalPhysicalPixels < 1.2e6) {
+      return DevicePerformanceTier.low;
+    }
+    if (shortestSide >= 430 &&
+        totalPhysicalPixels >= 2.6e6 &&
+        devicePixelRatio >= 2.5) {
+      return DevicePerformanceTier.high;
+    }
+    return DevicePerformanceTier.medium;
   }
 }

@@ -240,13 +240,20 @@ class AuthRepository {
       receiveTimeout: const Duration(seconds: 15),
       headers: {'Content-Type': 'application/json'},
     ));
+    _dio.interceptors.add(LogInterceptor(
+      request: true,
+      requestHeader: true,
+      responseHeader: false,
+      responseBody: false,
+      error: true,
+    ));
 
     // لاگ شبکه فقط در debug و بدون داده حساس
     if (kDebugMode) {
       _dio.interceptors.add(InterceptorsWrapper(
         onRequest: (options, handler) {
           final payload = _redactSensitiveData(options.data);
-          logInfo('[API][REQ] ${options.method} ${options.path} data=$payload');
+          logInfo('[API][REQ] ${options.method} ${options.uri} data=$payload');
           handler.next(options);
         },
         onResponse: (response, handler) {

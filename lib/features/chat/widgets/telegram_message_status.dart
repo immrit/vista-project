@@ -101,6 +101,21 @@ class _TelegramMessageStatusState extends State<TelegramMessageStatus> {
     // کلید منحصر به فرد برای AnimatedSwitcher
     final key = ValueKey<MessageDeliveryStatus>(widget.status);
 
+    if (widget.status == MessageDeliveryStatus.failed) {
+      return SizedBox(
+        key: key,
+        width: widget.size * 1.25,
+        height: size,
+        child: Center(
+          child: Icon(
+            Icons.refresh_rounded,
+            size: size,
+            color: MessageStatusColors.failed,
+          ),
+        ),
+      );
+    }
+
     // تمام وضعیت‌ها داخل یک کانتینر با سایز دقیقاً یکسان قرار می‌گیرند
     // تا هیچ تغییر لایه‌ای (Layout Shift) رخ ندهد.
     return SizedBox(

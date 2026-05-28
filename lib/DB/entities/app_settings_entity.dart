@@ -21,4 +21,7 @@ class AppSettingsEntity {
   bool? batterySaverMode;
   bool? smartCache;
   bool? messagePreloading;
+
+  // Localization
+  String? languageCode;
 }

@@ -69,12 +69,14 @@ class _LiquidGlassInputShellState extends State<LiquidGlassInputShell>
               Positioned.fill(
                 child: Container(
                   decoration: BoxDecoration(
-                    color: widget.background.withValues(
-                      alpha: widget.reduceEffects ? 0.92 : 0.76,
-                    ),
+                    color: widget.reduceEffects
+                        ? widget.background.withValues(alpha: 0.95)
+                        : widget.background, // ChatTheme already provides glassBackground colors now
                     border: Border.all(
-                      color: widget.borderColor.withValues(alpha: 0.32),
-                      width: 0.7,
+                      color: widget.reduceEffects
+                          ? widget.borderColor.withValues(alpha: 0.2)
+                          : widget.borderColor,
+                      width: 0.5, // Thinner border for premium look
                     ),
                   ),
                 ),
@@ -90,11 +92,11 @@ class _LiquidGlassInputShellState extends State<LiquidGlassInputShell>
                           colors: [
                             Colors.white.withValues(alpha: 0.0),
                             Colors.white.withValues(
-                              alpha: widget.isDark ? 0.04 : 0.10,
+                              alpha: widget.isDark ? 0.02 : 0.05, // More subtle shine
                             ),
                             Colors.white.withValues(alpha: 0.0),
                           ],
-                          stops: const [0.15, 0.5, 0.85],
+                          stops: const [0.2, 0.5, 0.8],
                         ),
                       ),
                     ),

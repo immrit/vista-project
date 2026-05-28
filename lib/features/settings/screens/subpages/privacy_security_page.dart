@@ -1,16 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import '../../../../features/auth/providers/auth_controller.dart';
+import '../../../../model/messagePrivacyModel.dart';
+import '../../../../provider/settings_providers.dart';
+import '../../../../services/advanced_security_service.dart';
+import '../../../../services/current_user_service.dart';
+import '../../../../services/telegram_read_receipt_service.dart';
 import '../../widgets/vista_settings_widgets.dart';
 import 'ActiveSessionsScreen.dart';
 import 'BlockedUsersPage.dart';
-import '../../../../provider/settings_providers.dart';
-import '../../../../model/messagePrivacyModel.dart';
-import '../../../../services/telegram_read_receipt_service.dart';
-import '../../../../features/auth/providers/auth_controller.dart';
-import '../../../../services/current_user_service.dart';
 
-/// صفحه تنظیمات حریم خصوصی و امنیت - طراحی مدرن و یکپارچه
 class PrivacySecurityPage extends ConsumerStatefulWidget {
   const PrivacySecurityPage({super.key});
 
@@ -20,50 +19,25 @@ class PrivacySecurityPage extends ConsumerStatefulWidget {
 }
 
 class _PrivacySecurityPageState extends ConsumerState<PrivacySecurityPage> {
-  // تنظیمات حریم خصوصی
-  String _profilePhoto = 'everyone'; // everyone, contacts, nobody
-  bool _forwardedMessages = true;
-
-  // تنظیمات امنیت
-  bool _twoStepVerification = false;
-
-  // کلیدهای SharedPreferences
-  static const String _keyProfilePhoto = 'privacy_profile_photo';
-  static const String _keyForwardedMessages = 'privacy_forwarded_messages';
-  static const String _keyTwoStep = 'security_two_step';
+  bool _biometricEnabled = false;
+  bool _biometricAvailable = false;
+  bool _biometricLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _loadSettings();
+    _loadBiometricState();
   }
 
-  Future<void> _loadSettings() async {
-    final prefs = await SharedPreferences.getInstance();
+  Future<void> _loadBiometricState() async {
+    final available = await AdvancedSecurityService.isBiometricAvailable();
+    final enabled = await AdvancedSecurityService.isBiometricEnabled();
+    if (!mounted) return;
     setState(() {
-      _profilePhoto = prefs.getString(_keyProfilePhoto) ?? 'everyone';
-      _forwardedMessages = prefs.getBool(_keyForwardedMessages) ?? true;
-      _twoStepVerification = prefs.getBool(_keyTwoStep) ?? false;
+      _biometricAvailable = available;
+      _biometricEnabled = enabled;
+      _biometricLoading = false;
     });
-  }
-
-  Future<void> _saveBoolSetting(String key, bool value) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(key, value);
-  }
-
-  Future<void> _saveStringSetting(String key, String value) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(key, value);
-  }
-
-  void _showInfo(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.blueGrey,
-      ),
-    );
   }
 
   @override
@@ -74,9 +48,10 @@ class _PrivacySecurityPageState extends ConsumerState<PrivacySecurityPage> {
     final settingsAsync = userId != null
         ? ref.watch(mergedPrivacySettingsProvider(userId))
         : const AsyncValue.data(<String, dynamic>{});
+    final settings = settingsAsync.value ?? <String, dynamic>{};
 
     return Scaffold(
-      backgroundColor: isDark ? Colors.black : const Color(0xFFF5F5F5),
+      backgroundColor: isDark ? Colors.black : const Color(0xFFF6F6F8),
       appBar: AppBar(
         title: const Text('حریم خصوصی و امنیت'),
         centerTitle: true,
@@ -89,190 +64,79 @@ class _PrivacySecurityPageState extends ConsumerState<PrivacySecurityPage> {
         child: ListView(
           padding: const EdgeInsets.symmetric(vertical: 16),
           children: [
-            // بخش حریم خصوصی
             const VistaSettingsSection(title: 'حریم خصوصی'),
             VistaSettingsGroup(
               children: [
                 VistaSettingsSwitch(
                   icon: Icons.lock_outline,
-                  title: 'قفل کردن پیج',
-                  subtitle: 'فقط دنبال‌کننده‌ها می‌توانند محتوای شما را ببینند',
-                  value: (settingsAsync.value?['is_private'] as bool?) ?? false,
-                  onChanged: (value) {
-                    final uid = userId;
-                    if (uid == null) return;
-                    ref
-                        .read(mergedPrivacySettingsProvider(uid).notifier)
-                        .updateSetting('is_private', value);
-                  },
+                  title: 'حساب خصوصی',
+                  value: settings['is_private'] as bool? ?? false,
+                  onChanged: (value) => _updateSetting(
+                    userId,
+                    'is_private',
+                    value,
+                  ),
                 ),
-                // اجازه بزرگنمایی پروفایل
-                VistaSettingsSwitch(
-                  icon: Icons.zoom_in,
-                  title: 'اجازه بزرگنمایی پروفایل',
-                  subtitle: 'دیگران بتوانند عکس پروفایل شما را بزرگنمایی کنند',
-                  value: settingsAsync.value?['allow_profile_zoom'] as bool? ??
-                      true,
-                  onChanged: (value) {
-                    final uid = userId;
-                    if (uid == null) return;
-                    ref
-                        .read(mergedPrivacySettingsProvider(uid).notifier)
-                        .updateSetting('allow_profile_zoom', value);
-                  },
-                ),
-                // آخرین بازدید
                 VistaSettingsChoice<String>(
                   icon: Icons.access_time_outlined,
                   title: 'آخرین بازدید',
-                  value: (settingsAsync.value?['last_seen_visibility']
-                          as String?) ??
+                  value: (settings['last_seen_visibility'] as String?) ??
                       'everyone',
                   options: const [
                     VistaChoiceOption(value: 'everyone', label: 'همه'),
                     VistaChoiceOption(
-                        value: 'my_contacts', label: 'فقط مخاطبین'),
+                      value: 'my_contacts',
+                      label: 'فقط مخاطبین',
+                    ),
                     VistaChoiceOption(value: 'nobody', label: 'هیچکس'),
                   ],
-                  onChanged: (value) {
-                    final uid = userId;
-                    if (uid == null) return;
-                    ref
-                        .read(mergedPrivacySettingsProvider(uid).notifier)
-                        .updateSetting('last_seen_visibility', value);
-                  },
+                  onChanged: (value) =>
+                      _updateSetting(userId, 'last_seen_visibility', value),
                 ),
-                // عکس پروفایل
                 VistaSettingsChoice<String>(
                   icon: Icons.chat_bubble_outline,
-                  title: 'پیام‌ها',
-                  value: (settingsAsync.value?['message_privacy'] as String?) ??
+                  title: 'پیام از طرف',
+                  value: (settings['message_privacy'] as String?) ??
                       MessagePrivacyLevel.everyone.value,
                   options: const [
                     VistaChoiceOption(value: 'everyone', label: 'همه'),
                     VistaChoiceOption(
-                        value: 'followers', label: 'فقط دنبال‌کننده‌ها'),
+                      value: 'followers',
+                      label: 'فقط دنبال‌کننده‌ها',
+                    ),
                     VistaChoiceOption(value: 'nobody', label: 'هیچکس'),
                   ],
-                  onChanged: (value) {
-                    final uid = userId;
-                    if (uid == null) return;
-                    ref
-                        .read(mergedPrivacySettingsProvider(uid).notifier)
-                        .updateSetting('message_privacy', value);
-                  },
+                  onChanged: (value) =>
+                      _updateSetting(userId, 'message_privacy', value),
+                ),
+                VistaSettingsChoice<String>(
+                  icon: Icons.group_add_outlined,
+                  title: 'افزودن به گروه',
+                  value:
+                      (settings['group_add_privacy'] as String?) ?? 'everyone',
+                  options: const [
+                    VistaChoiceOption(value: 'everyone', label: 'همه'),
+                    VistaChoiceOption(
+                      value: 'following',
+                      label: 'فقط دنبال‌کننده‌ها',
+                    ),
+                    VistaChoiceOption(value: 'nobody', label: 'هیچکس'),
+                  ],
+                  onChanged: (value) =>
+                      _updateSetting(userId, 'group_add_privacy', value),
                 ),
                 VistaSettingsSwitch(
                   icon: Icons.done_all,
-                  title: 'ارسال تیک خوانده‌شدن',
-                  subtitle: 'اگر خاموش باشد، تیک خوانده‌شدن ارسال نمی‌شود',
-                  value:
-                      (settingsAsync.value?['send_read_receipts'] as bool?) ??
-                          true,
+                  title: 'تیک خوانده‌شدن',
+                  value: settings['send_read_receipts'] as bool? ?? true,
                   onChanged: (value) {
-                    final uid = userId;
-                    if (uid == null) return;
-                    ref
-                        .read(mergedPrivacySettingsProvider(uid).notifier)
-                        .updateSetting('send_read_receipts', value);
+                    _updateSetting(userId, 'send_read_receipts', value);
                     TelegramReadReceiptService().invalidateSettingsCache();
                   },
                 ),
-                VistaSettingsChoice<String>(
-                  icon: Icons.photo_camera_outlined,
-                  title: 'عکس پروفایل',
-                  value: _profilePhoto,
-                  options: const [
-                    VistaChoiceOption(value: 'everyone', label: 'همه'),
-                    VistaChoiceOption(value: 'contacts', label: 'فقط مخاطبین'),
-                    VistaChoiceOption(value: 'nobody', label: 'هیچکس'),
-                  ],
-                  onChanged: (value) async {
-                    setState(() => _profilePhoto = value);
-                    await _saveStringSetting(_keyProfilePhoto, value);
-                    if (mounted) {
-                      _showInfo('تنظیمات نمایش عکس پروفایل ذخیره شد');
-                    }
-                  },
-                ),
-                // پیام‌های فوروارد شده
-                VistaSettingsSwitch(
-                  icon: Icons.forward_to_inbox_outlined,
-                  title: 'لینک پیام‌های فوروارد شده',
-                  subtitle: 'کنترل نمایش لینک بازگشت به پیام اصلی',
-                  value: _forwardedMessages,
-                  onChanged: (value) async {
-                    setState(() => _forwardedMessages = value);
-                    await _saveBoolSetting(_keyForwardedMessages, value);
-                  },
-                ),
-                // اجازه اضافه شدن به گروه
-                VistaSettingsChoice<String>(
-                  icon: Icons.group_add_outlined,
-                  title: 'اضافه شدن به گروه',
-                  value:
-                      (settingsAsync.value?['group_add_privacy'] as String?) ??
-                          'everyone',
-                  options: const [
-                    VistaChoiceOption(value: 'nobody', label: 'هیچکس'),
-                    VistaChoiceOption(
-                        value: 'following', label: 'فقط دنبال‌کننده‌ها'),
-                    VistaChoiceOption(value: 'everyone', label: 'همه'),
-                  ],
-                  onChanged: (value) {
-                    final uid = userId;
-                    if (uid == null) return;
-                    ref
-                        .read(mergedPrivacySettingsProvider(uid).notifier)
-                        .updateSetting('group_add_privacy', value);
-                  },
-                ),
-              ],
-            ),
-
-            // بخش امنیت
-            const VistaSettingsSection(title: 'امنیت'),
-            VistaSettingsGroup(
-              children: [
-                // نشست‌های فعال
-                VistaSettingsTile(
-                  icon: Icons.devices_outlined,
-                  title: 'نشست‌های فعال',
-                  subtitle: 'مدیریت دستگاه‌های متصل',
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const ActiveSessionsScreen(),
-                    ),
-                  ),
-                ),
-                // تایید دو مرحله‌ای
-                VistaSettingsSwitch(
-                  icon: Icons.security_outlined,
-                  title: 'تایید دو مرحله‌ای',
-                  subtitle: 'افزایش امنیت با رمز دوم',
-                  value: _twoStepVerification,
-                  onChanged: (value) async {
-                    setState(() => _twoStepVerification = value);
-                    await _saveBoolSetting(_keyTwoStep, value);
-                    if (value) {
-                      _showTwoStepSetupDialog(isDark);
-                    }
-                  },
-                ),
-              ],
-            ),
-
-            // بخش اتصالات
-            const VistaSettingsSection(title: 'اتصالات'),
-            VistaSettingsGroup(
-              children: [
-                // کاربران مسدود شده
                 VistaSettingsTile(
                   icon: Icons.block_outlined,
                   title: 'کاربران مسدود شده',
-                  subtitle: 'مدیریت کاربران مسدود شده',
-                  iconColor: Colors.red,
                   onTap: () => Navigator.push(
                     context,
                     MaterialPageRoute(
@@ -282,18 +146,57 @@ class _PrivacySecurityPageState extends ConsumerState<PrivacySecurityPage> {
                 ),
               ],
             ),
-
-            // توضیحات
-            Padding(
-              padding: const EdgeInsets.all(24),
-              child: Text(
-                'تنظیمات حریم خصوصی شما تعیین می‌کند چه کسانی می‌توانند اطلاعات شما را مشاهده کنند.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 13,
-                  color: isDark ? Colors.grey[600] : Colors.grey[500],
+            const VistaSettingsSection(title: 'امنیت'),
+            VistaSettingsGroup(
+              children: [
+                VistaSettingsTile(
+                  icon: Icons.devices_outlined,
+                  title: 'نشست‌های فعال',
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const ActiveSessionsScreen(),
+                    ),
+                  ),
                 ),
-              ),
+                VistaSettingsSwitch(
+                  icon: Icons.fingerprint_outlined,
+                  title: 'ورود بیومتریک',
+                  subtitle:
+                      _biometricAvailable ? null : 'این دستگاه بیومتریک ندارد',
+                  value: _biometricEnabled,
+                  onChanged: (_biometricLoading || !_biometricAvailable)
+                      ? null
+                      : (value) => _toggleBiometric(value),
+                ),
+                VistaSettingsSwitch(
+                  icon: Icons.vpn_key_outlined,
+                  title: 'تایید دومرحله‌ای',
+                  value: settings['two_factor_enabled'] as bool? ?? false,
+                  onChanged: (value) =>
+                      _updateSetting(userId, 'two_factor_enabled', value),
+                ),
+                VistaSettingsSwitch(
+                  icon: Icons.lock_clock_outlined,
+                  title: 'قفل خودکار',
+                  value: settings['auto_lock_enabled'] as bool? ?? true,
+                  onChanged: (value) =>
+                      _updateSetting(userId, 'auto_lock_enabled', value),
+                ),
+                VistaSettingsChoice<int>(
+                  icon: Icons.timer_outlined,
+                  title: 'زمان قفل',
+                  value: settings['auto_lock_timeout_minutes'] as int? ?? 5,
+                  options: const [
+                    VistaChoiceOption(value: 1, label: '۱ دقیقه'),
+                    VistaChoiceOption(value: 5, label: '۵ دقیقه'),
+                    VistaChoiceOption(value: 15, label: '۱۵ دقیقه'),
+                    VistaChoiceOption(value: 30, label: '۳۰ دقیقه'),
+                  ],
+                  onChanged: (value) => _updateSetting(
+                      userId, 'auto_lock_timeout_minutes', value),
+                ),
+              ],
             ),
           ],
         ),
@@ -301,79 +204,34 @@ class _PrivacySecurityPageState extends ConsumerState<PrivacySecurityPage> {
     );
   }
 
-  void _showTwoStepSetupDialog(bool isDark) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: isDark ? const Color(0xFF1C1C1E) : Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Row(
-          children: [
-            Icon(
-              Icons.security_outlined,
-              color: isDark ? Colors.white : Colors.black,
-            ),
-            const SizedBox(width: 12),
-            Text(
-              'تایید دو مرحله‌ای',
-              style: TextStyle(
-                color: isDark ? Colors.white : Colors.black,
-              ),
-            ),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'با فعال کردن تایید دو مرحله‌ای، علاوه بر رمز عبور، یک کد تایید نیز نیاز خواهید داشت.',
-              style: TextStyle(
-                color: isDark ? Colors.grey[300] : Colors.grey[700],
-              ),
-            ),
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: isDark ? Colors.grey[800] : Colors.grey[100],
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.info_outline,
-                    size: 20,
-                    color: isDark ? Colors.grey[400] : Colors.grey[600],
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      'در حال حاضر تایید دو مرحله‌ای به‌صورت رمز دوم محلی فعال است. برای فعال‌سازی سراسری حساب از ایمیل و شماره تاییدشده استفاده کنید.',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: isDark ? Colors.grey[400] : Colors.grey[600],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(
-              'متوجه شدم',
-              style: TextStyle(
-                color: isDark ? Colors.white : Colors.black,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
+  Future<void> _updateSetting(String? userId, String key, dynamic value) async {
+    if (userId == null) return;
+    await ref
+        .read(mergedPrivacySettingsProvider(userId).notifier)
+        .updateSetting(key, value);
+  }
+
+  Future<void> _toggleBiometric(bool value) async {
+    setState(() => _biometricLoading = true);
+    try {
+      if (value) {
+        final ok = await AdvancedSecurityService.enableBiometric();
+        if (!ok) {
+          if (!mounted) return;
+          setState(() => _biometricLoading = false);
+          return;
+        }
+      } else {
+        await AdvancedSecurityService.disableBiometric();
+      }
+      if (!mounted) return;
+      setState(() {
+        _biometricEnabled = value;
+        _biometricLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _biometricLoading = false);
+    }
   }
 }

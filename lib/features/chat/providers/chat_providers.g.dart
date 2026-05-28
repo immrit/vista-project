@@ -6,7 +6,7 @@ part of 'chat_providers.dart';
 // RiverpodGenerator
 // **************************************************************************
 
-String _$chatRepositoryHash() => r'86af3b87c4fc6b41bdb61f51adfff0eebe1c8d4f';
+String _$chatRepositoryHash() => r'9609d67dae016e8c606f755f5de3c020a8bd7bce';
 
 /// See also [chatRepository].
 @ProviderFor(chatRepository)
@@ -21,7 +21,7 @@ final chatRepositoryProvider = AutoDisposeProvider<ChatRepository>.internal(
 );
 
 typedef ChatRepositoryRef = AutoDisposeProviderRef<ChatRepository>;
-String _$paginationStateHash() => r'b0f82b60262234e52d7e3ed7a1043ccfd32b93dc';
+String _$paginationStateHash() => r'2ebec5421d88e9774343647dcd8956c3a4da54dd';
 
 /// Copied from Dart SDK
 class _SystemHash {

@@ -51,67 +51,26 @@ class AdvancedSettingsService {
 
   /// تنظیمات پیش‌فرض جامع
   Future<void> _initializeDefaultSettings() async {
-    // تنظیمات عملکرد و بهینه‌سازی
+    // تنظیمات عملکرد (اکثرا auto-managed در پس‌زمینه)
     if (_performanceSettingsCache.isEmpty) {
       _performanceSettingsCache.addAll({
-        // ⚡️ تنظیمات انیمیشن
         'animations': {
           'enabled': true,
-          'speed': 'normal', // slow, normal, fast
-          'reduce_motion': false, // برای کاربران حساس به حرکت
-          'chat_entry_mode': 'adaptive', // off, minimal, full, adaptive
-          'page_transitions': true,
-          'list_animations': true,
-          'button_feedback': true,
-          'loading_animations': true,
+          'speed': 'normal',
+          'reduce_motion': false,
+          'chat_entry_mode': 'adaptive',
         },
-
-        // 🎨 تنظیمات رندرینگ
         'rendering': {
           'enable_gpu_acceleration': true,
-          'frame_rate_limit': 60, // 30, 60, 120
-          'reduce_transparency': false,
-          'reduce_blur': false,
           'dynamic_effects': true,
           'max_blur_sigma': 10.0,
-          'high_contrast': false,
         },
-
         'feature_flags': {
           'chat_perf_v1': true,
           'adaptive_effects_v1': true,
           'motion_tokens_v1': true,
           'telegram_emoji_panel_v1': true,
           'emoji_renderer_v1': true,
-        },
-
-        // 📊 تنظیمات داده
-        'data_optimization': {
-          'aggressive_caching': false,
-          'preload_images': true,
-          'preload_videos': false,
-          'lazy_loading': true,
-          'batch_requests': true,
-          'request_priority': 'balanced', // low, balanced, high
-        },
-
-        // 🔋 تنظیمات باتری
-        'battery': {
-          'power_save_mode': false,
-          'background_sync': true,
-          'reduce_background_activity': false,
-          'optimize_for_battery': false,
-        },
-
-        // 🌐 تنظیمات شبکه
-        'network': {
-          'auto_retry_failed_requests': true,
-          'max_retry_attempts': 3,
-          'request_timeout_seconds': 30,
-          'use_cellular_data': true,
-          'download_on_cellular': false,
-          'streaming_quality_cellular': 'medium',
-          'streaming_quality_wifi': 'high',
         },
       });
     }
@@ -160,41 +119,23 @@ class AdvancedSettingsService {
       });
     }
 
-    // تنظیمات اپلیکیشن پیشرفته
+    // تنظیمات اپلیکیشن (حداقل گزینه‌های کاربر)
     if (_appSettingsCache.isEmpty) {
       _appSettingsCache.addAll({
-        // 🎨 ظاهر
         'appearance': {
-          'theme': 'system', // light, dark, system
-          'color_scheme': 'default', // default, blue, purple, green
+          'theme': 'system',
           'language': 'fa',
           'rtl_support': true,
-          'font_family': 'default',
-          'font_size': 'medium', // small, medium, large, xlarge
-          'compact_mode': false,
-          'emoji_style': 'custom', // custom, system
+          'emoji_style': 'custom',
         },
-
-        // 🔊 صدا و لمسی
         'feedback': {
           'enable_sound_effects': true,
           'enable_haptic_feedback': true,
-          'haptic_intensity': 'medium', // light, medium, strong
+          'haptic_intensity': 'medium',
           'notification_sound': 'default',
           'message_sound': 'default',
-          'sound_volume': 0.7, // 0.0 - 1.0
+          'sound_volume': 0.7,
         },
-
-        // 🌙 حالت شب
-        'night_mode': {
-          'auto_night_mode': true,
-          'night_mode_start': '22:00',
-          'night_mode_end': '07:00',
-          'follow_system': true,
-          'dim_brightness': false,
-        },
-
-        // 🔐 امنیت
         'security': {
           'require_biometric': false,
           'auto_lock_enabled': true,
@@ -203,16 +144,8 @@ class AdvancedSettingsService {
           'screenshot_security': false,
           'incognito_keyboard': false,
         },
-
-        // ♿️ دسترسی‌پذیری
         'accessibility': {
-          'large_text': false,
-          'bold_text': false,
-          'high_contrast': false,
-          'color_blind_mode':
-              'none', // none, protanopia, deuteranopia, tritanopia
-          'screen_reader_support': false,
-          'simplified_ui': false,
+          'reduce_motion': false,
         },
       });
     }
@@ -224,8 +157,31 @@ class AdvancedSettingsService {
   void _ensureNestedDefaults() {
     final appearance =
         _appSettingsCache['appearance'] as Map<String, dynamic>? ?? {};
+    appearance.putIfAbsent('theme', () => 'system');
+    appearance.putIfAbsent('language', () => 'fa');
+    appearance.putIfAbsent('rtl_support', () => true);
     appearance.putIfAbsent('emoji_style', () => 'custom');
     _appSettingsCache['appearance'] = appearance;
+
+    final accessibility =
+        _appSettingsCache['accessibility'] as Map<String, dynamic>? ?? {};
+    accessibility.putIfAbsent('reduce_motion', () => false);
+    _appSettingsCache['accessibility'] = accessibility;
+
+    final animations =
+        _performanceSettingsCache['animations'] as Map<String, dynamic>? ?? {};
+    animations.putIfAbsent('enabled', () => true);
+    animations.putIfAbsent('speed', () => 'normal');
+    animations.putIfAbsent('reduce_motion', () => false);
+    animations.putIfAbsent('chat_entry_mode', () => 'adaptive');
+    _performanceSettingsCache['animations'] = animations;
+
+    final rendering =
+        _performanceSettingsCache['rendering'] as Map<String, dynamic>? ?? {};
+    rendering.putIfAbsent('enable_gpu_acceleration', () => true);
+    rendering.putIfAbsent('dynamic_effects', () => true);
+    rendering.putIfAbsent('max_blur_sigma', () => 10.0);
+    _performanceSettingsCache['rendering'] = rendering;
 
     final featureFlags =
         _performanceSettingsCache['feature_flags'] as Map<String, dynamic>? ??

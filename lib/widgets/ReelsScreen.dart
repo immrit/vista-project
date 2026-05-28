@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 // removed unused imports
 
 import '../../model/publicPostModel.dart';
+import '../../features/posts/data/go_posts_repository.dart';
 import '../../provider/provider.dart';
 import '../../services/smart_share_service.dart';
 import 'ReelsVideoPlayer.dart';
@@ -28,8 +29,11 @@ class ReelsScreen extends ConsumerStatefulWidget {
 class _ReelsScreenState extends ConsumerState<ReelsScreen>
     with AutomaticKeepAliveClientMixin {
   late PageController _pageController;
+  late List<PublicPostModel> _reels;
   int _currentIndex = 0;
   bool _isLoading = false;
+  bool _hasMore = true;
+  final GoPostsRepository _postsRepository = GoPostsRepository();
   // Post action service is read on demand.
 
   @override
@@ -38,6 +42,7 @@ class _ReelsScreenState extends ConsumerState<ReelsScreen>
   @override
   void initState() {
     super.initState();
+    _reels = List<PublicPostModel>.from(widget.posts);
     _currentIndex = widget.initialIndex;
     _pageController = PageController(initialPage: _currentIndex);
     // Post actions are provided by postActionsServiceProvider.
@@ -55,7 +60,7 @@ class _ReelsScreenState extends ConsumerState<ReelsScreen>
   }
 
   void _onPageChanged(int index) {
-    if (index == widget.posts.length - 1) {
+    if (index == _reels.length - 1) {
       _loadMorePosts();
     }
     setState(() {
@@ -64,15 +69,36 @@ class _ReelsScreenState extends ConsumerState<ReelsScreen>
   }
 
   Future<void> _loadMorePosts() async {
-    if (_isLoading) return;
+    if (_isLoading || !_hasMore) return;
 
     setState(() {
       _isLoading = true;
     });
 
     try {
-      // برای لود کردن پست‌های بیشتر
-      await ref.read(publicPostsProvider.notifier).loadMorePosts();
+      final lastOffset = _reels.isNotEmpty
+          ? _reels.last.createdAt.toUtc().toIso8601String()
+          : 0;
+      final fetched =
+          await _postsRepository.getFeed(limit: 20, offset: lastOffset);
+      final reels = fetched
+          .where((post) => post.videoUrl != null && post.videoUrl!.isNotEmpty)
+          .toList();
+
+      if (reels.isEmpty) {
+        _hasMore = false;
+      } else {
+        final existingIds = _reels.map((p) => p.id).toSet();
+        final newUnique =
+            reels.where((p) => !existingIds.contains(p.id)).toList();
+        if (newUnique.isEmpty) {
+          _hasMore = false;
+        } else {
+          setState(() {
+            _reels.addAll(newUnique);
+          });
+        }
+      }
     } catch (e) {
       logInfo('خطا در بارگذاری پست‌های بیشتر: $e');
       if (mounted) {
@@ -88,56 +114,6 @@ class _ReelsScreenState extends ConsumerState<ReelsScreen>
       }
     }
   }
-
-  // removed unused _likeReel method to satisfy linter
-  /*Future<void> _likeReel(PublicPostModel reel) async {
-    try {
-      // Optimistic update - بروزرسانی فوری UI
-      final updatedReel = reel.copyWith(
-        isLiked: !reel.isLiked,
-        likeCount: reel.isLiked ? reel.likeCount - 1 : reel.likeCount + 1,
-      );
-
-      // بروزرسانی state محلی
-      setState(() {
-        final index = widget.posts.indexWhere((post) => post.id == reel.id);
-        if (index != -1) {
-          widget.posts[index] = updatedReel;
-        }
-      });
-
-      // بروزرسانی state عمومی
-      ref.read(publicPostsProvider.notifier).updatePost(updatedReel);
-
-      // ارسال درخواست به سرور
-      await ref.read(postActionsServiceProvider).toggleLike(
-            postId: reel.id,
-            ownerId: reel.userId,
-            ref: ref,
-          );
-    } catch (e) {
-      // در صورت خطا، برگرداندن تغییرات
-      final revertedReel = reel.copyWith(
-        isLiked: reel.isLiked,
-        likeCount: reel.likeCount,
-      );
-
-      setState(() {
-        final index = widget.posts.indexWhere((post) => post.id == reel.id);
-        if (index != -1) {
-          widget.posts[index] = revertedReel;
-        }
-      });
-
-      ref.read(publicPostsProvider.notifier).updatePost(revertedReel);
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('خطا در ثبت لایک')),
-        );
-      }
-    }
-  }*/
 
   void _sharePost(PublicPostModel post) {
     // استفاده از قابلیت جدید اشتراک‌گذاری تصویری
@@ -223,9 +199,9 @@ class _ReelsScreenState extends ConsumerState<ReelsScreen>
               controller: _pageController,
               scrollDirection: Axis.vertical,
               onPageChanged: _onPageChanged,
-              itemCount: widget.posts.length,
+              itemCount: _reels.length,
               itemBuilder: (context, index) {
-                final post = widget.posts[index];
+                final post = _reels[index];
                 if (post.videoUrl == null || post.videoUrl!.isEmpty) {
                   // اگر ویدیو نداشت، یک صفحه خالی یا خطا نمایش دهید
                   return Center(

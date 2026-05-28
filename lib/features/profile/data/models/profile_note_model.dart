@@ -1,4 +1,4 @@
-﻿import 'package:equatable/equatable.dart';
+import 'package:equatable/equatable.dart';
 import 'package:flutter/foundation.dart';
 
 /// مدل وضعیت پروفایل (مشابه Note در ویستا)
@@ -46,14 +46,22 @@ class ProfileNoteModel extends Equatable {
     return remaining.inSeconds / totalDuration.inSeconds;
   }
 
+  /// تابع کمکی برای پارس کردن تاریخ با در نظر گرفتن UTC
+  static DateTime _parseDate(String str) {
+    if (!str.endsWith('Z') && !str.contains('+') && str.length > 10 && !str.contains(RegExp(r'-[0-9]{2}:[0-9]{2}'))) {
+      str += 'Z';
+    }
+    return DateTime.parse(str);
+  }
+
   /// ساخت از JSON دیتابیس
   factory ProfileNoteModel.fromJson(Map<String, dynamic> json) {
     return ProfileNoteModel(
-      id: json['id'] as String,
+      id: (json['id'] ?? json['user_id']) as String,
       userId: json['user_id'] as String,
       content: json['content'] as String,
-      createdAt: DateTime.parse(json['created_at'] as String),
-      expiresAt: DateTime.parse(json['expires_at'] as String),
+      createdAt: _parseDate(json['created_at'] as String),
+      expiresAt: _parseDate(json['expires_at'] as String),
     );
   }
 

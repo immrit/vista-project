@@ -4,7 +4,7 @@ import 'package:Vista/features/chat/providers/chat_providers.dart';
 import 'package:Vista/security/logging_utility.dart';
 import 'package:Vista/features/chat/services/message_actions_service.dart';
 import 'package:Vista/features/chat/domain/message_payload.dart';
-import 'package:Vista/features/auth/providers/auth_controller.dart';
+import 'package:Vista/services/session_manager_service_v2.dart';
 
 part 'chat_action_controller.g.dart';
 
@@ -73,10 +73,11 @@ class ChatActionController extends _$ChatActionController {
     String? replyToMessageId,
     String? replyToContent,
     String? replyToSenderName,
+    String? replyToKind,
     String? mediaGroupId,
     String? recipientPublicKey,
   }) async {
-    if (!await TokenStorage.hasValidSession()) {
+    if (!await SessionManagerServiceV2.instance.ensureValidAuthSession()) {
       return const ActionResult.failure('User not logged in');
     }
 
@@ -101,6 +102,7 @@ class ChatActionController extends _$ChatActionController {
         replyToMessageId: replyToMessageId ?? state.replyMessage?.id,
         replyToContent: replyToContent ?? state.replyMessage?.content,
         replyToSenderName: replyToSenderName ?? state.replyMessage?.senderName,
+        replyToKind: replyToKind,
         mediaGroupId: mediaGroupId,
         recipientPublicKey: recipientPublicKey,
       );

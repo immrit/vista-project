@@ -1,5 +1,7 @@
 // ignore_for_file: unused_element, deprecated_member_use
 
+import 'dart:async';
+
 import 'package:Vista/features/chat/screens/ChatConversationsScreen.dart'
     show ChatConversationsScreen;
 import 'package:flutter/material.dart';
@@ -22,6 +24,8 @@ import '../../../features/auth/providers/auth_controller.dart';
 import '../../../provider/provider.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:Vista/utils/glassmorphism.dart';
+import 'package:Vista/core/theme/app_theme.dart';
+import 'package:Vista/l10n/generated/app_localizations.dart';
 
 // ✅ Provider تعداد مکالمه‌های خوانده‌نشده
 final unreadConversationsCountProvider = Provider<int>((ref) {
@@ -56,6 +60,7 @@ class HomeScreen extends ConsumerStatefulWidget {
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   int _selectedIndex = 0;
   DateTime? _lastPressed;
+  bool _isOpeningComposer = false;
 
   String _currentUserId = '';
   String _currentUsername = 'کاربر';
@@ -63,7 +68,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   late final List<Widget> _persistentTabs = const [
     ExploreFeedScreen(),
     SearchPage(),
-    AddPublicPostScreen(),
     ChatConversationsScreen(),
   ];
 
@@ -182,7 +186,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 borderRadius: BorderRadius.circular(16),
               ),
               title: Text(
-                'تایید شماره موبایل',
+                AppLocalizations.of(context)?.verifyPhoneTitle ?? 'تایید شماره موبایل',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
@@ -193,7 +197,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    'برای ادامه فعالیت و امنیت بیشتر حساب کاربری، لطفاً شماره موبایل خود را تایید کنید.',
+                    AppLocalizations.of(context)?.verifyPhoneDesc ?? 'برای ادامه فعالیت و امنیت بیشتر حساب کاربری، لطفاً شماره موبایل خود را تایید کنید.',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: isDark ? Colors.grey[400] : Colors.grey[600],
@@ -233,7 +237,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     Navigator.of(dialogContext).pop();
                   },
                   child: Text(
-                    'بعداً یادآوری کن',
+                    AppLocalizations.of(context)?.remindLater ?? 'بعداً یادآوری کن',
                     style: TextStyle(
                       color: isDark ? Colors.grey[400] : Colors.grey[600],
                     ),
@@ -314,7 +318,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             color: isDark ? Colors.black : Colors.white,
                           ),
                         )
-                      : const Text('ارسال کد'),
+                      : Text(AppLocalizations.of(context)?.sendCode ?? 'ارسال کد'),
                 ),
               ],
             );
@@ -324,17 +328,37 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
-  void _onItemTapped(int index) {
-    if (index == 2) {
-      Navigator.of(context).push(
+  int _stackIndexForNav(int navIndex) {
+    if (navIndex <= 1) return navIndex;
+    if (navIndex >= 3) return navIndex - 1;
+    return _selectedIndex;
+  }
+
+  Future<void> _openComposer() async {
+    if (_isOpeningComposer || !mounted) return;
+    _isOpeningComposer = true;
+    try {
+      await Navigator.of(context).push(
         MaterialPageRoute(builder: (context) => const AddPublicPostScreen()),
       );
-    } else {
-      HapticFeedback.selectionClick();
-      setState(() {
-        _selectedIndex = index;
-      });
+    } finally {
+      _isOpeningComposer = false;
     }
+  }
+
+  void _onItemTapped(int index) {
+    if (index == 2) {
+      unawaited(_openComposer());
+      return;
+    }
+
+    final targetIndex = _stackIndexForNav(index);
+    if (targetIndex == _selectedIndex) return;
+
+    HapticFeedback.selectionClick();
+    setState(() {
+      _selectedIndex = targetIndex;
+    });
   }
 
   Future<bool> _onWillPop() async {
@@ -349,8 +373,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           now.difference(_lastPressed!) > const Duration(seconds: 2)) {
         _lastPressed = now;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('برای خروج دوباره دکمه بازگشت را بزنید'),
+          SnackBar(
+            content: Text(AppLocalizations.of(context)?.pressBackAgainToExit ?? 'برای خروج دوباره دکمه بازگشت را بزنید'),
             behavior: SnackBarBehavior.floating,
           ),
         );
@@ -442,7 +466,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     required String inactiveIcon,
     required bool isDark,
   }) {
-    final isSelected = _selectedIndex == index;
+    final isSelected = _selectedIndex == _stackIndexForNav(index);
     return GestureDetector(
       onTap: () => _onItemTapped(index),
       behavior: HitTestBehavior.opaque,
@@ -453,7 +477,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           child: ColorFiltered(
             colorFilter: ColorFilter.mode(
               isSelected
-                  ? (isDark ? Colors.white : Colors.black)
+                  ? AppColors.primary
                   : (isDark ? Colors.grey[600]! : Colors.grey[400]!),
               BlendMode.srcIn,
             ),
@@ -469,7 +493,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   Icons.home_outlined,
                   size: 26,
                   color: isSelected
-                      ? (isDark ? Colors.white : Colors.black)
+                      ? AppColors.primary
                       : (isDark ? Colors.grey[600] : Colors.grey[400]),
                 );
               },
@@ -490,7 +514,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     required int badgeCount,
     required bool isDark,
   }) {
-    final isSelected = _selectedIndex == index;
+    final isSelected = _selectedIndex == _stackIndexForNav(index);
     return GestureDetector(
       onTap: () => _onItemTapped(index),
       behavior: HitTestBehavior.opaque,
@@ -514,7 +538,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           child: ColorFiltered(
             colorFilter: ColorFilter.mode(
               isSelected
-                  ? (isDark ? Colors.white : Colors.black)
+                  ? AppColors.primary // ✅ رنگ برند برای active
                   : (isDark ? Colors.grey[600]! : Colors.grey[400]!),
               BlendMode.srcIn,
             ),
@@ -529,7 +553,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   Icons.chat_bubble_outline_rounded,
                   size: 26,
                   color: isSelected
-                      ? (isDark ? Colors.white : Colors.black)
+                      ? AppColors.primary
                       : (isDark ? Colors.grey[600] : Colors.grey[400]),
                 );
               },
@@ -549,12 +573,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
         decoration: BoxDecoration(
-          color: isDark ? Colors.white : Colors.black,
+          gradient: AppColors.primaryGradient, // ✅ Gradient برند
           borderRadius: BorderRadius.circular(14),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.primary.withValues(alpha: 0.35),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
         child: ColorFiltered(
-          colorFilter: ColorFilter.mode(
-            isDark ? Colors.black : Colors.white,
+          colorFilter: const ColorFilter.mode(
+            Colors.white,
             BlendMode.srcIn,
           ),
           child: Image.asset(
@@ -564,10 +595,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             filterQuality: FilterQuality.high,
             gaplessPlayback: true,
             errorBuilder: (context, error, stackTrace) {
-              return Icon(
+              return const Icon(
                 Icons.add_rounded,
                 size: 24,
-                color: isDark ? Colors.black : Colors.white,
+                color: Colors.white,
               );
             },
           ),

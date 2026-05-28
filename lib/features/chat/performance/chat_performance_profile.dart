@@ -45,6 +45,7 @@ class AdaptiveEffectsState {
   final double blurSigma;
   final double scrollVelocityPxPerSec;
   final FrameBudgetSnapshot budgetSnapshot;
+  final String optimizationReason;
 
   const AdaptiveEffectsState({
     required this.profile,
@@ -60,6 +61,7 @@ class AdaptiveEffectsState {
     required this.blurSigma,
     required this.scrollVelocityPxPerSec,
     required this.budgetSnapshot,
+    required this.optimizationReason,
   });
 
   const AdaptiveEffectsState.initial()
@@ -75,7 +77,8 @@ class AdaptiveEffectsState {
         isFastScrolling = false,
         blurSigma = 8,
         scrollVelocityPxPerSec = 0,
-        budgetSnapshot = const FrameBudgetSnapshot.empty();
+        budgetSnapshot = const FrameBudgetSnapshot.empty(),
+        optimizationReason = 'initial';
 
   AdaptiveEffectsState copyWith({
     ChatPerformanceProfile? profile,
@@ -91,6 +94,7 @@ class AdaptiveEffectsState {
     double? blurSigma,
     double? scrollVelocityPxPerSec,
     FrameBudgetSnapshot? budgetSnapshot,
+    String? optimizationReason,
   }) {
     return AdaptiveEffectsState(
       profile: profile ?? this.profile,
@@ -110,6 +114,7 @@ class AdaptiveEffectsState {
       scrollVelocityPxPerSec:
           scrollVelocityPxPerSec ?? this.scrollVelocityPxPerSec,
       budgetSnapshot: budgetSnapshot ?? this.budgetSnapshot,
+      optimizationReason: optimizationReason ?? this.optimizationReason,
     );
   }
 }

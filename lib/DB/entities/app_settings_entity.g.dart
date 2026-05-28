@@ -37,23 +37,28 @@ const AppSettingsEntitySchema = CollectionSchema(
       name: r'isDark',
       type: IsarType.bool,
     ),
-    r'messageFontSize': PropertySchema(
+    r'languageCode': PropertySchema(
       id: 4,
+      name: r'languageCode',
+      type: IsarType.string,
+    ),
+    r'messageFontSize': PropertySchema(
+      id: 5,
       name: r'messageFontSize',
       type: IsarType.double,
     ),
     r'messagePreloading': PropertySchema(
-      id: 5,
+      id: 6,
       name: r'messagePreloading',
       type: IsarType.bool,
     ),
     r'selectedColor': PropertySchema(
-      id: 6,
+      id: 7,
       name: r'selectedColor',
       type: IsarType.string,
     ),
     r'smartCache': PropertySchema(
-      id: 7,
+      id: 8,
       name: r'smartCache',
       type: IsarType.bool,
     )
@@ -90,6 +95,12 @@ int _appSettingsEntityEstimateSize(
       bytesCount += 3 + value.length * 3;
     }
   }
+  {
+    final value = object.languageCode;
+    if (value != null) {
+      bytesCount += 3 + value.length * 3;
+    }
+  }
   bytesCount += 3 + object.selectedColor.length * 3;
   return bytesCount;
 }
@@ -104,10 +115,11 @@ void _appSettingsEntitySerialize(
   writer.writeString(offsets[1], object.autoDownloadVoices);
   writer.writeBool(offsets[2], object.batterySaverMode);
   writer.writeBool(offsets[3], object.isDark);
-  writer.writeDouble(offsets[4], object.messageFontSize);
-  writer.writeBool(offsets[5], object.messagePreloading);
-  writer.writeString(offsets[6], object.selectedColor);
-  writer.writeBool(offsets[7], object.smartCache);
+  writer.writeString(offsets[4], object.languageCode);
+  writer.writeDouble(offsets[5], object.messageFontSize);
+  writer.writeBool(offsets[6], object.messagePreloading);
+  writer.writeString(offsets[7], object.selectedColor);
+  writer.writeBool(offsets[8], object.smartCache);
 }
 
 AppSettingsEntity _appSettingsEntityDeserialize(
@@ -122,10 +134,11 @@ AppSettingsEntity _appSettingsEntityDeserialize(
   object.batterySaverMode = reader.readBoolOrNull(offsets[2]);
   object.id = id;
   object.isDark = reader.readBool(offsets[3]);
-  object.messageFontSize = reader.readDoubleOrNull(offsets[4]);
-  object.messagePreloading = reader.readBoolOrNull(offsets[5]);
-  object.selectedColor = reader.readString(offsets[6]);
-  object.smartCache = reader.readBoolOrNull(offsets[7]);
+  object.languageCode = reader.readStringOrNull(offsets[4]);
+  object.messageFontSize = reader.readDoubleOrNull(offsets[5]);
+  object.messagePreloading = reader.readBoolOrNull(offsets[6]);
+  object.selectedColor = reader.readString(offsets[7]);
+  object.smartCache = reader.readBoolOrNull(offsets[8]);
   return object;
 }
 
@@ -145,12 +158,14 @@ P _appSettingsEntityDeserializeProp<P>(
     case 3:
       return (reader.readBool(offset)) as P;
     case 4:
-      return (reader.readDoubleOrNull(offset)) as P;
+      return (reader.readStringOrNull(offset)) as P;
     case 5:
-      return (reader.readBoolOrNull(offset)) as P;
+      return (reader.readDoubleOrNull(offset)) as P;
     case 6:
-      return (reader.readString(offset)) as P;
+      return (reader.readBoolOrNull(offset)) as P;
     case 7:
+      return (reader.readString(offset)) as P;
+    case 8:
       return (reader.readBoolOrNull(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
@@ -656,6 +671,160 @@ extension AppSettingsEntityQueryFilter
   }
 
   QueryBuilder<AppSettingsEntity, AppSettingsEntity, QAfterFilterCondition>
+      languageCodeIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'languageCode',
+      ));
+    });
+  }
+
+  QueryBuilder<AppSettingsEntity, AppSettingsEntity, QAfterFilterCondition>
+      languageCodeIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'languageCode',
+      ));
+    });
+  }
+
+  QueryBuilder<AppSettingsEntity, AppSettingsEntity, QAfterFilterCondition>
+      languageCodeEqualTo(
+    String? value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'languageCode',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<AppSettingsEntity, AppSettingsEntity, QAfterFilterCondition>
+      languageCodeGreaterThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'languageCode',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<AppSettingsEntity, AppSettingsEntity, QAfterFilterCondition>
+      languageCodeLessThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'languageCode',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<AppSettingsEntity, AppSettingsEntity, QAfterFilterCondition>
+      languageCodeBetween(
+    String? lower,
+    String? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'languageCode',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<AppSettingsEntity, AppSettingsEntity, QAfterFilterCondition>
+      languageCodeStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'languageCode',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<AppSettingsEntity, AppSettingsEntity, QAfterFilterCondition>
+      languageCodeEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'languageCode',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<AppSettingsEntity, AppSettingsEntity, QAfterFilterCondition>
+      languageCodeContains(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'languageCode',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<AppSettingsEntity, AppSettingsEntity, QAfterFilterCondition>
+      languageCodeMatches(String pattern, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'languageCode',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<AppSettingsEntity, AppSettingsEntity, QAfterFilterCondition>
+      languageCodeIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'languageCode',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<AppSettingsEntity, AppSettingsEntity, QAfterFilterCondition>
+      languageCodeIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'languageCode',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<AppSettingsEntity, AppSettingsEntity, QAfterFilterCondition>
       messageFontSizeIsNull() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(const FilterCondition.isNull(
@@ -997,6 +1166,20 @@ extension AppSettingsEntityQuerySortBy
   }
 
   QueryBuilder<AppSettingsEntity, AppSettingsEntity, QAfterSortBy>
+      sortByLanguageCode() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'languageCode', Sort.asc);
+    });
+  }
+
+  QueryBuilder<AppSettingsEntity, AppSettingsEntity, QAfterSortBy>
+      sortByLanguageCodeDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'languageCode', Sort.desc);
+    });
+  }
+
+  QueryBuilder<AppSettingsEntity, AppSettingsEntity, QAfterSortBy>
       sortByMessageFontSize() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'messageFontSize', Sort.asc);
@@ -1125,6 +1308,20 @@ extension AppSettingsEntityQuerySortThenBy
   }
 
   QueryBuilder<AppSettingsEntity, AppSettingsEntity, QAfterSortBy>
+      thenByLanguageCode() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'languageCode', Sort.asc);
+    });
+  }
+
+  QueryBuilder<AppSettingsEntity, AppSettingsEntity, QAfterSortBy>
+      thenByLanguageCodeDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'languageCode', Sort.desc);
+    });
+  }
+
+  QueryBuilder<AppSettingsEntity, AppSettingsEntity, QAfterSortBy>
       thenByMessageFontSize() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'messageFontSize', Sort.asc);
@@ -1214,6 +1411,13 @@ extension AppSettingsEntityQueryWhereDistinct
   }
 
   QueryBuilder<AppSettingsEntity, AppSettingsEntity, QDistinct>
+      distinctByLanguageCode({bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'languageCode', caseSensitive: caseSensitive);
+    });
+  }
+
+  QueryBuilder<AppSettingsEntity, AppSettingsEntity, QDistinct>
       distinctByMessageFontSize() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'messageFontSize');
@@ -1275,6 +1479,13 @@ extension AppSettingsEntityQueryProperty
   QueryBuilder<AppSettingsEntity, bool, QQueryOperations> isDarkProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'isDark');
+    });
+  }
+
+  QueryBuilder<AppSettingsEntity, String?, QQueryOperations>
+      languageCodeProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'languageCode');
     });
   }
 

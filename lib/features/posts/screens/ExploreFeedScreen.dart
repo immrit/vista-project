@@ -5,6 +5,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:badges/badges.dart' as badges;
+import 'package:connectivity_plus/connectivity_plus.dart';
 
 // Import Models
 import '../../../model/publicPostModel.dart';
@@ -32,6 +33,11 @@ import '../providers/saved_posts_provider.dart';
 import '../data/go_posts_repository.dart';
 import 'package:Vista/features/search/screens/searchPage.dart';
 import '../../../widgets/verification_badge_icon.dart';
+import 'package:Vista/features/stories/stories.dart';
+import 'package:Vista/core/theme/app_theme.dart';
+import '../../../widgets/skeleton_loading.dart';
+import '../widgets/double_tap_like_overlay.dart';
+import 'package:Vista/l10n/generated/app_localizations.dart';
 
 // -----------------------------------------------------------------------------
 // SCREEN
@@ -50,81 +56,124 @@ class ExploreFeedScreen extends ConsumerStatefulWidget {
 
 class _ExploreFeedScreenState extends ConsumerState<ExploreFeedScreen>
     with AutomaticKeepAliveClientMixin {
+  final Connectivity _connectivity = Connectivity();
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
+  bool _isOffline = false;
+
   @override
   void initState() {
     super.initState();
-    // Logic to hide/show AppBar on scroll (Snap behavior is handled by SliverAppBar,
-    // but extra logic can be added here if needed for bottom bars etc.)
+    unawaited(_initConnectivityStatus());
+    _connectivitySubscription =
+        _connectivity.onConnectivityChanged.listen(_handleConnectivityChange);
+  }
+
+  Future<void> _initConnectivityStatus() async {
+    final results = await _connectivity.checkConnectivity();
+    if (!mounted) return;
+    _handleConnectivityChange(results);
+  }
+
+  void _handleConnectivityChange(List<ConnectivityResult> results) {
+    final isOffline =
+        results.isEmpty || results.every((r) => r == ConnectivityResult.none);
+    if (!mounted || _isOffline == isOffline) return;
+    setState(() {
+      _isOffline = isOffline;
+    });
+  }
+
+  @override
+  void dispose() {
+    _connectivitySubscription?.cancel();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final backgroundColor = isDark ? Colors.black : Colors.white;
-    final textColor = isDark ? Colors.white : Colors.black;
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final bgColor = theme.scaffoldBackgroundColor;
+    final textColor =
+        isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary;
 
     return DefaultTabController(
       length: 2,
       child: Scaffold(
-        backgroundColor: backgroundColor,
-        body: NestedScrollView(
-          headerSliverBuilder: (context, innerBoxIsScrolled) {
-            return [
-              SliverAppBar(
-                backgroundColor: backgroundColor,
-                foregroundColor: textColor,
-                floating: true,
-                snap: true,
-                pinned: true, // Keep the tab bar pinned
-                elevation: 0,
-                title: Image.asset(
-                  isDark
-                      ? 'lib/utils/images/logo/logo-white.png'
-                      : 'lib/utils/images/logo/black-logo.png',
-                  height: 35,
-                  fit: BoxFit.cover,
-                ),
-                centerTitle: true,
-                actions: [
-                  IconButton(
-                    tooltip: 'اعلان‌ها',
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const NotificationsPage(),
+        backgroundColor: bgColor,
+        body: Column(
+          children: [
+            _FeedConnectionBanner(
+              isOffline: _isOffline,
+              onRetry: _initConnectivityStatus,
+            ),
+            Expanded(
+              child: NestedScrollView(
+                headerSliverBuilder: (context, innerBoxIsScrolled) {
+                  return [
+                    SliverAppBar(
+                      backgroundColor: bgColor,
+                      foregroundColor: textColor,
+                      floating: true,
+                      snap: true,
+                      pinned: true,
+                      elevation: 0,
+                      scrolledUnderElevation: 0,
+                      title: Image.asset(
+                        isDark
+                            ? 'lib/utils/images/logo/logo-white.png'
+                            : 'lib/utils/images/logo/black-logo.png',
+                        height: 35,
+                        fit: BoxFit.cover,
+                      ),
+                      centerTitle: true,
+                      actions: [
+                        IconButton(
+                          tooltip: 'اعلان‌ها',
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => const NotificationsPage(),
+                              ),
+                            );
+                          },
+                          icon: _buildNotificationBadge(iconColor: textColor),
                         ),
-                      );
-                    },
-                    icon: _buildNotificationBadge(
-                      iconColor: textColor,
+                      ],
+                      bottom: TabBar(
+                        indicatorColor: AppColors.primary,
+                        indicatorSize: TabBarIndicatorSize.label,
+                        indicatorWeight: 2.5,
+                        labelColor: AppColors.primary,
+                        unselectedLabelColor:
+                            theme.colorScheme.onSurfaceVariant,
+                        dividerColor: Colors.transparent,
+                        labelStyle: const TextStyle(
+                            fontWeight: FontWeight.w700, fontSize: 15),
+                        unselectedLabelStyle: const TextStyle(
+                            fontWeight: FontWeight.normal, fontSize: 15),
+                        tabs: [
+                          Tab(text: AppLocalizations.of(context)?.forYou ?? "برای شما"),
+                          Tab(text: AppLocalizations.of(context)?.following ?? "دنبال شده‌ها"),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
-                bottom: TabBar(
-                  indicatorColor: textColor,
-                  indicatorSize: TabBarIndicatorSize.label,
-                  labelColor: textColor,
-                  unselectedLabelColor: Colors.grey,
-                  labelStyle: const TextStyle(
-                      fontFamily: 'Vazirmatn',
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16),
-                  tabs: const [
-                    Tab(text: "برای شما"),
-                    Tab(text: "دنبال شده ها"),
+                    const SliverToBoxAdapter(
+                      child: StoryBar(),
+                    ),
+                  ];
+                },
+                body: const TabBarView(
+                  children: [
+                    _ForYouTab(),
+                    _FollowingTab(),
                   ],
                 ),
               ),
-            ];
-          },
-          body: const TabBarView(
-            children: [
-              _ForYouTab(),
-              _FollowingTab(),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -174,7 +223,21 @@ class _ForYouTab extends ConsumerWidget {
     return feedAsync.when(
       data: (posts) {
         if (posts.isEmpty) {
-          return const Center(child: Text('پستی یافت نشد'));
+          return _RefreshableFeedState(
+            onRefresh: () =>
+                ref.read(personalizedFeedProvider.notifier).refreshPosts(),
+            child: _FeedEmptyState(
+              title: AppLocalizations.of(context)?.noPostsReady ?? 'هنوز پستی برای شما آماده نشده',
+              subtitle: AppLocalizations.of(context)?.followToPersonalize ?? 'با دنبال‌کردن کاربران جدید، فید شما سریع‌تر شخصی‌سازی می‌شود.',
+              actionLabel: AppLocalizations.of(context)?.searchUsers ?? 'جستجوی کاربران',
+              onAction: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const SearchPage()),
+                );
+              },
+            ),
+          );
         }
         return RefreshIndicator(
           onRefresh: () async =>
@@ -188,7 +251,9 @@ class _ForYouTab extends ConsumerWidget {
                 notifier.loadMorePosts();
                 return const Padding(
                   padding: EdgeInsets.all(16),
-                  child: Center(child: CircularProgressIndicator()),
+                  child: Center(
+                    child: CircularProgressIndicator(color: AppColors.primary),
+                  ),
                 );
               }
 
@@ -203,19 +268,14 @@ class _ForYouTab extends ConsumerWidget {
           ),
         );
       },
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (err, stack) => Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Text('بارگذاری پست‌ها ممکن نشد.'),
-            const SizedBox(height: 12),
-            ElevatedButton(
-              onPressed: () =>
-                  ref.read(personalizedFeedProvider.notifier).refreshPosts(),
-              child: const Text('تلاش مجدد'),
-            ),
-          ],
+      loading: () => const _FeedLoadingState(),
+      error: (err, stack) => _RefreshableFeedState(
+        onRefresh: () =>
+            ref.read(personalizedFeedProvider.notifier).refreshPosts(),
+        child: _FeedErrorState(
+          message: AppLocalizations.of(context)?.loadSuggestedFailed ?? 'بارگذاری پست‌های پیشنهادی ناموفق بود.',
+          onRetry: () =>
+              ref.read(personalizedFeedProvider.notifier).refreshPosts(),
         ),
       ),
     );
@@ -234,7 +294,17 @@ class _FollowingTab extends ConsumerWidget {
     return feedAsync.when(
       data: (posts) {
         if (posts.isEmpty) {
-          return const Center(child: Text('پستی از دنبال‌شدگان یافت نشد'));
+          return _RefreshableFeedState(
+            onRefresh: () =>
+                ref.read(fetchFollowingPostsProvider.notifier).refreshPosts(),
+            child: _FeedEmptyState(
+              title: AppLocalizations.of(context)?.noFollowingPosts ?? 'پستی از دنبال‌شده‌ها پیدا نشد',
+              subtitle: AppLocalizations.of(context)?.followMorePeople ?? 'افراد بیشتری را دنبال کنید یا کمی بعد دوباره بررسی کنید.',
+              actionLabel: AppLocalizations.of(context)?.refreshFeed ?? 'تازه‌سازی فید',
+              onAction: () =>
+                  ref.read(fetchFollowingPostsProvider.notifier).refreshPosts(),
+            ),
+          );
         }
         return RefreshIndicator(
           onRefresh: () async =>
@@ -248,7 +318,9 @@ class _FollowingTab extends ConsumerWidget {
                 notifier.loadMorePosts();
                 return const Padding(
                   padding: EdgeInsets.all(16),
-                  child: Center(child: CircularProgressIndicator()),
+                  child: Center(
+                    child: CircularProgressIndicator(color: AppColors.primary),
+                  ),
                 );
               }
 
@@ -263,21 +335,186 @@ class _FollowingTab extends ConsumerWidget {
           ),
         );
       },
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (err, stack) => Center(
+      loading: () => const _FeedLoadingState(),
+      error: (err, stack) => _RefreshableFeedState(
+        onRefresh: () =>
+            ref.read(fetchFollowingPostsProvider.notifier).refreshPosts(),
+        child: _FeedErrorState(
+          message: AppLocalizations.of(context)?.loadFollowingFailed ?? 'بارگذاری پست‌های دنبال‌شده ناموفق بود.',
+          onRetry: () =>
+              ref.read(fetchFollowingPostsProvider.notifier).refreshPosts(),
+        ),
+      ),
+    );
+  }
+}
+
+class _RefreshableFeedState extends StatelessWidget {
+  const _RefreshableFeedState({
+    required this.onRefresh,
+    required this.child,
+  });
+
+  final Future<void> Function() onRefresh;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return RefreshIndicator(
+      onRefresh: onRefresh,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: [
+          SizedBox(
+            height: MediaQuery.of(context).size.height * 0.62,
+            child: Center(child: child),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FeedLoadingState extends StatelessWidget {
+  const _FeedLoadingState();
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView.separated(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      itemBuilder: (_, __) => const PostCardSkeleton(),
+      separatorBuilder: (_, __) => const Divider(height: 0.5, thickness: 0.5),
+      itemCount: 4,
+    );
+  }
+}
+
+class _FeedEmptyState extends StatelessWidget {
+  const _FeedEmptyState({
+    required this.title,
+    required this.subtitle,
+    required this.actionLabel,
+    required this.onAction,
+  });
+
+  final String title;
+  final String subtitle;
+  final String actionLabel;
+  final VoidCallback onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('بارگذاری پست‌های دنبال‌شده ممکن نشد.'),
+            Icon(Icons.dynamic_feed_rounded,
+                color: colorScheme.primary, size: 40),
             const SizedBox(height: 12),
-            ElevatedButton(
-              onPressed: () =>
-                  ref.read(fetchFollowingPostsProvider.notifier).refreshPosts(),
-              child: const Text('تلاش مجدد'),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
             ),
+            const SizedBox(height: 8),
+            Text(
+              subtitle,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+            ),
+            const SizedBox(height: 14),
+            FilledButton(onPressed: onAction, child: Text(actionLabel)),
           ],
         ),
       ),
+    );
+  }
+}
+
+class _FeedErrorState extends StatelessWidget {
+  const _FeedErrorState({required this.message, required this.onRetry});
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.cloud_off_rounded, size: 40, color: Colors.orange),
+            const SizedBox(height: 10),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyLarge,
+            ),
+            const SizedBox(height: 12),
+            ElevatedButton(onPressed: onRetry, child: Text(AppLocalizations.of(context)?.retry ?? 'تلاش مجدد')),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FeedConnectionBanner extends StatelessWidget {
+  const _FeedConnectionBanner({
+    required this.isOffline,
+    required this.onRetry,
+  });
+
+  final bool isOffline;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 220),
+      height: isOffline ? 42 : 0,
+      width: double.infinity,
+      padding: isOffline
+          ? const EdgeInsets.symmetric(horizontal: 12, vertical: 6)
+          : EdgeInsets.zero,
+      color: Colors.orange.shade700,
+      child: isOffline
+          ? Row(
+              children: [
+                const Icon(Icons.wifi_off_rounded,
+                    color: Colors.white, size: 18),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    AppLocalizations.of(context)?.noInternetConnection ?? 'اتصال اینترنت برقرار نیست',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 12.5,
+                    ),
+                  ),
+                ),
+                TextButton(
+                  onPressed: onRetry,
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  ),
+                  child: Text(AppLocalizations.of(context)?.recheck ?? 'بررسی مجدد'),
+                ),
+              ],
+            )
+          : null,
     );
   }
 }
@@ -290,7 +527,7 @@ class _FollowingTab extends ConsumerWidget {
 // WIDGETS
 // -----------------------------------------------------------------------------
 
-/// آیتم لیست پست (دقیقاً مشابه پروفایل با منطق منوی publicPosts)
+/// آیتم لیست پست با اکشن‌های استاندارد فید
 class _ThreadPostItem extends ConsumerWidget {
   final PublicPostModel post;
   final bool isForYou;
@@ -299,8 +536,13 @@ class _ThreadPostItem extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final colorScheme = theme.colorScheme;
     final hasImage = post.imageUrl != null && post.imageUrl!.isNotEmpty;
+    final isLiked = ref.watch(likeStateProvider)[post.id] ?? post.isLiked;
+    final likeCount =
+        post.likeCount + (isLiked != post.isLiked ? (isLiked ? 1 : -1) : 0);
     final currentUserId =
         ref.watch(activeUserProvider)?.id ?? CurrentUserService.cachedUserId;
 
@@ -383,8 +625,7 @@ class _ThreadPostItem extends ConsumerWidget {
                                     style: TextStyle(
                                       fontWeight: FontWeight.bold,
                                       fontSize: 15,
-                                      color:
-                                          isDark ? Colors.white : Colors.black,
+                                      color: colorScheme.onSurface,
                                     ),
                                     overflow: TextOverflow.ellipsis,
                                   ),
@@ -436,15 +677,14 @@ class _ThreadPostItem extends ConsumerWidget {
                                           tapTargetSize:
                                               MaterialTapTargetSize.shrinkWrap,
                                           textStyle: const TextStyle(
-                                            fontFamily: 'Vazirmatn',
                                             fontWeight: FontWeight.w600,
                                             fontSize: 12,
                                           ),
                                         ),
-                                        child: const Center(
+                                        child: Center(
                                           child: FittedBox(
                                             fit: BoxFit.scaleDown,
-                                            child: Text('درخواست شد'),
+                                            child: Text(AppLocalizations.of(context)?.requested ?? 'درخواست شد'),
                                           ),
                                         ),
                                       )
@@ -509,7 +749,6 @@ class _ThreadPostItem extends ConsumerWidget {
                                           tapTargetSize:
                                               MaterialTapTargetSize.shrinkWrap,
                                           textStyle: const TextStyle(
-                                            fontFamily: 'Vazirmatn',
                                             fontWeight: FontWeight.w700,
                                             fontSize: 12,
                                           ),
@@ -524,10 +763,10 @@ class _ThreadPostItem extends ConsumerWidget {
                                                   color: Colors.white,
                                                 ),
                                               )
-                                            : const Center(
+                                            : Center(
                                                 child: FittedBox(
                                                   fit: BoxFit.scaleDown,
-                                                  child: Text('دنبال کردن'),
+                                                  child: Text(AppLocalizations.of(context)?.follow ?? 'دنبال کردن'),
                                                 ),
                                               ),
                                       ),
@@ -547,7 +786,8 @@ class _ThreadPostItem extends ConsumerWidget {
                             style: TextStyle(
                               fontSize: 15,
                               height: 1.4,
-                              color: isDark ? Colors.white70 : Colors.black87,
+                              color:
+                                  colorScheme.onSurface.withValues(alpha: 0.9),
                             ),
                             hashtagStyle: const TextStyle(
                               color: Colors.blue,
@@ -573,29 +813,55 @@ class _ThreadPostItem extends ConsumerWidget {
                       if (hasImage)
                         ClipRRect(
                           borderRadius: BorderRadius.circular(14),
-                          child: ConstrainedBox(
-                            constraints: const BoxConstraints(
-                              maxHeight: 280,
-                              minWidth: double.infinity,
-                            ),
-                            child: CachedNetworkImage(
-                              imageUrl: post.imageUrl!,
-                              fit: BoxFit.cover,
-                              placeholder: (_, __) => Container(
-                                height: 180,
-                                color: isDark
-                                    ? Colors.grey[800]
-                                    : Colors.grey[200],
-                                child: const Center(
-                                    child: CircularProgressIndicator(
-                                        strokeWidth: 2)),
+                          child: DoubleTapLikeOverlay(
+                            isAlreadyLiked: isLiked,
+                            onDoubleTap: () async {
+                              if (isLiked) return;
+                              ref
+                                  .read(likeStateProvider.notifier)
+                                  .updateLikeState(post.id, true);
+                              try {
+                                await ref
+                                    .read(postActionsServiceProvider)
+                                    .toggleLike(
+                                      postId: post.id,
+                                      ownerId: post.userId,
+                                      ref: ref,
+                                    );
+                              } catch (_) {
+                                if (context.mounted) {
+                                  ref
+                                      .read(likeStateProvider.notifier)
+                                      .updateLikeState(post.id, false);
+                                }
+                              }
+                            },
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(
+                                maxHeight: 280,
+                                minWidth: double.infinity,
                               ),
-                              errorWidget: (_, __, ___) => Container(
-                                height: 180,
-                                color: isDark
-                                    ? Colors.grey[800]
-                                    : Colors.grey[200],
-                                child: const Icon(Icons.broken_image),
+                              child: CachedNetworkImage(
+                                imageUrl: post.imageUrl!,
+                                fit: BoxFit.cover,
+                                placeholder: (_, __) => Container(
+                                  height: 180,
+                                  color: isDark
+                                      ? Colors.grey[800]
+                                      : Colors.grey[200],
+                                  child: const Center(
+                                      child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: AppColors.primary,
+                                  )),
+                                ),
+                                errorWidget: (_, __, ___) => Container(
+                                  height: 180,
+                                  color: isDark
+                                      ? Colors.grey[800]
+                                      : Colors.grey[200],
+                                  child: const Icon(Icons.broken_image),
+                                ),
                               ),
                             ),
                           ),
@@ -607,40 +873,28 @@ class _ThreadPostItem extends ConsumerWidget {
                       Row(
                         children: [
                           // دکمه لایک
-                          Consumer(
-                            builder: (context, ref, child) {
-                              final isLiked =
-                                  ref.watch(likeStateProvider)[post.id] ??
-                                      post.isLiked;
-                              final likeCount = post.likeCount +
-                                  (isLiked != post.isLiked
-                                      ? (isLiked ? 1 : -1)
-                                      : 0);
-
-                              return PostLikeButton(
-                                isLiked: isLiked,
-                                likeCount: likeCount,
-                                onTap: () async {
+                          PostLikeButton(
+                            isLiked: isLiked,
+                            likeCount: likeCount,
+                            onTap: () async {
+                              ref
+                                  .read(likeStateProvider.notifier)
+                                  .updateLikeState(post.id, !isLiked);
+                              try {
+                                await ref
+                                    .read(postActionsServiceProvider)
+                                    .toggleLike(
+                                      postId: post.id,
+                                      ownerId: post.userId,
+                                      ref: ref,
+                                    );
+                              } catch (_) {
+                                if (context.mounted) {
                                   ref
                                       .read(likeStateProvider.notifier)
-                                      .updateLikeState(post.id, !isLiked);
-                                  try {
-                                    await ref
-                                        .read(postActionsServiceProvider)
-                                        .toggleLike(
-                                          postId: post.id,
-                                          ownerId: post.userId,
-                                          ref: ref,
-                                        );
-                                  } catch (_) {
-                                    if (context.mounted) {
-                                      ref
-                                          .read(likeStateProvider.notifier)
-                                          .updateLikeState(post.id, isLiked);
-                                    }
-                                  }
-                                },
-                              );
+                                      .updateLikeState(post.id, isLiked);
+                                }
+                              }
                             },
                           ),
                           const SizedBox(width: 16),
@@ -720,7 +974,7 @@ class _ThreadPostItem extends ConsumerWidget {
     );
   }
 
-  // --- Logic from publicPosts.dart regarding Menu ---
+  // --- Post actions menu logic ---
   Widget _buildPostActions(
       BuildContext context, WidgetRef ref, PublicPostModel post, bool isDark) {
     final profileAsync = ref.watch(profileProvider);

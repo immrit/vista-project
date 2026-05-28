@@ -147,6 +147,31 @@ class _FullScreenImageViewerState extends State<FullScreenImageViewer>
         trimmedUrl.startsWith('https://');
   }
 
+  File? _resolveLocalFile(GalleryItem item) {
+    final cached = item.cachedFile;
+    if (cached != null && cached.existsSync()) {
+      return cached;
+    }
+    if (!_isNetworkUrl(item.imageUrl)) {
+      final local = File(item.imageUrl);
+      if (local.existsSync()) {
+        return local;
+      }
+    }
+    return null;
+  }
+
+  ImageProvider? _resolveImageProvider(GalleryItem item) {
+    final local = _resolveLocalFile(item);
+    if (local != null) {
+      return FileImage(local);
+    }
+    if (_isNetworkUrl(item.imageUrl)) {
+      return CachedNetworkImageProvider(item.imageUrl);
+    }
+    return null;
+  }
+
   bool get _shouldTruncateCaption {
     final caption = widget.galleryItems[_currentIndex].caption;
     return caption != null && caption.length > 100;
@@ -162,9 +187,9 @@ class _FullScreenImageViewerState extends State<FullScreenImageViewer>
   }
 
   Future<String> _getFilePath(GalleryItem item) async {
-    // اگر فایل کش شده داریم، از آن استفاده کن
-    if (item.cachedFile != null && await item.cachedFile!.exists()) {
-      return item.cachedFile!.path;
+    final resolvedLocal = _resolveLocalFile(item);
+    if (resolvedLocal != null) {
+      return resolvedLocal.path;
     }
 
     // اگر فایل لوکال است
@@ -449,17 +474,32 @@ class _FullScreenImageViewerState extends State<FullScreenImageViewer>
                         ),
                       ),
                     )
-                  : Image.file(
-                      item.cachedFile ?? File(item.imageUrl),
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => Container(
-                        color: Colors.white10,
-                        child: const Icon(
-                          Icons.image_not_supported_outlined,
-                          color: Colors.white70,
-                          size: 18,
-                        ),
-                      ),
+                  : Builder(
+                      builder: (context) {
+                        final local = _resolveLocalFile(item);
+                        if (local == null) {
+                          return Container(
+                            color: Colors.white10,
+                            child: const Icon(
+                              Icons.image_not_supported_outlined,
+                              color: Colors.white70,
+                              size: 18,
+                            ),
+                          );
+                        }
+                        return Image.file(
+                          local,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => Container(
+                            color: Colors.white10,
+                            child: const Icon(
+                              Icons.image_not_supported_outlined,
+                              color: Colors.white70,
+                              size: 18,
+                            ),
+                          ),
+                        );
+                      },
                     ),
             ),
           );
@@ -494,6 +534,7 @@ class _FullScreenImageViewerState extends State<FullScreenImageViewer>
               itemBuilder: (context, index) {
                 final item = widget.galleryItems[index];
                 final photoController = _getPhotoController(index);
+                final imageProvider = _resolveImageProvider(item);
 
                 return Transform.scale(
                   scale: _isDragging ? _dragScale : 1.0,
@@ -501,37 +542,41 @@ class _FullScreenImageViewerState extends State<FullScreenImageViewer>
                     onTap: _toggleControls,
                     child: Hero(
                       tag: item.heroTag,
-                      child: PhotoView(
-                        imageProvider: item.cachedFile != null
-                            ? FileImage(item.cachedFile!) as ImageProvider
-                            : _isNetworkUrl(item.imageUrl)
-                                ? CachedNetworkImageProvider(item.imageUrl)
-                                : FileImage(File(item.imageUrl)),
-                        controller: photoController,
-                        minScale: PhotoViewComputedScale.contained,
-                        maxScale: PhotoViewComputedScale.covered * 3,
-                        initialScale: PhotoViewComputedScale.contained,
-                        backgroundDecoration: const BoxDecoration(
-                          color: Colors.black,
-                        ),
-                        loadingBuilder: (context, event) => Center(
-                          child: CircularProgressIndicator(
-                            value: event == null
-                                ? null
-                                : event.cumulativeBytesLoaded /
-                                    (event.expectedTotalBytes ?? 1),
-                            color: Colors.white,
-                          ),
-                        ),
-                        errorBuilder: (context, error, stackTrace) =>
-                            const Center(
-                          child: Icon(
-                            Icons.broken_image_rounded,
-                            size: 64,
-                            color: Colors.white54,
-                          ),
-                        ),
-                      ),
+                      child: imageProvider == null
+                          ? const Center(
+                              child: Icon(
+                                Icons.image_not_supported_outlined,
+                                size: 64,
+                                color: Colors.white54,
+                              ),
+                            )
+                          : PhotoView(
+                              imageProvider: imageProvider,
+                              controller: photoController,
+                              minScale: PhotoViewComputedScale.contained,
+                              maxScale: PhotoViewComputedScale.covered * 3,
+                              initialScale: PhotoViewComputedScale.contained,
+                              backgroundDecoration: const BoxDecoration(
+                                color: Colors.black,
+                              ),
+                              loadingBuilder: (context, event) => Center(
+                                child: CircularProgressIndicator(
+                                  value: event == null
+                                      ? null
+                                      : event.cumulativeBytesLoaded /
+                                          (event.expectedTotalBytes ?? 1),
+                                  color: Colors.white,
+                                ),
+                              ),
+                              errorBuilder: (context, error, stackTrace) =>
+                                  const Center(
+                                child: Icon(
+                                  Icons.broken_image_rounded,
+                                  size: 64,
+                                  color: Colors.white54,
+                                ),
+                              ),
+                            ),
                     ),
                   ),
                 );
@@ -574,6 +619,20 @@ class _FullScreenImageViewerState extends State<FullScreenImageViewer>
                         ),
                         const Spacer(),
                         // Forward Button
+                        if (!widget.isSecretMode)
+                          IconButton(
+                            icon:
+                                const Icon(Icons.download_rounded, color: Colors.white),
+                            onPressed: _isSaving ? null : _saveToGallery,
+                            tooltip: 'ذخیره در گالری',
+                          ),
+                        if (!widget.isSecretMode)
+                          IconButton(
+                            icon: const Icon(Icons.ios_share_rounded,
+                                color: Colors.white),
+                            onPressed: _isSharing ? null : _shareImage,
+                            tooltip: 'اشتراک‌گذاری',
+                          ),
                         if (!widget.isSecretMode)
                           IconButton(
                             icon:

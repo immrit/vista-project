@@ -20,6 +20,7 @@ import '../../../../security/logging_utility.dart';
 import '../../../DB/isar_database_manager.dart';
 import '../../../DB/entities/deletion_task_entity.dart';
 import '../../auth/providers/auth_controller.dart';
+import '../../../services/session_manager_service_v2.dart';
 import '../data/datasources/chat_local_datasource_isar.dart';
 import '../domain/message_payload.dart';
 import '../services/sse_manager.dart';
@@ -41,6 +42,7 @@ class ChatRepositoryImpl implements ChatRepository {
   final Map<String, bool> _msgSyncInFlight = {};
   int _lastConvSyncMs = 0;
   bool _convSyncInFlight = false;
+  int _convRateLimitedUntilMs = 0;
 
   static const Duration _msgSyncThrottle = Duration(milliseconds: 800);
   static const Duration _convSyncThrottle = Duration(seconds: 2);
@@ -66,6 +68,10 @@ class ChatRepositoryImpl implements ChatRepository {
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
   Future<Options?> _authOptions() async {
+    final sessionReady =
+        await SessionManagerServiceV2.instance.ensureValidAuthSession();
+    if (!sessionReady) return null;
+
     final token = await TokenStorage.getAccessToken();
     if (token == null || token.isEmpty) return null;
     return Options(headers: {'Authorization': 'Bearer $token'});
@@ -162,8 +168,8 @@ class ChatRepositoryImpl implements ChatRepository {
   }
 
   @override
-  Future<ChatResult<ConversationModel>> createConversation(
-      String otherUserId, {bool isSecret = false}) async {
+  Future<ChatResult<ConversationModel>> createConversation(String otherUserId,
+      {bool isSecret = false}) async {
     final uid = await _userId();
     final opts = await _authOptions();
     if (uid == null || opts == null) {
@@ -216,6 +222,68 @@ class ChatRepositoryImpl implements ChatRepository {
   @override
   Future<ChatResult<void>> toggleMuteConversation(String conversationId) =>
       _toggleFlag(conversationId, 'mute');
+
+  @override
+  Future<ChatResult<void>> respondToMessageRequest(
+    String conversationId, {
+    required bool accept,
+  }) async {
+    final uid = await _userId();
+    final opts = await _authOptions();
+    if (uid == null || opts == null) {
+      return ChatResult.failure('کاربر وارد نشده است');
+    }
+
+    final endpointAttempts = <({String path, bool withBody})>[
+      (
+        path: '/chat/conversations/$conversationId/message-request/respond',
+        withBody: true
+      ),
+      (
+        path: '/chat/conversations/$conversationId/request/respond',
+        withBody: true
+      ),
+      (
+        path: '/chat/conversations/$conversationId/requests/respond',
+        withBody: true
+      ),
+      (
+        path:
+            '/chat/conversations/$conversationId/${accept ? 'accept-request' : 'decline-request'}',
+        withBody: false
+      ),
+      (
+        path:
+            '/chat/conversations/$conversationId/${accept ? 'accept' : 'decline'}',
+        withBody: false
+      ),
+    ];
+
+    DioException? lastDioError;
+    for (final attempt in endpointAttempts) {
+      try {
+        await _dio.post(
+          attempt.path,
+          data: attempt.withBody ? {'accept': accept} : null,
+          options: opts,
+        );
+        await _syncConversations(uid);
+        return ChatResult.success(null);
+      } on DioException catch (e) {
+        lastDioError = e;
+        final status = e.response?.statusCode;
+        if (status == 404 || status == 405) {
+          continue;
+        }
+        return ChatResult.failure(_dioError(e));
+      }
+    }
+
+    if (lastDioError != null) {
+      return ChatResult.failure(_dioError(lastDioError!));
+    }
+    return ChatResult.failure('پاسخ به درخواست پیام انجام نشد');
+  }
 
   @override
   Future<ChatResult<void>> clearConversation(
@@ -372,6 +440,7 @@ class ChatRepositoryImpl implements ChatRepository {
             'reply_to_content': payload.replyToContent,
           if (payload.replyToSenderName != null)
             'reply_to_sender_name': payload.replyToSenderName,
+          if (payload.replyToKind != null) 'reply_to_kind': payload.replyToKind,
         },
         options: opts,
       );
@@ -846,6 +915,7 @@ class ChatRepositoryImpl implements ChatRepository {
   Future<void> _syncConversations(String uid) async {
     if (_convSyncInFlight) return;
     final now = DateTime.now().millisecondsSinceEpoch;
+    if (now < _convRateLimitedUntilMs) return;
     if (now - _lastConvSyncMs < _convSyncThrottle.inMilliseconds) return;
     _lastConvSyncMs = now;
     _convSyncInFlight = true;
@@ -882,12 +952,26 @@ class ChatRepositoryImpl implements ChatRepository {
         return ChatResult.success(convs);
       } on DioException catch (e) {
         if (e.response?.statusCode == 401 && retries == 0) {
-          logInfo('⚠️ 401 in _fetchConversationsFromServer. Waiting 3s for token refresh...');
-          await Future.delayed(const Duration(seconds: 3));
-          retries++;
-          continue;
+          logInfo(
+              '⚠️ 401 in _fetchConversationsFromServer. Refreshing token...');
+          final refreshed = await SessionManagerServiceV2.instance
+              .performSessionRefreshPublic();
+          if (refreshed == RefreshResult.success) {
+            retries++;
+            continue;
+          }
         }
-        logInfo('⚠️ DioException in _fetchConversationsFromServer: ${e.response?.statusCode} - ${e.response?.data}');
+        if (e.response?.statusCode == 429) {
+          final retryAfter =
+              _retryAfterSeconds(e.response?.headers.value('retry-after'));
+          _convRateLimitedUntilMs = DateTime.now()
+              .add(Duration(seconds: retryAfter))
+              .millisecondsSinceEpoch;
+          logInfo(
+              '⚠️ Conversations rate-limited (429). Cooling down for ${retryAfter}s');
+        }
+        logInfo(
+            '⚠️ DioException in _fetchConversationsFromServer: ${e.type} - ${e.message} - ${e.response?.statusCode}');
         return ChatResult.failure(_dioError(e));
       } catch (e) {
         logInfo('⚠️ Exception in _fetchConversationsFromServer: $e');
@@ -930,6 +1014,9 @@ class ChatRepositoryImpl implements ChatRepository {
       if (conversationId == _activeConversationId) {
         unawaited(markMessagesAsSeen(conversationId));
       }
+    } on DioException catch (e) {
+      logWarning(
+          '_syncMessages DioException: ${e.response?.statusCode} - ${e.response?.data}');
     } catch (e) {
       logWarning('_syncMessages error: $e');
     } finally {
@@ -1139,6 +1226,10 @@ class ChatRepositoryImpl implements ChatRepository {
       'is_pinned': j['is_pinned'] ?? false,
       'is_muted': j['is_muted'] ?? false,
       'type': type,
+      'is_message_request':
+          j['is_message_request'] ?? j['message_request'] ?? false,
+      'message_request_status':
+          j['message_request_status'] ?? j['request_status'],
       'name': type == 'group' ? j['name'] : null,
       'image': type == 'group' ? j['image'] : null,
       'participants': [
@@ -1216,11 +1307,48 @@ class ChatRepositoryImpl implements ChatRepository {
 
   String _dioError(DioException e) {
     final status = e.response?.statusCode;
+    final data = e.response?.data;
+    logError('DioException: status=$status, data=$data, url=${e.requestOptions.path}');
+
+    if (status == null) {
+      switch (e.type) {
+        case DioExceptionType.connectionTimeout:
+        case DioExceptionType.sendTimeout:
+        case DioExceptionType.receiveTimeout:
+          return 'زمان پاسخ‌دهی سرور به پایان رسید. دوباره تلاش کنید.';
+        case DioExceptionType.connectionError:
+          return 'ارتباط با سرور برقرار نشد. اتصال اینترنت را بررسی کنید.';
+        default:
+          return 'ارتباط با سرور برقرار نشد.';
+      }
+    }
+
+    if (status == 500) {
+      logError('Server Error 500: $data');
+      if (data is Map && data['error'] != null) {
+        return data['error'].toString();
+      }
+      return 'خطای داخلی سرور رخ داد. $data';
+    }
+
+    if (status == 400) {
+      logError('Bad Request 400: $data');
+      if (data is Map && data['error'] != null) {
+        return data['error'].toString();
+      }
+    }
+    
     if (status == 429)
       return 'تعداد درخواست‌ها بیش از حد مجاز است. لطفاً کمی صبر کنید.';
     if (status == 403) return 'این کاربر دریافت پیام را محدود کرده است';
     if (status == 404) return 'آیتم مورد نظر یافت نشد';
     if (status == 401) return 'لطفاً دوباره وارد شوید';
     return e.message ?? 'خطا در ارتباط با سرور';
+  }
+
+  int _retryAfterSeconds(String? retryAfterHeader) {
+    final parsed = int.tryParse(retryAfterHeader ?? '');
+    if (parsed == null || parsed <= 0) return 60;
+    return parsed.clamp(10, 180);
   }
 }

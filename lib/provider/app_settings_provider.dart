@@ -13,6 +13,7 @@ import '../DB/settings_cache_service.dart';
 import '../services/animation_controller_service.dart';
 import '../services/video_autoplay_service.dart';
 import '../services/image_quality_service.dart';
+import '../services/cache_manager.dart';
 import '../core/data/cache/cache_repository.dart';
 // import '../view/widgets/VideoPlayerConfig.dart';
 // import '/model/notificationModel.dart';
@@ -508,11 +509,17 @@ class PerformanceNotifier extends StateNotifier<PerformanceSettings> {
 
     final imageQualityService = ImageQualityService();
     await imageQualityService.setBatterySaverMode(enabled);
+
+    final unifiedCacheManager = UnifiedCacheManager();
+    unifiedCacheManager.setBatterySaverMode(enabled);
   }
 
   Future<void> updateSmartCache(bool enabled) async {
     state = state.copyWith(smartCache: enabled);
     await _saveSettings();
+
+    final unifiedCacheManager = UnifiedCacheManager();
+    unifiedCacheManager.setSmartCacheEnabled(enabled);
 
     if (enabled) {
       await CacheRepository().optimize();

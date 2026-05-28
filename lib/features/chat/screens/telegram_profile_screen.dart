@@ -13,18 +13,22 @@
 //
 
 import 'dart:convert';
+import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:dio/dio.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:photo_view/photo_view.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:path_provider/path_provider.dart';
 import '../../../model/message_model.dart';
 import '../../../provider/chat_provider.dart' as legacy_chat;
 import '../../../provider/chat_screen_provider.dart';
+import '../../../provider/presence_provider.dart';
 import 'package:photo_view/photo_view_gallery.dart';
 import '../../../services/voice_player_service.dart';
 import '../../../widgets/CustomVideoPlayer.dart';
@@ -135,7 +139,8 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
     final isBlockedAsync =
         ref.watch(legacy_chat.userBlockStatusProvider(widget.otherUserId));
     final userOnlineAsync = ref
-        .watch(legacy_chat.userOnlineStatusStreamProvider(widget.otherUserId));
+        .watch(userPresenceStreamProvider(widget.otherUserId))
+        .whenData((presence) => presence.isOnline);
 
     final bgColor = isDark ? _darkBg : _lightBg;
 
@@ -2201,16 +2206,32 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
     }
 
     final uri = Uri.tryParse(url);
-    if (uri == null) {
+    if (uri == null || !(uri.scheme == 'http' || uri.scheme == 'https')) {
       _showSnackBar('لینک فایل معتبر نیست', isError: true);
       return;
     }
 
     try {
-      final launched =
-          await launchUrl(uri, mode: LaunchMode.externalApplication);
-      if (!launched && mounted) {
-        _showSnackBar('امکان باز کردن فایل وجود ندارد', isError: true);
+      final response = await Dio().get<List<int>>(
+        url,
+        options: Options(responseType: ResponseType.bytes),
+      );
+      final bytes = response.data;
+      if (bytes == null || bytes.isEmpty) {
+        _showSnackBar('دانلود فایل ناموفق بود', isError: true);
+        return;
+      }
+
+      final directory = await getApplicationDocumentsDirectory();
+      final fallbackName = 'file_${DateTime.now().millisecondsSinceEpoch}';
+      final rawName = (file.attachmentFileName ?? fallbackName).trim();
+      final sanitizedName = rawName.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+      final filePath = '${directory.path}/$sanitizedName';
+      final output = File(filePath);
+      await output.writeAsBytes(bytes, flush: true);
+
+      if (mounted) {
+        _showSnackBar('فایل ذخیره شد');
       }
     } catch (e) {
       if (mounted) {
