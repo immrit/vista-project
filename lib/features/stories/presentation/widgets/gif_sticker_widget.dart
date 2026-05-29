@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import '../../domain/entities/story_editor_models.dart';
 
 class GifStickerWidget extends StatelessWidget {
@@ -16,7 +15,6 @@ class GifStickerWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     final data = element.interactionData ?? const {};
     final gifUrl = data['gifUrl']?.toString() ?? '';
-    final previewUrl = data['previewUrl']?.toString();
     final width = _asDouble(data['width']) ?? element.width ?? 180;
     final height = _asDouble(data['height']) ?? element.height ?? 180;
     final style = element.resolvedStyleIndex % 2;
@@ -42,12 +40,14 @@ class GifStickerWidget extends StatelessWidget {
             : null,
       ),
       clipBehavior: Clip.antiAlias,
-      child: CachedNetworkImage(
-        imageUrl: previewUrl != null && previewUrl.trim().isNotEmpty
-            ? previewUrl
-            : gifUrl,
+      // Use gifUrl directly for animated GIF; Image.network supports animation.
+      child: Image.network(
+        gifUrl,
+        width: width,
+        height: height,
         fit: BoxFit.cover,
-        errorWidget: (context, url, error) => _buildFallback(width, height),
+        gaplessPlayback: true,
+        errorBuilder: (context, error, stack) => _buildFallback(width, height),
       ),
     );
   }

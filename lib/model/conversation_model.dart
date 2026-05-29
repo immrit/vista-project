@@ -128,11 +128,11 @@ class ConversationModel {
             if (profiles != null) {
               if (profiles is List && profiles.isNotEmpty) {
                 // If profiles is a list, take the first one
-                otherUserName = profiles[0]['username'] as String?;
+                otherUserName = _profileDisplayName(profiles[0]);
                 otherUserAvatar = profiles[0]['avatar_url'] as String?;
               } else if (profiles is Map) {
                 // If profiles is a single object
-                otherUserName = profiles['username'] as String?;
+                otherUserName = _profileDisplayName(profiles);
                 otherUserAvatar = profiles['avatar_url'] as String?;
               }
             } else {
@@ -144,16 +144,23 @@ class ConversationModel {
         }
       }
 
-      final isSecretFlag = (json['is_secret'] as bool?) ??
-          (json['isSecret'] as bool?) ??
-          false;
-      final conversationType = (json['conversation_type'] ?? json['type'])
-          ?.toString()
-          .toLowerCase();
+      final isSecretFlag =
+          (json['is_secret'] as bool?) ?? (json['isSecret'] as bool?) ?? false;
+      final conversationType =
+          (json['conversation_type'] ?? json['type'])?.toString().toLowerCase();
       if (conversationType == 'group') {
         otherUserName = (json['name'] as String?) ?? 'گروه';
         otherUserAvatar = json['image'] as String?;
         otherUserId = null;
+      } else {
+        // برای چت‌های دو نفره و سکرت، اگر بک‌اند اسم رو فرستاده از همون استفاده کن
+        if (json['name'] != null && json['name'].toString().trim().isNotEmpty) {
+          otherUserName = json['name'] as String;
+        }
+        if (json['image'] != null &&
+            json['image'].toString().trim().isNotEmpty) {
+          otherUserAvatar = json['image'] as String;
+        }
       }
 
       final lastMessageSenderId = json['last_message_sender_id'] as String?;
@@ -177,8 +184,7 @@ class ConversationModel {
             ? DateTime.parse(json['last_message_time'] as String)
             : null,
         participants: participants,
-        otherUserName:
-            otherUserName ?? json['otherUserName'] as String? ?? 'کاربر ناشناس',
+        otherUserName: otherUserName ?? json['otherUserName'] as String?,
         otherUserAvatar: otherUserAvatar ?? json['otherUserAvatar'] as String?,
         otherUserId: otherUserId ?? json['otherUserId'] as String?,
         hasUnreadMessages: hasUnreadMessages,
@@ -266,6 +272,15 @@ class ConversationModel {
       return int.tryParse(value) ?? fallback;
     }
     return fallback;
+  }
+
+  static String? _profileDisplayName(dynamic profile) {
+    if (profile is! Map) return null;
+    final username = profile['username']?.toString().trim() ?? '';
+    if (username.isNotEmpty) return username;
+    final fullName = profile['full_name']?.toString().trim() ?? '';
+    if (fullName.isNotEmpty) return fullName;
+    return null;
   }
 
   Map<String, dynamic> toJson() {

@@ -26,6 +26,7 @@ import '../../../services/smart_share_service.dart';
 import '../../../services/current_user_service.dart';
 import 'package:Vista/utils/premium_features_helper.dart';
 import 'package:Vista/utils/comments_bottom_sheet.dart';
+import 'package:Vista/services/system_ui_bar_service.dart';
 import '../../../utils/user_friendly_error_utils.dart';
 import '../widgets/post_action_buttons.dart';
 import '../widgets/hashtag_rich_text.dart';
@@ -97,6 +98,18 @@ class _ExploreFeedScreenState extends ConsumerState<ExploreFeedScreen>
     final bgColor = theme.scaffoldBackgroundColor;
     final textColor =
         isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary;
+    final overlayStyle = SystemUiOverlayStyle(
+      statusBarColor: bgColor,
+      statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
+      statusBarBrightness: isDark ? Brightness.dark : Brightness.light,
+      systemNavigationBarColor: bgColor,
+      systemNavigationBarIconBrightness:
+          isDark ? Brightness.light : Brightness.dark,
+      systemStatusBarContrastEnforced: false,
+      systemNavigationBarContrastEnforced: false,
+    );
+    SystemChrome.setSystemUIOverlayStyle(overlayStyle);
+    SystemUiBarService.sync(overlayStyle);
 
     return DefaultTabController(
       length: 2,
@@ -120,6 +133,7 @@ class _ExploreFeedScreenState extends ConsumerState<ExploreFeedScreen>
                       pinned: true,
                       elevation: 0,
                       scrolledUnderElevation: 0,
+                      systemOverlayStyle: overlayStyle,
                       title: Image.asset(
                         isDark
                             ? 'lib/utils/images/logo/logo-white.png'

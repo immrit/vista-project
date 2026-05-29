@@ -83,40 +83,24 @@ class _VistaQRScannerState extends ConsumerState<VistaQRScanner>
 
         if (!mounted) return;
 
-        if (response != null) {
-          final username = response['username'] as String? ?? 'کاربر';
-          // avatarUrl available if needed for future features
+        final username = response['username'] as String? ?? 'کاربر';
+        // avatarUrl available if needed for future features
 
-          setState(() => _isLoading = false);
+        setState(() => _isLoading = false);
 
-          // بستن اسکنر و رفتن به پروفایل
-          Navigator.pop(context);
+        // بستن اسکنر و رفتن به پروفایل
+        Navigator.pop(context);
 
-          // رفتن به صفحه پروفایل کاربر
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => ProfileScreen(
-                userId: userId,
-                username: username,
-              ),
+        // رفتن به صفحه پروفایل کاربر
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ProfileScreen(
+              userId: userId,
+              username: username,
             ),
-          );
-        } else {
-          // کاربر یافت نشد
-          setState(() {
-            _isLoading = false;
-            _isProcessing = false;
-          });
-
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Text('کاربر یافت نشد'),
-              behavior: SnackBarBehavior.floating,
-              backgroundColor: Colors.red[400],
-            ),
-          );
-        }
+          ),
+        );
       } catch (e) {
         if (!mounted) return;
         setState(() {
@@ -163,38 +147,24 @@ class _VistaQRScannerState extends ConsumerState<VistaQRScanner>
 
         if (!mounted) return;
 
-        if (response != null) {
-          final username = response['username'] as String? ?? 'کاربر';
-          final avatarUrl = response['avatar_url'] as String?;
+        final username = response['username'] as String? ?? 'کاربر';
+        final avatarUrl = response['avatar_url'] as String?;
 
-          setState(() => _isLoading = false);
-          Navigator.pop(context);
+        setState(() => _isLoading = false);
+        Navigator.pop(context);
 
-          // رفتن به صفحه اطلاعات مخاطب چت
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => ChatPartnerInfoScreen(
-                conversationId: '', // خالی - صفحه خودش هندل می‌کند
-                otherUserId: userId,
-                otherUserName: username,
-                otherUserAvatar: avatarUrl,
-              ),
+        // رفتن به صفحه اطلاعات مخاطب چت
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ChatPartnerInfoScreen(
+              conversationId: '', // خالی - صفحه خودش هندل می‌کند
+              otherUserId: userId,
+              otherUserName: username,
+              otherUserAvatar: avatarUrl,
             ),
-          );
-        } else {
-          setState(() {
-            _isLoading = false;
-            _isProcessing = false;
-          });
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Text('کاربر یافت نشد'),
-              behavior: SnackBarBehavior.floating,
-              backgroundColor: Colors.red[400],
-            ),
-          );
-        }
+          ),
+        );
       } catch (e) {
         if (!mounted) return;
         setState(() {

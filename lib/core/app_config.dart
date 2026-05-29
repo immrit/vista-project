@@ -6,8 +6,6 @@
 /// See BUILD.md for full build instructions.
 library;
 
-import 'package:flutter/foundation.dart';
-
 const String backendUrl = String.fromEnvironment(
   'BACKEND_URL',
   defaultValue: 'https://api.coffevista.ir',

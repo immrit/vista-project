@@ -21,6 +21,7 @@ import 'package:Vista/services/session_manager_service_v2.dart';
 
 import 'package:Vista/services/auto_lock_service.dart';
 import 'package:Vista/services/network_state_service.dart';
+import 'package:Vista/services/system_ui_bar_service.dart';
 
 import 'package:Vista/DB/profile_cache_service.dart';
 import 'package:Vista/services/user_presence_service.dart';
@@ -430,12 +431,11 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
             },
             builder: (context, child) {
               final theme = Theme.of(context);
-              final appBarBg =
-                  theme.appBarTheme.backgroundColor ?? theme.colorScheme.surface;
-              final overlayStyle =
-                  (theme.appBarTheme.systemOverlayStyle ??
-                          const SystemUiOverlayStyle())
-                      .copyWith(
+              final appBarBg = theme.appBarTheme.backgroundColor ??
+                  theme.colorScheme.surface;
+              final overlayStyle = (theme.appBarTheme.systemOverlayStyle ??
+                      const SystemUiOverlayStyle())
+                  .copyWith(
                 statusBarColor: appBarBg,
                 statusBarIconBrightness: theme.brightness == Brightness.light
                     ? Brightness.dark
@@ -443,9 +443,18 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
                 statusBarBrightness: theme.brightness == Brightness.light
                     ? Brightness.light
                     : Brightness.dark,
+                systemNavigationBarColor: theme.scaffoldBackgroundColor,
+                systemNavigationBarDividerColor: Colors.transparent,
+                systemNavigationBarIconBrightness:
+                    theme.brightness == Brightness.light
+                        ? Brightness.dark
+                        : Brightness.light,
                 systemStatusBarContrastEnforced: false,
                 systemNavigationBarContrastEnforced: false,
               );
+              // اعمال مستقیم استایل سیستم برای جلوگیری از باقی‌ماندن استایل قبلی route
+              SystemChrome.setSystemUIOverlayStyle(overlayStyle);
+              SystemUiBarService.sync(overlayStyle);
               final safeChild = child ?? const SizedBox.shrink();
               final content = colorBlindMatrix == null
                   ? safeChild

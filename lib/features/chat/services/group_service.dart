@@ -4,21 +4,17 @@ import 'package:Vista/utils/env_config.dart';
 import '../../auth/providers/auth_controller.dart';
 import '../models/group_member_item.dart';
 import '../models/group_user_item.dart';
+import '../../../services/http_client_factory.dart';
 
 class GroupService {
   late final Dio _dio;
 
-  static String get _backendUrl =>
-      EnvConfig.apiBaseUrl ?? 'http://10.0.2.2:8080';
+  static String get _backendUrl => EnvConfig.apiBaseUrl;
 
   GroupService() {
-    _dio = Dio(
-      BaseOptions(
-        baseUrl: '$_backendUrl/v1',
-        connectTimeout: const Duration(seconds: 10),
-        receiveTimeout: const Duration(seconds: 20),
-        headers: {'Content-Type': 'application/json'},
-      ),
+    _dio = createPinnedDioClient(
+      baseUrl: '$_backendUrl/v1',
+      headers: {'Content-Type': 'application/json'},
     );
   }
 
@@ -47,7 +43,7 @@ class GroupService {
 
     return conversations
         .whereType<Map>()
-        .where((row) => row['conversation_type']?.toString() == 'direct')
+        .where(_isDirectConversation)
         .map((row) {
           final peerId = row['peer_id']?.toString() ?? '';
           final profile = profiles[peerId] ?? const <String, dynamic>{};
@@ -64,13 +60,14 @@ class GroupService {
   }
 
   Future<List<GroupUserItem>> searchUsers(String query,
-      {int limit = 50}) async {
+      {int limit = 50, CancelToken? cancelToken}) async {
     final q = query.trim();
     if (q.isEmpty) return [];
     final response = await _dio.get(
       '/profiles/search',
       queryParameters: {'q': q, 'limit': limit},
       options: await _authOptions(),
+      cancelToken: cancelToken,
     );
     final profiles = _asList(_asMap(response.data)['profiles']);
     final currentUserId = await TokenStorage.getUserId();
@@ -146,6 +143,16 @@ class GroupService {
       options: await _authOptions(),
     );
     return (_asMap(response.data)['added'] as num?)?.toInt() ?? 0;
+  }
+
+  bool _isDirectConversation(Map row) {
+    final type = (row['conversation_type'] ?? row['type'] ?? '')
+        .toString()
+        .toLowerCase();
+    return type == 'direct' ||
+        type == 'private' ||
+        type == 'secret' ||
+        row['peer_id'] != null;
   }
 
   Future<void> removeMember(String conversationId, String memberId) async {

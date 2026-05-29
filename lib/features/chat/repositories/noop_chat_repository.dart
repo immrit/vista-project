@@ -19,8 +19,8 @@ class NoopChatRepository implements ChatRepository {
       Stream.value(const []);
 
   @override
-  Future<ChatResult<ConversationModel>> createConversation(
-      String otherUserId, {bool isSecret = false}) async =>
+  Future<ChatResult<ConversationModel>> createConversation(String otherUserId,
+          {bool isSecret = false}) async =>
       _failure();
 
   @override
@@ -152,6 +152,14 @@ class NoopChatRepository implements ChatRepository {
 
   @override
   Future<void> syncPendingMessages() async {}
+
+  @override
+  Future<void> cacheConversationProfile({
+    required String conversationId,
+    String? otherUserId,
+    String? otherUserName,
+    String? otherUserAvatar,
+  }) async {}
 
   @override
   void dispose() {}

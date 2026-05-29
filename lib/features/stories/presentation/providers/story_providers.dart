@@ -190,6 +190,32 @@ final storyUploadProvider =
   return StoryUploadNotifier(repository, ref);
 });
 
+// ========== Local Seen-State (optimistic ring updates) ==========
+
+/// Tracks story IDs that were viewed in the current session so the StoryBar
+/// can update rings immediately without waiting for a full provider refetch.
+class _SeenNotifier extends StateNotifier<Set<String>> {
+  _SeenNotifier() : super(const {});
+
+  void markSeen(String storyId) {
+    if (!state.contains(storyId)) {
+      state = {...state, storyId};
+    }
+  }
+
+  void markManySeen(Iterable<String> storyIds) {
+    final next = {...state, ...storyIds};
+    if (next.length != state.length) state = next;
+  }
+
+  void clear() => state = const {};
+}
+
+final sessionSeenStoriesProvider =
+    StateNotifierProvider<_SeenNotifier, Set<String>>(
+  (_) => _SeenNotifier(),
+);
+
 // ========== State Notifier برای پلیر استوری ==========
 
 class StoryPlayerState {

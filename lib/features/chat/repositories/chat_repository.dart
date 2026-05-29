@@ -58,7 +58,8 @@ abstract class ChatRepository {
 
   Stream<List<ConversationModel>> watchConversations();
 
-  Future<ChatResult<ConversationModel>> createConversation(String otherUserId, {bool isSecret = false});
+  Future<ChatResult<ConversationModel>> createConversation(String otherUserId,
+      {bool isSecret = false});
 
   Future<ChatResult<void>> deleteConversation(String conversationId);
 
@@ -166,6 +167,13 @@ abstract class ChatRepository {
   Future<void> refreshMessages(String conversationId);
 
   Future<void> syncPendingMessages();
+
+  Future<void> cacheConversationProfile({
+    required String conversationId,
+    String? otherUserId,
+    String? otherUserName,
+    String? otherUserAvatar,
+  });
 
   // ═══════════════════════════════════════════════════════════════════
   // 🧹 CLEANUP

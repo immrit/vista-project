@@ -25,14 +25,27 @@ class _CountdownStickerWidgetState extends State<CountdownStickerWidget> {
   @override
   void initState() {
     super.initState();
+    _initTimer();
+  }
+
+  @override
+  void didUpdateWidget(CountdownStickerWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.element.interactionData !=
+        widget.element.interactionData) {
+      _timer.cancel();
+      _initTimer();
+    }
+  }
+
+  void _initTimer() {
     final data = widget.element.interactionData ?? {};
     final targetRaw =
         data['targetDate']?.toString() ?? data['endDate']?.toString() ?? '';
-    // Default to 24 hours from now if not set
     _targetDate = DateTime.tryParse(targetRaw) ??
         DateTime.now().add(const Duration(hours: 24));
-
     _remaining = _targetDate.difference(DateTime.now());
+    if (_remaining.isNegative) _remaining = Duration.zero;
 
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (mounted) {

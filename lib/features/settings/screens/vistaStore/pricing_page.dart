@@ -1,8 +1,10 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 import 'package:Vista/services/BazaarPaymentService.dart';
 import 'package:Vista/services/sensitive_action_guard.dart';
+import 'package:Vista/services/system_ui_bar_service.dart';
 
 class PricingPage extends ConsumerStatefulWidget {
   const PricingPage({super.key});
@@ -158,6 +160,15 @@ class _PricingPageState extends ConsumerState<PricingPage> {
     // رنگ بنفش ویستا
     const premiumColor = Color(0xFF8774E1);
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final statusBarColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+    final systemOverlayStyle = SystemUiOverlayStyle(
+      statusBarColor: statusBarColor,
+      statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
+      statusBarBrightness: isDark ? Brightness.dark : Brightness.light,
+      systemStatusBarContrastEnforced: false,
+    );
+    SystemChrome.setSystemUIOverlayStyle(systemOverlayStyle);
+    SystemUiBarService.sync(systemOverlayStyle);
 
     return Scaffold(
       backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
@@ -171,6 +182,7 @@ class _PricingPageState extends ConsumerState<PricingPage> {
                 pinned: true,
                 backgroundColor:
                     isDark ? const Color(0xFF1E1E1E) : Colors.white,
+                systemOverlayStyle: systemOverlayStyle,
                 elevation: 0,
                 leading: IconButton(
                   icon: const Icon(Icons.close),

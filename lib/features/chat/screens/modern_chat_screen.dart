@@ -110,6 +110,7 @@ import '../widgets/molecular_delete_animation.dart';
 import '../performance/adaptive_effects_provider.dart';
 import '../performance/chat_performance_profile.dart';
 import '../services/secret_chat_privacy_service.dart';
+import '../utils/conversation_name_utils.dart';
 // So importing the file should expose it.
 
 /// پارامترهای صفحه چت
@@ -849,11 +850,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
   /// اگر نام کاربر نامعتبر باشد، پروفایل را از کش/سرور دریافت می‌کند
   Future<void> _fetchUserProfileIfNeeded() async {
-    final name = widget.args.otherUserName.toLowerCase();
-    if (name == 'vista user' ||
-        name == 'unknown' ||
-        name == 'کاربر ناشناس' ||
-        name.isEmpty) {
+    if (isUnknownConversationName(widget.args.otherUserName) &&
+        widget.args.otherUserId.trim().isNotEmpty) {
       try {
         final profile =
             await ProfileCacheService().getProfile(widget.args.otherUserId);
@@ -861,6 +859,19 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
           setState(() {
             _otherUserProfile = profile;
           });
+        }
+        final resolvedName = sanitizeConversationName(profile.username) ??
+            sanitizeConversationName(profile.fullName);
+        final resolvedAvatar = profile.avatarUrl?.trim();
+        if ((resolvedName?.isNotEmpty ?? false) ||
+            (resolvedAvatar?.isNotEmpty ?? false)) {
+          await _chatRepository.cacheConversationProfile(
+            conversationId: widget.args.conversationId,
+            otherUserId: widget.args.otherUserId,
+            otherUserName: resolvedName,
+            otherUserAvatar:
+                (resolvedAvatar?.isNotEmpty ?? false) ? resolvedAvatar : null,
+          );
         }
       } catch (e) {
         debugPrint('Error fetching user profile: $e');
@@ -2066,10 +2077,14 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   // ═══════════════════════════════════════════════════════════════════════════
 
   PreferredSizeWidget _buildSelectionAppBar(ChatTheme theme) {
+    final appBarColor = theme.sendButtonColor;
     return AppBar(
       elevation: 0,
-      backgroundColor: theme.sendButtonColor,
-      systemOverlayStyle: SystemUiOverlayStyle.light,
+      backgroundColor: appBarColor,
+      systemOverlayStyle: SystemUiOverlayStyle.light.copyWith(
+        statusBarColor: appBarColor,
+        systemStatusBarContrastEnforced: false,
+      ),
       leading: IconButton(
         icon: const Icon(Icons.close_rounded, color: Colors.white),
         onPressed: _exitSelectionMode,
@@ -2396,13 +2411,18 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       return _buildSelectionAppBar(theme);
     }
 
+    final appBarColor =
+        widget.args.isSecret ? const Color(0xFF1B3D2F) : theme.appBarColor;
     return AppBar(
       elevation: 0,
-      backgroundColor:
-          widget.args.isSecret ? const Color(0xFF1B3D2F) : theme.appBarColor,
+      backgroundColor: appBarColor,
       surfaceTintColor: Colors.transparent,
       systemOverlayStyle:
-          theme.isDark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
+          (theme.isDark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark)
+              .copyWith(
+        statusBarColor: appBarColor,
+        systemStatusBarContrastEnforced: false,
+      ),
       leading: IconButton(
         icon: Icon(
           Icons.arrow_back_ios_new_rounded,

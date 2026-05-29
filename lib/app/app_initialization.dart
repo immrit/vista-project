@@ -58,7 +58,7 @@ class AppInitialization {
   static Future<void> initCore() async {
     // WidgetsFlutterBinding.ensureInitialized() توسط فایل main لود می‌شود
     SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
+      statusBarColor: Colors.white,
       statusBarIconBrightness: Brightness.dark,
       statusBarBrightness: Brightness.light,
       systemStatusBarContrastEnforced: false,
@@ -67,7 +67,10 @@ class AppInitialization {
       systemNavigationBarContrastEnforced: false,
       systemNavigationBarIconBrightness: Brightness.dark,
     ));
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    SystemChrome.setEnabledSystemUIMode(
+      SystemUiMode.manual,
+      overlays: SystemUiOverlay.values,
+    );
 
     // Initial Setup
     await initializeDateFormatting('fa', null);

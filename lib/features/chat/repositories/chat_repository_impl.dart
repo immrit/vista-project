@@ -109,8 +109,9 @@ class ChatRepositoryImpl implements ChatRepository {
   @override
   Future<ChatResult<List<ConversationModel>>> getConversations() async {
     final uid = await _userId();
-    if (uid == null)
+    if (uid == null) {
       return ChatResult.failure('Ú©Ø§Ø±Ø¨Ø± ÙˆØ§Ø±Ø¯ Ù†Ø´Ø¯Ù‡ Ø§Ø³Øª');
+    }
 
     // â”€â”€ 1. local-first: Ø§Ú¯Ù‡ Ú©Ø´ Ø¯Ø§Ø±ÛŒÙ… ÙÙˆØ±Ø§Ù‹ Ø¨Ø±Ú¯Ø±Ø¯ÙˆÙ† Ùˆ Ø¯Ø± Ù¾Ø³â€ŒØ²Ù…ÛŒÙ†Ù‡ sync Ú©Ù†
     final local = await _local.getConversations();
@@ -196,8 +197,9 @@ class ChatRepositoryImpl implements ChatRepository {
   @override
   Future<ChatResult<void>> deleteConversation(String conversationId) async {
     final opts = await _authOptions();
-    if (opts == null)
+    if (opts == null) {
       return ChatResult.failure('Ú©Ø§Ø±Ø¨Ø± ÙˆØ§Ø±Ø¯ Ù†Ø´Ø¯Ù‡ Ø§Ø³Øª');
+    }
 
     // optimistic local delete
     await _local.deleteConversation(conversationId);
@@ -318,8 +320,9 @@ class ChatRepositoryImpl implements ChatRepository {
     String? beforeMessageId,
   }) async {
     final uid = await _userId();
-    if (uid == null)
+    if (uid == null) {
       return ChatResult.failure('Ú©Ø§Ø±Ø¨Ø± ÙˆØ§Ø±Ø¯ Ù†Ø´Ø¯Ù‡ Ø§Ø³Øª');
+    }
 
     // local-first
     unawaited(_syncMessages(conversationId, uid));
@@ -510,8 +513,9 @@ class ChatRepositoryImpl implements ChatRepository {
     String? mediaGroupId,
   }) async {
     final uid = await _userId();
-    if (uid == null)
+    if (uid == null) {
       return ChatResult.failure('Ú©Ø§Ø±Ø¨Ø± ÙˆØ§Ø±Ø¯ Ù†Ø´Ø¯Ù‡ Ø§Ø³Øª');
+    }
 
     final pending = MessageModel.temporary(
       tempId: localId,
@@ -692,8 +696,9 @@ class ChatRepositoryImpl implements ChatRepository {
     required String emoji,
   }) async {
     final opts = await _authOptions();
-    if (opts == null)
+    if (opts == null) {
       return ChatResult.failure('Ú©Ø§Ø±Ø¨Ø± ÙˆØ§Ø±Ø¯ Ù†Ø´Ø¯Ù‡ Ø§Ø³Øª');
+    }
 
     try {
       await _dio.post(
@@ -985,7 +990,9 @@ class ChatRepositoryImpl implements ChatRepository {
     if (_msgSyncInFlight[conversationId] == true) return;
     final now = DateTime.now().millisecondsSinceEpoch;
     if (now - (_lastMsgSyncMs[conversationId] ?? 0) <
-        _msgSyncThrottle.inMilliseconds) return;
+        _msgSyncThrottle.inMilliseconds) {
+      return;
+    }
     _lastMsgSyncMs[conversationId] = now;
     _msgSyncInFlight[conversationId] = true;
 
@@ -1048,6 +1055,21 @@ class ChatRepositoryImpl implements ChatRepository {
     for (final c in convs) {
       await _syncMessages(c.id, uid);
     }
+  }
+
+  @override
+  Future<void> cacheConversationProfile({
+    required String conversationId,
+    String? otherUserId,
+    String? otherUserName,
+    String? otherUserAvatar,
+  }) {
+    return _local.updateConversationProfile(
+      conversationId: conversationId,
+      otherUserId: otherUserId,
+      otherUserName: otherUserName,
+      otherUserAvatar: otherUserAvatar,
+    );
   }
 
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
@@ -1205,9 +1227,21 @@ class ChatRepositoryImpl implements ChatRepository {
         : (rawType == 'group'
             ? 'group'
             : (rawType == 'secret' ? 'secret' : 'private'));
-    final createdAt =
-        j['created_at']?.toString() ?? DateTime.now().toIso8601String();
-    final lastAt = j['last_message_at']?.toString() ?? createdAt;
+    final createdAt = _firstNonEmpty(j['created_at'], j['createdAt']) ??
+        DateTime.now().toIso8601String();
+    final lastMessageText =
+        _firstNonEmpty(j['last_message_text'], j['last_message']);
+    final lastMessageAt =
+        _firstNonEmpty(j['last_message_at'], j['last_message_time']);
+    final lastMessageType =
+        _firstNonEmpty(j['last_message_type'], j['message_type']);
+    final hasLastMessage = (lastMessageText?.trim().isNotEmpty ?? false) ||
+        (lastMessageType != null &&
+            lastMessageType.trim().isNotEmpty &&
+            lastMessageType.toLowerCase() != 'text');
+    final updatedAt =
+        _firstNonEmpty(j['updated_at'], j['updatedAt'], lastMessageAt) ??
+            createdAt;
     final peerUsername =
         (j['peer_username'] ?? j['other_user_username'] ?? j['username'] ?? '')
             .toString();
@@ -1222,9 +1256,9 @@ class ChatRepositoryImpl implements ChatRepository {
     final conv = ConversationModel.fromJson({
       'id': j['id'],
       'created_at': createdAt,
-      'updated_at': lastAt,
-      'last_message': j['last_message_text'],
-      'last_message_time': lastAt,
+      'updated_at': updatedAt,
+      'last_message': hasLastMessage ? lastMessageText : null,
+      'last_message_time': hasLastMessage ? lastMessageAt : null,
       'unread_count': j['unread_count'] ?? 0,
       'is_archived': j['is_archived'] ?? false,
       'is_pinned': j['is_pinned'] ?? false,
@@ -1235,8 +1269,9 @@ class ChatRepositoryImpl implements ChatRepository {
           j['is_message_request'] ?? j['message_request'] ?? false,
       'message_request_status':
           j['message_request_status'] ?? j['request_status'],
-      'name': type == 'group' ? j['name'] : null,
-      'image': type == 'group' ? j['image'] : null,
+      'last_message_type': hasLastMessage ? lastMessageType : null,
+      'name': j['name'],
+      'image': j['image'],
       'participants': [
         {
           'id': '${j['id']}_$uid',
@@ -1310,10 +1345,19 @@ class ChatRepositoryImpl implements ChatRepository {
 
   List<dynamic> _asList(dynamic d) => d is List ? d : [];
 
+  String? _firstNonEmpty(Object? first, [Object? second, Object? third]) {
+    for (final value in [first, second, third]) {
+      final text = value?.toString().trim();
+      if (text != null && text.isNotEmpty) return text;
+    }
+    return null;
+  }
+
   String _dioError(DioException e) {
     final status = e.response?.statusCode;
     final data = e.response?.data;
-    logError('DioException: status=$status, data=$data, url=${e.requestOptions.path}');
+    logError(
+        'DioException: status=$status, data=$data, url=${e.requestOptions.path}');
 
     if (status == null) {
       switch (e.type) {
@@ -1342,9 +1386,10 @@ class ChatRepositoryImpl implements ChatRepository {
         return data['error'].toString();
       }
     }
-    
-    if (status == 429)
+
+    if (status == 429) {
       return 'تعداد درخواست‌ها بیش از حد مجاز است. لطفاً کمی صبر کنید.';
+    }
     if (status == 403) return 'این کاربر دریافت پیام را محدود کرده است';
     if (status == 404) return 'آیتم مورد نظر یافت نشد';
     if (status == 401) return 'لطفاً دوباره وارد شوید';

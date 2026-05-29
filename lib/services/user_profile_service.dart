@@ -1,7 +1,10 @@
 import '../security/logging_utility.dart';
 import '../model/conversation_model.dart';
+import 'package:isar/isar.dart';
 import 'profile_cache_manager.dart';
 import '../DB/settings_cache_service.dart';
+import '../DB/isar_database_manager.dart';
+import '../features/chat/data/entities/conversation_entity.dart';
 import '../features/chat/services/user_moderation_service.dart';
 
 /// سرویس برای دریافت اطلاعات پروفایل کاربران با کشینگ مرکزی
@@ -12,6 +15,7 @@ class UserProfileService {
 
   final ProfileCacheManager _cacheManager = ProfileCacheManager();
   final UserModerationService _moderationService = UserModerationService();
+  final IsarDatabaseManager _dbManager = IsarDatabaseManager();
 
   /// دسترسی سریع به پروفایل کش‌شده (Memory)
   Map<String, String?>? getCachedProfile(String userId) {
@@ -27,10 +31,33 @@ class UserProfileService {
   Future<Map<String, String?>> getOtherUserInConversation(
       String conversationId, String currentUserId) async {
     try {
-      // 1) ابتدا user_id طرف مقابل را از جدول conversation_participants می‌گیریم
-      final Map<String, dynamic>? otherParticipant = null;
+      final isar = await _dbManager.instance;
+      final conversation = await isar.conversationEntitys
+          .filter()
+          .idEqualTo(conversationId)
+          .findFirst();
+      if (conversation == null) {
+        return {
+          'username': null,
+          'avatar_url': null,
+          'full_name': null,
+          'user_id': null,
+        };
+      }
 
-      final otherUserId = otherParticipant?['user_id'] as String?;
+      String? otherUserId = conversation.otherUserId?.trim();
+      if (otherUserId == null || otherUserId.isEmpty) {
+        final participants = conversation.participants ?? const <ParticipantEntity>[];
+        for (final participant in participants) {
+          final participantUserId = participant.userId.trim();
+          if (participantUserId.isEmpty || participantUserId == currentUserId) {
+            continue;
+          }
+          otherUserId = participantUserId;
+          break;
+        }
+      }
+
       if (otherUserId == null) {
         return {
           'username': null,

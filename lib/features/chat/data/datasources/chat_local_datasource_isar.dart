@@ -2,6 +2,7 @@ import 'package:isar/isar.dart';
 import '../../../../model/message_model.dart';
 import '../../../../model/conversation_model.dart';
 import '../../../../DB/isar_database_manager.dart';
+import '../../utils/conversation_name_utils.dart';
 import '../entities/message_entity.dart' hide fastHash;
 import '../entities/conversation_entity.dart';
 
@@ -157,7 +158,9 @@ class ChatLocalDataSourceIsar {
           ..isLastMessageFromMe = merged.isMe
           ..lastMessageSenderId = merged.senderId
           ..lastMessageDeliveryStatus = _messageDeliveryStatusToString(merged)
-          ..otherUserName = 'کاربر ناشناس'
+          ..otherUserName = unknownConversationUserLabel
+          ..otherUserId = merged.isMe ? null : merged.senderId
+          ..otherUserName = _initialOtherUserNameFromMessage(merged)
           ..unreadCount = shouldIncrementUnread ? 1 : 0
           ..hasUnreadMessages = shouldIncrementUnread
           ..type = 'private';
@@ -233,7 +236,9 @@ class ChatLocalDataSourceIsar {
         ..id = normalizedConversationId
         ..createdAt = latestMessage.createdAt
         ..updatedAt = latestMessage.createdAt
-        ..otherUserName = 'کاربر ناشناس'
+        ..otherUserName = unknownConversationUserLabel
+        ..otherUserId = latestMessage.isMe ? null : latestMessage.senderId
+        ..otherUserName = _initialOtherUserNameFromMessage(latestMessage)
         ..type = 'private';
     }
 
@@ -578,6 +583,51 @@ class ChatLocalDataSourceIsar {
     });
   }
 
+  Future<void> updateConversationProfile({
+    required String conversationId,
+    String? otherUserId,
+    String? otherUserName,
+    String? otherUserAvatar,
+  }) async {
+    final isar = await _dbManager.instance;
+    await isar.writeTxn(() async {
+      final entity = await isar.conversationEntitys
+          .filter()
+          .idEqualTo(conversationId)
+          .findFirst();
+      if (entity == null) return;
+
+      var changed = false;
+      final normalizedUserId = otherUserId?.trim();
+      if (normalizedUserId != null &&
+          normalizedUserId.isNotEmpty &&
+          entity.otherUserId != normalizedUserId) {
+        entity.otherUserId = normalizedUserId;
+        changed = true;
+      }
+
+      final normalizedName = otherUserName?.trim();
+      if (normalizedName != null &&
+          normalizedName.isNotEmpty &&
+          entity.otherUserName != normalizedName) {
+        entity.otherUserName = normalizedName;
+        changed = true;
+      }
+
+      final normalizedAvatar = otherUserAvatar?.trim();
+      if (normalizedAvatar != null &&
+          normalizedAvatar.isNotEmpty &&
+          entity.otherUserAvatar != normalizedAvatar) {
+        entity.otherUserAvatar = normalizedAvatar;
+        changed = true;
+      }
+
+      if (changed) {
+        await isar.conversationEntitys.put(entity);
+      }
+    });
+  }
+
   ConversationEntity _mergeConversationEntity(
       ConversationModel incoming, ConversationEntity? existing,
       {required bool preserveLocalUnread}) {
@@ -590,6 +640,24 @@ class ChatLocalDataSourceIsar {
       merged
         ..unreadCount = existing.unreadCount
         ..hasUnreadMessages = existing.hasUnreadMessages;
+    }
+
+    if ((merged.otherUserId == null || merged.otherUserId!.trim().isEmpty) &&
+        existing.otherUserId != null &&
+        existing.otherUserId!.trim().isNotEmpty) {
+      merged.otherUserId = existing.otherUserId;
+    }
+
+    if (_isUnknownConversationName(merged.otherUserName) &&
+        !_isUnknownConversationName(existing.otherUserName)) {
+      merged.otherUserName = existing.otherUserName;
+    }
+
+    if ((merged.otherUserAvatar == null ||
+            merged.otherUserAvatar!.trim().isEmpty) &&
+        existing.otherUserAvatar != null &&
+        existing.otherUserAvatar!.trim().isNotEmpty) {
+      merged.otherUserAvatar = existing.otherUserAvatar;
     }
 
     // Keep updated_at monotonic in local DB.
@@ -642,6 +710,18 @@ class ChatLocalDataSourceIsar {
       default:
         return 0;
     }
+  }
+
+  String _initialOtherUserNameFromMessage(MessageModel message) {
+    if (message.isMe) return unknownConversationUserLabel;
+    final senderName = message.senderName?.trim();
+    return senderName == null || senderName.isEmpty
+        ? unknownConversationUserLabel
+        : senderName;
+  }
+
+  bool _isUnknownConversationName(String? name) {
+    return isUnknownConversationName(name);
   }
 
   String _messageDeliveryStatusToString(MessageModel message) {

@@ -16,18 +16,14 @@ class PhotoStickerWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Photo stickers are baked into the final exported media.
-    // Avoid rendering them again in viewer mode to prevent invalid local-path fallbacks.
-    if (!isEditable) {
-      return const SizedBox.shrink();
-    }
-
     final data = element.interactionData ?? const {};
     final imagePath = data['imagePath']?.toString() ?? '';
     final width = _asDouble(data['width']) ?? element.width ?? 180;
     final height = _asDouble(data['height']) ?? element.height ?? 180;
 
     if (imagePath.trim().isEmpty) {
+      // In viewer mode with no URL, nothing to render.
+      if (!isEditable) return const SizedBox.shrink();
       return _fallback(width, height);
     }
 
@@ -43,6 +39,12 @@ class PhotoStickerWidget extends StatelessWidget {
           errorWidget: (context, url, error) => _fallback(width, height),
         ),
       );
+    }
+
+    // Local file path — only accessible in the editor on the creator's device.
+    if (!isEditable) {
+      // Local path not available on viewer device.
+      return const SizedBox.shrink();
     }
 
     final file = File(imagePath);

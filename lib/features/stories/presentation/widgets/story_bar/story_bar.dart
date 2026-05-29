@@ -137,7 +137,7 @@ class StoryBar extends ConsumerWidget {
           key: ValueKey(users[index - 1].id),
           user: users[index - 1],
           allUsers: users,
-          onTap: () => _openStoryViewer(context, users, index - 1),
+          onTap: () => _openStoryViewer(context, users, index - 1, ref: ref),
         );
       },
     );
@@ -148,9 +148,14 @@ class StoryBar extends ConsumerWidget {
   }
 
   void _openStoryViewer(
-      BuildContext context, List<StoryUser> users, int initialIndex) {
+      BuildContext context, List<StoryUser> users, int initialIndex,
+      {WidgetRef? ref}) {
     final selectedUser = users[initialIndex];
-    int initialStoryIndex = selectedUser.stories.indexWhere((s) => !s.isViewed);
+    // Find first unseen story, accounting for session-seen state.
+    final sessionSeen = ref?.read(sessionSeenStoriesProvider) ?? const {};
+    int initialStoryIndex = selectedUser.stories.indexWhere(
+      (s) => !s.isViewed && !sessionSeen.contains(s.id),
+    );
     if (initialStoryIndex == -1) initialStoryIndex = 0;
 
     Navigator.pushNamed(
@@ -165,8 +170,8 @@ class StoryBar extends ConsumerWidget {
   }
 }
 
-/// ✅ حلقه استوری با انیمیشن تغییر رنگ
-class _AnimatedStoryRing extends StatefulWidget {
+/// ✅ حلقه استوری با انیمیشن تغییر رنگ + آپدیت آنی پس از مشاهده
+class _AnimatedStoryRing extends ConsumerStatefulWidget {
   final StoryUser user;
   final List<StoryUser> allUsers;
   final VoidCallback onTap;
@@ -179,10 +184,10 @@ class _AnimatedStoryRing extends StatefulWidget {
   });
 
   @override
-  State<_AnimatedStoryRing> createState() => _AnimatedStoryRingState();
+  ConsumerState<_AnimatedStoryRing> createState() => _AnimatedStoryRingState();
 }
 
-class _AnimatedStoryRingState extends State<_AnimatedStoryRing>
+class _AnimatedStoryRingState extends ConsumerState<_AnimatedStoryRing>
     with SingleTickerProviderStateMixin {
   late AnimationController _animController;
   late Animation<double> _colorAnimation;
@@ -223,8 +228,19 @@ class _AnimatedStoryRingState extends State<_AnimatedStoryRing>
 
   @override
   Widget build(BuildContext context) {
+    // Use the session-seen set for optimistic ring updates after viewing.
+    final sessionSeen = ref.watch(sessionSeenStoriesProvider);
+    final effectiveUser = widget.user.copyWith(
+      stories: widget.user.stories.map((s) {
+        if (!s.isViewed && sessionSeen.contains(s.id)) {
+          return s.copyWith(isViewed: true);
+        }
+        return s;
+      }).toList(),
+    );
+
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
-    final hasUnseenStories = widget.user.hasUnseenStories;
+    final hasUnseenStories = effectiveUser.hasUnseenStories;
 
     return AnimatedBuilder(
       animation: _colorAnimation,
@@ -232,13 +248,11 @@ class _AnimatedStoryRingState extends State<_AnimatedStoryRing>
         return Padding(
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
           child: GestureDetector(
-            onTap: widget.user.stories.isEmpty ? null : widget.onTap,
+            onTap: effectiveUser.stories.isEmpty ? null : widget.onTap,
             child: Column(
               children: [
-                // ✅ حلقه با انیمیشن رنگ
                 _buildAnimatedRing(isDarkMode, hasUnseenStories),
                 const SizedBox(height: 4),
-                // نام کاربر
                 _buildUsername(isDarkMode, hasUnseenStories),
               ],
             ),

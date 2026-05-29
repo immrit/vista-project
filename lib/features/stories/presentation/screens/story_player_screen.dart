@@ -10,7 +10,6 @@ import 'dart:async';
 
 import '../../domain/entities/entities.dart';
 import '../../domain/entities/story_editor_models.dart' as editor_models;
-import '../../domain/repositories/i_story_repository.dart';
 import '../../core/story_enums.dart' hide StoryInteractionType;
 import '../providers/story_providers.dart';
 import '../widgets/sticker_factory.dart';
@@ -21,6 +20,7 @@ import 'story_viewers_sheet.dart';
 import '../../../../utils/navigation_helper.dart';
 import '../../../../utils/user_friendly_error_utils.dart';
 import '../../../../services/current_user_service.dart';
+import '../../../chat/screens/modern_chat_screen.dart';
 
 /// صفحه پخش استوری
 class StoryPlayerScreen extends ConsumerStatefulWidget {
@@ -59,6 +59,10 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
   Timer? _musicPreviewStopTimer;
   String? _playingMusicElementId;
   String? _currentUserId;
+
+  // Stores the pointer-down position so onTap (which is arena-resolved)
+  // can decide prev/pause/next without firing when a child sticker wins.
+  Offset? _lastTapPosition;
 
   @override
   void initState() {
@@ -99,7 +103,12 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
     _musicPreviewStopTimer?.cancel();
     _musicPlayerStateSub?.cancel();
     _musicPreviewPlayer.dispose();
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    SystemChrome.setEnabledSystemUIMode(
+      SystemUiMode.manual,
+      overlays: SystemUiOverlay.values,
+    );
+    // Refresh the story feed so seen-rings update after the viewer exits.
+    ref.invalidate(activeStoriesProvider);
     super.dispose();
   }
 
@@ -119,11 +128,21 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
 
     _progressController.reset();
 
-    // Track view + resolve reply permission state for current story.
-    final repository = ref.read(storyRepositoryProvider);
     _currentUserId = await CurrentUserService.instance.resolveUserId();
-    await repository.trackView(_currentStory.id);
-    await _loadReplyState(repository);
+
+    // Track view and resolve reply state concurrently.
+    final repository = ref.read(storyRepositoryProvider);
+    final storyId = _currentStory.id;
+
+    await Future.wait([
+      repository.trackView(storyId),
+      _loadReplyState(),
+    ]);
+
+    // Optimistically update seen rings in the active stories provider.
+    if (mounted) {
+      ref.read(sessionSeenStoriesProvider.notifier).markSeen(storyId);
+    }
 
     if (_currentStory.media.isVideo) {
       await _initVideo();
@@ -137,7 +156,10 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
     }
   }
 
-  Future<void> _loadReplyState(IStoryRepository repository) async {
+  /// Determines reply permission from the story's [viewerCanReply] field
+  /// (computed by the backend in the active stories query) and calls the
+  /// /reply-access endpoint only when a more authoritative check is needed.
+  Future<void> _loadReplyState() async {
     if (_isOwnStory) {
       if (!mounted) return;
       setState(() {
@@ -147,18 +169,17 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
       return;
     }
 
-    final permissionResult = await repository.getStoryReplyPermission(
-      userId: _currentStory.userId,
-    );
-    final canReplyResult = await repository.canReplyToStory(
-      storyId: _currentStory.id,
-      ownerId: _currentStory.userId,
-    );
+    // Fast path: use the server-precomputed flag embedded in the story object.
+    final canReply = _currentStory.viewerCanReply;
 
     if (!mounted) return;
     setState(() {
-      _replyPermission = permissionResult.data ?? StoryReplyPermission.everyone;
-      _canReplyToStory = canReplyResult.data ?? false;
+      _canReplyToStory = canReply;
+      // Default to 'everyone' — the actual block reason is returned from the
+      // backend when Reply() is called, so we don't need to re-derive it here.
+      _replyPermission = canReply
+          ? StoryReplyPermission.everyone
+          : StoryReplyPermission.off;
     });
   }
 
@@ -246,11 +267,16 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
     });
   }
 
-  void _onTapDown(TapDownDetails details) {
+  // onTap is arena-resolved: fires only when no child GestureDetector wins.
+  // This prevents sticker taps from also triggering prev/next/pause.
+  void _onTap() {
     if (_showingViewers) return;
+    final pos = _lastTapPosition;
+    if (pos == null) return;
+    _lastTapPosition = null;
 
     final screenWidth = MediaQuery.of(context).size.width;
-    final dx = details.globalPosition.dx;
+    final dx = pos.dx;
 
     if (dx < screenWidth * 0.3) {
       _previousStory();
@@ -321,7 +347,10 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
       backgroundColor:
           Colors.black, // Keep background black so it reveals behind
       body: GestureDetector(
-        onTapDown: _onTapDown,
+        // Store position on down so onTap can use it.
+        onTapDown: (d) => _lastTapPosition = d.globalPosition,
+        // onTap is arena-resolved — child sticker taps win and suppress this.
+        onTap: _onTap,
         onLongPressStart: _onLongPressStart,
         onLongPressEnd: _onLongPressEnd,
         onVerticalDragUpdate: (details) {
@@ -609,7 +638,23 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
       );
 
       if (result.isSuccess && result.data != null) {
-        cached = result.data!;
+        // Enrich backend results with option text from the story element data
+        // (backend stores vote counts only, not the original text).
+        final rawData = element.interactionData ?? const {};
+        final optionTexts = _extractPollOptions(rawData);
+        final rawQuestion = rawData['question']?.toString().trim() ?? '';
+        final enriched = result.data!.copyWith(
+          question: rawQuestion.isNotEmpty ? rawQuestion : result.data!.question,
+          options: result.data!.options.map((opt) {
+            final label = opt.optionIndex < optionTexts.length
+                ? optionTexts[opt.optionIndex]
+                : '';
+            return opt.copyWith(
+              text: label.isNotEmpty ? label : opt.text,
+            );
+          }).toList(),
+        );
+        cached = enriched;
         _pollResultsCache[elementId] = cached;
       }
     }
@@ -1380,7 +1425,7 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
         StoryReplyPermission.off => 'پاسخ به این استوری غیرفعال است',
         StoryReplyPermission.following =>
           'فقط دنبال‌شده‌های صاحب استوری می‌توانند پاسخ دهند',
-        StoryReplyPermission.everyone => 'ارسال پاسخ ممکن نیست',
+        StoryReplyPermission.everyone => 'پاسخ به این استوری در دسترس نیست',
       };
       UserFriendlyErrorUtils.showErrorSnackBar(context, blockedMessage);
       return;
@@ -1391,13 +1436,44 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
 
     if (!mounted) return;
     if (result.isSuccess) {
-      UserFriendlyErrorUtils.showSuccessSnackBar(context, 'پاسخ ارسال شد');
+      _showReplySuccessWithDMOption(message);
     } else {
       UserFriendlyErrorUtils.showErrorSnackBar(
         context,
         result.error ?? 'خطا در ارسال پاسخ',
       );
     }
+  }
+
+  /// Shows a success snackbar with an "Open Chat" action that navigates to
+  /// the DM conversation with the story owner.
+  void _showReplySuccessWithDMOption(String message) {
+    final ownerUserId = _currentStory.userId;
+    final ownerUsername = _currentUser.username;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('پاسخ ارسال شد'),
+        duration: const Duration(seconds: 4),
+        action: SnackBarAction(
+          label: 'مشاهده در چت',
+          onPressed: () {
+            if (!mounted) return;
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => ModernChatScreen(
+                  args: ChatScreenArgs(
+                    conversationId: '',
+                    otherUserId: ownerUserId,
+                    otherUserName: ownerUsername,
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
   }
 
   Future<void> _reactToStory(StoryReactionType reaction) async {

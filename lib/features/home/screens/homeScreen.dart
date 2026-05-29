@@ -390,28 +390,22 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final brightness = Theme.of(context).brightness;
-    // اعمال مستقیم رنگ صحیح status bar هنگام ورود به هر صفحه‌ای از HomeScreen
+    final theme = Theme.of(context);
+    final isLight = theme.brightness == Brightness.light;
+    final statusBarColor =
+        theme.appBarTheme.backgroundColor ?? theme.colorScheme.surface;
+    // اعمال مستقیم رنگ صحیح status bar هنگام ورود به Home
     SystemChrome.setSystemUIOverlayStyle(
-      brightness == Brightness.light
-          ? const SystemUiOverlayStyle(
-              statusBarColor: Colors.transparent,
-              statusBarIconBrightness: Brightness.dark,
-              statusBarBrightness: Brightness.light,
-              systemStatusBarContrastEnforced: false,
-              systemNavigationBarColor: Colors.transparent,
-              systemNavigationBarContrastEnforced: false,
-              systemNavigationBarIconBrightness: Brightness.dark,
-            )
-          : const SystemUiOverlayStyle(
-              statusBarColor: Colors.transparent,
-              statusBarIconBrightness: Brightness.light,
-              statusBarBrightness: Brightness.dark,
-              systemStatusBarContrastEnforced: false,
-              systemNavigationBarColor: Colors.transparent,
-              systemNavigationBarContrastEnforced: false,
-              systemNavigationBarIconBrightness: Brightness.light,
-            ),
+      SystemUiOverlayStyle(
+        statusBarColor: statusBarColor,
+        statusBarIconBrightness: isLight ? Brightness.dark : Brightness.light,
+        statusBarBrightness: isLight ? Brightness.light : Brightness.dark,
+        systemStatusBarContrastEnforced: false,
+        systemNavigationBarColor: theme.scaffoldBackgroundColor,
+        systemNavigationBarContrastEnforced: false,
+        systemNavigationBarIconBrightness:
+            isLight ? Brightness.dark : Brightness.light,
+      ),
     );
   }
 

@@ -463,6 +463,19 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
     );
   }
 
+  /// Cycles the `style` field in a StickerStoryItem's interactionData.
+  void _cycleStickerStyle(StickerStoryItem item) {
+    final data = Map<String, dynamic>.from(item.interactionData ?? {});
+    final current = (data['style'] as num?)?.toInt() ?? 0;
+    data['style'] = current + 1; // Each widget wraps via % numStyles
+    final updated = item.copyWith(interactionData: data);
+    setState(() {
+      final idx = _items.lastIndexWhere((e) => e.id == item.id);
+      if (idx != -1) _items[idx] = updated;
+    });
+    HapticFeedback.selectionClick();
+  }
+
   /// ساخت آیتم قابل ویرایش با gesture engine جدید
   Widget _buildEditableItem(StoryItem item) {
     final isSelected = item.id == _selectedItemId;
@@ -472,7 +485,14 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
       isSelected: isSelected,
       isDraggingOverTrash: _isOverTrash && isSelected,
       onUpdate: _updateItem,
-      onSelect: () => _selectItem(item.id),
+      onSelect: () {
+        // Tap on already-selected sticker → cycle its style.
+        if (item.id == _selectedItemId && item is StickerStoryItem) {
+          _cycleStickerStyle(item);
+        } else {
+          _selectItem(item.id);
+        }
+      },
       onDragStart: () {
         setState(() {
           _isDragging = true;

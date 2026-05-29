@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../security/logging_utility.dart';
 import '../model/conversation_model.dart';
 import '../services/telegram_read_receipt_service.dart';
+import '../features/chat/utils/conversation_name_utils.dart';
 
 import '../features/auth/providers/auth_controller.dart' show TokenStorage;
 import '../features/chat/providers/chat_providers.dart';
@@ -76,7 +77,6 @@ class OptimizedConversationsNotifier extends StateNotifier<ConversationsState> {
   final Set<String> _profilePreloadInFlight = <String>{};
   static const Duration _fallbackRefreshInterval = Duration(seconds: 15);
   static const Duration _minRefreshGap = Duration(seconds: 5);
-
   OptimizedConversationsNotifier(this._ref, this._userId)
       : super(const ConversationsState()) {
     _initialize();
@@ -253,7 +253,11 @@ class OptimizedConversationsNotifier extends StateNotifier<ConversationsState> {
 
     // اول از memory cache استفاده کن (خیلی سریع)
     for (final conversation in conversations) {
-      final otherUserId = conversation.otherUserId?.trim();
+      final otherUserId = _otherUserIdFor(conversation);
+      final conversationWithPeerId =
+          otherUserId != null && otherUserId != conversation.otherUserId
+              ? conversation.copyWith(otherUserId: otherUserId)
+              : conversation;
       if (_needsEnrichment(conversation) &&
           otherUserId != null &&
           otherUserId.isNotEmpty) {
@@ -261,10 +265,10 @@ class OptimizedConversationsNotifier extends StateNotifier<ConversationsState> {
           otherUserId,
         );
         if (cached != null) {
-          enriched.add(_applyProfile(conversation, cached));
+          enriched.add(_applyProfile(conversationWithPeerId, cached));
         } else {
           userIdsToLoad.add(otherUserId);
-          enriched.add(conversation);
+          enriched.add(conversationWithPeerId);
         }
       } else {
         enriched.add(conversation);
@@ -306,7 +310,11 @@ class OptimizedConversationsNotifier extends StateNotifier<ConversationsState> {
 
       // Re-enrich conversations با پروفایل‌های جدید
       final reEnriched = conversations.map((conversation) {
-        final otherUserId = conversation.otherUserId?.trim();
+        final otherUserId = _otherUserIdFor(conversation);
+        final conversationWithPeerId =
+            otherUserId != null && otherUserId != conversation.otherUserId
+                ? conversation.copyWith(otherUserId: otherUserId)
+                : conversation;
         if (_needsEnrichment(conversation) &&
             otherUserId != null &&
             otherUserId.isNotEmpty) {
@@ -314,10 +322,10 @@ class OptimizedConversationsNotifier extends StateNotifier<ConversationsState> {
             otherUserId,
           );
           if (cached != null) {
-            return _applyProfile(conversation, cached);
+            return _applyProfile(conversationWithPeerId, cached);
           }
         }
-        return conversation;
+        return conversationWithPeerId;
       }).toList();
 
       if (!_disposed && updateToken == _latestUpdateToken) {
@@ -337,12 +345,7 @@ class OptimizedConversationsNotifier extends StateNotifier<ConversationsState> {
 
   /// چک کن آیا مکالمه نیاز به enrichment داره
   bool _needsEnrichment(ConversationModel conversation) {
-    final name = conversation.otherUserName ?? '';
-    return name.isEmpty ||
-        name == 'کاربر' ||
-        name == 'کاربر ناشناس' ||
-        name.toUpperCase() == 'VISTA USER' ||
-        name == 'Unknown User';
+    return isUnknownConversationName(conversation.otherUserName);
   }
 
   /// اعمال پروفایل به مکالمه
@@ -355,15 +358,48 @@ class OptimizedConversationsNotifier extends StateNotifier<ConversationsState> {
     final resolvedName =
         username.isNotEmpty ? username : (fullName.isNotEmpty ? fullName : '');
     final avatar = (profile['avatar_url'] ?? '').trim();
-    return conversation.copyWith(
+    final resolvedUserId = (profile['user_id'] ?? '').trim();
+    final updated = conversation.copyWith(
       otherUserName:
           resolvedName.isNotEmpty ? resolvedName : conversation.otherUserName,
       otherUserAvatar:
           avatar.isNotEmpty ? avatar : conversation.otherUserAvatar,
+      otherUserId:
+          resolvedUserId.isNotEmpty ? resolvedUserId : conversation.otherUserId,
+    );
+    if (updated.otherUserName != conversation.otherUserName ||
+        updated.otherUserAvatar != conversation.otherUserAvatar ||
+        updated.otherUserId != conversation.otherUserId) {
+      unawaited(_persistConversationProfile(updated));
+    }
+    return updated;
+  }
+
+  Future<void> _persistConversationProfile(ConversationModel conversation) {
+    final repo = _ref.read(chatRepositoryProvider);
+    return repo.cacheConversationProfile(
+      conversationId: conversation.id,
+      otherUserId: conversation.otherUserId,
+      otherUserName: conversation.otherUserName,
+      otherUserAvatar: conversation.otherUserAvatar,
     );
   }
 
   /// مرتب‌سازی مکالمات: pinned اول، بعد بر اساس آخرین پیام
+  String? _otherUserIdFor(ConversationModel conversation) {
+    final direct = conversation.otherUserId?.trim();
+    if (direct != null && direct.isNotEmpty) return direct;
+    final currentUserId = _userId;
+    if (currentUserId == null || currentUserId.isEmpty) return null;
+    for (final participant in conversation.participants) {
+      final participantUserId = participant.userId.trim();
+      if (participantUserId.isNotEmpty && participantUserId != currentUserId) {
+        return participantUserId;
+      }
+    }
+    return null;
+  }
+
   List<ConversationModel> _sortConversations(
     List<ConversationModel> conversations,
   ) {
@@ -371,7 +407,9 @@ class OptimizedConversationsNotifier extends StateNotifier<ConversationsState> {
     final validConversations = conversations.where((c) {
       if (c.isGroup) return true;
       final name = (c.otherUserName ?? '').trim();
-      if (name == 'کاربر حذف شده') return false; // مخفی کردن کاربرانی که قطعا پاک شده اند
+      if (name == 'کاربر حذف شده') {
+        return false; // مخفی کردن کاربرانی که قطعا پاک شده اند
+      }
       return true;
     }).toList();
 
@@ -382,11 +420,24 @@ class OptimizedConversationsNotifier extends StateNotifier<ConversationsState> {
       if (!a.isPinned && b.isPinned) return 1;
 
       // بعد بر اساس زمان آخرین پیام
-      final aTime = a.lastMessageTime ?? a.updatedAt;
-      final bTime = b.lastMessageTime ?? b.updatedAt;
+      final aHasLastMessage = _hasLastMessage(a);
+      final bHasLastMessage = _hasLastMessage(b);
+      if (aHasLastMessage && !bHasLastMessage) return -1;
+      if (!aHasLastMessage && bHasLastMessage) return 1;
+
+      final aTime =
+          aHasLastMessage ? (a.lastMessageTime ?? a.updatedAt) : a.createdAt;
+      final bTime =
+          bHasLastMessage ? (b.lastMessageTime ?? b.updatedAt) : b.createdAt;
       return bTime.compareTo(aTime);
     });
     return sorted;
+  }
+
+  bool _hasLastMessage(ConversationModel conversation) {
+    if ((conversation.lastMessage ?? '').trim().isNotEmpty) return true;
+    final type = conversation.lastMessageType?.trim().toLowerCase();
+    return type != null && type.isNotEmpty && type != 'text';
   }
 
   String _fingerprintConversations(List<ConversationModel> conversations) {

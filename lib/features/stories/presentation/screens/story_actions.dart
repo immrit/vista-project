@@ -391,9 +391,9 @@ class _StoryActionsState extends State<StoryActions> {
       case StoryReplyPermission.off:
         return 'اجازه پاسخ این استوری غیرفعال است';
       case StoryReplyPermission.following:
-        return 'فقط افرادی که صاحب استوری دنبال می‌کند مجاز هستند';
+        return 'فقط دنبال‌شده‌های صاحب استوری می‌توانند پاسخ دهند';
       case StoryReplyPermission.everyone:
-        return 'ارسال پاسخ ممکن نیست';
+        return 'پاسخ در دسترس نیست';
     }
   }
 

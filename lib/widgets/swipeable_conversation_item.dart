@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../model/conversation_model.dart';
 import '../../services/telegram_read_receipt_service.dart';
 import '../../features/chat/widgets/telegram_message_status.dart';
+import '../../features/chat/utils/conversation_name_utils.dart';
 import '../provider/typing_provider.dart';
 import 'package:Vista/utils/const.dart';
 
@@ -231,16 +232,11 @@ class _ConversationContent extends StatelessWidget {
   }
 
   String _getDisplayName() {
-    final name = conversation.otherUserName ?? '';
-    if (name.isEmpty || name == 'کاربر') {
-      return 'کاربر ناشناس';
-    }
-    return name;
+    return resolveConversationDisplayName(conversation.otherUserName);
   }
 
   bool _isGroupConversation() {
-    final otherId = conversation.otherUserId;
-    return otherId == null || otherId.isEmpty;
+    return conversation.isGroup;
   }
 
   String _getLastMessage() {

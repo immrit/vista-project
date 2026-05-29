@@ -16,6 +16,7 @@ import '../../../features/chat/screens/modern_chat_screen.dart';
 import '../../../features/chat/screens/new_message_screen.dart';
 import '../../../DB/database_file_utils.dart';
 import '../../../utils/user_friendly_error_utils.dart';
+import '../../../services/system_ui_bar_service.dart';
 import '../../../features/chat/widgets/block_report_bottom_sheet.dart';
 import '../../../features/chat/services/user_moderation_service.dart';
 // ✅ ویجت Swipeable برای آیتم مکالمه
@@ -24,6 +25,7 @@ import 'package:Vista/core/theme/app_theme.dart';
 // ✅ ویجت سینی یادداشت‌ها (شبیه اینستاگرام)
 import '../../../features/chat/widgets/notes_tray.dart';
 import 'package:Vista/l10n/generated/app_localizations.dart';
+import '../../../features/chat/utils/conversation_name_utils.dart';
 
 class ChatConversationsScreen extends ConsumerStatefulWidget {
   const ChatConversationsScreen({super.key});
@@ -57,26 +59,7 @@ class _ChatConversationsScreenState
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final brightness = Theme.of(context).brightness;
-    SystemChrome.setSystemUIOverlayStyle(
-      brightness == Brightness.light
-          ? const SystemUiOverlayStyle(
-              statusBarColor: Colors.transparent,
-              statusBarIconBrightness: Brightness.dark,
-              statusBarBrightness: Brightness.light,
-              systemStatusBarContrastEnforced: false,
-              systemNavigationBarColor: Colors.transparent,
-              systemNavigationBarContrastEnforced: false,
-            )
-          : const SystemUiOverlayStyle(
-              statusBarColor: Colors.transparent,
-              statusBarIconBrightness: Brightness.light,
-              statusBarBrightness: Brightness.dark,
-              systemStatusBarContrastEnforced: false,
-              systemNavigationBarColor: Colors.transparent,
-              systemNavigationBarContrastEnforced: false,
-            ),
-    );
+    _syncSystemBars(Theme.of(context));
   }
 
   @override
@@ -102,6 +85,7 @@ class _ChatConversationsScreenState
   Widget build(BuildContext context) {
     super.build(context);
     final theme = Theme.of(context);
+    _syncSystemBars(theme);
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
@@ -122,14 +106,14 @@ class _ChatConversationsScreenState
 
   // AppBar بهینه‌شده
   PreferredSizeWidget _buildAppBar(ThemeData theme) {
-    final appBarColor = theme.appBarTheme.backgroundColor ?? theme.colorScheme.surface;
+    final appBarColor = _appBarColor(theme);
+    final overlayStyle = _systemOverlayStyle(theme);
     return AppBar(
       backgroundColor: appBarColor,
+      surfaceTintColor: appBarColor,
       elevation: 0,
       scrolledUnderElevation: 0,
-      systemOverlayStyle:
-          (theme.appBarTheme.systemOverlayStyle ?? const SystemUiOverlayStyle())
-              .copyWith(statusBarColor: appBarColor),
+      systemOverlayStyle: overlayStyle,
       title: Text(
         AppLocalizations.of(context)?.messages ?? 'پیام‌ها',
         style: theme.appBarTheme.titleTextStyle?.copyWith(
@@ -228,6 +212,29 @@ class _ChatConversationsScreenState
     );
   }
 
+  Color _appBarColor(ThemeData theme) => theme.scaffoldBackgroundColor;
+
+  SystemUiOverlayStyle _systemOverlayStyle(ThemeData theme) {
+    final isLight = theme.brightness == Brightness.light;
+    final appBarColor = _appBarColor(theme);
+    return SystemUiOverlayStyle(
+      statusBarColor: appBarColor,
+      statusBarIconBrightness: isLight ? Brightness.dark : Brightness.light,
+      statusBarBrightness: isLight ? Brightness.light : Brightness.dark,
+      systemStatusBarContrastEnforced: false,
+      systemNavigationBarColor: theme.scaffoldBackgroundColor,
+      systemNavigationBarContrastEnforced: false,
+      systemNavigationBarIconBrightness:
+          isLight ? Brightness.dark : Brightness.light,
+    );
+  }
+
+  void _syncSystemBars(ThemeData theme) {
+    final overlayStyle = _systemOverlayStyle(theme);
+    SystemChrome.setSystemUIOverlayStyle(overlayStyle);
+    SystemUiBarService.sync(overlayStyle);
+  }
+
   Widget _buildSearchToggle(ThemeData theme) {
     return IconButton(
       icon: AnimatedSwitcher(
@@ -239,7 +246,9 @@ class _ChatConversationsScreenState
         ),
       ),
       onPressed: _toggleSearch,
-      tooltip: _isSearchVisible ? (AppLocalizations.of(context)?.closeSearch ?? 'بستن جستجو') : (AppLocalizations.of(context)?.search ?? 'جستجو'),
+      tooltip: _isSearchVisible
+          ? (AppLocalizations.of(context)?.closeSearch ?? 'بستن جستجو')
+          : (AppLocalizations.of(context)?.search ?? 'جستجو'),
     );
   }
 
@@ -299,13 +308,15 @@ class _ChatConversationsScreenState
         _buildMenuItem(
           value: 'archived',
           icon: Icons.archive_outlined,
-          title: AppLocalizations.of(context)?.archivedChats ?? 'گفتگوهای بایگانی',
+          title:
+              AppLocalizations.of(context)?.archivedChats ?? 'گفتگوهای بایگانی',
           theme: theme,
         ),
         _buildMenuItem(
           value: 'secret_chat',
           icon: Icons.lock_rounded,
-          title: AppLocalizations.of(context)?.newSecretChat ?? 'گفتگوی محرمانه جدید',
+          title: AppLocalizations.of(context)?.newSecretChat ??
+              'گفتگوی محرمانه جدید',
           theme: theme,
         ),
       ],
@@ -367,7 +378,9 @@ class _ChatConversationsScreenState
               color: theme.textTheme.bodyLarge?.color,
             ),
             decoration: InputDecoration(
-              hintText: AppLocalizations.of(context)?.searchInMessagesAndChannels ?? 'جستجو در پیام‌ها و کانال‌ها...',
+              hintText:
+                  AppLocalizations.of(context)?.searchInMessagesAndChannels ??
+                      'جستجو در پیام‌ها و کانال‌ها...',
               hintStyle: TextStyle(
                 color: theme.hintColor,
                 fontSize: 16,
@@ -420,14 +433,17 @@ class _ChatConversationsScreenState
             conversations.isEmpty) {
           return _buildErrorState(
             theme,
-            conversationsState.errorMessage ?? (AppLocalizations.of(context)?.errorLoadingConversations ?? 'خطا در بارگذاری گفتگوها'),
+            conversationsState.errorMessage ??
+                (AppLocalizations.of(context)?.errorLoadingConversations ??
+                    'خطا در بارگذاری گفتگوها'),
           );
         }
 
         if (conversations.isEmpty) {
           return _buildEmptyState(
             theme,
-            AppLocalizations.of(context)?.noConversations ?? 'هیچ گفتگویی وجود ندارد',
+            AppLocalizations.of(context)?.noConversations ??
+                'هیچ گفتگویی وجود ندارد',
             Icons.chat_bubble_outline_rounded,
           );
         }
@@ -465,8 +481,10 @@ class _ChatConversationsScreenState
             child: _buildEmptyState(
               theme,
               _searchQuery.isEmpty
-                  ? (AppLocalizations.of(context)?.noConversations ?? 'هیچ گفتگویی وجود ندارد')
-                  : (AppLocalizations.of(context)?.noResultsFound ?? 'نتیجه‌ای یافت نشد'),
+                  ? (AppLocalizations.of(context)?.noConversations ??
+                      'هیچ گفتگویی وجود ندارد')
+                  : (AppLocalizations.of(context)?.noResultsFound ??
+                      'نتیجه‌ای یافت نشد'),
               Icons.chat_bubble_outline_rounded,
             ),
           ),
@@ -553,7 +571,10 @@ class _ChatConversationsScreenState
             if (pinnedConversations.isNotEmpty)
               SliverToBoxAdapter(
                 child: _buildSectionHeader(
-                    theme, AppLocalizations.of(context)?.allConversations ?? 'همه گفتگوها', Icons.chat_rounded),
+                    theme,
+                    AppLocalizations.of(context)?.allConversations ??
+                        'همه گفتگوها',
+                    Icons.chat_rounded),
               ),
             SliverList(
               delegate: SliverChildBuilderDelegate(
@@ -649,8 +670,9 @@ class _ChatConversationsScreenState
         children: [
           Expanded(
             child: OutlinedButton(
-              onPressed:
-                  isLoading ? null : () => _respondToMessageRequest(conversation, false),
+              onPressed: isLoading
+                  ? null
+                  : () => _respondToMessageRequest(conversation, false),
               style: OutlinedButton.styleFrom(
                 side: BorderSide(
                   color: theme.colorScheme.error.withValues(alpha: 0.5),
@@ -663,8 +685,9 @@ class _ChatConversationsScreenState
           const SizedBox(width: 10),
           Expanded(
             child: FilledButton(
-              onPressed:
-                  isLoading ? null : () => _respondToMessageRequest(conversation, true),
+              onPressed: isLoading
+                  ? null
+                  : () => _respondToMessageRequest(conversation, true),
               child: isLoading
                   ? const SizedBox(
                       width: 16,
@@ -692,7 +715,8 @@ class _ChatConversationsScreenState
           children: [
             Icon(Icons.delete_outline_rounded, color: theme.colorScheme.error),
             const SizedBox(width: 8),
-            Text(AppLocalizations.of(context)?.deleteConversation ?? 'حذف گفتگو'),
+            Text(AppLocalizations.of(context)?.deleteConversation ??
+                'حذف گفتگو'),
           ],
         ),
         content: Text(
@@ -742,26 +766,7 @@ class _ChatConversationsScreenState
     );
     // بازگشت از صفحه چت: استایل status bar رو با توجه به تم فعلی ریست می‌کنیم
     if (mounted) {
-      final brightness = Theme.of(context).brightness;
-      SystemChrome.setSystemUIOverlayStyle(
-        brightness == Brightness.light
-            ? const SystemUiOverlayStyle(
-                statusBarColor: Colors.transparent,
-                statusBarIconBrightness: Brightness.dark,
-                statusBarBrightness: Brightness.light,
-                systemStatusBarContrastEnforced: false,
-                systemNavigationBarColor: Colors.transparent,
-                systemNavigationBarContrastEnforced: false,
-              )
-            : const SystemUiOverlayStyle(
-                statusBarColor: Colors.transparent,
-                statusBarIconBrightness: Brightness.light,
-                statusBarBrightness: Brightness.dark,
-                systemStatusBarContrastEnforced: false,
-                systemNavigationBarColor: Colors.transparent,
-                systemNavigationBarContrastEnforced: false,
-              ),
-      );
+      _syncSystemBars(Theme.of(context));
     }
   }
 
@@ -783,12 +788,15 @@ class _ChatConversationsScreenState
         if (result.isSuccess) {
           UserFriendlyErrorUtils.showSuccessSnackBar(
             context,
-            AppLocalizations.of(context)?.conversationDeleted ?? 'گفتگو با موفقیت حذف شد',
+            AppLocalizations.of(context)?.conversationDeleted ??
+                'گفتگو با موفقیت حذف شد',
           );
         } else {
           UserFriendlyErrorUtils.showErrorSnackBar(
             context,
-            result.error ?? (AppLocalizations.of(context)?.conversationDeleteFailed ?? 'حذف گفتگو انجام نشد'),
+            result.error ??
+                (AppLocalizations.of(context)?.conversationDeleteFailed ??
+                    'حذف گفتگو انجام نشد'),
           );
         }
       }
@@ -809,10 +817,11 @@ class _ChatConversationsScreenState
     });
 
     try {
-      final result = await ref.read(chatRepositoryProvider).respondToMessageRequest(
-            conversationId,
-            accept: accept,
-          );
+      final result =
+          await ref.read(chatRepositoryProvider).respondToMessageRequest(
+                conversationId,
+                accept: accept,
+              );
       if (!mounted) return;
 
       if (result.isSuccess) {
@@ -1340,10 +1349,6 @@ class _ChatConversationsScreenState
   void _createNewChannel() {}
 
   String _conversationDisplayName(ConversationModel conversation) {
-    final raw = (conversation.otherUserName ?? '').trim();
-    if (raw.isEmpty || raw.toUpperCase() == 'VISTA USER' || raw == 'کاربر') {
-      return 'کاربر ناشناس';
-    }
-    return raw;
+    return resolveConversationDisplayName(conversation.otherUserName);
   }
 }

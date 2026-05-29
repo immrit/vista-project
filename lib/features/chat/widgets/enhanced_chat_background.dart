@@ -13,7 +13,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:ui';
-import '../../../services/wallpaper_cache_service.dart';
 import '../../../provider/settings_providers.dart';
 
 /// Enhanced Chat Background با الهام از ویستا

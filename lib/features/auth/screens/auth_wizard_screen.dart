@@ -25,6 +25,9 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _otpController = TextEditingController();
 
+  final FocusNode _passwordFocusNode = FocusNode();
+  final FocusNode _otpFocusNode = FocusNode();
+
   bool _isLoading = false;
 
   // Logic State
@@ -41,6 +44,8 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
     _inputController.dispose();
     _passwordController.dispose();
     _otpController.dispose();
+    _passwordFocusNode.dispose();
+    _otpFocusNode.dispose();
     timer?.cancel();
     super.dispose();
   }
@@ -64,6 +69,14 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
       duration: const Duration(milliseconds: 600),
       curve: Curves.easeInOutCubicEmphasized,
     );
+    Future.delayed(const Duration(milliseconds: 600), () {
+      if (!mounted) return;
+      if (page == 1) {
+        _passwordFocusNode.requestFocus();
+      } else if (page == 2) {
+        _otpFocusNode.requestFocus();
+      }
+    });
   }
 
   Future<void> _handleInputSubmit() async {
@@ -460,6 +473,7 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
           const SizedBox(height: 32),
           TextField(
             controller: _passwordController,
+            focusNode: _passwordFocusNode,
             obscureText: true,
             textAlign: TextAlign.left,
             textDirection: TextDirection.ltr,
@@ -560,6 +574,7 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
               child: Pinput(
                 length: 5,
                 controller: _otpController,
+                focusNode: _otpFocusNode,
                 autofocus: true,
                 defaultPinTheme: defaultPinTheme,
                 focusedPinTheme: defaultPinTheme.copyDecorationWith(

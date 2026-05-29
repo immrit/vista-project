@@ -1,6 +1,8 @@
 
 package ir.coffevista.vista
 
+import android.os.Build
+import android.view.View
 import androidx.annotation.NonNull
 import com.ryanheise.audioservice.AudioServiceFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -12,6 +14,7 @@ import ir.cafebazaar.poolakey.request.PurchaseRequest
 
 class MainActivity: AudioServiceFragmentActivity() {
     private val CHANNEL = "ir.coffevista.vista/bazaar_native"
+    private val SYSTEM_UI_CHANNEL = "ir.coffevista.vista/system_ui"
     private lateinit var payment: Payment
     
     // کلید RSA
@@ -36,6 +39,58 @@ class MainActivity: AudioServiceFragmentActivity() {
                 
                 else -> result.notImplemented()
             }
+        }
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SYSTEM_UI_CHANNEL).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "setSystemBars" -> {
+                    setSystemBars(
+                        call.argument<Number>("statusBarColor")?.toLong()?.toInt(),
+                        call.argument<Number>("navigationBarColor")?.toLong()?.toInt(),
+                        call.argument<Boolean>("lightStatusBarIcons") ?: false,
+                        call.argument<Boolean>("lightNavigationBarIcons") ?: false
+                    )
+                    result.success(null)
+                }
+                else -> result.notImplemented()
+            }
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun setSystemBars(
+        statusBarColor: Int?,
+        navigationBarColor: Int?,
+        lightStatusBarIcons: Boolean,
+        lightNavigationBarIcons: Boolean
+    ) {
+        if (statusBarColor != null) {
+            window.statusBarColor = statusBarColor
+        }
+        if (navigationBarColor != null) {
+            window.navigationBarColor = navigationBarColor
+        }
+
+        var flags = window.decorView.systemUiVisibility
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            flags = if (lightStatusBarIcons) {
+                flags or View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+            } else {
+                flags and View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR.inv()
+            }
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            flags = if (lightNavigationBarIcons) {
+                flags or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
+            } else {
+                flags and View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR.inv()
+            }
+        }
+        window.decorView.systemUiVisibility = flags
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window.isStatusBarContrastEnforced = false
+            window.isNavigationBarContrastEnforced = false
         }
     }
 

@@ -65,7 +65,8 @@ class _ProfileSetupWizardScreenState
       await TokenStorage.saveUserId(user.id);
       await ref.read(authControllerProvider.notifier).refreshCurrentUser();
 
-      final cachedProfile = await ProfileCacheService().getCachedProfile(user.id);
+      final cachedProfile =
+          await ProfileCacheService().getCachedProfile(user.id);
       Map<String, dynamic>? profile = cachedProfile?.toMap();
       if (profile == null) {
         try {
@@ -482,7 +483,7 @@ class _ProfileSetupWizardScreenState
           ),
           const SizedBox(height: 20),
           DropdownButtonFormField<String>(
-            value: _gender,
+            initialValue: _gender,
             decoration: const InputDecoration(
               labelText: 'جنسیت (اجباری)',
               prefixIcon: Icon(Icons.person),
@@ -490,7 +491,8 @@ class _ProfileSetupWizardScreenState
             items: const [
               DropdownMenuItem(value: 'male', child: Text('مرد')),
               DropdownMenuItem(value: 'female', child: Text('زن')),
-              DropdownMenuItem(value: 'prefer_not_to_say', child: Text('ترجیح میدهم نگویم')),
+              DropdownMenuItem(
+                  value: 'prefer_not_to_say', child: Text('ترجیح میدهم نگویم')),
             ],
             onChanged: (val) {
               setState(() {
@@ -501,7 +503,7 @@ class _ProfileSetupWizardScreenState
           ),
           const SizedBox(height: 16),
           DropdownButtonFormField<String>(
-            value: _maritalStatus,
+            initialValue: _maritalStatus,
             decoration: const InputDecoration(
               labelText: 'وضعیت تاهل (اختیاری)',
               prefixIcon: Icon(Icons.favorite_outline),
@@ -509,7 +511,8 @@ class _ProfileSetupWizardScreenState
             items: const [
               DropdownMenuItem(value: 'single', child: Text('مجرد')),
               DropdownMenuItem(value: 'married', child: Text('متاهل')),
-              DropdownMenuItem(value: 'prefer_not_to_say', child: Text('ترجیح میدهم نگویم')),
+              DropdownMenuItem(
+                  value: 'prefer_not_to_say', child: Text('ترجیح میدهم نگویم')),
             ],
             onChanged: (val) {
               setState(() {
@@ -553,8 +556,24 @@ class _ProfileSetupWizardScreenState
                 ? '-'
                 : formatBirthDateForDisplay(_birthDate!, _effectiveLocale),
           ),
-          _SummaryRow(label: 'جنسیت', value: _gender == 'male' ? 'مرد' : _gender == 'female' ? 'زن' : _gender == 'prefer_not_to_say' ? 'ترجیح میدهم نگویم' : '-'),
-          _SummaryRow(label: 'وضعیت تاهل', value: _maritalStatus == 'single' ? 'مجرد' : _maritalStatus == 'married' ? 'متاهل' : _maritalStatus == 'prefer_not_to_say' ? 'ترجیح میدهم نگویم' : '-'),
+          _SummaryRow(
+              label: 'جنسیت',
+              value: _gender == 'male'
+                  ? 'مرد'
+                  : _gender == 'female'
+                      ? 'زن'
+                      : _gender == 'prefer_not_to_say'
+                          ? 'ترجیح میدهم نگویم'
+                          : '-'),
+          _SummaryRow(
+              label: 'وضعیت تاهل',
+              value: _maritalStatus == 'single'
+                  ? 'مجرد'
+                  : _maritalStatus == 'married'
+                      ? 'متاهل'
+                      : _maritalStatus == 'prefer_not_to_say'
+                          ? 'ترجیح میدهم نگویم'
+                          : '-'),
           if ((_phoneNumber ?? '').isNotEmpty)
             _SummaryRow(label: 'شماره موبایل', value: _phoneNumber!),
           const SizedBox(height: 18),

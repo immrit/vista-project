@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../auth/providers/auth_controller.dart';
@@ -81,6 +82,7 @@ class _GroupDetailsScreenState extends ConsumerState<GroupDetailsScreen> {
         title: const Text('ویرایش نام گروه'),
         content: TextField(
           controller: controller,
+          maxLength: 50,
           decoration: const InputDecoration(hintText: 'نام گروه'),
         ),
         actions: [
@@ -96,13 +98,14 @@ class _GroupDetailsScreenState extends ConsumerState<GroupDetailsScreen> {
       ),
     );
 
-    if (result == null || result.isEmpty) return;
+    final newName = result?.trim() ?? '';
+    if (newName.isEmpty || newName.length > 50) return;
     setState(() => _isSaving = true);
-    await _groupService.updateGroupInfo(widget.conversationId, name: result);
+    await _groupService.updateGroupInfo(widget.conversationId, name: newName);
     await ref.read(chatRepositoryProvider).refreshConversations();
     if (mounted) {
       setState(() {
-        _groupName = result;
+        _groupName = newName;
         _isSaving = false;
       });
     }
@@ -143,19 +146,33 @@ class _GroupDetailsScreenState extends ConsumerState<GroupDetailsScreen> {
   Future<void> _regenerateInvite() async {
     if (!_isAdmin) return;
     setState(() => _isSaving = true);
-    final code = await _groupService.regenerateInvite(widget.conversationId);
-    if (mounted) {
-      setState(() {
-        _inviteCode = code;
-        _isSaving = false;
-      });
+    try {
+      final code = await _groupService.regenerateInvite(widget.conversationId);
+      if (mounted) {
+        setState(() {
+          _inviteCode = code;
+          _isSaving = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isSaving = false);
+        _showSnack(_mapGroupError(e));
+      }
     }
   }
 
   Future<void> _toggleInvite(bool enabled) async {
     if (!_isAdmin) return;
     setState(() => _inviteEnabled = enabled);
-    await _groupService.setInviteEnabled(widget.conversationId, enabled);
+    try {
+      await _groupService.setInviteEnabled(widget.conversationId, enabled);
+    } catch (e) {
+      if (mounted) {
+        setState(() => _inviteEnabled = !enabled);
+        _showSnack(_mapGroupError(e));
+      }
+    }
   }
 
   Future<void> _addMembers() async {
@@ -192,32 +209,117 @@ class _GroupDetailsScreenState extends ConsumerState<GroupDetailsScreen> {
   }
 
   Future<void> _removeMember(GroupMemberItem member) async {
-    await _groupService.removeMember(widget.conversationId, member.userId);
-    await _loadGroup();
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('حذف کاربر'),
+        content: Text('آیا از حذف ${member.displayName} اطمینان دارید؟'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('انصراف'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('حذف', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+
+    try {
+      setState(() => _isSaving = true);
+      await _groupService.removeMember(widget.conversationId, member.userId);
+      await _loadGroup();
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isSaving = false);
+        _showSnack(_mapGroupError(e));
+      }
+    }
   }
 
   Future<void> _toggleAdmin(GroupMemberItem member) async {
-    await _groupService.setAdmin(
-      widget.conversationId,
-      member.userId,
-      makeAdmin: !member.isAdmin,
-    );
-    await _loadGroup();
+    try {
+      setState(() => _isSaving = true);
+      await _groupService.setAdmin(
+        widget.conversationId,
+        member.userId,
+        makeAdmin: !member.isAdmin,
+      );
+      await _loadGroup();
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isSaving = false);
+        _showSnack(_mapGroupError(e));
+      }
+    }
   }
 
   Future<void> _leaveGroup() async {
-    await _groupService.leaveGroup(widget.conversationId);
-    await ref.read(chatRepositoryProvider).refreshConversations();
-    if (mounted) {
-      Navigator.pop(context);
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('خروج از گروه'),
+        content: const Text('آیا می‌خواهید از این گروه خارج شوید؟'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('انصراف'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('خروج', style: TextStyle(color: Colors.orange)),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+
+    try {
+      setState(() => _isSaving = true);
+      await _groupService.leaveGroup(widget.conversationId);
+      await ref.read(chatRepositoryProvider).refreshConversations();
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isSaving = false);
+        _showSnack(_mapGroupError(e));
+      }
     }
   }
 
   Future<void> _deleteGroup() async {
-    await _groupService.deleteGroup(widget.conversationId);
-    await ref.read(chatRepositoryProvider).refreshConversations();
-    if (mounted) {
-      Navigator.pop(context);
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('حذف گروه'),
+        content: const Text('آیا از حذف کامل این گروه اطمینان دارید؟ این عملیات غیرقابل بازگشت است.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('انصراف'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('حذف', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+
+    try {
+      setState(() => _isSaving = true);
+      await _groupService.deleteGroup(widget.conversationId);
+      await ref.read(chatRepositoryProvider).refreshConversations();
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isSaving = false);
+        _showSnack(_mapGroupError(e));
+      }
     }
   }
 
@@ -474,6 +576,9 @@ class _GroupDetailsScreenState extends ConsumerState<GroupDetailsScreen> {
 
   Widget _buildMemberTile(GroupMemberItem member, ThemeData theme) {
     final isMe = member.userId == _currentUserId;
+    final isTargetCreator = member.userId == _createdBy;
+    final canManage = _isCreator || (_isAdmin && !member.isAdmin && !isTargetCreator);
+
     return ListTile(
       contentPadding: EdgeInsets.zero,
       leading: CircleAvatar(
@@ -487,7 +592,7 @@ class _GroupDetailsScreenState extends ConsumerState<GroupDetailsScreen> {
       ),
       title: Text(member.displayName),
       subtitle: member.isAdmin ? const Text('ادمین') : null,
-      trailing: _isAdmin && !isMe
+      trailing: canManage && !isMe
           ? PopupMenuButton<String>(
               onSelected: (value) {
                 if (value == 'admin') {
@@ -574,6 +679,7 @@ class _AddMembersSheetState extends State<_AddMembersSheet> {
   List<GroupUserItem> _results = [];
   bool _isLoading = true;
   bool _isSearching = false;
+  CancelToken? _searchCancelToken;
 
   @override
   void initState() {
@@ -584,6 +690,7 @@ class _AddMembersSheetState extends State<_AddMembersSheet> {
 
   @override
   void dispose() {
+    _searchCancelToken?.cancel();
     _searchController.dispose();
     super.dispose();
   }
@@ -605,14 +712,24 @@ class _AddMembersSheetState extends State<_AddMembersSheet> {
       if (mounted) setState(() => _results = []);
       return;
     }
+    _searchCancelToken?.cancel();
+    _searchCancelToken = CancelToken();
+
     setState(() => _isSearching = true);
-    final users = await _service.searchUsers(q);
-    if (!mounted) return;
-    setState(() {
-      _results =
-          users.where((u) => !widget.existingMemberIds.contains(u.id)).toList();
-      _isSearching = false;
-    });
+    try {
+      final users = await _service.searchUsers(q, cancelToken: _searchCancelToken);
+      if (!mounted) return;
+      setState(() {
+        _results =
+            users.where((u) => !widget.existingMemberIds.contains(u.id)).toList();
+        _isSearching = false;
+      });
+    } catch (e) {
+      if (e is DioException && e.type == DioExceptionType.cancel) {
+        return;
+      }
+      if (mounted) setState(() => _isSearching = false);
+    }
   }
 
   void _toggle(GroupUserItem user) {

@@ -6,7 +6,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../security/logging_utility.dart';
-import '../../../services/user_friendly_error_handler.dart';
 import '../models/group_user_item.dart';
 import '../providers/chat_providers.dart';
 import '../services/group_service.dart';
@@ -34,6 +33,7 @@ class _GroupCreateScreenState extends ConsumerState<GroupCreateScreen> {
   bool _isCreating = false;
   bool _isSearching = false;
   Timer? _debounce;
+  CancelToken? _searchCancelToken;
 
   @override
   void initState() {
@@ -45,6 +45,7 @@ class _GroupCreateScreenState extends ConsumerState<GroupCreateScreen> {
   @override
   void dispose() {
     _debounce?.cancel();
+    _searchCancelToken?.cancel();
     _nameController.dispose();
     _searchController.dispose();
     _nameFocusNode.dispose();
@@ -81,13 +82,25 @@ class _GroupCreateScreenState extends ConsumerState<GroupCreateScreen> {
         }
         return;
       }
+      _searchCancelToken?.cancel();
+      _searchCancelToken = CancelToken();
       setState(() => _isSearching = true);
-      final results = await _groupService.searchUsers(query);
-      if (mounted) {
-        setState(() {
-          _searchResults = results;
-          _isSearching = false;
-        });
+      try {
+        final results = await _groupService.searchUsers(
+          query,
+          cancelToken: _searchCancelToken,
+        );
+        if (mounted) {
+          setState(() {
+            _searchResults = results;
+            _isSearching = false;
+          });
+        }
+      } catch (e) {
+        if (e is DioException && e.type == DioExceptionType.cancel) {
+          return;
+        }
+        if (mounted) setState(() => _isSearching = false);
       }
     });
   }
@@ -301,6 +314,7 @@ class _GroupCreateScreenState extends ConsumerState<GroupCreateScreen> {
                       child: TextField(
                         controller: _nameController,
                         focusNode: _nameFocusNode,
+                        inputFormatters: [LengthLimitingTextInputFormatter(50)],
                         style: TextStyle(
                           fontSize: 17,
                           fontWeight: FontWeight.w500,

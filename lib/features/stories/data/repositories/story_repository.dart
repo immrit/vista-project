@@ -22,8 +22,7 @@ class StoryRepository implements IStoryRepository {
 
   late final Dio _dio;
 
-  static String get _backendUrl =>
-      EnvConfig.apiBaseUrl ?? 'http://10.0.2.2:8080';
+  static String get _backendUrl => EnvConfig.apiBaseUrl;
 
   @override
   Future<StoryResult<List<StoryUser>>> getActiveStories() async {
@@ -503,6 +502,8 @@ class StoryRepository implements IStoryRepository {
   Future<StoryResult<StoryReplyPermission>> getStoryReplyPermission({
     String? userId,
   }) async {
+    // This endpoint is for managing the current user's own settings.
+    // Use getStoryReplyAccess(storyId) to check a specific story owner's permission.
     try {
       final response = await _dio.get(
         '/me/story-settings',
@@ -513,7 +514,28 @@ class StoryRepository implements IStoryRepository {
     } catch (e, st) {
       logError('Failed to get story reply permission',
           error: e, stackTrace: st);
-      return StoryResult.success(StoryReplyPermission.everyone); // fail safe
+      return StoryResult.success(StoryReplyPermission.everyone);
+    }
+  }
+
+  /// Checks whether the current viewer can reply to [storyId].
+  /// Uses the backend-computed [viewer_can_reply] from the story data when
+  /// available, or falls back to the dedicated /reply-access endpoint.
+  Future<StoryResult<({bool canReply, StoryReplyPermission permission})>>
+      getStoryReplyAccess(String storyId) async {
+    try {
+      final response = await _dio.get(
+        '/stories/$storyId/reply-access',
+        options: await _authOptions(),
+      );
+      final data = _asMap(response.data);
+      final canReply = data['can_reply'] == true;
+      final perm = _parseReplyPermission(data['reply_permission']?.toString());
+      return StoryResult.success((canReply: canReply, permission: perm));
+    } catch (e, st) {
+      logError('Failed to get story reply access', error: e, stackTrace: st);
+      return StoryResult.success(
+          (canReply: true, permission: StoryReplyPermission.everyone));
     }
   }
 
@@ -563,9 +585,13 @@ class StoryRepository implements IStoryRepository {
     required String storyId,
     required String ownerId,
   }) async {
-    final currentUserId = await TokenStorage.getUserId();
-    return StoryResult.success(
-        currentUserId != null && currentUserId != ownerId);
+    // Delegate to the dedicated reply-access endpoint which checks
+    // reply_permission + follow relationship server-side.
+    final result = await getStoryReplyAccess(storyId);
+    return result.fold(
+      (_) => StoryResult.success(false),
+      (access) => StoryResult.success(access.canReply),
+    );
   }
 
   Future<Options> _authOptions() async {
@@ -581,6 +607,7 @@ class StoryRepository implements IStoryRepository {
     map['privacy_type'] = _privacyFromGo(map['privacy_type']?.toString());
     map['allowed_user_ids'] = _stringList(map['allowed_user_ids']);
     map['excluded_user_ids'] = _stringList(map['excluded_user_ids']);
+    // viewer_can_reply is computed server-side and returned in the response
     return Story.fromMap(map, isViewed: map['is_viewed'] == true);
   }
 

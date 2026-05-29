@@ -19,6 +19,7 @@ class Story {
   final int viewsCount;
   final int reactionsCount;
   final bool isViewed; // آیا کاربر فعلی دیده
+  final bool viewerCanReply; // آیا بیننده مجاز به پاسخ است (از بک‌اند محاسبه می‌شود)
 
   // قابلیت‌های تعاملی
   final StoryPoll? poll;
@@ -44,6 +45,7 @@ class Story {
     this.viewsCount = 0,
     this.reactionsCount = 0,
     this.isViewed = false,
+    this.viewerCanReply = true,
     this.poll,
     this.link,
     this.location,
@@ -75,6 +77,7 @@ class Story {
     int? viewsCount,
     int? reactionsCount,
     bool? isViewed,
+    bool? viewerCanReply,
     StoryPoll? poll,
     StoryLink? link,
     StoryLocation? location,
@@ -96,6 +99,7 @@ class Story {
       viewsCount: viewsCount ?? this.viewsCount,
       reactionsCount: reactionsCount ?? this.reactionsCount,
       isViewed: isViewed ?? this.isViewed,
+      viewerCanReply: viewerCanReply ?? this.viewerCanReply,
       poll: poll ?? this.poll,
       link: link ?? this.link,
       location: location ?? this.location,
@@ -208,6 +212,7 @@ class Story {
       viewsCount: map['views_count'] ?? 0,
       reactionsCount: map['reactions_count'] ?? 0,
       isViewed: isViewed,
+      viewerCanReply: map['viewer_can_reply'] == true,
       poll: map['poll'] != null ? StoryPoll.fromMap(map['poll']) : null,
       link: map['link'] != null ? StoryLink.fromMap(map['link']) : null,
       location: map['location'] != null
@@ -246,6 +251,20 @@ class StoryPollOptionResult {
     required this.percentage,
   });
 
+  StoryPollOptionResult copyWith({
+    int? optionIndex,
+    String? text,
+    int? votes,
+    double? percentage,
+  }) {
+    return StoryPollOptionResult(
+      optionIndex: optionIndex ?? this.optionIndex,
+      text: text ?? this.text,
+      votes: votes ?? this.votes,
+      percentage: percentage ?? this.percentage,
+    );
+  }
+
   factory StoryPollOptionResult.fromMap(Map<String, dynamic> map) {
     return StoryPollOptionResult(
       optionIndex: (map['option_index'] as num?)?.toInt() ?? 0,
@@ -275,6 +294,24 @@ class StoryPollResult {
   });
 
   bool get hasVoted => userOptionIndex != null;
+
+  StoryPollResult copyWith({
+    String? storyId,
+    String? elementId,
+    String? question,
+    int? totalVotes,
+    int? userOptionIndex,
+    List<StoryPollOptionResult>? options,
+  }) {
+    return StoryPollResult(
+      storyId: storyId ?? this.storyId,
+      elementId: elementId ?? this.elementId,
+      question: question ?? this.question,
+      totalVotes: totalVotes ?? this.totalVotes,
+      userOptionIndex: userOptionIndex ?? this.userOptionIndex,
+      options: options ?? this.options,
+    );
+  }
 
   factory StoryPollResult.fromMap(Map<String, dynamic> map) {
     final rawOptions = (map['options'] as List?) ?? const [];
