@@ -55,6 +55,31 @@ class _ChatConversationsScreenState
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final brightness = Theme.of(context).brightness;
+    SystemChrome.setSystemUIOverlayStyle(
+      brightness == Brightness.light
+          ? const SystemUiOverlayStyle(
+              statusBarColor: Colors.transparent,
+              statusBarIconBrightness: Brightness.dark,
+              statusBarBrightness: Brightness.light,
+              systemStatusBarContrastEnforced: false,
+              systemNavigationBarColor: Colors.transparent,
+              systemNavigationBarContrastEnforced: false,
+            )
+          : const SystemUiOverlayStyle(
+              statusBarColor: Colors.transparent,
+              statusBarIconBrightness: Brightness.light,
+              statusBarBrightness: Brightness.dark,
+              systemStatusBarContrastEnforced: false,
+              systemNavigationBarColor: Colors.transparent,
+              systemNavigationBarContrastEnforced: false,
+            ),
+    );
+  }
+
+  @override
   void dispose() {
     _searchController.dispose();
     _searchAnimController.dispose();
@@ -699,8 +724,8 @@ class _ChatConversationsScreenState
   }
 
   // ✅ Navigation به مکالمه
-  void _navigateToConversation(ConversationModel conversation) {
-    Navigator.push(
+  Future<void> _navigateToConversation(ConversationModel conversation) async {
+    await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => ModernChatScreen(
@@ -715,6 +740,29 @@ class _ChatConversationsScreenState
         ),
       ),
     );
+    // بازگشت از صفحه چت: استایل status bar رو با توجه به تم فعلی ریست می‌کنیم
+    if (mounted) {
+      final brightness = Theme.of(context).brightness;
+      SystemChrome.setSystemUIOverlayStyle(
+        brightness == Brightness.light
+            ? const SystemUiOverlayStyle(
+                statusBarColor: Colors.transparent,
+                statusBarIconBrightness: Brightness.dark,
+                statusBarBrightness: Brightness.light,
+                systemStatusBarContrastEnforced: false,
+                systemNavigationBarColor: Colors.transparent,
+                systemNavigationBarContrastEnforced: false,
+              )
+            : const SystemUiOverlayStyle(
+                statusBarColor: Colors.transparent,
+                statusBarIconBrightness: Brightness.light,
+                statusBarBrightness: Brightness.dark,
+                systemStatusBarContrastEnforced: false,
+                systemNavigationBarColor: Colors.transparent,
+                systemNavigationBarContrastEnforced: false,
+              ),
+      );
+    }
   }
 
   // ✅ نمایش گزینه‌های مکالمه

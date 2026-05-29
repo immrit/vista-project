@@ -20,7 +20,7 @@ class StoryBar extends ConsumerWidget {
     final storiesAsync = ref.watch(activeStoriesProvider);
 
     return SizedBox(
-      height: 110,
+      height: 115,
       child: storiesAsync.when(
         loading: () => _buildLoadingState(),
         error: (error, _) => _buildErrorState(context, error.toString(), ref),

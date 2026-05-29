@@ -31,6 +31,8 @@ class _ProfileSetupWizardScreenState
   String? _phoneNumber;
   String? _error;
   DateTime? _birthDate;
+  String? _gender;
+  String? _maritalStatus;
 
   static const _stepCount = 3;
 
@@ -85,6 +87,8 @@ class _ProfileSetupWizardScreenState
         _emailController.text =
             user.email ?? profile?['email']?.toString() ?? '';
         _birthDate = parsedBirthDate;
+        _gender = profile?['gender']?.toString();
+        _maritalStatus = profile?['marital_status']?.toString();
         _isLoading = false;
       });
     } catch (e) {
@@ -163,6 +167,10 @@ class _ProfileSetupWizardScreenState
       _setError('حداقل سن مجاز برای ثبت نام ۱۳ سال است');
       return false;
     }
+    if (_gender == null || _gender!.isEmpty) {
+      _setError('جنسیت را انتخاب کنید');
+      return false;
+    }
     _setError(null);
     return true;
   }
@@ -204,6 +212,8 @@ class _ProfileSetupWizardScreenState
       'username': _usernameController.text.trim().toLowerCase(),
       'full_name': _fullNameController.text.trim(),
       'birth_date': formatBirthDateForStorage(_birthDate!),
+      if (_gender != null) 'gender': _gender,
+      if (_maritalStatus != null) 'marital_status': _maritalStatus,
       if (email.isNotEmpty) 'email': email,
     };
 
@@ -242,12 +252,14 @@ class _ProfileSetupWizardScreenState
     final username = profile['username']?.toString().trim() ?? '';
     final fullName = profile['full_name']?.toString().trim() ?? '';
     final birthDate = profile['birth_date']?.toString().trim() ?? '';
+    final gender = profile['gender']?.toString().trim() ?? '';
     final phoneVerified = profile['phone_verified_at'] != null;
     final emailVerified = profile['email_verified_at'] != null;
 
     if (!validateUsername(username).isValid) missing.add('نام کاربری');
     if (fullName.isEmpty) missing.add('نام کامل');
     if (birthDate.isEmpty) missing.add('تاریخ تولد');
+    if (gender.isEmpty) missing.add('جنسیت');
     if (!phoneVerified && !emailVerified) {
       missing.add('تایید شماره موبایل یا ایمیل');
     }
@@ -450,13 +462,13 @@ class _ProfileSetupWizardScreenState
           Icon(Icons.cake_outlined, size: 46, color: theme.colorScheme.primary),
           const SizedBox(height: 20),
           Text(
-            'تاریخ تولد',
+            'مشخصات فردی',
             textAlign: TextAlign.center,
             style: theme.textTheme.headlineSmall,
           ),
           const SizedBox(height: 8),
           Text(
-            'این مورد برای کامل شدن ثبت نام لازم است و در پروفایل عمومی نمایش داده نمی شود.',
+            'تاریخ تولد و جنسیت برای کامل شدن ثبت نام الزامی است.',
             textAlign: TextAlign.center,
             style: theme.textTheme.bodyMedium?.copyWith(
               color: theme.textTheme.bodySmall?.color,
@@ -467,6 +479,43 @@ class _ProfileSetupWizardScreenState
             onPressed: _pickBirthDate,
             icon: const Icon(Icons.calendar_month_outlined),
             label: Text(birthDateLabel),
+          ),
+          const SizedBox(height: 20),
+          DropdownButtonFormField<String>(
+            value: _gender,
+            decoration: const InputDecoration(
+              labelText: 'جنسیت (اجباری)',
+              prefixIcon: Icon(Icons.person),
+            ),
+            items: const [
+              DropdownMenuItem(value: 'male', child: Text('مرد')),
+              DropdownMenuItem(value: 'female', child: Text('زن')),
+              DropdownMenuItem(value: 'prefer_not_to_say', child: Text('ترجیح میدهم نگویم')),
+            ],
+            onChanged: (val) {
+              setState(() {
+                _gender = val;
+                _error = null;
+              });
+            },
+          ),
+          const SizedBox(height: 16),
+          DropdownButtonFormField<String>(
+            value: _maritalStatus,
+            decoration: const InputDecoration(
+              labelText: 'وضعیت تاهل (اختیاری)',
+              prefixIcon: Icon(Icons.favorite_outline),
+            ),
+            items: const [
+              DropdownMenuItem(value: 'single', child: Text('مجرد')),
+              DropdownMenuItem(value: 'married', child: Text('متاهل')),
+              DropdownMenuItem(value: 'prefer_not_to_say', child: Text('ترجیح میدهم نگویم')),
+            ],
+            onChanged: (val) {
+              setState(() {
+                _maritalStatus = val;
+              });
+            },
           ),
         ],
       ),
@@ -504,6 +553,8 @@ class _ProfileSetupWizardScreenState
                 ? '-'
                 : formatBirthDateForDisplay(_birthDate!, _effectiveLocale),
           ),
+          _SummaryRow(label: 'جنسیت', value: _gender == 'male' ? 'مرد' : _gender == 'female' ? 'زن' : _gender == 'prefer_not_to_say' ? 'ترجیح میدهم نگویم' : '-'),
+          _SummaryRow(label: 'وضعیت تاهل', value: _maritalStatus == 'single' ? 'مجرد' : _maritalStatus == 'married' ? 'متاهل' : _maritalStatus == 'prefer_not_to_say' ? 'ترجیح میدهم نگویم' : '-'),
           if ((_phoneNumber ?? '').isNotEmpty)
             _SummaryRow(label: 'شماره موبایل', value: _phoneNumber!),
           const SizedBox(height: 18),

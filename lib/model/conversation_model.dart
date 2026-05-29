@@ -144,8 +144,12 @@ class ConversationModel {
         }
       }
 
-      final conversationType =
-          (json['conversation_type'] ?? json['type']) as String?;
+      final isSecretFlag = (json['is_secret'] as bool?) ??
+          (json['isSecret'] as bool?) ??
+          false;
+      final conversationType = (json['conversation_type'] ?? json['type'])
+          ?.toString()
+          .toLowerCase();
       if (conversationType == 'group') {
         otherUserName = (json['name'] as String?) ?? 'گروه';
         otherUserAvatar = json['image'] as String?;
@@ -197,7 +201,11 @@ class ConversationModel {
                 ?.map((e) => e.toString())
                 .toList() ??
             [],
-        type: conversationType ?? 'private', // ✅ ذخیره نوع مکالمه
+        type: isSecretFlag
+            ? 'secret'
+            : (conversationType == 'secret'
+                ? 'secret'
+                : (conversationType == 'group' ? 'group' : 'private')),
         isMessageRequest: (json['is_message_request'] as bool?) ??
             (json['message_request'] as bool?) ??
             false,
@@ -355,7 +363,31 @@ class ConversationModel {
 
   /// Format last message for display (handle encrypted messages and message types)
   String? get formattedLastMessage {
-    // اول نوع پیام رو چک کن
+    // گفتگوی محرمانه: هرگز محتوای واقعی نشان داده نمی‌شود
+    if (isSecret) {
+      if (lastMessage == null || lastMessage!.isEmpty) return null;
+      // برای انواع رسانه‌ای در سکرت‌چت، نوع را نشان می‌دهیم اما محتوا را نه
+      if (lastMessageType != null && lastMessageType != 'text') {
+        switch (lastMessageType!.toLowerCase()) {
+          case 'voice':
+          case 'audio':
+            return '🔒 پیام صوتی';
+          case 'image':
+          case 'photo':
+            return '🔒 تصویر';
+          case 'video':
+            return '🔒 ویدیو';
+          case 'file':
+          case 'document':
+            return '🔒 فایل';
+          default:
+            return '🔒 پیام محرمانه';
+        }
+      }
+      return '🔒 پیام محرمانه';
+    }
+
+    // اول نوع پیام رو چک کن (برای گفتگوهای عادی)
     if (lastMessageType != null && lastMessageType != 'text') {
       return _getMessageTypePreview(lastMessageType!);
     }
@@ -366,11 +398,11 @@ class ConversationModel {
       return _formatSharedPostPreview(lastMessage!);
     }
 
-    // Check if message is encrypted
+    // Check if message is encrypted (fallback for non-secret conversations)
     if (lastMessage!.startsWith('e2ee:v1:')) {
       return '🔒 پیام رمزگذاری شده';
     }
-    if (isSecret && _looksEncryptedSecretPayload(lastMessage!)) {
+    if (_looksEncryptedSecretPayload(lastMessage!)) {
       return '🔒 پیام محرمانه';
     }
 

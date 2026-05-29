@@ -5,12 +5,65 @@ import '../../../model/ProfileModel.dart';
 import '../../../utils/verification_badge_utils.dart';
 import '../../../widgets/profile_avatar_widget.dart';
 import '../../../widgets/verification_badge_icon.dart';
+import 'package:shamsi_date/shamsi_date.dart';
 
 /// صفحه جزییات اکانت — مشابه X (توییتر)
-class AccountDetailsScreen extends StatelessWidget {
+import 'package:dio/dio.dart';
+import '../data/profile_repository.dart';
+
+class AccountDetailsScreen extends StatefulWidget {
   final ProfileModel profile;
 
   const AccountDetailsScreen({super.key, required this.profile});
+
+  @override
+  State<AccountDetailsScreen> createState() => _AccountDetailsScreenState();
+}
+
+class _AccountDetailsScreenState extends State<AccountDetailsScreen> {
+  late ProfileModel _profile;
+  bool _isFetchingLocation = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _profile = widget.profile;
+    _checkAndFetchLocation();
+  }
+
+  Future<void> _checkAndFetchLocation() async {
+    final loc = _profile.location?.trim() ?? '';
+    if (loc.isEmpty) {
+      setState(() {
+        _isFetchingLocation = true;
+      });
+      try {
+        final response = await Dio().get('http://ip-api.com/json/');
+        if (response.statusCode == 200) {
+          final data = response.data;
+          final city = data['city'];
+          final country = data['country'];
+          if (city != null && country != null) {
+            final newLocation = '$city, $country';
+            await ProfileRepository().updateProfile(_profile.id, {'location': newLocation});
+            if (mounted) {
+              setState(() {
+                _profile = _profile.copyWith(location: newLocation);
+              });
+            }
+          }
+        }
+      } catch (e) {
+        // Ignore errors
+      } finally {
+        if (mounted) {
+          setState(() {
+            _isFetchingLocation = false;
+          });
+        }
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -41,21 +94,21 @@ class AccountDetailsScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 48),
         children: [
-          _ProfileHeaderCard(profile: profile, isDark: isDark),
+          _ProfileHeaderCard(profile: _profile, isDark: isDark),
           const SizedBox(height: 12),
-          _AccountTypeCard(profile: profile, isDark: isDark),
+          _AccountTypeCard(profile: _profile, isDark: isDark),
           const SizedBox(height: 12),
-          _MembershipCard(profile: profile, isDark: isDark),
+          _MembershipCard(profile: _profile, isDark: isDark),
           const SizedBox(height: 12),
-          _AdditionalAccountDetailsCard(profile: profile, isDark: isDark),
+          _AdditionalAccountDetailsCard(profile: _profile, isDark: isDark),
           const SizedBox(height: 12),
-          _StatsCard(profile: profile, isDark: isDark),
-          if (profile.bio != null && profile.bio!.isNotEmpty) ...[
+          _StatsCard(profile: _profile, isDark: isDark),
+          if (_profile.bio != null && _profile.bio!.isNotEmpty) ...[
             const SizedBox(height: 12),
-            _BioCard(profile: profile, isDark: isDark),
+            _BioCard(profile: _profile, isDark: isDark),
           ],
           const SizedBox(height: 20),
-          _AccountIdFooter(profile: profile, isDark: isDark),
+          _AccountIdFooter(profile: _profile, isDark: isDark),
         ],
       ),
     );
@@ -266,7 +319,7 @@ class _MembershipCard extends StatelessWidget {
       items.add(_InfoRowData(
         icon: Icons.calendar_today_outlined,
         label: 'تاریخ عضویت',
-        value: _formatDate(profile.createdAt!),
+        value: _formatDate(profile.createdAt!, context),
         iconBgColor: cardBg,
         iconColor: iconColor,
       ));
@@ -341,12 +394,22 @@ class _MembershipCard extends StatelessWidget {
     return isDark ? Colors.grey[800]! : Colors.grey[100]!;
   }
 
-  String _formatDate(DateTime date) {
-    const months = [
-      'ژانویه', 'فوریه', 'مارس', 'آوریل', 'مه', 'ژوئن',
-      'ژوئیه', 'اوت', 'سپتامبر', 'اکتبر', 'نوامبر', 'دسامبر',
-    ];
-    return '${months[date.month - 1]} ${date.year}';
+  String _formatDate(DateTime date, BuildContext context) {
+    final isPersian = Localizations.localeOf(context).languageCode == 'fa';
+    if (isPersian) {
+      final jDate = Jalali.fromDateTime(date);
+      const persianMonths = [
+        'فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور',
+        'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند'
+      ];
+      return '${persianMonths[jDate.month - 1]} ${jDate.year}';
+    } else {
+      const gregorianMonths = [
+        'January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December',
+      ];
+      return '${gregorianMonths[date.month - 1]} ${date.year}';
+    }
   }
 }
 

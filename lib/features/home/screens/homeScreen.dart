@@ -388,6 +388,34 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final brightness = Theme.of(context).brightness;
+    // اعمال مستقیم رنگ صحیح status bar هنگام ورود به هر صفحه‌ای از HomeScreen
+    SystemChrome.setSystemUIOverlayStyle(
+      brightness == Brightness.light
+          ? const SystemUiOverlayStyle(
+              statusBarColor: Colors.transparent,
+              statusBarIconBrightness: Brightness.dark,
+              statusBarBrightness: Brightness.light,
+              systemStatusBarContrastEnforced: false,
+              systemNavigationBarColor: Colors.transparent,
+              systemNavigationBarContrastEnforced: false,
+              systemNavigationBarIconBrightness: Brightness.dark,
+            )
+          : const SystemUiOverlayStyle(
+              statusBarColor: Colors.transparent,
+              statusBarIconBrightness: Brightness.light,
+              statusBarBrightness: Brightness.dark,
+              systemStatusBarContrastEnforced: false,
+              systemNavigationBarColor: Colors.transparent,
+              systemNavigationBarContrastEnforced: false,
+              systemNavigationBarIconBrightness: Brightness.light,
+            ),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
     ref.watch(globalChatNotificationProvider);
     final unreadCount = ref.watch(unreadConversationsCountProvider);

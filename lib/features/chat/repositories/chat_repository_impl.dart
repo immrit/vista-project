@@ -280,7 +280,7 @@ class ChatRepositoryImpl implements ChatRepository {
     }
 
     if (lastDioError != null) {
-      return ChatResult.failure(_dioError(lastDioError!));
+      return ChatResult.failure(_dioError(lastDioError));
     }
     return ChatResult.failure('پاسخ به درخواست پیام انجام نشد');
   }
@@ -1195,12 +1195,16 @@ class ChatRepositoryImpl implements ChatRepository {
             j['otherUserId'] ??
             '')
         .toString();
+    final isSecretFlag =
+        (j['is_secret'] as bool?) ?? (j['isSecret'] as bool?) ?? false;
     final rawType = (j['conversation_type'] ?? j['type'] ?? 'private')
         .toString()
         .toLowerCase();
-    final type = rawType == 'group'
-        ? 'group'
-        : (rawType == 'secret' ? 'secret' : 'private');
+    final type = isSecretFlag
+        ? 'secret'
+        : (rawType == 'group'
+            ? 'group'
+            : (rawType == 'secret' ? 'secret' : 'private'));
     final createdAt =
         j['created_at']?.toString() ?? DateTime.now().toIso8601String();
     final lastAt = j['last_message_at']?.toString() ?? createdAt;
@@ -1226,6 +1230,7 @@ class ChatRepositoryImpl implements ChatRepository {
       'is_pinned': j['is_pinned'] ?? false,
       'is_muted': j['is_muted'] ?? false,
       'type': type,
+      'is_secret': isSecretFlag,
       'is_message_request':
           j['is_message_request'] ?? j['message_request'] ?? false,
       'message_request_status':

@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:overlay_support/overlay_support.dart';
@@ -429,11 +429,33 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
               return const Locale('fa', 'IR');
             },
             builder: (context, child) {
+              final theme = Theme.of(context);
+              final appBarBg =
+                  theme.appBarTheme.backgroundColor ?? theme.colorScheme.surface;
+              final overlayStyle =
+                  (theme.appBarTheme.systemOverlayStyle ??
+                          const SystemUiOverlayStyle())
+                      .copyWith(
+                statusBarColor: appBarBg,
+                statusBarIconBrightness: theme.brightness == Brightness.light
+                    ? Brightness.dark
+                    : Brightness.light,
+                statusBarBrightness: theme.brightness == Brightness.light
+                    ? Brightness.light
+                    : Brightness.dark,
+                systemStatusBarContrastEnforced: false,
+                systemNavigationBarContrastEnforced: false,
+              );
               final safeChild = child ?? const SizedBox.shrink();
-              if (colorBlindMatrix == null) return safeChild;
-              return ColorFiltered(
-                colorFilter: ColorFilter.matrix(colorBlindMatrix),
-                child: safeChild,
+              final content = colorBlindMatrix == null
+                  ? safeChild
+                  : ColorFiltered(
+                      colorFilter: ColorFilter.matrix(colorBlindMatrix),
+                      child: safeChild,
+                    );
+              return AnnotatedRegion<SystemUiOverlayStyle>(
+                value: overlayStyle,
+                child: content,
               );
             },
             home: const SessionAuthWrapper(), // Use SessionAuthWrapper
