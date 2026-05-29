@@ -7,7 +7,7 @@ part of 'chat_action_controller.dart';
 // **************************************************************************
 
 String _$chatActionControllerHash() =>
-    r'6766e9269e86002eeadc5fcb0d8a17b3d5099cff';
+    r'37d7c394998569f81948b0b837c6192a1218950d';
 
 /// See also [ChatActionController].
 @ProviderFor(ChatActionController)

@@ -33,6 +33,9 @@ class ProfileEntity {
   String? role;
 
   int? joinOrder;
+  
+  String? phoneNumber;
+  String? birthDate;
 
   // Last time this profile was updated in cache
   DateTime lastUpdated = DateTime.now();
@@ -56,6 +59,8 @@ class ProfileEntity {
       ..isPrivate = model.isPrivate
       ..role = model.role
       ..joinOrder = model.joinOrder
+      ..phoneNumber = model.phoneNumber
+      ..birthDate = model.birthDate
       ..lastUpdated = DateTime.now();
   }
 
@@ -78,6 +83,8 @@ class ProfileEntity {
       role: role,
       postsCount: postsCount,
       joinOrder: joinOrder,
+      phoneNumber: phoneNumber,
+      birthDate: birthDate,
       // Note: `posts` are loaded separately using PostEntity query
     );
   }

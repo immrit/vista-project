@@ -20,9 +20,12 @@ class ProfileModel extends Equatable {
   final String? avatarUrl;
   final String? email;
   final String? bio;
+  final String? websiteUrl;
+  final String? location;
   final int followersCount;
   final int followingCount;
   final DateTime? createdAt;
+  final DateTime? emailVerifiedAt;
   final bool isVerified;
   final VerificationType verificationType;
   final bool isFollowed;
@@ -33,6 +36,10 @@ class ProfileModel extends Equatable {
   final int postsCount;
   final String? publicKey; // کلید عمومی برای E2EE
   final int? joinOrder; // ترتیب ثبت‌نام در ویستا
+  final String? phoneNumber;
+  final String? birthDate;
+  final int usernameChangesCount;
+  final String? registrationCountry;
 
   const ProfileModel({
     required this.id,
@@ -41,9 +48,12 @@ class ProfileModel extends Equatable {
     this.avatarUrl,
     this.email,
     this.bio,
+    this.websiteUrl,
+    this.location,
     this.followersCount = 0,
     this.followingCount = 0,
     this.createdAt,
+    this.emailVerifiedAt,
     this.isVerified = false,
     this.verificationType = VerificationType.none,
     this.isFollowed = false,
@@ -53,6 +63,10 @@ class ProfileModel extends Equatable {
     this.postsCount = 0,
     this.publicKey,
     this.joinOrder,
+    this.phoneNumber,
+    this.birthDate,
+    this.usernameChangesCount = 0,
+    this.registrationCountry,
   });
 
   static String _trimmed(dynamic value) => value?.toString().trim() ?? '';
@@ -93,11 +107,18 @@ class ProfileModel extends Equatable {
       avatarUrl: map['avatar_url']?.toString(),
       email: map['email']?.toString(),
       bio: map['bio']?.toString(),
+      websiteUrl: map['website_url']?.toString(),
+      location: map['location']?.toString(),
       followersCount: map['followers_count'] ?? map['follower_count'] ?? 0,
       followingCount: map['following_count'] ?? map['following_count'] ?? 0,
       createdAt: map['created_at'] != null
           ? DateTime.tryParse(map['created_at'].toString())
           : null,
+      emailVerifiedAt: map['email_verified_at'] != null
+          ? DateTime.tryParse(map['email_verified_at'].toString())
+          : map['email_confirmed_at'] != null
+              ? DateTime.tryParse(map['email_confirmed_at'].toString())
+              : null,
       isVerified: isVerified,
       verificationType: _mapResolvedType(parsedType),
       isFollowed: map['is_followed'] ?? false,
@@ -111,6 +132,11 @@ class ProfileModel extends Equatable {
       joinOrder: map['join_order'] != null
           ? int.tryParse(map['join_order'].toString())
           : null,
+      phoneNumber: map['phone_number']?.toString(),
+      birthDate: map['birth_date']?.toString(),
+      usernameChangesCount:
+          int.tryParse((map['username_changes_count'] ?? 0).toString()) ?? 0,
+      registrationCountry: map['registration_country']?.toString(),
     );
   }
 
@@ -135,9 +161,12 @@ class ProfileModel extends Equatable {
       'avatar_url': avatarUrl,
       'email': email,
       'bio': bio,
+      'website_url': websiteUrl,
+      'location': location,
       'followers_count': followersCount,
       'following_count': followingCount,
       'created_at': createdAt?.toIso8601String(),
+      'email_verified_at': emailVerifiedAt?.toIso8601String(),
       'is_verified': isVerified,
       'verification_type': verificationType.name,
       'is_followed': isFollowed,
@@ -147,6 +176,10 @@ class ProfileModel extends Equatable {
       'posts_count': postsCount,
       'public_key': publicKey,
       'join_order': joinOrder,
+      'phone_number': phoneNumber,
+      'birth_date': birthDate,
+      'username_changes_count': usernameChangesCount,
+      'registration_country': registrationCountry,
     };
   }
 
@@ -159,9 +192,12 @@ class ProfileModel extends Equatable {
     String? avatarUrl,
     String? email,
     String? bio,
+    String? websiteUrl,
+    String? location,
     int? followersCount,
     int? followingCount,
     DateTime? createdAt,
+    DateTime? emailVerifiedAt,
     bool? isVerified,
     VerificationType? verificationType,
     bool? isFollowed,
@@ -171,6 +207,10 @@ class ProfileModel extends Equatable {
     int? postsCount,
     String? publicKey,
     int? joinOrder,
+    String? phoneNumber,
+    String? birthDate,
+    int? usernameChangesCount,
+    String? registrationCountry,
   }) {
     return ProfileModel(
       id: id ?? this.id,
@@ -179,9 +219,12 @@ class ProfileModel extends Equatable {
       avatarUrl: avatarUrl ?? this.avatarUrl,
       email: email ?? this.email,
       bio: bio ?? this.bio,
+      websiteUrl: websiteUrl ?? this.websiteUrl,
+      location: location ?? this.location,
       followersCount: followersCount ?? this.followersCount,
       followingCount: followingCount ?? this.followingCount,
       createdAt: createdAt ?? this.createdAt,
+      emailVerifiedAt: emailVerifiedAt ?? this.emailVerifiedAt,
       isVerified: isVerified ?? this.isVerified,
       verificationType: verificationType ?? this.verificationType,
       isFollowed: isFollowed ?? this.isFollowed,
@@ -191,6 +234,10 @@ class ProfileModel extends Equatable {
       postsCount: postsCount ?? this.postsCount,
       publicKey: publicKey ?? this.publicKey,
       joinOrder: joinOrder ?? this.joinOrder,
+      phoneNumber: phoneNumber ?? this.phoneNumber,
+      birthDate: birthDate ?? this.birthDate,
+      usernameChangesCount: usernameChangesCount ?? this.usernameChangesCount,
+      registrationCountry: registrationCountry ?? this.registrationCountry,
     );
   }
 
@@ -202,9 +249,12 @@ class ProfileModel extends Equatable {
         avatarUrl,
         email,
         bio,
+        websiteUrl,
+        location,
         followersCount,
         followingCount,
         createdAt,
+        emailVerifiedAt,
         isVerified,
         verificationType,
         isFollowed,
@@ -214,6 +264,10 @@ class ProfileModel extends Equatable {
         postsCount,
         publicKey,
         joinOrder,
+        phoneNumber,
+        birthDate,
+        usernameChangesCount,
+        registrationCountry,
       ];
   bool get hasBlueBadge =>
       isVerified && verificationType == VerificationType.blueTick;

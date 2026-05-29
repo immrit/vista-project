@@ -97,16 +97,14 @@ class _ChatConversationsScreenState
 
   // AppBar بهینه‌شده
   PreferredSizeWidget _buildAppBar(ThemeData theme) {
+    final appBarColor = theme.appBarTheme.backgroundColor ?? theme.colorScheme.surface;
     return AppBar(
-      backgroundColor: theme.appBarTheme.backgroundColor,
+      backgroundColor: appBarColor,
       elevation: 0,
       scrolledUnderElevation: 0,
-      systemOverlayStyle: SystemUiOverlayStyle(
-        statusBarColor: Colors.transparent,
-        statusBarIconBrightness: theme.brightness == Brightness.light
-            ? Brightness.dark
-            : Brightness.light,
-      ),
+      systemOverlayStyle:
+          (theme.appBarTheme.systemOverlayStyle ?? const SystemUiOverlayStyle())
+              .copyWith(statusBarColor: appBarColor),
       title: Text(
         AppLocalizations.of(context)?.messages ?? 'پیام‌ها',
         style: theme.appBarTheme.titleTextStyle?.copyWith(

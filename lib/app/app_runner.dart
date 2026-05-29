@@ -481,10 +481,15 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
               '/profile': (context) {
                 final args = ModalRoute.of(context)?.settings.arguments
                     as Map<String, dynamic>?;
-                final username = args?['username'];
-                if (username != null) {
+                final userId = (args?['userId'] ?? '').toString().trim();
+                final username = (args?['username'] ?? '').toString().trim();
+                if (userId.isNotEmpty) {
                   return SessionMiddleware(
-                      child: ProfileScreen(username: username, userId: ''));
+                    child: ProfileScreen(
+                      userId: userId,
+                      username: username,
+                    ),
+                  );
                 }
                 return const Scaffold();
               },

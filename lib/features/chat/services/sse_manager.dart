@@ -1,15 +1,15 @@
 // lib/features/chat/services/sse_manager.dart
 //
-// ✅ Singleton SSE connection manager
-// - یه کانکشن واحد به /v1/chat/stream
+// ✅ Singleton Realtime connection manager (Migrated to WebSocket)
+// - یه کانکشن واحد به /v1/chat/ws
 // - Reconnect با exponential backoff
 // - Broadcast stream — همه provider ها از یه connection استفاده می‌کنن
 //
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
-import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:Vista/utils/env_config.dart';
 
@@ -37,31 +37,27 @@ class SseManager {
 
   SseConnectionState _currentState = SseConnectionState.disconnected;
   bool _running = false;
-  Dio? _activeClient;
+  WebSocket? _activeClient;
 
-  static String get _backendUrl =>
-      EnvConfig.apiBaseUrl;
+  static String get _backendUrl => EnvConfig.apiBaseUrl;
 
   // ─── Lifecycle ────────────────────────────────────────────────────
 
-  /// صدا زده بشه وقتی کاربر login می‌کنه یا app شروع میشه
   void start() {
     if (_running) return;
     _running = true;
     _loop();
   }
 
-  /// صدا زده بشه وقتی کاربر logout می‌کنه
   void stop() {
     _running = false;
-    _activeClient?.close(force: true);
+    _activeClient?.close();
     _activeClient = null;
     _setState(SseConnectionState.disconnected);
   }
 
-  /// برای reconnect فوری (مثلاً بعد از برگشتن app به foreground)
   void reconnect() {
-    _activeClient?.close(force: true);
+    _activeClient?.close();
     _activeClient = null;
   }
 
@@ -89,67 +85,46 @@ class SseManager {
           continue;
         }
 
-        _activeClient = Dio(BaseOptions(
-          baseUrl: _backendUrl,
-          connectTimeout: const Duration(seconds: 10),
-          // receiveTimeout نباشه — SSE بلند مدته
-        ));
+        // تبدیل آدرس HTTP به آدرس استاندارد WebSocket
+        var wsUrl = _backendUrl.replaceFirst('http', 'ws');
+        if (wsUrl.endsWith('/')) {
+          wsUrl = wsUrl.substring(0, wsUrl.length - 1);
+        }
+        wsUrl += '/v1/chat/ws';
 
-        final response = await _activeClient!.get<ResponseBody>(
-          '/v1/chat/stream',
-          options: Options(
-            responseType: ResponseType.stream,
-            headers: {
-              'Authorization': 'Bearer $token',
-              'Accept': 'text/event-stream',
-              'Cache-Control': 'no-cache',
-            },
-          ),
-        );
+        _activeClient = await WebSocket.connect(
+          wsUrl,
+          headers: {
+            'Authorization': 'Bearer $token',
+          },
+        ).timeout(const Duration(seconds: 15));
+
+        // پینگ برای حفظ زنده بودن اتصال (بکند هم هر ۳۰ ثانیه می‌فرستد)
+        _activeClient!.pingInterval = const Duration(seconds: 20);
 
         _setState(SseConnectionState.connected);
-        backoffSeconds = 1; // reset backoff after successful connect
+        backoffSeconds = 1; // ریست شدن زمان تایم‌اوت بعد از اتصال موفق
 
-        String buffer = '';
-        await for (final chunk in response.data!.stream) {
+        await for (final dynamic message in _activeClient!) {
           if (!_running) break;
-          buffer += utf8.decode(chunk);
-          buffer = buffer.replaceAll('\r\n', '\n');
-
-          while (buffer.contains('\n\n')) {
-            final idx = buffer.indexOf('\n\n');
-            final block = buffer.substring(0, idx).trim();
-            buffer = buffer.substring(idx + 2);
-
-            if (block.isEmpty || block.startsWith(':')) continue;
-
-            final parsed = _parseSseBlock(block);
+          
+          if (message is String) {
+            final parsed = _parseWsMessage(message);
             if (parsed != null) {
               _eventController.add(parsed);
             }
           }
         }
-      } on DioException catch (e) {
-        final statusCode = e.response?.statusCode;
-        if (statusCode == 429) {
-          final retryAfterHeader = e.response?.headers.value('retry-after');
-          final retryAfterSeconds = int.tryParse(retryAfterHeader ?? '');
-          final enforcedCooldown = (retryAfterSeconds ?? 15).clamp(10, 120);
-          backoffSeconds = backoffSeconds < enforcedCooldown
-              ? enforcedCooldown
-              : backoffSeconds;
-          debugPrint(
-              'SseManager: rate-limited (429), cooldown ${backoffSeconds}s');
-        } else {
-          debugPrint('SseManager: DioException: ${e.message}');
-        }
       } catch (e) {
-        debugPrint('SseManager: error: $e');
+        debugPrint('SseManager (WS): error: $e');
       }
 
       if (!_running) break;
 
       _setState(SseConnectionState.disconnected);
+      _activeClient?.close();
+      _activeClient = null;
+      
       debugPrint('SseManager: reconnecting in ${backoffSeconds}s...');
       await Future.delayed(Duration(seconds: backoffSeconds));
       backoffSeconds = (backoffSeconds * 2).clamp(1, 30);
@@ -164,51 +139,20 @@ class SseManager {
     _stateController.add(state);
   }
 
-  Map<String, dynamic>? _parseSseBlock(String block) {
-    final lines = block
-        .split('\n')
-        .map((line) => line.trim())
-        .where((line) => line.isNotEmpty)
-        .toList(growable: false);
-    if (lines.isEmpty) return null;
-
-    String? eventType;
-    final dataParts = <String>[];
-    for (final line in lines) {
-      if (line.startsWith('event:')) {
-        eventType = line.substring(6).trim();
-        continue;
-      }
-      if (line.startsWith('data:')) {
-        dataParts.add(line.substring(5).trimLeft());
-      }
-    }
-
-    // Some servers send raw JSON block without `data:` prefix.
-    final payloadRaw = dataParts.isNotEmpty ? dataParts.join('\n') : block;
-    if (payloadRaw.isEmpty) return null;
+  Map<String, dynamic>? _parseWsMessage(String payload) {
+    if (payload.trim().isEmpty) return null;
 
     try {
-      final decoded = json.decode(payloadRaw);
+      final decoded = json.decode(payload);
       if (decoded is Map<String, dynamic>) {
-        if ((decoded['type'] == null || decoded['type'].toString().isEmpty) &&
-            eventType != null &&
-            eventType.isNotEmpty) {
-          return <String, dynamic>{...decoded, 'type': eventType};
-        }
         return decoded;
       }
-      // Normalize non-map payloads so downstream listeners can still route by `type`.
-      if (eventType != null && eventType.isNotEmpty) {
-        return <String, dynamic>{'type': eventType, 'data': decoded};
-      }
     } catch (_) {
-      // ignore malformed events
+      // نادیده گرفتن پیام‌های نامعتبر
     }
     return null;
   }
 
-  /// Filter events برای یه conversation خاص
   Stream<Map<String, dynamic>> eventsForConversation(String conversationId) {
     return events.where((event) {
       final data = event['data'];
@@ -219,3 +163,4 @@ class SseManager {
     });
   }
 }
+

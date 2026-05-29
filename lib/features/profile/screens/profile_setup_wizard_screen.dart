@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/security/input_policy.dart';
 import '../../../DB/profile_cache_service.dart';
+import '../../../provider/locale_provider.dart';
 import '../../../utils/birth_date_picker.dart';
 import '../../auth/data/auth_repository.dart';
 import '../../auth/providers/auth_controller.dart';
@@ -32,8 +33,9 @@ class _ProfileSetupWizardScreenState
   DateTime? _birthDate;
 
   static const _stepCount = 3;
-  /// این صفحه همیشه فارسی است؛ تقویم هم همیشه شمسی.
-  static const _calendarLocale = Locale('fa', 'IR');
+
+  /// locale فعلی اپ — تقویم و نمایش تاریخ بر اساس این تعیین می‌شود.
+  Locale get _effectiveLocale => ref.read(localeProvider);
 
   @override
   void initState() {
@@ -166,13 +168,15 @@ class _ProfileSetupWizardScreenState
   }
 
   Future<void> _pickBirthDate() async {
+    final locale = _effectiveLocale;
+    final isPersian = isPersianLocale(locale);
     final picked = await pickBirthDate(
       context,
-      locale: _calendarLocale,
+      locale: locale,
       initialDate: _birthDate,
-      helpText: 'تاریخ تولد',
-      confirmText: 'تایید',
-      cancelText: 'انصراف',
+      helpText: isPersian ? 'تاریخ تولد' : 'Date of Birth',
+      confirmText: isPersian ? 'تایید' : 'OK',
+      cancelText: isPersian ? 'انصراف' : 'Cancel',
     );
     if (picked == null) return;
     setState(() {
@@ -432,9 +436,11 @@ class _ProfileSetupWizardScreenState
   }
 
   Widget _buildBirthDateStep(ThemeData theme) {
+    final locale = _effectiveLocale;
+    final isPersian = isPersianLocale(locale);
     final birthDateLabel = _birthDate == null
-        ? 'انتخاب تاریخ تولد'
-        : formatBirthDateForDisplay(_birthDate!, _calendarLocale);
+        ? (isPersian ? 'انتخاب تاریخ تولد' : 'Select Date of Birth')
+        : formatBirthDateForDisplay(_birthDate!, locale);
 
     return _buildPagePadding(
       child: Column(
@@ -496,7 +502,7 @@ class _ProfileSetupWizardScreenState
             label: 'تاریخ تولد',
             value: _birthDate == null
                 ? '-'
-                : formatBirthDateForDisplay(_birthDate!, _calendarLocale),
+                : formatBirthDateForDisplay(_birthDate!, _effectiveLocale),
           ),
           if ((_phoneNumber ?? '').isNotEmpty)
             _SummaryRow(label: 'شماره موبایل', value: _phoneNumber!),

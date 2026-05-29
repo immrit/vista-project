@@ -23,10 +23,21 @@ final profileProvider = FutureProvider<Map<String, dynamic>?>((ref) async {
   final repository = ref.watch(profileRepositoryProvider);
   final cacheService = ProfileCacheService();
   final cachedProfile = await cacheService.getCachedProfile(user.id);
-  if (cachedProfile != null) {
-    // Return cached profile immediately and let background refresh happen elsewhere.
+  
+  if (cachedProfile != null && cachedProfile.phoneNumber != null && cachedProfile.phoneNumber!.isNotEmpty && cachedProfile.birthDate != null) {
+    // Fire and forget background refresh
+    cacheService.refreshCacheInBackground(user.id);
     return cachedProfile.toMap();
   }
+  
+  // If we don't have phone or birth date, force a refresh
+  await cacheService.refreshCacheInBackground(user.id);
+  final freshProfile = await cacheService.getCachedProfile(user.id);
+  
+  if (freshProfile != null) {
+    return freshProfile.toMap();
+  }
+  
   return await repository.fetchProfile(user.id);
 });
 

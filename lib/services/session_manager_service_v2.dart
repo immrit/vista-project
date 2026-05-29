@@ -4,6 +4,8 @@ import 'dart:io';
 
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
+import 'package:geocoding/geocoding.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:Vista/utils/env_config.dart';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
@@ -54,6 +56,23 @@ class SessionManagerServiceV2 {
   static const String _sessionIdStorageKey = 'session_manager_v2.session_id';
   static const String _sessionTokenStorageKey =
       'session_manager_v2.session_token';
+  static const String _locationCacheAtStorageKey =
+      'session_manager_v2.location_cache_at_ms';
+  static const String _locationCacheCityStorageKey =
+      'session_manager_v2.location_cache_city';
+  static const String _locationCacheCountryStorageKey =
+      'session_manager_v2.location_cache_country';
+  static const String _locationCacheRegionStorageKey =
+      'session_manager_v2.location_cache_region';
+  static const String _locationCacheLatStorageKey =
+      'session_manager_v2.location_cache_lat';
+  static const String _locationCacheLngStorageKey =
+      'session_manager_v2.location_cache_lng';
+  static const String _lastProfileLocationSyncAtStorageKey =
+      'session_manager_v2.profile_location_sync_at_ms';
+  static const String _lastProfileLocationSyncCityStorageKey =
+      'session_manager_v2.profile_location_sync_city';
+  static const Duration _locationRefreshInterval = Duration(hours: 24);
   static const Duration _backendTimeout = Duration(seconds: 10);
 
   // ─── Callbacks ───────────────────────────────────────────────
@@ -242,21 +261,12 @@ class SessionManagerServiceV2 {
       } catch (_) {}
 
       final packageInfo = await PackageInfo.fromPlatform();
-      String? ipAddress;
-      Map<String, dynamic>? locationData;
+      final snapshot = await _getDeviceLocationSnapshot(forceRefresh: true);
+      final locationData = snapshot?.toBackendLocationPayload();
 
-      try {
-        final ipInfo = await _getIpAndLocation();
-        if (ipInfo != null) {
-          ipAddress = ipInfo['ip_address'] as String?;
-          locationData = {
-            'city': ipInfo['location_city'],
-            'country': ipInfo['location_country'],
-            'latitude': ipInfo['latitude'],
-            'longitude': ipInfo['longitude'],
-          };
-        }
-      } catch (_) {}
+      if (snapshot != null) {
+        unawaited(_syncProfileLocationIfNeeded(snapshot, force: true));
+      }
 
       try {
         await _backendRequest(
@@ -266,7 +276,10 @@ class SessionManagerServiceV2 {
             'session_id': sessionId,
             'session_token': _sessionToken,
             'app_version': packageInfo.version,
-            if (ipAddress != null) 'ip_address': ipAddress,
+            if (snapshot?.city != null) 'location_city': snapshot!.city,
+            if (snapshot?.country != null)
+              'location_country': snapshot!.country,
+            if (snapshot?.region != null) 'location_region': snapshot!.region,
             if (locationData != null) 'location': locationData,
             if (deviceInfo != null) 'device_info': deviceInfo.toJson(),
             if (deviceInfo != null) 'platform': deviceInfo.toJson()['platform'],
@@ -400,23 +413,20 @@ class SessionManagerServiceV2 {
 
     try {
       _lastActivityUpdate = DateTime.now();
-      final ipInfo = await _getIpAndLocation();
-      final ip = ipInfo?['ip_address'] as String?;
-      final loc = ipInfo == null
-          ? null
-          : {
-              'city': ipInfo['location_city'],
-              'country': ipInfo['location_country'],
-              'latitude': ipInfo['latitude'],
-              'longitude': ipInfo['longitude'],
-            };
+      final snapshot = await _getDeviceLocationSnapshot();
+      final loc = snapshot?.toBackendLocationPayload();
+      if (snapshot != null) {
+        unawaited(_syncProfileLocationIfNeeded(snapshot));
+      }
       final result = await _backendRequest(
         method: 'POST',
         path: '/v1/sessions/touch',
         body: {
           'session_id': _currentSessionId,
           'session_token': _sessionToken,
-          if (ip != null) 'ip_address': ip,
+          if (snapshot?.city != null) 'location_city': snapshot!.city,
+          if (snapshot?.country != null) 'location_country': snapshot!.country,
+          if (snapshot?.region != null) 'location_region': snapshot!.region,
           if (loc != null) 'location': loc,
         },
       );
@@ -711,16 +721,11 @@ class SessionManagerServiceV2 {
     if (_currentSessionId == null || _sessionToken == null) return false;
 
     try {
-      final ipInfo = await _getIpAndLocation();
-      final ip = ipInfo?['ip_address'] as String?;
-      final loc = ipInfo == null
-          ? null
-          : {
-              'city': ipInfo['location_city'],
-              'country': ipInfo['location_country'],
-              'latitude': ipInfo['latitude'],
-              'longitude': ipInfo['longitude'],
-            };
+      final snapshot = await _getDeviceLocationSnapshot();
+      final loc = snapshot?.toBackendLocationPayload();
+      if (snapshot != null) {
+        unawaited(_syncProfileLocationIfNeeded(snapshot));
+      }
       final result = await _backendRequest(
         method: 'POST',
         path: '/v1/sessions/touch',
@@ -728,7 +733,9 @@ class SessionManagerServiceV2 {
           'session_id': _currentSessionId,
           'session_token': _sessionToken,
           'fcm_token': token,
-          if (ip != null) 'ip_address': ip,
+          if (snapshot?.city != null) 'location_city': snapshot!.city,
+          if (snapshot?.country != null) 'location_country': snapshot!.country,
+          if (snapshot?.region != null) 'location_region': snapshot!.region,
           if (loc != null) 'location': loc,
         },
       );
@@ -796,26 +803,148 @@ class SessionManagerServiceV2 {
     return null;
   }
 
-  Future<Map<String, dynamic>?> _getIpAndLocation() async {
-    try {
-      final response = await http
-          .get(Uri.parse('https://ipwho.is/'))
-          .timeout(const Duration(seconds: 5));
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body) as Map<String, dynamic>;
-        if (data['success'] == true) {
-          return {
-            'ip_address': data['ip']?.toString(),
-            'location_city': data['city']?.toString(),
-            'location_country': data['country']?.toString(),
-            'location_region': data['region']?.toString(),
-            'latitude': data['latitude'],
-            'longitude': data['longitude'],
-          };
-        }
+  Future<_DeviceLocationSnapshot?> _getDeviceLocationSnapshot({
+    bool forceRefresh = false,
+  }) async {
+    final cached = await _readCachedLocationSnapshot();
+    if (!forceRefresh && cached != null) {
+      final age = DateTime.now().difference(cached.capturedAt);
+      if (age < _locationRefreshInterval && cached.city.trim().isNotEmpty) {
+        return cached;
       }
-    } catch (_) {}
-    return null;
+    }
+
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        return cached;
+      }
+
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+
+      final denied = permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever;
+      if (denied) {
+        return cached;
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.medium,
+        timeLimit: const Duration(seconds: 10),
+      );
+
+      final placemarks = await placemarkFromCoordinates(
+        position.latitude,
+        position.longitude,
+      );
+      final place = placemarks.isNotEmpty ? placemarks.first : null;
+
+      final city = (place?.locality?.trim().isNotEmpty ?? false)
+          ? place!.locality!.trim()
+          : (place?.subAdministrativeArea?.trim().isNotEmpty ?? false)
+              ? place!.subAdministrativeArea!.trim()
+              : (place?.administrativeArea?.trim().isNotEmpty ?? false)
+                  ? place!.administrativeArea!.trim()
+                  : '';
+
+      if (city.isEmpty) {
+        return cached;
+      }
+
+      final snapshot = _DeviceLocationSnapshot(
+        city: city,
+        country: place?.country?.trim(),
+        region: place?.administrativeArea?.trim(),
+        latitude: position.latitude,
+        longitude: position.longitude,
+        capturedAt: DateTime.now(),
+      );
+
+      await _cacheLocationSnapshot(snapshot);
+      return snapshot;
+    } catch (e) {
+      logInfo('⚠️ Device location read failed, using cache if any: $e');
+      return cached;
+    }
+  }
+
+  Future<_DeviceLocationSnapshot?> _readCachedLocationSnapshot() async {
+    final prefs = await SharedPreferences.getInstance();
+    final atMs = prefs.getInt(_locationCacheAtStorageKey);
+    final city = prefs.getString(_locationCacheCityStorageKey)?.trim() ?? '';
+    if (atMs == null || city.isEmpty) return null;
+
+    return _DeviceLocationSnapshot(
+      city: city,
+      country: prefs.getString(_locationCacheCountryStorageKey),
+      region: prefs.getString(_locationCacheRegionStorageKey),
+      latitude: prefs.getDouble(_locationCacheLatStorageKey),
+      longitude: prefs.getDouble(_locationCacheLngStorageKey),
+      capturedAt: DateTime.fromMillisecondsSinceEpoch(atMs),
+    );
+  }
+
+  Future<void> _cacheLocationSnapshot(_DeviceLocationSnapshot snapshot) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(
+      _locationCacheAtStorageKey,
+      snapshot.capturedAt.millisecondsSinceEpoch,
+    );
+    await prefs.setString(_locationCacheCityStorageKey, snapshot.city);
+    if (snapshot.country != null && snapshot.country!.trim().isNotEmpty) {
+      await prefs.setString(_locationCacheCountryStorageKey, snapshot.country!);
+    }
+    if (snapshot.region != null && snapshot.region!.trim().isNotEmpty) {
+      await prefs.setString(_locationCacheRegionStorageKey, snapshot.region!);
+    }
+    if (snapshot.latitude != null) {
+      await prefs.setDouble(_locationCacheLatStorageKey, snapshot.latitude!);
+    }
+    if (snapshot.longitude != null) {
+      await prefs.setDouble(_locationCacheLngStorageKey, snapshot.longitude!);
+    }
+  }
+
+  Future<void> _syncProfileLocationIfNeeded(
+    _DeviceLocationSnapshot snapshot, {
+    bool force = false,
+  }) async {
+    final city = snapshot.city.trim();
+    if (city.isEmpty) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    final lastSyncMs = prefs.getInt(_lastProfileLocationSyncAtStorageKey);
+    final lastSyncedCity =
+        prefs.getString(_lastProfileLocationSyncCityStorageKey)?.trim();
+    final now = DateTime.now();
+    final isStale = lastSyncMs == null ||
+        now.difference(DateTime.fromMillisecondsSinceEpoch(lastSyncMs)) >=
+            _locationRefreshInterval;
+    final changedCity = lastSyncedCity == null ||
+        lastSyncedCity.isEmpty ||
+        lastSyncedCity != city;
+
+    if (!force && !isStale && !changedCity) {
+      return;
+    }
+
+    try {
+      await _backendRequest(
+        method: 'POST',
+        path: '/v1/me/profile/update',
+        body: {'location': city},
+      );
+      await prefs.setInt(
+        _lastProfileLocationSyncAtStorageKey,
+        now.millisecondsSinceEpoch,
+      );
+      await prefs.setString(_lastProfileLocationSyncCityStorageKey, city);
+    } catch (e) {
+      logInfo('⚠️ Profile location sync failed (non-critical): $e');
+    }
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -870,5 +999,35 @@ class SessionManagerServiceV2 {
     _activityTimer?.cancel();
     _stopHealthCheck();
     _teardownRealtimeListener();
+  }
+}
+
+class _DeviceLocationSnapshot {
+  final String city;
+  final String? country;
+  final String? region;
+  final double? latitude;
+  final double? longitude;
+  final DateTime capturedAt;
+
+  const _DeviceLocationSnapshot({
+    required this.city,
+    required this.country,
+    required this.region,
+    required this.latitude,
+    required this.longitude,
+    required this.capturedAt,
+  });
+
+  Map<String, dynamic> toBackendLocationPayload() {
+    return {
+      'city': city,
+      if (country != null && country!.trim().isNotEmpty) 'country': country,
+      if (region != null && region!.trim().isNotEmpty) 'region': region,
+      if (latitude != null) 'latitude': latitude,
+      if (longitude != null) 'longitude': longitude,
+      'captured_at': capturedAt.toIso8601String(),
+      'source': 'device_gps',
+    };
   }
 }

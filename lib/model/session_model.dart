@@ -34,45 +34,58 @@ class SessionModel {
     // پردازش location: اگر location به صورت JSON object است، از آن استفاده کن
     // در غیر این صورت، از location_city و location_country استفاده کن
     SessionLocation? location;
+    final fallbackCity = json['location_city'] as String?;
+    final fallbackCountry = json['location_country'] as String?;
+    final fallbackRegion = json['location_region'] as String?;
 
     if (json['location'] != null) {
       try {
         // اگر location به صورت Map است
         if (json['location'] is Map<String, dynamic>) {
           location = SessionLocation.fromJson(
-              json['location'] as Map<String, dynamic>);
+            json['location'] as Map<String, dynamic>,
+            fallbackCity: fallbackCity,
+            fallbackCountry: fallbackCountry,
+            fallbackRegion: fallbackRegion,
+          );
         }
         // اگر location به صورت string است (مثل "35.6892,51.3890") - برای backward compatibility
         else if (json['location'] is String) {
           // از location_city و location_country استفاده کن
-          final city = json['location_city'] as String?;
-          final country = json['location_country'] as String?;
+          final city = fallbackCity;
+          final country = fallbackCountry;
+          final region = fallbackRegion;
           if (city != null || country != null) {
             location = SessionLocation(
               city: city,
               country: country,
+              region: region,
             );
           }
         }
       } catch (e) {
         // در صورت خطا، از location_city و location_country استفاده کن
-        final city = json['location_city'] as String?;
-        final country = json['location_country'] as String?;
+        final city = fallbackCity;
+        final country = fallbackCountry;
+        final region = fallbackRegion;
         if (city != null || country != null) {
           location = SessionLocation(
             city: city,
             country: country,
+            region: region,
           );
         }
       }
     } else {
       // اگر location null است، از location_city و location_country استفاده کن
-      final city = json['location_city'] as String?;
-      final country = json['location_country'] as String?;
+      final city = fallbackCity;
+      final country = fallbackCountry;
+      final region = fallbackRegion;
       if (city != null || country != null) {
         location = SessionLocation(
           city: city,
           country: country,
+          region: region,
         );
       }
     }
@@ -242,20 +255,28 @@ class SessionDeviceInfo {
 class SessionLocation {
   final String? country;
   final String? city;
+  final String? region;
   final double? latitude;
   final double? longitude;
 
   SessionLocation({
     this.country,
     this.city,
+    this.region,
     this.latitude,
     this.longitude,
   });
 
-  factory SessionLocation.fromJson(Map<String, dynamic> json) {
+  factory SessionLocation.fromJson(
+    Map<String, dynamic> json, {
+    String? fallbackCountry,
+    String? fallbackCity,
+    String? fallbackRegion,
+  }) {
     return SessionLocation(
-      country: json['country'] as String?,
-      city: json['city'] as String?,
+      country: (json['country'] as String?) ?? fallbackCountry,
+      city: (json['city'] as String?) ?? fallbackCity,
+      region: (json['region'] as String?) ?? fallbackRegion,
       latitude: json['latitude'] != null
           ? (json['latitude'] is num
               ? (json['latitude'] as num).toDouble()
@@ -273,6 +294,7 @@ class SessionLocation {
     return {
       'country': country,
       'city': city,
+      'region': region,
       'latitude': latitude,
       'longitude': longitude,
     };
@@ -281,6 +303,8 @@ class SessionLocation {
   String get displayName {
     if (city != null && country != null) {
       return '$city, $country';
+    } else if (region != null && country != null) {
+      return '$region, $country';
     } else if (country != null) {
       return country!;
     } else if (city != null) {

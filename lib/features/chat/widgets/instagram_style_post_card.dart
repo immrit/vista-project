@@ -123,6 +123,13 @@ class _InstagramStylePostCardState extends State<InstagramStylePostCard>
     final theme = context.chatTheme;
     final hasMedia = widget.mediaUrls != null && widget.mediaUrls!.isNotEmpty;
     final hashtags = _extractedHashtags;
+    final cardBackgroundColor =
+        widget.isMine ? theme.myBubbleColor : theme.otherBubbleColor;
+    final cardGradient = widget.isMine ? theme.myBubbleGradient : null;
+    final cardBorderColor = widget.isMine
+        ? theme.myBubbleTextColor.withValues(alpha: 0.16)
+        : theme.otherBubbleTextColor.withValues(alpha: 0.12);
+    final cardShadow = widget.isMine ? theme.myBubbleShadow : theme.otherBubbleShadow;
 
     return ScaleTransition(
       scale: _scaleAnimation,
@@ -137,8 +144,8 @@ class _InstagramStylePostCardState extends State<InstagramStylePostCard>
         },
         child: Padding(
           padding: EdgeInsets.only(
-            left: widget.isMine ? 48 : 12,
-            right: widget.isMine ? 12 : 48,
+            left: widget.isMine ? 12 : 0,
+            right: widget.isMine ? 0 : 12,
             bottom: 8,
             top: 4,
           ),
@@ -149,24 +156,27 @@ class _InstagramStylePostCardState extends State<InstagramStylePostCard>
             children: [
               // کارت پست
               Container(
-                constraints: const BoxConstraints(maxWidth: 300),
+                constraints: BoxConstraints(
+                  maxWidth: MediaQuery.of(context).size.width * 0.76,
+                ),
                 decoration: BoxDecoration(
-                  color: theme.isDark ? const Color(0xFF1E1E1E) : Colors.white,
+                  color: cardGradient == null ? cardBackgroundColor : null,
+                  gradient: cardGradient,
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: theme.isDark
-                        ? Colors.white.withValues(alpha: 0.1)
-                        : Colors.grey.withValues(alpha: 0.2),
+                    color: cardBorderColor,
                     width: 1,
                   ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black
-                          .withValues(alpha: theme.isDark ? 0.3 : 0.08),
-                      blurRadius: 16,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
+                  boxShadow: cardShadow != null
+                      ? [cardShadow]
+                      : [
+                          BoxShadow(
+                            color: Colors.black.withValues(
+                                alpha: theme.isDark ? 0.26 : 0.08),
+                            blurRadius: 14,
+                            offset: const Offset(0, 3),
+                          ),
+                        ],
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(16),
@@ -201,6 +211,13 @@ class _InstagramStylePostCardState extends State<InstagramStylePostCard>
 
   /// هدر پست (مشابه ویستا)
   Widget _buildPostHeader(ChatTheme theme) {
+    final primaryTextColor =
+        widget.isMine ? theme.myBubbleTextColor : theme.otherBubbleTextColor;
+    final secondaryTextColor = widget.isMine
+        ? theme.myBubbleTextColor.withValues(alpha: 0.78)
+        : theme.secondaryTextColor;
+    final avatarInnerBackgroundColor =
+        widget.isMine ? theme.myBubbleColor : theme.otherBubbleColor;
     return Container(
       padding: const EdgeInsets.all(12),
       child: Row(
@@ -224,7 +241,7 @@ class _InstagramStylePostCardState extends State<InstagramStylePostCard>
               padding: const EdgeInsets.all(2),
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: theme.isDark ? const Color(0xFF1E1E1E) : Colors.white,
+                color: avatarInnerBackgroundColor,
               ),
               child: CircleAvatar(
                 radius: 18,
@@ -241,7 +258,7 @@ class _InstagramStylePostCardState extends State<InstagramStylePostCard>
                             ? widget.authorName[0].toUpperCase()
                             : '?',
                         style: TextStyle(
-                          color: theme.isDark ? Colors.white : Colors.black87,
+                          color: primaryTextColor,
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
                         ),
@@ -263,7 +280,7 @@ class _InstagramStylePostCardState extends State<InstagramStylePostCard>
                       child: Text(
                         widget.authorName,
                         style: TextStyle(
-                          color: theme.isDark ? Colors.white : Colors.black87,
+                          color: primaryTextColor,
                           fontSize: 14,
                           fontWeight: FontWeight.w700,
                         ),
@@ -284,7 +301,7 @@ class _InstagramStylePostCardState extends State<InstagramStylePostCard>
                   Text(
                     '@${widget.authorUsername}',
                     style: TextStyle(
-                      color: theme.secondaryTextColor,
+                      color: secondaryTextColor,
                       fontSize: 12,
                     ),
                     maxLines: 1,
@@ -301,7 +318,7 @@ class _InstagramStylePostCardState extends State<InstagramStylePostCard>
               Text(
                 widget.createdAt.toRelativeTime(),
                 style: TextStyle(
-                  color: theme.secondaryTextColor,
+                  color: secondaryTextColor,
                   fontSize: 11,
                   fontWeight: FontWeight.w500,
                 ),
@@ -332,12 +349,14 @@ class _InstagramStylePostCardState extends State<InstagramStylePostCard>
 
   /// محتوای متنی پست
   Widget _buildPostContent(ChatTheme theme) {
+    final primaryTextColor =
+        widget.isMine ? theme.myBubbleTextColor : theme.otherBubbleTextColor;
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
       child: Text(
         _cleanContent,
         style: TextStyle(
-          color: theme.isDark ? Colors.white : Colors.black87,
+          color: primaryTextColor,
           fontSize: 14,
           height: 1.5,
         ),
@@ -382,14 +401,15 @@ class _InstagramStylePostCardState extends State<InstagramStylePostCard>
 
   /// بخش انگیجمنت (لایک، کامنت، شیر)
   Widget _buildEngagementSection(ChatTheme theme) {
+    final dividerColor = widget.isMine
+        ? theme.myBubbleTextColor.withValues(alpha: 0.16)
+        : theme.otherBubbleTextColor.withValues(alpha: 0.12);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         border: Border(
           top: BorderSide(
-            color: theme.isDark
-                ? Colors.white.withValues(alpha: 0.1)
-                : Colors.grey.withValues(alpha: 0.15),
+            color: dividerColor,
             width: 0.5,
           ),
         ),
@@ -456,6 +476,9 @@ class _InstagramStylePostCardState extends State<InstagramStylePostCard>
     required Color color,
     required ChatTheme theme,
   }) {
+    final countTextColor = widget.isMine
+        ? theme.myBubbleTextColor.withValues(alpha: 0.82)
+        : theme.otherBubbleTextColor.withValues(alpha: 0.72);
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -464,7 +487,7 @@ class _InstagramStylePostCardState extends State<InstagramStylePostCard>
         Text(
           _formatCount(count),
           style: TextStyle(
-            color: theme.isDark ? Colors.white70 : Colors.black54,
+            color: countTextColor,
             fontSize: 13,
             fontWeight: FontWeight.w600,
           ),
@@ -474,6 +497,12 @@ class _InstagramStylePostCardState extends State<InstagramStylePostCard>
   }
 
   Widget _buildViewPostButton(ChatTheme theme) {
+    final buttonBackgroundColor = widget.isMine
+        ? theme.myBubbleTextColor.withValues(alpha: 0.12)
+        : theme.otherBubbleTextColor.withValues(alpha: 0.10);
+    final buttonTextColor = widget.isMine
+        ? theme.myBubbleTextColor.withValues(alpha: 0.9)
+        : theme.otherBubbleTextColor.withValues(alpha: 0.78);
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -482,9 +511,7 @@ class _InstagramStylePostCardState extends State<InstagramStylePostCard>
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           decoration: BoxDecoration(
-            color: theme.isDark
-                ? Colors.white.withValues(alpha: 0.1)
-                : Colors.grey.withValues(alpha: 0.1),
+            color: buttonBackgroundColor,
             borderRadius: BorderRadius.circular(8),
           ),
           child: Row(
@@ -493,13 +520,13 @@ class _InstagramStylePostCardState extends State<InstagramStylePostCard>
               Icon(
                 Icons.open_in_new_rounded,
                 size: 14,
-                color: theme.isDark ? Colors.white70 : Colors.black54,
+                color: buttonTextColor,
               ),
               const SizedBox(width: 4),
               Text(
                 'مشاهده پست',
                 style: TextStyle(
-                  color: theme.isDark ? Colors.white70 : Colors.black54,
+                  color: buttonTextColor,
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
                 ),

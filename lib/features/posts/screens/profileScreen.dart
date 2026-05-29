@@ -7,6 +7,7 @@ import 'package:shimmer/shimmer.dart';
 import '../../../model/ProfileModel.dart';
 import '../../../model/publicPostModel.dart';
 import '../../../provider/provider.dart';
+import '../../../provider/optimized_conversations_provider.dart';
 import '../../../DB/profile_cache_service.dart';
 import 'package:Vista/widgets/profile_avatar_widget.dart'; // NEW IMPORT
 import '../providers/saved_posts_provider.dart';
@@ -29,8 +30,10 @@ import '../../stories/presentation/screens/story_creation_screen.dart'; // Stori
 import '../../profile/widgets/content_type_picker_sheet.dart';
 import '../../profile/widgets/note_input_sheet.dart';
 import '../../profile/widgets/thought_bubble_widget.dart';
-import '../../profile/widgets/note_viewer_sheet.dart';
+import '../../profile/data/models/profile_note_model.dart';
 import '../../profile/providers/profile_note_provider.dart';
+import '../../chat/widgets/notes_tray.dart';
+import '../../chat/providers/chat_providers.dart';
 
 import 'package:Vista/utils/comments_bottom_sheet.dart';
 import 'package:flutter/services.dart';
@@ -43,6 +46,7 @@ import 'package:Vista/features/posts/widgets/hashtag_rich_text.dart';
 import 'package:Vista/features/posts/widgets/post_music_bubble.dart';
 import 'package:Vista/widgets/verification_badge_icon.dart';
 import 'package:Vista/widgets/ReelsScreen.dart';
+import 'package:Vista/features/profile/screens/account_details_screen.dart';
 import 'package:get_thumbnail_video/video_thumbnail.dart';
 import 'package:Vista/l10n/generated/app_localizations.dart';
 
@@ -566,6 +570,7 @@ class _ProfileHeader extends ConsumerWidget {
     final textColor = isDark ? Colors.white : Colors.black;
     final subtitleColor = isDark ? Colors.grey[400] : Colors.grey[600];
     final isRtl = Directionality.of(context) == TextDirection.rtl;
+    final conversationsState = ref.watch(optimizedConversationsProvider);
 
     // Watch profile note for this user
     final noteAsync = ref.watch(profileNoteProvider(profile.id));
@@ -599,11 +604,11 @@ class _ProfileHeader extends ConsumerWidget {
                           if (isCurrentUser) {
                             _showNoteInputSheet(context, ref, note.content);
                           } else {
-                            NoteViewerSheet.show(
-                              context,
+                            _openNoteReplySheet(
+                              context: context,
+                              ref: ref,
                               note: note,
-                              userProfile: profile,
-                              isCurrentUser: isCurrentUser,
+                              conversationsState: conversationsState,
                             );
                           }
                         },
@@ -759,10 +764,19 @@ class _ProfileHeader extends ConsumerWidget {
             ),
           ],
 
-          // Member order badge
+          // Member order badge — tappable → AccountDetailsScreen
           if (profile.joinOrder != null && profile.joinOrder! > 0) ...[
             const SizedBox(height: 10),
-            _MemberOrderBadge(joinOrder: profile.joinOrder!, isDark: isDark),
+            _MemberOrderBadge(
+              joinOrder: profile.joinOrder!,
+              isDark: isDark,
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => AccountDetailsScreen(profile: profile),
+                ),
+              ),
+            ),
           ],
         ],
       ),
@@ -814,6 +828,50 @@ class _ProfileHeader extends ConsumerWidget {
       ref.invalidate(profileNoteProvider(profile.id));
     }
   }
+
+  Future<void> _openNoteReplySheet({
+    required BuildContext context,
+    required WidgetRef ref,
+    required ProfileNoteModel note,
+    required ConversationsState conversationsState,
+  }) async {
+    String? conversationId;
+    for (final conversation in conversationsState.conversations) {
+      if (conversation.otherUserId == profile.id) {
+        conversationId = conversation.id;
+        break;
+      }
+    }
+
+    if (conversationId == null || conversationId.isEmpty) {
+      final createResult =
+          await ref.read(chatRepositoryProvider).createConversation(profile.id);
+      if (!context.mounted) return;
+      if (!createResult.isSuccess || createResult.data == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(createResult.error ?? 'خطا در ایجاد گفتگو')),
+        );
+        return;
+      }
+      conversationId = createResult.data!.id;
+      await ref.read(optimizedConversationsProvider.notifier).refresh();
+    }
+
+    if (!context.mounted) return;
+    final sent = await showNoteQuickReplyBottomSheet(
+      context,
+      conversationId: conversationId,
+      userId: profile.id,
+      username: profile.username,
+      avatarUrl: profile.avatarUrl ?? '',
+      noteContent: note.content,
+    );
+    if (sent && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('پاسخ شما ارسال شد')),
+      );
+    }
+  }
 }
 
 // End of file
@@ -862,8 +920,13 @@ class _StatItem extends StatelessWidget {
 class _MemberOrderBadge extends StatelessWidget {
   final int joinOrder;
   final bool isDark;
+  final VoidCallback? onTap;
 
-  const _MemberOrderBadge({required this.joinOrder, required this.isDark});
+  const _MemberOrderBadge({
+    required this.joinOrder,
+    required this.isDark,
+    this.onTap,
+  });
 
   /// تعریف تیرهای رنگ بر اساس ترتیب عضویت
   _BadgeTier get _tier {
@@ -885,31 +948,59 @@ class _MemberOrderBadge extends StatelessWidget {
     final label = _buildLabel(tier);
     final icon = _buildIcon(tier);
     final colors = _buildColors(tier, isDark);
+    const radius = BorderRadius.all(Radius.circular(20));
+
+    final badge = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        gradient: colors.gradient,
+        borderRadius: radius,
+        border: Border.all(color: colors.border, width: 1),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(icon, style: const TextStyle(fontSize: 12)),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: colors.text,
+              letterSpacing: 0.2,
+            ),
+          ),
+          if (onTap != null) ...[
+            const SizedBox(width: 4),
+            Icon(
+              Icons.chevron_right,
+              size: 14,
+              color: colors.text.withValues(alpha: 0.6),
+            ),
+          ],
+        ],
+      ),
+    );
+
+    if (onTap == null) {
+      return Align(
+        alignment: AlignmentDirectional.centerStart,
+        child: badge,
+      );
+    }
 
     return Align(
       alignment: AlignmentDirectional.centerStart,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-        decoration: BoxDecoration(
-          gradient: colors.gradient,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: colors.border, width: 1),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(icon, style: const TextStyle(fontSize: 12)),
-            const SizedBox(width: 5),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: colors.text,
-                letterSpacing: 0.2,
-              ),
-            ),
-          ],
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: radius,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: radius,
+          splashColor: colors.border.withValues(alpha: 0.3),
+          highlightColor: colors.border.withValues(alpha: 0.1),
+          child: badge,
         ),
       ),
     );

@@ -361,27 +361,30 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     });
   }
 
-  Future<bool> _onWillPop() async {
+  Future<void> _goHomeOrExit() async {
     if (_selectedIndex != 0) {
-      setState(() {
-        _selectedIndex = 0;
-      });
-      return false;
-    } else {
-      final now = DateTime.now();
-      if (_lastPressed == null ||
-          now.difference(_lastPressed!) > const Duration(seconds: 2)) {
-        _lastPressed = now;
+      setState(() => _selectedIndex = 0);
+      return;
+    }
+    final now = DateTime.now();
+    if (_lastPressed == null ||
+        now.difference(_lastPressed!) > const Duration(seconds: 2)) {
+      _lastPressed = now;
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(AppLocalizations.of(context)?.pressBackAgainToExit ?? 'برای خروج دوباره دکمه بازگشت را بزنید'),
+            content: Text(
+              AppLocalizations.of(context)?.pressBackAgainToExit ??
+                  'برای خروج دوباره دکمه بازگشت را بزنید',
+            ),
             behavior: SnackBarBehavior.floating,
           ),
         );
-        return false;
       }
-      return true;
+      return;
     }
+    // خروج از برنامه
+    Navigator.of(context).pop();
   }
 
   @override
@@ -391,8 +394,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    return WillPopScope(
-      onWillPop: _onWillPop,
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _goHomeOrExit();
+      },
       child: Scaffold(
         extendBody: true,
         backgroundColor: theme.scaffoldBackgroundColor,

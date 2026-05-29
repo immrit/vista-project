@@ -317,8 +317,9 @@ class _ImprovedAnimatedMessageBubbleState
   Widget build(BuildContext context) {
     super.build(context);
     final theme = context.chatTheme;
+    // Keep bubbles closer to screen edges while preserving sender separation.
     const edgeInset = 0.0;
-    const oppositeInset = 18.0;
+    const oppositeInset = 12.0;
 
     Widget child = RepaintBoundary(
       child: FadeTransition(
@@ -488,6 +489,16 @@ class _ImprovedAnimatedMessageBubbleState
         (!hasDirectReplyTarget &&
             (widget.replyToContent?.trim().isNotEmpty ?? false) &&
             (widget.replyToSenderName?.trim().isNotEmpty ?? false));
+    final noteReplyChipColor = widget.isMe
+        ? Colors.white.withValues(alpha: 0.18)
+        : theme.sendButtonColor.withValues(alpha: 0.14);
+    final noteReplyChipTextColor =
+        widget.isMe ? theme.myBubbleTextColor : theme.sendButtonColor;
+    final replySenderColor = isNoteReply
+        ? (widget.isMe
+            ? theme.myBubbleTextColor.withValues(alpha: 0.96)
+            : theme.sendButtonColor)
+        : theme.sendButtonColor;
     return GestureDetector(
       onTap: widget.onReplyTap,
       child: Container(
@@ -514,7 +525,7 @@ class _ImprovedAnimatedMessageBubbleState
                 padding:
                     const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
-                  color: theme.sendButtonColor.withValues(alpha: 0.14),
+                  color: noteReplyChipColor,
                   borderRadius: BorderRadius.circular(999),
                 ),
                 child: Row(
@@ -523,13 +534,13 @@ class _ImprovedAnimatedMessageBubbleState
                     Icon(
                       Icons.sticky_note_2_outlined,
                       size: 12,
-                      color: theme.sendButtonColor,
+                      color: noteReplyChipTextColor,
                     ),
                     const SizedBox(width: 4),
                     Text(
                       'پاسخ به یادداشت',
                       style: TextStyle(
-                        color: theme.sendButtonColor,
+                        color: noteReplyChipTextColor,
                         fontSize: 11,
                         fontWeight: FontWeight.w700,
                       ),
@@ -553,7 +564,7 @@ class _ImprovedAnimatedMessageBubbleState
                 Text(
                   replySender,
                   style: TextStyle(
-                    color: theme.sendButtonColor,
+                    color: replySenderColor,
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
                   ),

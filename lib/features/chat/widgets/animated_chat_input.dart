@@ -20,7 +20,6 @@ import '../theme/chat_theme.dart';
 import '../services/voice_recorder_service.dart';
 import 'liquid_glass_input_shell.dart';
 import 'telegram_voice_recorder_bar.dart';
-import 'vista_emoji_panel.dart';
 import 'voice_input_state.dart';
 
 enum _VoiceHapticEvent {
@@ -168,11 +167,16 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
   }
 
   void _onFocusChange() {
+    // وقتی کاربر روی text field می‌زنه در حالتی که emoji باز بوده
     if (widget.focusNode?.hasFocus == true && _showEmojiPicker) {
-      setState(() {
-        _showEmojiPicker = false;
-      });
+      setState(() => _showEmojiPicker = false);
       widget.onEmojiPickerToggled?.call(false);
+      // کیبورد رو مطمئناً نمایش بده (tap روی text field همیشه کیبورد رو نمیاره)
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          SystemChannels.textInput.invokeMethod<void>('TextInput.show');
+        }
+      });
     }
   }
 
@@ -418,13 +422,32 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
     HapticFeedback.selectionClick();
 
     if (_showEmojiPicker) {
+      // Emoji → Keyboard
       setState(() => _showEmojiPicker = false);
-      widget.focusNode?.requestFocus();
-      widget.onEmojiPickerToggled?.call(false); // ✅ اضافه شد
+      widget.onEmojiPickerToggled?.call(false);
+      _showKeyboard();
     } else {
-      widget.focusNode?.unfocus();
+      // Keyboard → Emoji
+      // اول به parent اطلاع می‌دیم تا ارتفاع کیبورد رو قبل از dismiss ضبط کنه
+      widget.onEmojiPickerToggled?.call(true);
       setState(() => _showEmojiPicker = true);
-      widget.onEmojiPickerToggled?.call(true); // ✅ اضافه شد
+      widget.focusNode?.unfocus();
+    }
+  }
+
+  /// نمایش مطمئن کیبورد - هم requestFocus هم TextInput.show
+  void _showKeyboard() {
+    if (widget.focusNode?.hasFocus == true) {
+      // focus داریم، مستقیم کیبورد رو نشون بده
+      SystemChannels.textInput.invokeMethod<void>('TextInput.show');
+    } else {
+      widget.focusNode?.requestFocus();
+      // بعد از اینکه focus برقرار شد، کیبورد رو نشون بده
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          SystemChannels.textInput.invokeMethod<void>('TextInput.show');
+        }
+      });
     }
   }
 
@@ -461,17 +484,9 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
         shouldReduceEffects ? 0.0 : widget.blurSigma.clamp(0.0, 12.0);
     _reportHeightIfNeeded();
 
-    // دریافت safe area برای پدینگ داخلی خود جزیره
-    // توجه: ما در صفحه اصلی این ویجت را بالای کیبورد قرار می‌دهیم،
-    // اما اگر کیبورد بسته باشد، باید فاصله از پایین (Home Indicator) را رعایت کنیم.
-    final bottomPadding = MediaQuery.of(context).padding.bottom;
-    final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
-
-    // اگر کیبورد باز است، فاصله پایین کمی بیشتر باشد تا پیام‌ها از زیر دیده شوند
-    // اگر بسته است، کمی فاصله بدهیم که روی خط هوم نیفتد
-    final effectiveBottomPadding = keyboardHeight > 0
-        ? 8.0
-        : (bottomPadding > 0 ? bottomPadding + 4.0 : 14.0);
+    // parent (modern_chat_screen) با Positioned همه positioning را handle می‌کند
+    // ما فقط یک فاصله کوچک داخلی نیاز داریم
+    const effectiveBottomPadding = 8.0;
 
     return RepaintBoundary(
       child: Container(
@@ -519,27 +534,8 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
               ),
             ),
 
-            // Emoji Picker (اگر باز باشد)
-            if (_showEmojiPicker)
-              Container(
-                margin: const EdgeInsets.only(top: 8),
-                decoration: BoxDecoration(
-                  color: theme.inputBackgroundColor,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(20),
-                  child: VistaEmojiPanel(
-                    controller: widget.controller,
-                    height: 300,
-                    onGifSelected: (gifUrl) {
-                      if (widget.onGifSelected != null) {
-                        widget.onGifSelected!(gifUrl);
-                      }
-                    },
-                  ),
-                ),
-              ),
+            // Emoji panel توسط parent (modern_chat_screen) رندر می‌شه
+            // این ویجت فقط toggle را emit می‌کند
           ],
         ),
       ),

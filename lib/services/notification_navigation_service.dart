@@ -263,20 +263,16 @@ class NotificationNavigationService {
     }
 
     try {
-      final currentUserId = await TokenStorage.getUserId();
       await _ensureRootOnHome(context);
       final navigator = _resolveNavigator(context);
       if (navigator == null) return;
-
-      // اگر خودش بود، به پروفایل شخصی برود
-      if (userId == currentUserId) {
-        navigator.pushNamed('/profile');
-      } else {
-        navigator.pushNamed(
-          '/profile',
-          arguments: {'username': '', 'userId': userId},
-        );
-      }
+      navigator.pushNamed(
+        '/profile',
+        arguments: {
+          'username': '',
+          'userId': userId,
+        },
+      );
 
       print('✅ هدایت به پروفایل: $userId');
     } catch (e) {

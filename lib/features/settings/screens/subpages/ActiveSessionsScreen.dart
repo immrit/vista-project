@@ -268,9 +268,9 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen>
             ),
           ),
           const SizedBox(height: 4),
-          if (session.ipAddress != null)
+          if (_sessionLocationText(session) != null)
             Text(
-              session.ipAddress!,
+              _sessionLocationText(session)!,
               style: TextStyle(
                 fontSize: 13,
                 color: isDark ? Colors.grey[600] : Colors.grey[400],
@@ -379,7 +379,7 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen>
                   color: isDark ? Colors.grey[600] : Colors.grey[400],
                 ),
               ),
-              if (session.ipAddress != null) ...[
+              if (_sessionLocationText(session) != null) ...[
                 const SizedBox(width: 12),
                 Icon(
                   Icons.location_on_outlined,
@@ -388,7 +388,7 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen>
                 ),
                 const SizedBox(width: 4),
                 Text(
-                  session.ipAddress!,
+                  _sessionLocationText(session)!,
                   style: TextStyle(
                     fontSize: 12,
                     color: isDark ? Colors.grey[600] : Colors.grey[400],
@@ -515,6 +515,14 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen>
     if (p.contains('linux')) return Icons.computer;
     if (p.contains('web')) return Icons.language;
     return Icons.devices_other;
+  }
+
+  String? _sessionLocationText(SessionModel session) {
+    final location = session.location;
+    if (location == null) return null;
+    final text = location.displayName.trim();
+    if (text.isEmpty || text == 'نامشخص') return null;
+    return text;
   }
 
   Future<void> _terminateSession(
@@ -762,8 +770,8 @@ class _SessionDetailsSheet extends StatelessWidget {
             // Info Items
             _buildInfoItem('آخرین فعالیت',
                 timeago.format(session.lastActivity, locale: 'fa'), isDark),
-            if (session.ipAddress != null)
-              _buildInfoItem('آدرس IP', session.ipAddress!, isDark),
+            if (_sessionLocationText(session) != null)
+              _buildInfoItem('مکان نشست', _sessionLocationText(session)!, isDark),
             _buildInfoItem('سیستم‌عامل', session.platform ?? 'نامشخص', isDark),
 
             const SizedBox(height: 24),
@@ -827,5 +835,13 @@ class _SessionDetailsSheet extends StatelessWidget {
     if (p.contains('linux')) return Icons.computer;
     if (p.contains('web')) return Icons.language;
     return Icons.devices_other;
+  }
+
+  String? _sessionLocationText(SessionModel session) {
+    final location = session.location;
+    if (location == null) return null;
+    final text = location.displayName.trim();
+    if (text.isEmpty || text == 'نامشخص') return null;
+    return text;
   }
 }

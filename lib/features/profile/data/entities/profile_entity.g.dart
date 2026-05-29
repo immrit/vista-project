@@ -27,73 +27,88 @@ const ProfileEntitySchema = CollectionSchema(
       name: r'bio',
       type: IsarType.string,
     ),
-    r'createdAt': PropertySchema(
+    r'birthDate': PropertySchema(
       id: 2,
+      name: r'birthDate',
+      type: IsarType.string,
+    ),
+    r'createdAt': PropertySchema(
+      id: 3,
       name: r'createdAt',
       type: IsarType.dateTime,
     ),
     r'email': PropertySchema(
-      id: 3,
+      id: 4,
       name: r'email',
       type: IsarType.string,
     ),
     r'followersCount': PropertySchema(
-      id: 4,
+      id: 5,
       name: r'followersCount',
       type: IsarType.long,
     ),
     r'followingCount': PropertySchema(
-      id: 5,
+      id: 6,
       name: r'followingCount',
       type: IsarType.long,
     ),
     r'fullName': PropertySchema(
-      id: 6,
+      id: 7,
       name: r'fullName',
       type: IsarType.string,
     ),
     r'id': PropertySchema(
-      id: 7,
+      id: 8,
       name: r'id',
       type: IsarType.string,
     ),
     r'isFollowed': PropertySchema(
-      id: 8,
+      id: 9,
       name: r'isFollowed',
       type: IsarType.bool,
     ),
     r'isPrivate': PropertySchema(
-      id: 9,
+      id: 10,
       name: r'isPrivate',
       type: IsarType.bool,
     ),
     r'isVerified': PropertySchema(
-      id: 10,
+      id: 11,
       name: r'isVerified',
       type: IsarType.bool,
     ),
+    r'joinOrder': PropertySchema(
+      id: 12,
+      name: r'joinOrder',
+      type: IsarType.long,
+    ),
     r'lastUpdated': PropertySchema(
-      id: 11,
+      id: 13,
       name: r'lastUpdated',
       type: IsarType.dateTime,
     ),
+    r'phoneNumber': PropertySchema(
+      id: 14,
+      name: r'phoneNumber',
+      type: IsarType.string,
+    ),
     r'postsCount': PropertySchema(
-      id: 12,
+      id: 15,
       name: r'postsCount',
       type: IsarType.long,
     ),
     r'role': PropertySchema(
-      id: 13,
+      id: 16,
       name: r'role',
       type: IsarType.string,
     ),
     r'username': PropertySchema(
-      id: 14,
+      id: 17,
       name: r'username',
       type: IsarType.string,
     ),
     r'verificationType': PropertySchema(
-      id: 15,
+      id: 18,
       name: r'verificationType',
       type: IsarType.string,
       enumMap: _ProfileEntityverificationTypeEnumValueMap,
@@ -146,6 +161,12 @@ int _profileEntityEstimateSize(
     }
   }
   {
+    final value = object.birthDate;
+    if (value != null) {
+      bytesCount += 3 + value.length * 3;
+    }
+  }
+  {
     final value = object.email;
     if (value != null) {
       bytesCount += 3 + value.length * 3;
@@ -153,6 +174,12 @@ int _profileEntityEstimateSize(
   }
   bytesCount += 3 + object.fullName.length * 3;
   bytesCount += 3 + object.id.length * 3;
+  {
+    final value = object.phoneNumber;
+    if (value != null) {
+      bytesCount += 3 + value.length * 3;
+    }
+  }
   {
     final value = object.role;
     if (value != null) {
@@ -172,20 +199,23 @@ void _profileEntitySerialize(
 ) {
   writer.writeString(offsets[0], object.avatarUrl);
   writer.writeString(offsets[1], object.bio);
-  writer.writeDateTime(offsets[2], object.createdAt);
-  writer.writeString(offsets[3], object.email);
-  writer.writeLong(offsets[4], object.followersCount);
-  writer.writeLong(offsets[5], object.followingCount);
-  writer.writeString(offsets[6], object.fullName);
-  writer.writeString(offsets[7], object.id);
-  writer.writeBool(offsets[8], object.isFollowed);
-  writer.writeBool(offsets[9], object.isPrivate);
-  writer.writeBool(offsets[10], object.isVerified);
-  writer.writeDateTime(offsets[11], object.lastUpdated);
-  writer.writeLong(offsets[12], object.postsCount);
-  writer.writeString(offsets[13], object.role);
-  writer.writeString(offsets[14], object.username);
-  writer.writeString(offsets[15], object.verificationType.name);
+  writer.writeString(offsets[2], object.birthDate);
+  writer.writeDateTime(offsets[3], object.createdAt);
+  writer.writeString(offsets[4], object.email);
+  writer.writeLong(offsets[5], object.followersCount);
+  writer.writeLong(offsets[6], object.followingCount);
+  writer.writeString(offsets[7], object.fullName);
+  writer.writeString(offsets[8], object.id);
+  writer.writeBool(offsets[9], object.isFollowed);
+  writer.writeBool(offsets[10], object.isPrivate);
+  writer.writeBool(offsets[11], object.isVerified);
+  writer.writeLong(offsets[12], object.joinOrder);
+  writer.writeDateTime(offsets[13], object.lastUpdated);
+  writer.writeString(offsets[14], object.phoneNumber);
+  writer.writeLong(offsets[15], object.postsCount);
+  writer.writeString(offsets[16], object.role);
+  writer.writeString(offsets[17], object.username);
+  writer.writeString(offsets[18], object.verificationType.name);
 }
 
 ProfileEntity _profileEntityDeserialize(
@@ -197,21 +227,24 @@ ProfileEntity _profileEntityDeserialize(
   final object = ProfileEntity();
   object.avatarUrl = reader.readStringOrNull(offsets[0]);
   object.bio = reader.readStringOrNull(offsets[1]);
-  object.createdAt = reader.readDateTimeOrNull(offsets[2]);
-  object.email = reader.readStringOrNull(offsets[3]);
-  object.followersCount = reader.readLong(offsets[4]);
-  object.followingCount = reader.readLong(offsets[5]);
-  object.fullName = reader.readString(offsets[6]);
-  object.id = reader.readString(offsets[7]);
-  object.isFollowed = reader.readBool(offsets[8]);
-  object.isPrivate = reader.readBool(offsets[9]);
-  object.isVerified = reader.readBool(offsets[10]);
-  object.lastUpdated = reader.readDateTime(offsets[11]);
-  object.postsCount = reader.readLong(offsets[12]);
-  object.role = reader.readStringOrNull(offsets[13]);
-  object.username = reader.readString(offsets[14]);
+  object.birthDate = reader.readStringOrNull(offsets[2]);
+  object.createdAt = reader.readDateTimeOrNull(offsets[3]);
+  object.email = reader.readStringOrNull(offsets[4]);
+  object.followersCount = reader.readLong(offsets[5]);
+  object.followingCount = reader.readLong(offsets[6]);
+  object.fullName = reader.readString(offsets[7]);
+  object.id = reader.readString(offsets[8]);
+  object.isFollowed = reader.readBool(offsets[9]);
+  object.isPrivate = reader.readBool(offsets[10]);
+  object.isVerified = reader.readBool(offsets[11]);
+  object.joinOrder = reader.readLongOrNull(offsets[12]);
+  object.lastUpdated = reader.readDateTime(offsets[13]);
+  object.phoneNumber = reader.readStringOrNull(offsets[14]);
+  object.postsCount = reader.readLong(offsets[15]);
+  object.role = reader.readStringOrNull(offsets[16]);
+  object.username = reader.readString(offsets[17]);
   object.verificationType = _ProfileEntityverificationTypeValueEnumMap[
-          reader.readStringOrNull(offsets[15])] ??
+          reader.readStringOrNull(offsets[18])] ??
       VerificationType.none;
   return object;
 }
@@ -228,32 +261,38 @@ P _profileEntityDeserializeProp<P>(
     case 1:
       return (reader.readStringOrNull(offset)) as P;
     case 2:
-      return (reader.readDateTimeOrNull(offset)) as P;
-    case 3:
       return (reader.readStringOrNull(offset)) as P;
+    case 3:
+      return (reader.readDateTimeOrNull(offset)) as P;
     case 4:
-      return (reader.readLong(offset)) as P;
+      return (reader.readStringOrNull(offset)) as P;
     case 5:
       return (reader.readLong(offset)) as P;
     case 6:
-      return (reader.readString(offset)) as P;
+      return (reader.readLong(offset)) as P;
     case 7:
       return (reader.readString(offset)) as P;
     case 8:
-      return (reader.readBool(offset)) as P;
+      return (reader.readString(offset)) as P;
     case 9:
       return (reader.readBool(offset)) as P;
     case 10:
       return (reader.readBool(offset)) as P;
     case 11:
-      return (reader.readDateTime(offset)) as P;
+      return (reader.readBool(offset)) as P;
     case 12:
-      return (reader.readLong(offset)) as P;
+      return (reader.readLongOrNull(offset)) as P;
     case 13:
-      return (reader.readStringOrNull(offset)) as P;
+      return (reader.readDateTime(offset)) as P;
     case 14:
-      return (reader.readString(offset)) as P;
+      return (reader.readStringOrNull(offset)) as P;
     case 15:
+      return (reader.readLong(offset)) as P;
+    case 16:
+      return (reader.readStringOrNull(offset)) as P;
+    case 17:
+      return (reader.readString(offset)) as P;
+    case 18:
       return (_ProfileEntityverificationTypeValueEnumMap[
               reader.readStringOrNull(offset)] ??
           VerificationType.none) as P;
@@ -769,6 +808,160 @@ extension ProfileEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(FilterCondition.greaterThan(
         property: r'bio',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterFilterCondition>
+      birthDateIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'birthDate',
+      ));
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterFilterCondition>
+      birthDateIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'birthDate',
+      ));
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterFilterCondition>
+      birthDateEqualTo(
+    String? value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'birthDate',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterFilterCondition>
+      birthDateGreaterThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'birthDate',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterFilterCondition>
+      birthDateLessThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'birthDate',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterFilterCondition>
+      birthDateBetween(
+    String? lower,
+    String? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'birthDate',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterFilterCondition>
+      birthDateStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'birthDate',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterFilterCondition>
+      birthDateEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'birthDate',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterFilterCondition>
+      birthDateContains(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'birthDate',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterFilterCondition>
+      birthDateMatches(String pattern, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'birthDate',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterFilterCondition>
+      birthDateIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'birthDate',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterFilterCondition>
+      birthDateIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'birthDate',
         value: '',
       ));
     });
@@ -1471,6 +1664,80 @@ extension ProfileEntityQueryFilter
   }
 
   QueryBuilder<ProfileEntity, ProfileEntity, QAfterFilterCondition>
+      joinOrderIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'joinOrder',
+      ));
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterFilterCondition>
+      joinOrderIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'joinOrder',
+      ));
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterFilterCondition>
+      joinOrderEqualTo(int? value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'joinOrder',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterFilterCondition>
+      joinOrderGreaterThan(
+    int? value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'joinOrder',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterFilterCondition>
+      joinOrderLessThan(
+    int? value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'joinOrder',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterFilterCondition>
+      joinOrderBetween(
+    int? lower,
+    int? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'joinOrder',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+      ));
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterFilterCondition>
       lastUpdatedEqualTo(DateTime value) {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(FilterCondition.equalTo(
@@ -1522,6 +1789,160 @@ extension ProfileEntityQueryFilter
         includeLower: includeLower,
         upper: upper,
         includeUpper: includeUpper,
+      ));
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterFilterCondition>
+      phoneNumberIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'phoneNumber',
+      ));
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterFilterCondition>
+      phoneNumberIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'phoneNumber',
+      ));
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterFilterCondition>
+      phoneNumberEqualTo(
+    String? value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'phoneNumber',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterFilterCondition>
+      phoneNumberGreaterThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'phoneNumber',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterFilterCondition>
+      phoneNumberLessThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'phoneNumber',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterFilterCondition>
+      phoneNumberBetween(
+    String? lower,
+    String? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'phoneNumber',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterFilterCondition>
+      phoneNumberStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'phoneNumber',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterFilterCondition>
+      phoneNumberEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'phoneNumber',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterFilterCondition>
+      phoneNumberContains(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'phoneNumber',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterFilterCondition>
+      phoneNumberMatches(String pattern, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'phoneNumber',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterFilterCondition>
+      phoneNumberIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'phoneNumber',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterFilterCondition>
+      phoneNumberIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'phoneNumber',
+        value: '',
       ));
     });
   }
@@ -2041,6 +2462,19 @@ extension ProfileEntityQuerySortBy
     });
   }
 
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterSortBy> sortByBirthDate() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'birthDate', Sort.asc);
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterSortBy>
+      sortByBirthDateDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'birthDate', Sort.desc);
+    });
+  }
+
   QueryBuilder<ProfileEntity, ProfileEntity, QAfterSortBy> sortByCreatedAt() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'createdAt', Sort.asc);
@@ -2158,6 +2592,19 @@ extension ProfileEntityQuerySortBy
     });
   }
 
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterSortBy> sortByJoinOrder() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'joinOrder', Sort.asc);
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterSortBy>
+      sortByJoinOrderDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'joinOrder', Sort.desc);
+    });
+  }
+
   QueryBuilder<ProfileEntity, ProfileEntity, QAfterSortBy> sortByLastUpdated() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'lastUpdated', Sort.asc);
@@ -2168,6 +2615,19 @@ extension ProfileEntityQuerySortBy
       sortByLastUpdatedDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'lastUpdated', Sort.desc);
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterSortBy> sortByPhoneNumber() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'phoneNumber', Sort.asc);
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterSortBy>
+      sortByPhoneNumberDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'phoneNumber', Sort.desc);
     });
   }
 
@@ -2248,6 +2708,19 @@ extension ProfileEntityQuerySortThenBy
   QueryBuilder<ProfileEntity, ProfileEntity, QAfterSortBy> thenByBioDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'bio', Sort.desc);
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterSortBy> thenByBirthDate() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'birthDate', Sort.asc);
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterSortBy>
+      thenByBirthDateDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'birthDate', Sort.desc);
     });
   }
 
@@ -2380,6 +2853,19 @@ extension ProfileEntityQuerySortThenBy
     });
   }
 
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterSortBy> thenByJoinOrder() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'joinOrder', Sort.asc);
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterSortBy>
+      thenByJoinOrderDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'joinOrder', Sort.desc);
+    });
+  }
+
   QueryBuilder<ProfileEntity, ProfileEntity, QAfterSortBy> thenByLastUpdated() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'lastUpdated', Sort.asc);
@@ -2390,6 +2876,19 @@ extension ProfileEntityQuerySortThenBy
       thenByLastUpdatedDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'lastUpdated', Sort.desc);
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterSortBy> thenByPhoneNumber() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'phoneNumber', Sort.asc);
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterSortBy>
+      thenByPhoneNumberDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'phoneNumber', Sort.desc);
     });
   }
 
@@ -2462,6 +2961,13 @@ extension ProfileEntityQueryWhereDistinct
     });
   }
 
+  QueryBuilder<ProfileEntity, ProfileEntity, QDistinct> distinctByBirthDate(
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'birthDate', caseSensitive: caseSensitive);
+    });
+  }
+
   QueryBuilder<ProfileEntity, ProfileEntity, QDistinct> distinctByCreatedAt() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'createdAt');
@@ -2521,10 +3027,23 @@ extension ProfileEntityQueryWhereDistinct
     });
   }
 
+  QueryBuilder<ProfileEntity, ProfileEntity, QDistinct> distinctByJoinOrder() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'joinOrder');
+    });
+  }
+
   QueryBuilder<ProfileEntity, ProfileEntity, QDistinct>
       distinctByLastUpdated() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'lastUpdated');
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QDistinct> distinctByPhoneNumber(
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'phoneNumber', caseSensitive: caseSensitive);
     });
   }
 
@@ -2574,6 +3093,12 @@ extension ProfileEntityQueryProperty
   QueryBuilder<ProfileEntity, String?, QQueryOperations> bioProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'bio');
+    });
+  }
+
+  QueryBuilder<ProfileEntity, String?, QQueryOperations> birthDateProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'birthDate');
     });
   }
 
@@ -2631,10 +3156,22 @@ extension ProfileEntityQueryProperty
     });
   }
 
+  QueryBuilder<ProfileEntity, int?, QQueryOperations> joinOrderProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'joinOrder');
+    });
+  }
+
   QueryBuilder<ProfileEntity, DateTime, QQueryOperations>
       lastUpdatedProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'lastUpdated');
+    });
+  }
+
+  QueryBuilder<ProfileEntity, String?, QQueryOperations> phoneNumberProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'phoneNumber');
     });
   }
 

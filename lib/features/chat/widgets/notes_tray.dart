@@ -6,8 +6,6 @@ import '../../profile/data/models/profile_note_model.dart';
 import '../providers/chat_notes_provider.dart';
 import '../providers/chat_action_controller.dart';
 import '../../profile/widgets/note_input_sheet.dart';
-import '../../profile/widgets/note_viewer_sheet.dart';
-import '../../../model/ProfileModel.dart'; // To mock a profile when viewing Note
 import '../../../provider/optimized_conversations_provider.dart';
 import '../../../widgets/profile_avatar_widget.dart'; // Assume this exists for caching
 
@@ -98,58 +96,73 @@ class NotesTray extends ConsumerWidget {
     AsyncValue<ProfileNoteModel?> noteAsync,
     bool isDark,
   ) {
-    // Determine the actual note or fallback to null (which means "no note / add note")
     final note = noteAsync.valueOrNull;
     final hasActiveNote = note != null && !note.isExpired;
     final isLoading = noteAsync.isLoading;
 
     return GestureDetector(
       onTap: () async {
-        final result = await NoteInputSheet.show(
+        await NoteInputSheet.show(
           context,
           currentNote: hasActiveNote ? note.content : null,
         );
-        if (result == true) {
-          // If note is updated, trigger a refresh if needed (handled by provider)
-        }
       },
       child: SizedBox(
         width: 72,
         child: Column(
           children: [
-            Stack(
-              alignment: Alignment.center,
-              clipBehavior: Clip.none,
-              children: [
-                // آواتار کاربر فعلی
-                Container(
-                  width: 64,
-                  height: 64,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: isDark ? Colors.grey[800] : Colors.grey[300],
+            // همان ساختار دقیق _NoteTrayItem برای یکپارچگی بصری
+            SizedBox(
+              height: 82,
+              child: Stack(
+                alignment: Alignment.topCenter,
+                children: [
+                  // آواتار — موقعیت یکسان با _NoteTrayItem
+                  Positioned(
+                    top: 18,
+                    child: Container(
+                      width: 64,
+                      height: 64,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: isDark ? Colors.grey[800] : Colors.grey[300],
+                        border: Border.all(
+                          color: isDark
+                              ? Colors.grey[700]!
+                              : Colors.grey[200]!,
+                          width: 1,
+                        ),
+                      ),
+                      child: Icon(
+                        Icons.person,
+                        size: 32,
+                        color: isDark ? Colors.grey[500] : Colors.grey[500],
+                      ),
+                    ),
                   ),
-                  child: const Icon(Icons.person, size: 32, color: Colors.grey),
-                ),
 
-                // حباب یادداشت یا اضافه کردن یادداشت (شبیه اینستاگرام)
-                Positioned(
-                  top: -15,
-                  child: hasActiveNote
-                      ? _TopThoughtBubble(
-                          text: note.content,
-                          isDark: isDark,
-                          isCurrentUser: true,
-                        )
-                      : _EmptyThoughtBubble(isDark: isDark, isLoading: isLoading),
-                ),
-              ],
+                  // حباب یادداشت — موقعیت یکسان با _NoteTrayItem
+                  Positioned(
+                    top: 0,
+                    child: hasActiveNote
+                        ? _TopThoughtBubble(
+                            text: note.content,
+                            isDark: isDark,
+                            isCurrentUser: true,
+                          )
+                        : _EmptyThoughtBubble(
+                            isDark: isDark,
+                            isLoading: isLoading,
+                          ),
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             Text(
               hasActiveNote ? 'یادداشت شما' : 'یادداشت',
               style: TextStyle(
-                fontSize: 11,
+                fontSize: 10.5,
                 color: isDark ? Colors.grey[400] : Colors.grey[600],
               ),
               maxLines: 1,
@@ -286,31 +299,50 @@ class _NoteTrayItem extends ConsumerWidget {
   }
 
   Future<void> _showNoteReplySheet(BuildContext context, WidgetRef ref) async {
-    final theme = Theme.of(context);
-    final sent = await showModalBottomSheet<bool>(
-      context: context,
-      useRootNavigator: true,
-      isScrollControlled: true,
-      backgroundColor: theme.scaffoldBackgroundColor,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-      ),
-      builder: (_) => _NoteQuickReplySheet(
-        conversationId: conversationId,
-        userId: userId,
-        username: username,
-        avatarUrl: avatarUrl,
-        noteContent: note.content,
-      ),
+    final sent = await showNoteQuickReplyBottomSheet(
+      context,
+      conversationId: conversationId,
+      userId: userId,
+      username: username,
+      avatarUrl: avatarUrl,
+      noteContent: note.content,
     );
 
-    if (sent == true && context.mounted) {
+    if (sent && context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('پاسخ شما ارسال شد')),
       );
     }
   }
 
+}
+
+Future<bool> showNoteQuickReplyBottomSheet(
+  BuildContext context, {
+  required String conversationId,
+  required String userId,
+  required String username,
+  required String avatarUrl,
+  required String noteContent,
+}) async {
+  final theme = Theme.of(context);
+  final sent = await showModalBottomSheet<bool>(
+    context: context,
+    useRootNavigator: true,
+    isScrollControlled: true,
+    backgroundColor: theme.scaffoldBackgroundColor,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+    ),
+    builder: (_) => _NoteQuickReplySheet(
+      conversationId: conversationId,
+      userId: userId,
+      username: username,
+      avatarUrl: avatarUrl,
+      noteContent: noteContent,
+    ),
+  );
+  return sent == true;
 }
 
 class _NoteQuickReplySheet extends ConsumerStatefulWidget {
@@ -434,34 +466,6 @@ class _NoteQuickReplySheetState extends ConsumerState<_NoteQuickReplySheet> {
                 subtitle: Text(
                   'یادداشت فعال',
                   style: TextStyle(color: secondaryColor),
-                ),
-                trailing: IconButton(
-                  tooltip: 'مشاهده کامل',
-                  icon: const Icon(Icons.open_in_full_rounded),
-                  onPressed: () {
-                    Navigator.of(context, rootNavigator: true).pop();
-                    final dummyProfile = ProfileModel(
-                      id: widget.userId,
-                      username: widget.username,
-                      fullName: widget.username,
-                      avatarUrl: widget.avatarUrl,
-                      followersCount: 0,
-                      followingCount: 0,
-                      postsCount: 0,
-                    );
-                    NoteViewerSheet.show(
-                      context,
-                      note: ProfileNoteModel(
-                        id: 'note-${widget.userId}',
-                        userId: widget.userId,
-                        content: widget.noteContent,
-                        createdAt: DateTime.now(),
-                        expiresAt: DateTime.now().add(const Duration(hours: 24)),
-                      ),
-                      userProfile: dummyProfile,
-                      isCurrentUser: false,
-                    );
-                  },
                 ),
               ),
               const SizedBox(height: 6),

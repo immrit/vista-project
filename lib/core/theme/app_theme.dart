@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 class AppSpacing {
   static const double xxs = 2.0;
@@ -171,7 +172,15 @@ class AppTheme {
       ),
 
       appBarTheme: const AppBarTheme(
-        backgroundColor: Colors.transparent,
+        systemOverlayStyle: SystemUiOverlayStyle(
+          statusBarColor: AppColors.lightSurface,
+          statusBarIconBrightness: Brightness.dark,
+          statusBarBrightness: Brightness.light,
+          systemNavigationBarColor: Colors.transparent,
+          systemNavigationBarDividerColor: Colors.transparent,
+          systemNavigationBarIconBrightness: Brightness.dark,
+        ),
+        backgroundColor: AppColors.lightSurface,
         elevation: 0,
         scrolledUnderElevation: 0,
         centerTitle: true,
@@ -439,7 +448,15 @@ class AppTheme {
       ),
 
       appBarTheme: const AppBarTheme(
-        backgroundColor: Colors.transparent,
+        systemOverlayStyle: SystemUiOverlayStyle(
+          statusBarColor: AppColors.darkSurface,
+          statusBarIconBrightness: Brightness.light,
+          statusBarBrightness: Brightness.dark,
+          systemNavigationBarColor: Colors.transparent,
+          systemNavigationBarDividerColor: Colors.transparent,
+          systemNavigationBarIconBrightness: Brightness.light,
+        ),
+        backgroundColor: AppColors.darkSurface,
         elevation: 0,
         scrolledUnderElevation: 0,
         centerTitle: true,

@@ -325,6 +325,43 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
     );
   }
 
+  Future<void> _openActorProfile(_NotificationFeedItem item) async {
+    final unreadItems =
+        item.items.where((notification) => !notification.isRead).toList(
+              growable: false,
+            );
+    for (final notification in unreadItems) {
+      await ref.read(notificationsProvider.notifier).markAsRead(notification.id);
+    }
+
+    final primary = item.primary;
+    final metadata = primary.metadata ?? const <String, dynamic>{};
+    final actorId = primary.senderId.trim().isNotEmpty
+        ? primary.senderId.trim()
+        : (metadata['user_id']?.toString() ??
+            metadata['actor_id']?.toString() ??
+            metadata['sender_id']?.toString() ??
+            metadata['follower_id']?.toString() ??
+            '');
+
+    if (!mounted) return;
+    if (actorId.isEmpty) {
+      await _openFeedItem(item);
+      return;
+    }
+
+    await NotificationNavigationService.handleNotificationNavigation(
+      context: context,
+      notification: primary.copyWith(
+        type: 'follow',
+        senderId: actorId,
+        postId: null,
+        commentId: null,
+        parentCommentId: null,
+      ),
+    );
+  }
+
   Future<void> _handleFollowRequestAction(
     NotificationModel notification, {
     required bool accept,
@@ -531,55 +568,64 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
                           ),
                         ),
                         const SizedBox(width: 10),
-                        Stack(
-                          children: [
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(24),
-                              child: (notification.avatarUrl == null ||
-                                      notification.avatarUrl!.isEmpty)
-                                  ? Container(
-                                      width: 48,
-                                      height: 48,
-                                      color: Colors.grey.shade300,
-                                      child: const Icon(Icons.person,
-                                          color: Colors.white, size: 32),
-                                    )
-                                  : CachedNetworkImage(
-                                      imageUrl: notification.avatarUrl!,
-                                      width: 48,
-                                      height: 48,
-                                      fit: BoxFit.cover,
-                                      placeholder: (_, __) => Container(
-                                        width: 48,
-                                        height: 48,
-                                        color: Colors.grey.shade300,
-                                      ),
-                                      errorWidget: (_, __, ___) => Container(
-                                        width: 48,
-                                        height: 48,
-                                        color: Colors.grey.shade300,
-                                        child: const Icon(Icons.person,
-                                            color: Colors.white, size: 32),
-                                      ),
+                        Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(24),
+                            onTap: () => _openActorProfile(item),
+                            child: Stack(
+                              children: [
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(24),
+                                  child: (notification.avatarUrl == null ||
+                                          notification.avatarUrl!.isEmpty)
+                                      ? Container(
+                                          width: 48,
+                                          height: 48,
+                                          color: Colors.grey.shade300,
+                                          child: const Icon(Icons.person,
+                                              color: Colors.white, size: 32),
+                                        )
+                                      : CachedNetworkImage(
+                                          imageUrl: notification.avatarUrl!,
+                                          width: 48,
+                                          height: 48,
+                                          fit: BoxFit.cover,
+                                          placeholder: (_, __) => Container(
+                                            width: 48,
+                                            height: 48,
+                                            color: Colors.grey.shade300,
+                                          ),
+                                          errorWidget: (_, __, ___) => Container(
+                                            width: 48,
+                                            height: 48,
+                                            color: Colors.grey.shade300,
+                                            child: const Icon(Icons.person,
+                                                color: Colors.white, size: 32),
+                                          ),
+                                        ),
+                                ),
+                                Positioned(
+                                  right: 0,
+                                  bottom: 0,
+                                  child: Container(
+                                    padding: const EdgeInsets.all(2),
+                                    decoration: BoxDecoration(
+                                      color: Theme.of(context)
+                                          .scaffoldBackgroundColor,
+                                      borderRadius: BorderRadius.circular(10),
                                     ),
-                            ),
-                            Positioned(
-                              right: 0,
-                              bottom: 0,
-                              child: Container(
-                                padding: const EdgeInsets.all(2),
-                                decoration: BoxDecoration(
-                                  color: Theme.of(context).scaffoldBackgroundColor,
-                                  borderRadius: BorderRadius.circular(10),
+                                    child: Icon(
+                                      _getNotificationIcon(canonicalType),
+                                      size: 14,
+                                      color:
+                                          _getNotificationIconColor(canonicalType),
+                                    ),
+                                  ),
                                 ),
-                                child: Icon(
-                                  _getNotificationIcon(canonicalType),
-                                  size: 14,
-                                  color: _getNotificationIconColor(canonicalType),
-                                ),
-                              ),
+                              ],
                             ),
-                          ],
+                          ),
                         ),
                         const SizedBox(width: 12),
                         Expanded(

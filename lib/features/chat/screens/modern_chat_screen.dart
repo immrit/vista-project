@@ -46,6 +46,7 @@ import '../widgets/retry_indicator_widget.dart' show TelegramConnectionBanner;
 import '../widgets/improved_animated_message_bubble.dart';
 import '../widgets/telegram_context_menu.dart';
 import '../widgets/animated_chat_input.dart';
+import '../widgets/vista_emoji_panel.dart';
 import '../widgets/voice_input_state.dart';
 import '../widgets/instagram_style_post_card.dart';
 import '../widgets/date_divider.dart' as date_divider;
@@ -263,7 +264,13 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   final Set<String> _temporarilyHiddenMessages = {};
 
   // ✅ اندازه‌گیری ارتفاع اینپوت بار برای پدینگ دقیق لیست
-  double _inputHeight = 110.0; // مقدار اولیه تقریبی
+  double _inputHeight = 70.0; // مقدار اولیه بدون emoji panel
+
+  // ✅ مدیریت keyboard/emoji panel بدون jump
+  double _cachedKeyboardHeight = 300.0;
+  bool _showEmojiPanel = false;
+  bool _isKeyboardRequested = false;
+  Timer? _keyboardRequestTimeoutTimer;
 
   // ═══════════════════════════════════════════════════════════════════════════
   // 🎬 LIFECYCLE
@@ -1294,6 +1301,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     _messageReactionNotifiers.clear();
     _adaptiveEffectsController.updateScrollVelocity(0);
 
+    _keyboardRequestTimeoutTimer?.cancel();
     _scrollEndTimer?.cancel();
     _appBarAnimController.dispose();
     _scrollController.removeListener(_onScroll);
@@ -1307,6 +1315,25 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     }
 
     super.dispose();
+  }
+
+  /// وقتی کیبورد ظاهر شد، ارتفاعش رو cache می‌کنیم و spacer رو آزاد می‌کنیم
+  @override
+  void didChangeMetrics() {
+    super.didChangeMetrics();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final kbHeight = MediaQuery.of(context).viewInsets.bottom;
+      if (kbHeight > 80) {
+        _keyboardRequestTimeoutTimer?.cancel();
+        setState(() {
+          _cachedKeyboardHeight = kbHeight;
+          _isKeyboardRequested = false;
+          // اگر کیبورد ظاهر شد، emoji panel باید بسته بشه
+          if (_showEmojiPanel) _showEmojiPanel = false;
+        });
+      }
+    });
   }
 
   @override
@@ -1797,7 +1824,19 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   @override
   Widget build(BuildContext context) {
     final theme = context.chatTheme;
-    final keyboardVisible = MediaQuery.of(context).viewInsets.bottom > 0;
+    final kbViewInset = MediaQuery.of(context).viewInsets.bottom;
+    final keyboardVisible = kbViewInset > 0;
+
+    // ── تلگرام-استایل keyboard/emoji switch ──────────────────────────────────
+    // وقتی emoji نشون داده می‌شه یا کیبورد در راهه، body اسکافولد resize نمی‌شه
+    // و یک SizedBox با ارتفاع کیبورد جای خالی نگه می‌داره تا input bar نپره.
+    // وقتی کیبورد واقعی نمایش داده می‌شه، اسکافولد به حالت عادی برمی‌گرده.
+    final bottomSpacerHeight = (_showEmojiPanel || _isKeyboardRequested)
+        ? _cachedKeyboardHeight
+        : 0.0;
+    final totalBottomSpace = _inputHeight + bottomSpacerHeight;
+    // ─────────────────────────────────────────────────────────────────────────
+
     final adaptiveEffects = ref.watch(adaptiveEffectsProvider);
     final reduceEffects = keyboardVisible ||
         _isScrolling ||
@@ -1839,8 +1878,9 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
           backgroundColor: Colors.transparent,
           extendBody: true,
           extendBodyBehindAppBar: true,
-          resizeToAvoidBottomInset:
-              true, // ✅ بازگشت به حالت استاندارد برای جلوگیری از مشکل مخفی شدن اینپوت
+          // تلگرام-استایل: وقتی emoji نشونه یا کیبورد در راهه → false (body resize نمی‌شه)
+          // وقتی کیبورد عادیه → true (scaffold خودش کیبورد رو handle می‌کنه)
+          resizeToAvoidBottomInset: !_showEmojiPanel && !_isKeyboardRequested,
 
           appBar: _isSearchMode ? null : _buildAppBar(theme),
 
@@ -1857,8 +1897,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                     paginationState,
                     theme,
                     adaptiveEffects: adaptiveEffects,
-                    // ✅ پدینگ پایین داینامیک بر اساس ارتفاع واقعی اینپوت بار
-                    bottomPadding: _inputHeight,
+                    bottomPadding: totalBottomSpace + 8,
                   ),
                 ),
               ),
@@ -1890,7 +1929,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
               if (_showScrollToBottom)
                 Positioned(
                   right: 16,
-                  bottom: 90, // بالاتر از اینپوت بار
+                  bottom: totalBottomSpace + 12,
                   child: TweenAnimationBuilder<double>(
                     tween: Tween(begin: 0.0, end: 1.0),
                     duration: const Duration(milliseconds: 200),
@@ -1910,14 +1949,36 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                   ),
                 ),
 
-              // لایه 4: اینپوت بار (چسبیده به پایین)
+              // لایه 4: اینپوت بار + پنل پایین (Column)
+              // با این layout:
+              //  - keyboard mode: body shrinks (resizeToAvoidBottomInset: true)
+              //    → Positioned(bottom:0) بالای کیبورد → SizedBox(height:0)
+              //  - emoji mode: body full, SizedBox = cachedHeight → emoji panel نشون داده می‌شه
+              //  - transition mode: body full, SizedBox = cachedHeight → blank spacer
               if (!_isCurrentUserBlocked && !_isOtherUserBlocked)
-                Align(
-                  alignment: Alignment.bottomCenter,
-                  child: _buildInputArea(theme,
-                      reduceEffects: reduceEffects,
-                      allowHeavyEffects: adaptiveEffects.allowHeavyBlur,
-                      blurSigma: adaptiveEffects.blurSigma),
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: SafeArea(
+                    top: false,
+                    bottom: true,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _buildInputArea(theme,
+                            reduceEffects: reduceEffects,
+                            allowHeavyEffects: adaptiveEffects.allowHeavyBlur,
+                            blurSigma: adaptiveEffects.blurSigma),
+                        SizedBox(
+                          height: bottomSpacerHeight,
+                          child: bottomSpacerHeight > 0 && _showEmojiPanel
+                              ? _buildEmojiPanel(theme)
+                              : const SizedBox.shrink(),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
 
               // لایه 5: Search Bar
@@ -1961,6 +2022,44 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     setState(() {
       _inputHeight = newHeight;
     });
+  }
+
+  /// تلگرام-استایل toggle
+  void _onEmojiPanelToggled(bool show) {
+    if (show) {
+      // ارتفاع دقیق کیبورد را قبل از dismiss کردن ضبط می‌کنیم
+      final currentKbHeight = MediaQuery.of(context).viewInsets.bottom;
+      setState(() {
+        if (currentKbHeight > 80) _cachedKeyboardHeight = currentKbHeight;
+        _showEmojiPanel = true;
+        _isKeyboardRequested = false;
+      });
+    } else {
+      _keyboardRequestTimeoutTimer?.cancel();
+      setState(() {
+        _showEmojiPanel = false;
+        // blank spacer نگه می‌داره تا کیبورد بیاد → بدون jump
+        _isKeyboardRequested = true;
+      });
+      // safety: اگر کیبورد نیومد، بعد از مدتی spacer رو بر می‌داریم
+      _keyboardRequestTimeoutTimer = Timer(const Duration(milliseconds: 600), () {
+        if (mounted && _isKeyboardRequested) {
+          setState(() => _isKeyboardRequested = false);
+        }
+      });
+    }
+  }
+
+  /// پنل ایموجی – جایگزین کیبورد با همان ارتفاع
+  Widget _buildEmojiPanel(ChatTheme theme) {
+    return Material(
+      color: theme.inputBackgroundColor,
+      child: VistaEmojiPanel(
+        controller: _messageController,
+        height: _cachedKeyboardHeight,
+        onGifSelected: _handleGifSelected,
+      ),
+    );
   }
   // ═══════════════════════════════════════════════════════════════════════════
   // 🎨 APP BAR
@@ -3335,6 +3434,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       onVoiceRecorded: _handleVoiceRecorded,
       onAutocomplete: _handleAutocomplete,
       onHeightChanged: _onInputHeightChanged,
+      onEmojiPickerToggled: _onEmojiPanelToggled,
       reduceEffects: reduceEffects,
       allowHeavyEffects: allowHeavyEffects,
       blurSigma: blurSigma,

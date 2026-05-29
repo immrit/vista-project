@@ -370,6 +370,9 @@ class ConversationModel {
     if (lastMessage!.startsWith('e2ee:v1:')) {
       return '🔒 پیام رمزگذاری شده';
     }
+    if (isSecret && _looksEncryptedSecretPayload(lastMessage!)) {
+      return '🔒 پیام محرمانه';
+    }
 
     return lastMessage;
   }
@@ -469,6 +472,34 @@ class ConversationModel {
         return '↗️ فوروارد شده';
       default:
         return lastMessage ?? 'پیام';
+    }
+  }
+
+  bool _looksEncryptedSecretPayload(String content) {
+    final raw = content.trim();
+    if (raw.isEmpty) return false;
+    if (raw.startsWith('e2ee:v1:')) return true;
+
+    // ساختار رایج سکرت‌چت: base64( nonce_len + nonce + mac_len + mac + cipher )
+    final b64 = RegExp(r'^[A-Za-z0-9+/]+={0,2}$');
+    if (raw.length < 24 || raw.length > 4096) return false;
+    if (raw.length % 4 != 0 || !b64.hasMatch(raw)) return false;
+
+    try {
+      final bytes = base64Decode(raw);
+      if (bytes.length < 30) return false;
+
+      final nonceLength = bytes[0];
+      if (nonceLength < 8 || nonceLength > 32) return false;
+      if (bytes.length <= 1 + nonceLength + 1) return false;
+
+      final macLength = bytes[1 + nonceLength];
+      if (macLength < 8 || macLength > 32) return false;
+
+      final headerLength = 1 + nonceLength + 1 + macLength;
+      return bytes.length > headerLength;
+    } catch (_) {
+      return false;
     }
   }
 

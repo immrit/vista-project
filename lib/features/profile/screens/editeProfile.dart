@@ -568,6 +568,10 @@ class _EditProfileState extends ConsumerState<EditProfile> {
   Widget build(BuildContext context) {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     final getProfileData = ref.watch(profileProvider);
+    // Watch locale so that a language change triggers a rebuild
+    // and the birth date display format updates in real-time.
+    final currentLocale = ref.watch(localeProvider);
+    final locale = resolveBirthDateLocale(context, currentLocale);
 
     return Directionality(
       textDirection: TextDirection.rtl,
@@ -587,6 +591,12 @@ class _EditProfileState extends ConsumerState<EditProfile> {
             }
             if (bioController.text.isEmpty) {
               bioController.text = data['bio'] ?? "";
+            }
+            if (emailController.text.isEmpty) {
+              emailController.text = data['email'] ?? "";
+            }
+            if (_phoneController.text.isEmpty) {
+              _phoneController.text = data['phone_number'] ?? "";
             }
             if (_birthDate == null && data['birth_date'] != null) {
               _birthDate = data['birth_date']?.toString();
@@ -711,7 +721,7 @@ class _EditProfileState extends ConsumerState<EditProfile> {
                         _buildDateField(
                           title: 'تاریخ تولد',
                           value: _birthDate != null
-                              ? _formatBirthDate(_birthDate!)
+                              ? _formatBirthDate(_birthDate!, locale)
                               : 'انتخاب کنید',
                           icon: Icons.cake_outlined,
                           onTap: _showDatePicker,
@@ -784,13 +794,10 @@ class _EditProfileState extends ConsumerState<EditProfile> {
     );
   }
 
-  String _formatBirthDate(String date) {
+  String _formatBirthDate(String date, Locale locale) {
     final parsed = parseBirthDate(date);
     if (parsed == null) return date;
-    return formatBirthDateForDisplay(
-      parsed,
-      resolveBirthDateLocale(context, ref.read(localeProvider)),
-    );
+    return formatBirthDateForDisplay(parsed, locale);
   }
 
   // ساخت فیلد ورودی پروفایل با استایل یکسان

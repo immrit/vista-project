@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:Vista/DB/entities/recent_search_entity.dart';
@@ -346,20 +346,6 @@ class _SearchPageState extends ConsumerState<SearchPage>
       );
     }
 
-    if (!widget.openAsWorkspace) {
-      return Scaffold(
-        backgroundColor: theme.scaffoldBackgroundColor,
-        body: SafeArea(
-          child: Column(
-            children: [
-              _buildLauncherSearchBar(theme, l10n),
-              Expanded(child: _buildLauncherBody(theme)),
-            ],
-          ),
-        ),
-      );
-    }
-
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
       body: SafeArea(
@@ -380,6 +366,7 @@ class _SearchPageState extends ConsumerState<SearchPage>
       ),
     );
   }
+
 
   Widget _buildLauncherSearchBar(ThemeData theme, AppLocalizations l10n) {
     final isDark = theme.brightness == Brightness.dark;
