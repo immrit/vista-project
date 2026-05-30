@@ -1,9 +1,39 @@
-﻿// lib/model/message_model.dart
+// lib/model/message_model.dart
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import '../services/telegram_read_receipt_service.dart';
 import 'message_reaction_ui.dart';
 import '../features/chat/widgets/media_message_bubble.dart';
+import '../utils/env_config.dart';
+
+String? _parseMediaUrl(dynamic value) {
+  if (value == null) return null;
+  String? result;
+  if (value is List) {
+    result = value.isNotEmpty ? value.first?.toString() : null;
+  } else {
+    final str = value.toString();
+    if (str.startsWith('[') && str.endsWith(']')) {
+      try {
+        final List parsed = json.decode(str);
+        if (parsed.isNotEmpty) result = parsed.first?.toString();
+      } catch (_) {}
+    } else if (str.startsWith('{') && str.endsWith('}')) {
+      final inner = str.substring(1, str.length - 1);
+      final parts = inner.split(',');
+      if (parts.isNotEmpty) result = parts.first.trim();
+    } else {
+      result = str.isEmpty ? null : str;
+    }
+  }
+
+  if (result != null && result.isNotEmpty && !result.startsWith('http')) {
+    final baseUrl = EnvConfig.apiBaseUrl.replaceFirst('api.', 's3.');
+    final cleanPath = result.startsWith('/') ? result.substring(1) : result;
+    return '$baseUrl/$cleanPath';
+  }
+  return result;
+}
 
 /// مدل داده‌های پست اشتراک‌گذاری شده
 class SharedPostData {
@@ -41,8 +71,8 @@ class SharedPostData {
     return SharedPostData(
       postId: json['post_id'] ?? '',
       postContent: json['post_content'] ?? '',
-      postImageUrl: json['post_image_url'],
-      postVideoUrl: json['post_video_url'],
+      postImageUrl: _parseMediaUrl(json['post_image_url']),
+      postVideoUrl: _parseMediaUrl(json['post_video_url']),
       postAuthorName: json['post_author_name'] ?? '',
       postAuthorUsername: json['post_author_username'] ?? '',
       postAuthorAvatar: json['post_author_avatar'],
@@ -93,6 +123,7 @@ class StoryReplyData {
   final String? answerText;
   final String? respondentId;
   final String? respondentUsername;
+  final String? storyCaption;
 
   const StoryReplyData({
     required this.storyId,
@@ -110,6 +141,7 @@ class StoryReplyData {
     this.answerText,
     this.respondentId,
     this.respondentUsername,
+    this.storyCaption,
   });
 
   factory StoryReplyData.fromJson(Map<String, dynamic> json) {
@@ -143,6 +175,7 @@ class StoryReplyData {
       answerText: json['answer_text']?.toString() ?? json['answer']?.toString(),
       respondentId: json['respondent_id']?.toString(),
       respondentUsername: json['respondent_username']?.toString(),
+      storyCaption: json['story_caption']?.toString(),
     );
   }
 
@@ -162,7 +195,54 @@ class StoryReplyData {
         'answer_text': answerText,
         'respondent_id': respondentId,
         'respondent_username': respondentUsername,
+        'story_caption': storyCaption,
       };
+
+  /// Parses Instagram-style story reply metadata stored in reply fields.
+  static StoryReplyData? parseFromReplyFields({
+    String? replyToMessageId,
+    String? replyToContent,
+    String? replyToSenderName,
+  }) {
+    final target = replyToMessageId?.trim() ?? '';
+    if (!target.startsWith('story:')) return null;
+
+    final storyId = target.substring(6).trim();
+    if (storyId.isEmpty) return null;
+
+    final content = replyToContent?.trim() ?? '';
+    if (content.startsWith('{')) {
+      try {
+        final decoded = json.decode(content);
+        if (decoded is Map<String, dynamic>) {
+          return StoryReplyData.fromJson(decoded);
+        }
+        if (decoded is Map) {
+          return StoryReplyData.fromJson(
+            decoded.map((k, v) => MapEntry(k.toString(), v)),
+          );
+        }
+      } catch (_) {
+        // Fall through to legacy text-only payloads.
+      }
+    }
+
+    final ownerName = (replyToSenderName ?? '')
+        .replaceFirst(RegExp(r'^استوری\s*'), '')
+        .trim();
+
+    return StoryReplyData(
+      storyId: storyId,
+      storyOwnerId: '',
+      storyOwnerUsername: ownerName.isNotEmpty ? ownerName : 'کاربر',
+      storyThumbnailUrl: '',
+      storyMediaType: 'image',
+      storyCreatedAt: DateTime.now(),
+      storyCaption: content.isNotEmpty && !content.startsWith('{')
+          ? content
+          : null,
+    );
+  }
 }
 
 class MessageModel {
@@ -581,8 +661,8 @@ class MessageModel {
       isSent: json['is_sent'] ?? true,
       isDelivered: parsedIsDelivered,
       isSeen: parsedIsSeen,
-      attachmentUrl: json['attachment_url'],
-      audioUrl: json['audio_url'],
+      attachmentUrl: _parseMediaUrl(json['attachment_url']),
+      audioUrl: _parseMediaUrl(json['audio_url']),
       attachmentType: json['attachment_type'],
       attachmentFileName: json['attachment_file_name'] as String?,
       attachmentMimeType: json['attachment_mime_type'] as String?,

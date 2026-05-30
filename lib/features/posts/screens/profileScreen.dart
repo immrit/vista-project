@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'dart:async';
@@ -1922,7 +1922,9 @@ class _PostsGridViewState extends ConsumerState<_PostsGridView> {
 
     return ListView.separated(
       controller: _scrollController,
-      padding: EdgeInsets.zero,
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewPadding.bottom + 110,
+      ),
       itemCount: widget.posts.length + 1,
       separatorBuilder: (context, index) => Divider(
         height: 1,

@@ -48,6 +48,8 @@ class AnimatedChatInput extends StatefulWidget {
   final Function(String gifUrl)? onGifSelected;
   final ValueChanged<bool>? onEmojiPickerToggled;
   final ValueChanged<double>? onHeightChanged;
+  /// وضعیت پنل ایموجی از parent (منبع حقیقت – منطق تلگرام)
+  final bool isEmojiPanelOpen;
 
   // Autocomplete
   final Function(String? query, String type)?
@@ -78,6 +80,7 @@ class AnimatedChatInput extends StatefulWidget {
     this.onGifSelected,
     this.onEmojiPickerToggled,
     this.onHeightChanged,
+    this.isEmojiPanelOpen = false,
     this.onAutocomplete, // ✅ New callback
     this.enabled = true,
     this.isRecording = false,
@@ -113,9 +116,6 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
   DateTime? _recordingStartedAt;
   DateTime? _lastWaveUpdateAt;
   bool _isCancelSwipeArmed = false;
-
-  // Emoji
-  bool _showEmojiPicker = false;
 
   bool _hasText = false;
   double _lastReportedHeight = 0.0;
@@ -167,11 +167,9 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
   }
 
   void _onFocusChange() {
-    // وقتی کاربر روی text field می‌زنه در حالتی که emoji باز بوده
-    if (widget.focusNode?.hasFocus == true && _showEmojiPicker) {
-      setState(() => _showEmojiPicker = false);
+    // tap روی text field وقتی emoji باز است → برگشت به کیبورد
+    if (widget.focusNode?.hasFocus == true && widget.isEmojiPanelOpen) {
       widget.onEmojiPickerToggled?.call(false);
-      // کیبورد رو مطمئناً نمایش بده (tap روی text field همیشه کیبورد رو نمیاره)
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           SystemChannels.textInput.invokeMethod<void>('TextInput.show');
@@ -421,17 +419,15 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
   void _toggleEmojiPicker() {
     HapticFeedback.selectionClick();
 
-    if (_showEmojiPicker) {
-      // Emoji → Keyboard
-      setState(() => _showEmojiPicker = false);
+    if (widget.isEmojiPanelOpen) {
+      // Emoji → Keyboard (تلگرام: swap فوری)
       widget.onEmojiPickerToggled?.call(false);
       _showKeyboard();
     } else {
-      // Keyboard → Emoji
-      // اول به parent اطلاع می‌دیم تا ارتفاع کیبورد رو قبل از dismiss ضبط کنه
+      // Keyboard → Emoji (تلگرام: swap فوری)
       widget.onEmojiPickerToggled?.call(true);
-      setState(() => _showEmojiPicker = true);
       widget.focusNode?.unfocus();
+      SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
     }
   }
 
@@ -669,7 +665,7 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
 
           // دکمه Emoji
           _buildIconButton(
-            icon: _showEmojiPicker
+            icon: widget.isEmojiPanelOpen
                 ? Icons.keyboard_rounded
                 : Icons.emoji_emotions_outlined,
             onTap: _toggleEmojiPicker,

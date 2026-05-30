@@ -105,6 +105,7 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
             );
           }
 
+          final size = snapshot.data!;
           return GestureDetector(
             onTap: () {
               Navigator.push(
@@ -119,7 +120,13 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
               tag: 'post_image_${post.id}',
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(8),
-                child: _buildImageWithRetry(post.imageUrl!),
+                child: AspectRatio(
+                  aspectRatio: size.width > 0 && size.height > 0 ? size.width / size.height : 1.0,
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: _buildImageWithRetry(post.imageUrl!),
+                  ),
+                ),
               ),
             ),
           );
@@ -135,13 +142,17 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
     imageProvider.resolve(const ImageConfiguration()).addListener(
           ImageStreamListener(
             (ImageInfo info, bool _) {
-              completer.complete(Size(
-                info.image.width.toDouble(),
-                info.image.height.toDouble(),
-              ));
+              if (!completer.isCompleted) {
+                completer.complete(Size(
+                  info.image.width.toDouble(),
+                  info.image.height.toDouble(),
+                ));
+              }
             },
             onError: (dynamic exception, StackTrace? stackTrace) {
-              completer.completeError(exception);
+              if (!completer.isCompleted) {
+                completer.completeError(exception);
+              }
             },
           ),
         );

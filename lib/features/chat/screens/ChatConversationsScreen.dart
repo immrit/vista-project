@@ -1,4 +1,4 @@
-// import '../../../security/logging_utility.dart'; // ⛔️ حذف شد - دیگر استفاده نمی‌شود
+﻿// import '../../../security/logging_utility.dart'; // ⛔️ حذف شد - دیگر استفاده نمی‌شود
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -589,9 +589,11 @@ class _ChatConversationsScreenState
             ),
           ],
 
-          // ✅ فضای خالی در انتها
-          const SliverToBoxAdapter(
-            child: SizedBox(height: 80),
+          // ✅ فضای خالی در انتها (بالای باتم نویگیشن جزیره‌ای)
+          SliverToBoxAdapter(
+            child: SizedBox(
+              height: MediaQuery.of(context).viewPadding.bottom + 110,
+            ),
           ),
         ],
       ),
@@ -864,7 +866,10 @@ class _ChatConversationsScreenState
   // Loading State
   Widget _buildLoadingState(ThemeData theme) {
     return ListView.separated(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: EdgeInsets.only(
+        top: 8,
+        bottom: MediaQuery.of(context).viewPadding.bottom + 110,
+      ),
       itemCount: 10,
       separatorBuilder: (context, index) => _buildDivider(theme),
       itemBuilder: (context, index) => _buildShimmerItem(theme),

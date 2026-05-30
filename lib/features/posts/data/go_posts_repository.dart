@@ -49,8 +49,7 @@ class HashtagSuggestion {
 }
 
 class GoPostsRepository {
-  static String get _backendUrl =>
-      EnvConfig.apiBaseUrl ?? 'http://10.0.2.2:8080';
+  static String get _backendUrl => EnvConfig.apiBaseUrl;
 
   late final Dio _dio;
 
@@ -137,7 +136,8 @@ class GoPostsRepository {
     int limit = 15,
     dynamic offset = 0,
   }) async {
-    final cleanTag = hashtag.replaceAll('#', '');
+    final cleanTag = Uri.encodeComponent(hashtag.replaceAll('#', '').trim());
+    if (cleanTag.isEmpty) return const [];
     final response = await _dio.get(
       '/posts/hashtag/$cleanTag',
       queryParameters: {'limit': limit, 'offset': offset},

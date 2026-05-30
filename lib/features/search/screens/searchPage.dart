@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:Vista/DB/entities/recent_search_entity.dart';
@@ -25,11 +25,13 @@ import 'package:isar/isar.dart';
 class SearchPage extends ConsumerStatefulWidget {
   final String? initialHashtag;
   final bool openAsWorkspace;
+  final bool autofocus;
 
   const SearchPage({
     super.key,
     this.initialHashtag,
     this.openAsWorkspace = false,
+    this.autofocus = false,
   });
 
   @override
@@ -75,6 +77,19 @@ class _SearchPageState extends ConsumerState<SearchPage>
     if (!mounted) return;
     setState(() => _isInitialized = true);
     _handleInitialHashtag();
+    if (widget.openAsWorkspace &&
+        widget.autofocus &&
+        (widget.initialHashtag == null ||
+            widget.initialHashtag!.trim().isEmpty)) {
+      _requestSearchFocus();
+    }
+  }
+
+  void _requestSearchFocus() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      FocusScope.of(context).requestFocus(_focusNode);
+    });
   }
 
   void _handleInitialHashtag() {
@@ -125,7 +140,8 @@ class _SearchPageState extends ConsumerState<SearchPage>
 
   void _loadHashtagSuggestions(String query) {
     _suggestionDebounceTimer?.cancel();
-    _suggestionDebounceTimer = Timer(const Duration(milliseconds: 300), () async {
+    _suggestionDebounceTimer =
+        Timer(const Duration(milliseconds: 300), () async {
       final keyword = query.trim().replaceFirst('#', '');
       if (keyword.isEmpty) {
         setState(() {
@@ -308,6 +324,7 @@ class _SearchPageState extends ConsumerState<SearchPage>
         builder: (_) => SearchPage(
           openAsWorkspace: true,
           initialHashtag: initialQuery ?? widget.initialHashtag,
+          autofocus: initialQuery == null && widget.initialHashtag == null,
         ),
       ),
     );
@@ -367,7 +384,6 @@ class _SearchPageState extends ConsumerState<SearchPage>
     );
   }
 
-
   Widget _buildLauncherSearchBar(ThemeData theme, AppLocalizations l10n) {
     final isDark = theme.brightness == Brightness.dark;
     return Padding(
@@ -383,7 +399,8 @@ class _SearchPageState extends ConsumerState<SearchPage>
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
           child: Row(
             children: [
-              Icon(Icons.search_rounded, color: theme.colorScheme.onSurfaceVariant),
+              Icon(Icons.search_rounded,
+                  color: theme.colorScheme.onSurfaceVariant),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
@@ -539,7 +556,8 @@ class _SearchPageState extends ConsumerState<SearchPage>
         borderRadius: BorderRadius.circular(14),
         child: ListTile(
           dense: true,
-          leading: const Icon(Icons.error_outline_rounded, color: AppColors.error),
+          leading:
+              const Icon(Icons.error_outline_rounded, color: AppColors.error),
           title: Text(
             error,
             style: const TextStyle(fontSize: 13),
@@ -562,7 +580,8 @@ class _SearchPageState extends ConsumerState<SearchPage>
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: theme.colorScheme.outline.withValues(alpha: 0.2)),
+        border:
+            Border.all(color: theme.colorScheme.outline.withValues(alpha: 0.2)),
       ),
       child: _isLoadingSuggestions
           ? const Padding(
@@ -573,8 +592,8 @@ class _SearchPageState extends ConsumerState<SearchPage>
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
               itemCount: _hashtagSuggestions.length.clamp(0, 6),
-              separatorBuilder: (_, __) =>
-                  Divider(height: 1, color: theme.dividerColor.withValues(alpha: 0.35)),
+              separatorBuilder: (_, __) => Divider(
+                  height: 1, color: theme.dividerColor.withValues(alpha: 0.35)),
               itemBuilder: (context, index) {
                 final item = _hashtagSuggestions[index];
                 return ListTile(
@@ -602,7 +621,10 @@ class _SearchPageState extends ConsumerState<SearchPage>
 
   Widget _buildLoadingState() {
     return ListView(
-      padding: const EdgeInsets.symmetric(vertical: 12),
+      padding: EdgeInsets.only(
+        top: 12,
+        bottom: MediaQuery.of(context).viewPadding.bottom + 110,
+      ),
       children: const [
         PostCardSkeleton(),
         PostCardSkeleton(),
@@ -617,13 +639,16 @@ class _SearchPageState extends ConsumerState<SearchPage>
 
     final query = _highlightQuery(_searchController.text);
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+      padding: EdgeInsets.only(
+        top: 8,
+        left: 16,
+        right: 16,
+        bottom: MediaQuery.of(context).viewPadding.bottom + 110,
+      ),
       children: [
         if (state.userResults.isNotEmpty) ...[
           _buildSectionHeader('افراد'),
-          ...state.userResults
-              .take(5)
-              .map(
+          ...state.userResults.take(5).map(
                 (user) => _UserTile(
                   user: user,
                   query: query,
@@ -671,8 +696,12 @@ class _SearchPageState extends ConsumerState<SearchPage>
         return false;
       },
       child: ListView.builder(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        itemCount: state.userResults.length + (state.isLoadingMoreUsers ? 1 : 0),
+        padding: EdgeInsets.only(
+          top: 8,
+          bottom: MediaQuery.of(context).viewPadding.bottom + 110,
+        ),
+        itemCount:
+            state.userResults.length + (state.isLoadingMoreUsers ? 1 : 0),
         itemBuilder: (context, index) {
           if (index >= state.userResults.length) {
             return const Padding(
@@ -699,7 +728,12 @@ class _SearchPageState extends ConsumerState<SearchPage>
       return _buildEmptyState('پستی یافت نشد');
     }
     return GridView.builder(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+      padding: EdgeInsets.only(
+        top: 8,
+        left: 16,
+        right: 16,
+        bottom: MediaQuery.of(context).viewPadding.bottom + 110,
+      ),
       itemCount: state.hashtagResults.length,
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 3,
@@ -761,7 +795,12 @@ class _SearchPageState extends ConsumerState<SearchPage>
         return RefreshIndicator(
           onRefresh: _loadTrendingHashtags,
           child: ListView(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+            padding: EdgeInsets.only(
+              top: 12,
+              left: 16,
+              right: 16,
+              bottom: MediaQuery.of(context).viewPadding.bottom + 110,
+            ),
             children: [
               if (recents.isNotEmpty) ...[
                 Row(
@@ -775,7 +814,8 @@ class _SearchPageState extends ConsumerState<SearchPage>
                 ),
                 ...recents.take(12).map(
                       (item) => ListTile(
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                        contentPadding:
+                            const EdgeInsets.symmetric(horizontal: 4),
                         leading: Icon(
                           item.searchType == SearchType.hashtag
                               ? Icons.tag_rounded
@@ -876,7 +916,8 @@ class _UserTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final displayName = user.fullName.isNotEmpty ? user.fullName : user.username;
+    final displayName =
+        user.fullName.isNotEmpty ? user.fullName : user.username;
     final avatarUrl = user.avatarUrl;
 
     return ListTile(
@@ -887,7 +928,8 @@ class _UserTile extends StatelessWidget {
             ? CachedNetworkImageProvider(avatarUrl)
             : null,
         child: avatarUrl == null || avatarUrl.isEmpty
-            ? Icon(Icons.person_rounded, color: theme.colorScheme.onSurfaceVariant)
+            ? Icon(Icons.person_rounded,
+                color: theme.colorScheme.onSurfaceVariant)
             : null,
       ),
       title: Row(
@@ -925,13 +967,15 @@ class _UserTile extends StatelessWidget {
         ),
         maxLines: 1,
       ),
-      trailing: Icon(Icons.chevron_left_rounded, color: theme.colorScheme.outline),
+      trailing:
+          Icon(Icons.chevron_left_rounded, color: theme.colorScheme.outline),
       onTap: () {
         onTap();
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (_) => ProfileScreen(userId: user.id, username: user.username),
+            builder: (_) =>
+                ProfileScreen(userId: user.id, username: user.username),
           ),
         );
       },

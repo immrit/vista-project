@@ -2,6 +2,7 @@ import 'dart:convert';
 // Equatable removed: model is mutable in this codebase
 import 'ProfileModel.dart'; // واردکردن ProfileModel برای استفاده از VerificationType
 import '../utils/verification_badge_utils.dart';
+import '../utils/env_config.dart';
 
 class PublicPostModel {
   final String id;
@@ -79,9 +80,8 @@ class PublicPostModel {
       userId: _parseString(map, 'user_id') ?? '',
       fullName: _parseString(map, 'full_name') ?? '',
       content: _parseString(map, 'content') ?? '',
-      imageUrl: _parseString(map, 'image_url', defaultValue: null),
-      videoUrl: _parseString(map, 'video_url',
-          defaultValue: null), // پارس کردن video_url
+      imageUrl: _parseMediaUrl(map, 'image_url'),
+      videoUrl: _parseMediaUrl(map, 'video_url'), 
       createdAt: _parseDateTime(map, 'created_at') ?? DateTime.now(),
       username: _parseUsername(map),
       avatarUrl: _parseAvatarUrl(map),
@@ -93,7 +93,7 @@ class PublicPostModel {
           _parseVerificationType(map), // <-- فقط همین خط تغییر کند
       commentCount: _parseInt(map, 'comment_count'),
       hashtags: _parseHashtags(map),
-      musicUrl: _parseString(map, 'music_url', defaultValue: null),
+      musicUrl: _parseMediaUrl(map, 'music_url'),
       title: _parseString(map, 'title'),
       feedSource: _parseString(map, 'feed_source', defaultValue: null),
       feedScore: _parseDouble(map, 'feed_score', defaultValue: null),
@@ -107,14 +107,43 @@ class PublicPostModel {
     );
   }
 
+  static String? _parseMediaUrl(Map<String, dynamic> map, String key) {
+    final raw = _parseString(map, key, defaultValue: null);
+    if (raw == null || raw.isEmpty) return null;
+    if (raw.startsWith('http')) return raw;
+    final baseUrl = EnvConfig.apiBaseUrl.replaceFirst('api.', 's3.');
+    final cleanPath = raw.startsWith('/') ? raw.substring(1) : raw;
+    return '$baseUrl/$cleanPath';
+  }
+
   // متدهای کمکی برای parse کردن
   static String? _parseString(Map<String, dynamic> map, String key,
       {String? defaultValue = ''}) {
-    if (map[key] == null) {
+    final value = map[key];
+    if (value == null) {
       return defaultValue;
     }
-    final result = map[key]?.toString();
-    return result?.isEmpty == true ? defaultValue : result;
+    if (value is List) {
+      if (value.isEmpty) return defaultValue;
+      final result = value.first?.toString();
+      return result?.isEmpty == true ? defaultValue : result;
+    }
+    final result = value.toString();
+    if (result.startsWith('[') && result.endsWith(']')) {
+      try {
+        final List parsed = json.decode(result);
+        if (parsed.isNotEmpty) {
+          final str = parsed.first?.toString();
+          return str?.isEmpty == true ? defaultValue : str;
+        }
+      } catch (_) {}
+    }
+    if (result.startsWith('{') && result.endsWith('}')) {
+      final inner = result.substring(1, result.length - 1);
+      final parts = inner.split(',');
+      if (parts.isNotEmpty) return parts.first.trim();
+    }
+    return result.isEmpty ? defaultValue : result;
   }
 
   static int _parseInt(Map<String, dynamic> map, String key,

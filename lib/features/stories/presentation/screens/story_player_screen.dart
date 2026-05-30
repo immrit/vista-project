@@ -7,6 +7,7 @@ import 'package:video_player/video_player.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:just_audio/just_audio.dart';
 import 'dart:async';
+import 'dart:convert';
 
 import '../../domain/entities/entities.dart';
 import '../../domain/entities/story_editor_models.dart' as editor_models;
@@ -21,6 +22,11 @@ import '../../../../utils/navigation_helper.dart';
 import '../../../../utils/user_friendly_error_utils.dart';
 import '../../../../services/current_user_service.dart';
 import '../../../chat/screens/modern_chat_screen.dart';
+import '../../../../model/message_model.dart';
+import '../../../chat/utils/story_reply_media_utils.dart';
+import '../../../chat/providers/chat_action_controller.dart';
+import '../../../chat/providers/chat_providers.dart';
+import '../../../../provider/optimized_conversations_provider.dart';
 
 /// صفحه پخش استوری
 class StoryPlayerScreen extends ConsumerStatefulWidget {
@@ -59,6 +65,7 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
   Timer? _musicPreviewStopTimer;
   String? _playingMusicElementId;
   String? _currentUserId;
+  bool _isReplySending = false;
 
   // Stores the pointer-down position so onTap (which is arena-resolved)
   // can decide prev/pause/next without firing when a child sticker wins.
@@ -96,6 +103,13 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
   }
 
   @override
+  void deactivate() {
+    // ref is still valid here; using it in dispose() throws StateError.
+    ref.invalidate(activeStoriesProvider);
+    super.deactivate();
+  }
+
+  @override
   void dispose() {
     _progressController.dispose();
     _pageController.dispose();
@@ -107,8 +121,6 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
       SystemUiMode.manual,
       overlays: SystemUiOverlay.values,
     );
-    // Refresh the story feed so seen-rings update after the viewer exits.
-    ref.invalidate(activeStoriesProvider);
     super.dispose();
   }
 
@@ -156,9 +168,7 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
     }
   }
 
-  /// Determines reply permission from the story's [viewerCanReply] field
-  /// (computed by the backend in the active stories query) and calls the
-  /// /reply-access endpoint only when a more authoritative check is needed.
+  /// Loads reply permission from the authoritative /reply-access endpoint.
   Future<void> _loadReplyState() async {
     if (_isOwnStory) {
       if (!mounted) return;
@@ -169,18 +179,28 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
       return;
     }
 
-    // Fast path: use the server-precomputed flag embedded in the story object.
-    final canReply = _currentStory.viewerCanReply;
+    final repository = ref.read(storyRepositoryProvider);
+    final accessResult =
+        await repository.getStoryReplyAccess(_currentStory.id);
 
     if (!mounted) return;
-    setState(() {
-      _canReplyToStory = canReply;
-      // Default to 'everyone' — the actual block reason is returned from the
-      // backend when Reply() is called, so we don't need to re-derive it here.
-      _replyPermission = canReply
-          ? StoryReplyPermission.everyone
-          : StoryReplyPermission.off;
-    });
+    accessResult.fold(
+      (_) {
+        final canReply = _currentStory.viewerCanReply;
+        setState(() {
+          _canReplyToStory = canReply;
+          _replyPermission = canReply
+              ? StoryReplyPermission.everyone
+              : StoryReplyPermission.off;
+        });
+      },
+      (access) {
+        setState(() {
+          _canReplyToStory = access.canReply;
+          _replyPermission = access.permission;
+        });
+      },
+    );
   }
 
   Future<void> _initVideo() async {
@@ -427,7 +447,8 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
                       isOwnStory: _isOwnStory,
                       storyOwnerUsername: _currentUser.username,
                       replyPermission: _replyPermission,
-                      canReply: _canReplyToStory,
+                      canReply: _canReplyToStory && !_isReplySending,
+                      isReplySending: _isReplySending,
                       onReply: (message) => _replyToStory(message),
                       onReact: (reaction) => _reactToStory(reaction),
                       onViewers: _isOwnStory ? _showViewers : null,
@@ -1420,7 +1441,10 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
   }
 
   Future<void> _replyToStory(String message) async {
-    if (!_canReplyToStory) {
+    final trimmed = message.trim();
+    if (trimmed.isEmpty) return;
+
+    if (!_canReplyToStory || _isReplySending) {
       final blockedMessage = switch (_replyPermission) {
         StoryReplyPermission.off => 'پاسخ به این استوری غیرفعال است',
         StoryReplyPermission.following =>
@@ -1431,25 +1455,109 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
       return;
     }
 
+    setState(() => _isReplySending = true);
+    _progressController.stop();
+    _videoController?.pause();
+
     final repository = ref.read(storyRepositoryProvider);
-    final result = await repository.replyToStory(_currentStory.id, message);
+    final result = await repository.replyToStory(_currentStory.id, trimmed);
 
     if (!mounted) return;
-    if (result.isSuccess) {
-      _showReplySuccessWithDMOption(message);
-    } else {
+    if (!result.isSuccess) {
+      setState(() => _isReplySending = false);
+      if (!_isPaused) {
+        _progressController.forward();
+        _videoController?.play();
+      }
       UserFriendlyErrorUtils.showErrorSnackBar(
         context,
         result.error ?? 'خطا در ارسال پاسخ',
       );
+      return;
     }
+
+    // Mirror note replies: also deliver as a DM with story context.
+    final conversationId = await _resolveConversationWithOwner();
+    if (conversationId != null && mounted) {
+      final ownerUsername = _currentUser.username;
+      final storyReplyMeta = _buildStoryReplyMeta();
+      final dmResult = await ref
+          .read(chatActionControllerProvider.notifier)
+          .sendMessage(
+            conversationId: conversationId,
+            content: trimmed,
+            replyToMessageId: 'story:${_currentStory.id}',
+            replyToContent: jsonEncode(storyReplyMeta.toJson()),
+            replyToSenderName: 'استوری $ownerUsername',
+            replyToKind: 'story',
+          );
+
+      if (!mounted) return;
+      if (!dmResult.isSuccess) {
+        UserFriendlyErrorUtils.showErrorSnackBar(
+          context,
+          dmResult.error ?? 'پاسخ در چت ثبت نشد',
+        );
+      } else {
+        await ref.read(optimizedConversationsProvider.notifier).refresh();
+      }
+    }
+
+    if (!mounted) return;
+    setState(() => _isReplySending = false);
+    if (!_isPaused && !_showingViewers) {
+      _progressController.forward();
+      _videoController?.play();
+    }
+
+    _showReplySuccessWithDMOption(conversationId: conversationId);
+  }
+
+  StoryReplyData _buildStoryReplyMeta() {
+    final thumbnailUrl =
+        StoryReplyMediaUtils.thumbnailFromStory(_currentStory);
+
+    return StoryReplyData(
+      storyId: _currentStory.id,
+      storyOwnerId: _currentStory.userId,
+      storyOwnerUsername: _currentUser.username,
+      storyOwnerAvatarUrl: _currentUser.avatarUrl,
+      storyThumbnailUrl: thumbnailUrl,
+      storyMediaType:
+          _currentStory.media.isVideo ? 'video' : 'image',
+      storyCreatedAt: _currentStory.createdAt,
+      storyExpiresAt: _currentStory.expiresAt,
+      replyKind: 'reply',
+      storyCaption: _currentStory.caption?.trim(),
+    );
+  }
+
+  /// Finds or creates a DM conversation with the story owner.
+  Future<String?> _resolveConversationWithOwner() async {
+    final ownerId = _currentStory.userId.trim();
+    if (ownerId.isEmpty) return null;
+
+    final conversations = ref.read(optimizedConversationsProvider).conversations;
+    for (final conversation in conversations) {
+      if (conversation.otherUserId == ownerId) {
+        return conversation.id;
+      }
+    }
+
+    final createResult =
+        await ref.read(chatRepositoryProvider).createConversation(ownerId);
+    if (!createResult.isSuccess || createResult.data == null) {
+      return null;
+    }
+    return createResult.data!.id;
   }
 
   /// Shows a success snackbar with an "Open Chat" action that navigates to
   /// the DM conversation with the story owner.
-  void _showReplySuccessWithDMOption(String message) {
+  void _showReplySuccessWithDMOption({String? conversationId}) {
     final ownerUserId = _currentStory.userId;
     final ownerUsername = _currentUser.username;
+    final ownerAvatar = _currentUser.avatarUrl;
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -1463,9 +1571,10 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
               MaterialPageRoute(
                 builder: (_) => ModernChatScreen(
                   args: ChatScreenArgs(
-                    conversationId: '',
+                    conversationId: conversationId ?? '',
                     otherUserId: ownerUserId,
                     otherUserName: ownerUsername,
+                    otherUserAvatar: ownerAvatar,
                   ),
                 ),
               ),

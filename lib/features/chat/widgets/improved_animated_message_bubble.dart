@@ -2,7 +2,6 @@
 
 import 'package:flutter/material.dart';
 import '../../../security/e2ee_service.dart' as import_e2ee;
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 import 'dart:io';
@@ -17,6 +16,8 @@ import 'file_message_bubble.dart';
 import 'full_screen_image_viewer.dart';
 import '../../../services/telegram_read_receipt_service.dart';
 import '../../../model/message_model.dart';
+import '../utils/story_reply_media_utils.dart';
+import 'story_reply_thumbnail.dart';
 import '../../../utils/navigation_helper.dart';
 import '../../../utils/user_friendly_error_utils.dart';
 import '../performance/chat_performance_profile.dart';
@@ -391,6 +392,7 @@ class _ImprovedAnimatedMessageBubbleState
     final canonicalType = _canonicalAttachmentType();
     final isMedia = (canonicalType == 'image' || canonicalType == 'video') &&
         widget.attachmentUrl != null;
+    final storyReply = _effectiveStoryReplyData();
 
     return Container(
       clipBehavior: isMedia ? Clip.antiAlias : Clip.none,
@@ -405,9 +407,10 @@ class _ImprovedAnimatedMessageBubbleState
           if (_shouldShowSenderName())
             _buildSenderName(theme, widget.senderName!.trim()),
           if (widget.isForwarded) _buildForwardHeader(theme),
-          if (widget.message?.storyReplyData != null)
-            _buildStoryReplySection(theme),
-          if (widget.replyToContent != null) _buildReplySection(theme),
+          if (storyReply != null)
+            _buildStoryReplySection(theme, storyReply),
+          if (storyReply == null && widget.replyToContent != null)
+            _buildReplySection(theme),
           _buildContent(theme),
           if (widget.reactions.isNotEmpty) _buildReactionsSection(theme),
         ],
@@ -480,21 +483,32 @@ class _ImprovedAnimatedMessageBubbleState
     );
   }
 
+  StoryReplyData? _effectiveStoryReplyData() {
+    if (widget.message?.storyReplyData != null) {
+      return widget.message!.storyReplyData;
+    }
+    return StoryReplyData.parseFromReplyFields(
+      replyToMessageId: widget.replyToMessageId,
+      replyToContent: widget.replyToContent,
+      replyToSenderName: widget.replyToSenderName,
+    );
+  }
+
   Widget _buildReplySection(ChatTheme theme) {
     final replySender = widget.replyToSenderName ?? 'کاربر';
     final rawReplyTarget = widget.replyToMessageId?.trim() ?? '';
-    final hasDirectReplyTarget =
-        rawReplyTarget.isNotEmpty && !rawReplyTarget.startsWith('note:');
-    final isNoteReply = replySender.trim().startsWith('یادداشت') ||
-        (!hasDirectReplyTarget &&
-            (widget.replyToContent?.trim().isNotEmpty ?? false) &&
-            (widget.replyToSenderName?.trim().isNotEmpty ?? false));
+    final isSyntheticNoteReply = rawReplyTarget.startsWith('note:');
+    final isSyntheticStoryReply = rawReplyTarget.startsWith('story:');
+    final isNoteReply = isSyntheticNoteReply ||
+        replySender.trim().startsWith('یادداشت');
+    final isStoryReply = isSyntheticStoryReply ||
+        replySender.trim().startsWith('استوری');
     final noteReplyChipColor = widget.isMe
         ? Colors.white.withValues(alpha: 0.18)
         : theme.sendButtonColor.withValues(alpha: 0.14);
     final noteReplyChipTextColor =
         widget.isMe ? theme.myBubbleTextColor : theme.sendButtonColor;
-    final replySenderColor = isNoteReply
+    final replySenderColor = (isNoteReply || isStoryReply)
         ? (widget.isMe
             ? theme.myBubbleTextColor.withValues(alpha: 0.96)
             : theme.sendButtonColor)
@@ -520,7 +534,7 @@ class _ImprovedAnimatedMessageBubbleState
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (isNoteReply) ...[
+            if (isNoteReply || isStoryReply) ...[
               Container(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -532,13 +546,15 @@ class _ImprovedAnimatedMessageBubbleState
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(
-                      Icons.sticky_note_2_outlined,
+                      isStoryReply
+                          ? Icons.auto_stories_outlined
+                          : Icons.sticky_note_2_outlined,
                       size: 12,
                       color: noteReplyChipTextColor,
                     ),
                     const SizedBox(width: 4),
                     Text(
-                      'پاسخ به یادداشت',
+                      isStoryReply ? 'پاسخ به استوری' : 'پاسخ به یادداشت',
                       style: TextStyle(
                         color: noteReplyChipTextColor,
                         fontSize: 11,
@@ -553,7 +569,7 @@ class _ImprovedAnimatedMessageBubbleState
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (!isNoteReply) ...[
+                if (!isNoteReply && !isStoryReply) ...[
                   Icon(
                     Icons.reply_rounded,
                     size: 12,
@@ -589,10 +605,7 @@ class _ImprovedAnimatedMessageBubbleState
     );
   }
 
-  Widget _buildStoryReplySection(ChatTheme theme) {
-    final storyData = widget.message?.storyReplyData;
-    if (storyData == null) return const SizedBox.shrink();
-
+  Widget _buildStoryReplySection(ChatTheme theme, StoryReplyData storyData) {
     final ownerUsername = storyData.storyOwnerUsername.trim().isNotEmpty
         ? storyData.storyOwnerUsername
         : 'کاربر';
@@ -600,9 +613,15 @@ class _ImprovedAnimatedMessageBubbleState
     final isQuestionReply = storyData.replyKind == 'question';
     final headerText =
         widget.isMe ? 'پاسخ به استوری $ownerUsername' : 'پاسخ به استوری شما';
+    final caption = storyData.storyCaption?.trim();
+    final hasRealCaption = caption != null &&
+        caption.isNotEmpty &&
+        !StoryReplyMediaUtils.isGenericStoryLabel(caption);
     final secondaryText = isExpired
         ? 'استوری در دسترس نیست'
-        : (storyData.storyMediaType == 'video' ? 'ویدیو' : 'تصویر');
+        : (hasRealCaption
+            ? caption
+            : (storyData.storyMediaType == 'video' ? 'ویدیو' : 'تصویر'));
     String effectiveHeaderText = headerText;
     String effectiveSecondaryText = secondaryText;
     final answerPreview = ((storyData.answerText?.trim().isNotEmpty ?? false)
@@ -700,113 +719,26 @@ class _ImprovedAnimatedMessageBubbleState
 
   Widget _buildStoryReplyThumbnail(
       ChatTheme theme, StoryReplyData data, bool isExpired) {
-    final hasThumbnail = data.storyThumbnailUrl.isNotEmpty;
-    final isQuestionReply = data.replyKind == 'question';
+    if (isExpired) {
+      return Container(
+        width: 56,
+        height: 56,
+        decoration: BoxDecoration(
+          color: theme.dividerColor.withValues(alpha: 0.2),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: const Icon(
+          Icons.schedule,
+          color: Colors.white70,
+          size: 20,
+        ),
+      );
+    }
 
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(8),
-      child: Stack(
-        children: [
-          if (hasThumbnail)
-            CachedNetworkImage(
-              imageUrl: data.storyThumbnailUrl,
-              width: 56,
-              height: 56,
-              fit: BoxFit.cover,
-              placeholder: (context, url) => Container(
-                width: 56,
-                height: 56,
-                color: theme.dividerColor.withValues(alpha: 0.2),
-                child: const Center(
-                  child: SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                ),
-              ),
-              errorWidget: (context, url, error) => Container(
-                width: 56,
-                height: 56,
-                color: theme.dividerColor.withValues(alpha: 0.2),
-                child: Icon(
-                  isQuestionReply
-                      ? Icons.question_answer_rounded
-                      : (data.storyMediaType == 'video'
-                          ? Icons.videocam
-                          : Icons.image),
-                  color: theme.dividerColor.withValues(alpha: 0.6),
-                  size: 24,
-                ),
-              ),
-            )
-          else
-            Container(
-              width: 56,
-              height: 56,
-              color: theme.dividerColor.withValues(alpha: 0.2),
-              child: Icon(
-                isQuestionReply
-                    ? Icons.question_answer_rounded
-                    : (data.storyMediaType == 'video'
-                        ? Icons.videocam
-                        : Icons.image),
-                color: theme.dividerColor.withValues(alpha: 0.6),
-                size: 24,
-              ),
-            ),
-          if (data.storyMediaType == 'video')
-            Positioned(
-              top: 4,
-              right: 4,
-              child: Container(
-                padding: const EdgeInsets.all(2),
-                decoration: BoxDecoration(
-                  color: Colors.black54,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: const Icon(
-                  Icons.play_arrow,
-                  color: Colors.white,
-                  size: 14,
-                ),
-              ),
-            ),
-          if (isQuestionReply)
-            Positioned(
-              bottom: 4,
-              left: 4,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                decoration: BoxDecoration(
-                  color: Colors.black54,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: const Text(
-                  'Q&A',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 8,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ),
-          if (isExpired)
-            Positioned.fill(
-              child: Container(
-                color: Colors.black45,
-                child: const Center(
-                  child: Icon(
-                    Icons.schedule,
-                    color: Colors.white70,
-                    size: 20,
-                  ),
-                ),
-              ),
-            ),
-        ],
-      ),
+    return StoryReplyThumbnail(
+      data: data,
+      placeholderColor: theme.dividerColor.withValues(alpha: 0.2),
+      iconColor: theme.dividerColor.withValues(alpha: 0.6),
     );
   }
 

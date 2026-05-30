@@ -222,10 +222,25 @@ class StoryRepository implements IStoryRepository {
         options: await _authOptions(),
       );
       return StoryResult.success(null);
+    } on DioException catch (e, st) {
+      logError('Failed to reply to story', error: e, stackTrace: st);
+      final msg = _dioErrorMessage(e) ?? 'خطا در ارسال پاسخ';
+      return StoryResult.failure(msg);
     } catch (e, st) {
       logError('Failed to reply to story', error: e, stackTrace: st);
       return StoryResult.failure('خطا در ارسال پاسخ');
     }
+  }
+
+  String? _dioErrorMessage(DioException e) {
+    final data = e.response?.data;
+    if (data is Map) {
+      final message = data['message'] ?? data['error'];
+      if (message != null && message.toString().trim().isNotEmpty) {
+        return message.toString();
+      }
+    }
+    return null;
   }
 
   @override
@@ -521,6 +536,7 @@ class StoryRepository implements IStoryRepository {
   /// Checks whether the current viewer can reply to [storyId].
   /// Uses the backend-computed [viewer_can_reply] from the story data when
   /// available, or falls back to the dedicated /reply-access endpoint.
+  @override
   Future<StoryResult<({bool canReply, StoryReplyPermission permission})>>
       getStoryReplyAccess(String storyId) async {
     try {

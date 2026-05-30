@@ -267,7 +267,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   // ✅ اندازه‌گیری ارتفاع اینپوت بار برای پدینگ دقیق لیست
   double _inputHeight = 70.0; // مقدار اولیه بدون emoji panel
 
-  // ✅ مدیریت keyboard/emoji panel بدون jump
+  // ✅ مدیریت keyboard/emoji – منطق تلگرام
+  // ارتفاع کیبورد cache می‌شود؛ input ثابت می‌ماند و فقط پنل پایین swap می‌شود
   double _cachedKeyboardHeight = 300.0;
   bool _showEmojiPanel = false;
   bool _isKeyboardRequested = false;
@@ -1328,7 +1329,23 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     super.dispose();
   }
 
-  /// وقتی کیبورد ظاهر شد، ارتفاعش رو cache می‌کنیم و spacer رو آزاد می‌کنیم
+  /// ارتفاع ناحیه پایین (کیبورد یا پنل ایموجی) – تلگرام
+  double _bottomPanelHeight(double kbInset) {
+    if (_showEmojiPanel || _isKeyboardRequested) return _cachedKeyboardHeight;
+    return kbInset;
+  }
+
+  /// offset عمودی input bar از پایین صفحه – تلگرام
+  /// emoji: Column(Input+Panel) از bottom:0
+  /// keyboard: Input از bottom:kbInset
+  /// transition: Input از bottom:cached تا کیبورد بیاد
+  double _inputBottomOffset(double kbInset) {
+    if (_showEmojiPanel) return 0;
+    if (_isKeyboardRequested) return _cachedKeyboardHeight;
+    return kbInset;
+  }
+
+  /// وقتی کیبورد ظاهر/مخفی شد، ارتفاعش را cache می‌کنیم
   @override
   void didChangeMetrics() {
     super.didChangeMetrics();
@@ -1340,8 +1357,6 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         setState(() {
           _cachedKeyboardHeight = kbHeight;
           _isKeyboardRequested = false;
-          // اگر کیبورد ظاهر شد، emoji panel باید بسته بشه
-          if (_showEmojiPanel) _showEmojiPanel = false;
         });
       }
     });
@@ -1836,16 +1851,18 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   Widget build(BuildContext context) {
     final theme = context.chatTheme;
     final kbViewInset = MediaQuery.of(context).viewInsets.bottom;
-    final keyboardVisible = kbViewInset > 0;
+    final keyboardVisible = kbViewInset > 80;
 
-    // ── تلگرام-استایل keyboard/emoji switch ──────────────────────────────────
-    // وقتی emoji نشون داده می‌شه یا کیبورد در راهه، body اسکافولد resize نمی‌شه
-    // و یک SizedBox با ارتفاع کیبورد جای خالی نگه می‌داره تا input bar نپره.
-    // وقتی کیبورد واقعی نمایش داده می‌شه، اسکافولد به حالت عادی برمی‌گرده.
-    final bottomSpacerHeight = (_showEmojiPanel || _isKeyboardRequested)
-        ? _cachedKeyboardHeight
+    // ── تلگرام: input ثابت، swap فوری بین keyboard و emoji panel ─────────────
+    final bottomPanelHeight = _bottomPanelHeight(kbViewInset);
+    final inputBottomOffset = _inputBottomOffset(kbViewInset);
+    final safeBottom = MediaQuery.paddingOf(context).bottom;
+    final idleSafeInset = (!_showEmojiPanel &&
+            !_isKeyboardRequested &&
+            kbViewInset <= 0)
+        ? safeBottom
         : 0.0;
-    final totalBottomSpace = _inputHeight + bottomSpacerHeight;
+    final totalBottomSpace = _inputHeight + bottomPanelHeight + idleSafeInset;
     // ─────────────────────────────────────────────────────────────────────────
 
     final adaptiveEffects = ref.watch(adaptiveEffectsProvider);
@@ -1889,9 +1906,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
           backgroundColor: Colors.transparent,
           extendBody: true,
           extendBodyBehindAppBar: true,
-          // تلگرام-استایل: وقتی emoji نشونه یا کیبورد در راهه → false (body resize نمی‌شه)
-          // وقتی کیبورد عادیه → true (scaffold خودش کیبورد رو handle می‌کنه)
-          resizeToAvoidBottomInset: !_showEmojiPanel && !_isKeyboardRequested,
+          // تلگرام: positioning دستی – input هرگز jump نمی‌کند
+          resizeToAvoidBottomInset: false,
 
           appBar: _isSearchMode ? null : _buildAppBar(theme),
 
@@ -1960,35 +1976,29 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                   ),
                 ),
 
-              // لایه 4: اینپوت بار + پنل پایین (Column)
-              // با این layout:
-              //  - keyboard mode: body shrinks (resizeToAvoidBottomInset: true)
-              //    → Positioned(bottom:0) بالای کیبورد → SizedBox(height:0)
-              //  - emoji mode: body full, SizedBox = cachedHeight → emoji panel نشون داده می‌شه
-              //  - transition mode: body full, SizedBox = cachedHeight → blank spacer
+              // لایه 4: input + پنل پایین (منطق تلگرام)
+              // keyboard mode → Positioned(bottom: kbInset) + فقط input
+              // emoji mode   → Positioned(bottom: 0) + Column(input, emojiPanel)
+              // transition   → Positioned(bottom: cached) + فقط input تا کیبورد بیاد
               if (!_isCurrentUserBlocked && !_isOtherUserBlocked)
                 Positioned(
                   left: 0,
                   right: 0,
-                  bottom: 0,
-                  child: SafeArea(
-                    top: false,
-                    bottom: true,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        _buildInputArea(theme,
-                            reduceEffects: reduceEffects,
-                            allowHeavyEffects: adaptiveEffects.allowHeavyBlur,
-                            blurSigma: adaptiveEffects.blurSigma),
+                  bottom: inputBottomOffset + idleSafeInset,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _buildInputArea(theme,
+                          reduceEffects: reduceEffects,
+                          allowHeavyEffects: adaptiveEffects.allowHeavyBlur,
+                          blurSigma: adaptiveEffects.blurSigma),
+                      if (_showEmojiPanel)
                         SizedBox(
-                          height: bottomSpacerHeight,
-                          child: bottomSpacerHeight > 0 && _showEmojiPanel
-                              ? _buildEmojiPanel(theme)
-                              : const SizedBox.shrink(),
+                          height: _cachedKeyboardHeight,
+                          child: _buildEmojiPanel(theme),
                         ),
-                      ],
-                    ),
+                    ],
                   ),
                 ),
 
@@ -2035,24 +2045,24 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     });
   }
 
-  /// تلگرام-استایل toggle
+  /// تلگرام: swap فوری keyboard ↔ emoji – input ثابت می‌ماند
   void _onEmojiPanelToggled(bool show) {
     if (show) {
-      // ارتفاع دقیق کیبورد را قبل از dismiss کردن ضبط می‌کنیم
       final currentKbHeight = MediaQuery.of(context).viewInsets.bottom;
       setState(() {
         if (currentKbHeight > 80) _cachedKeyboardHeight = currentKbHeight;
         _showEmojiPanel = true;
         _isKeyboardRequested = false;
       });
+      _keyboardRequestTimeoutTimer?.cancel();
+      _focusNode.unfocus();
+      SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
     } else {
       _keyboardRequestTimeoutTimer?.cancel();
       setState(() {
         _showEmojiPanel = false;
-        // blank spacer نگه می‌داره تا کیبورد بیاد → بدون jump
         _isKeyboardRequested = true;
       });
-      // safety: اگر کیبورد نیومد، بعد از مدتی spacer رو بر می‌داریم
       _keyboardRequestTimeoutTimer = Timer(const Duration(milliseconds: 600), () {
         if (mounted && _isKeyboardRequested) {
           setState(() => _isKeyboardRequested = false);
@@ -3455,6 +3465,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       onAutocomplete: _handleAutocomplete,
       onHeightChanged: _onInputHeightChanged,
       onEmojiPickerToggled: _onEmojiPanelToggled,
+      isEmojiPanelOpen: _showEmojiPanel,
       reduceEffects: reduceEffects,
       allowHeavyEffects: allowHeavyEffects,
       blurSigma: blurSigma,
@@ -4877,6 +4888,14 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   Future<void> _openStoryReply(StoryReplyData data) async {
     if (!mounted) return;
 
+    final ownerId = data.storyOwnerId.trim().isNotEmpty
+        ? data.storyOwnerId.trim()
+        : widget.args.otherUserId.trim();
+    if (ownerId.isEmpty) {
+      _showErrorSnackBar('اطلاعات استوری ناقص است');
+      return;
+    }
+
     // نمایش لودینگ کوتاه برای جلوگیری از دوبار کلیک
     showDialog(
       context: context,
@@ -4906,8 +4925,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       }
 
       List<Story> stories = [];
-      final userStoriesResult =
-          await repository.getUserStories(data.storyOwnerId);
+      final userStoriesResult = await repository.getUserStories(ownerId);
       if (userStoriesResult.isSuccess && userStoriesResult.data != null) {
         stories = userStoriesResult.data!;
       }
@@ -4922,7 +4940,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         index = 0;
       }
 
-      final storyUser = _buildStoryUserForReply(data, stories);
+      final storyUser = _buildStoryUserForReply(data, stories, ownerId: ownerId);
 
       if (mounted) {
         Navigator.of(context, rootNavigator: true).pop();
@@ -4944,11 +4962,16 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     }
   }
 
-  StoryUser _buildStoryUserForReply(StoryReplyData data, List<Story> stories) {
+  StoryUser _buildStoryUserForReply(
+    StoryReplyData data,
+    List<Story> stories, {
+    String? ownerId,
+  }) {
+    final resolvedOwnerId = (ownerId ?? data.storyOwnerId).trim();
     ProfileModel? profile;
-    if (data.storyOwnerId == _currentUserId) {
+    if (resolvedOwnerId == _currentUserId) {
       profile = _currentUserProfile;
-    } else if (data.storyOwnerId == widget.args.otherUserId) {
+    } else if (resolvedOwnerId == widget.args.otherUserId) {
       profile = _otherUserProfile;
     }
 
@@ -4975,7 +4998,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         : (profile?.username ?? widget.args.otherUserName);
 
     return StoryUser(
-      id: data.storyOwnerId,
+      id: resolvedOwnerId.isNotEmpty ? resolvedOwnerId : widget.args.otherUserId,
       username: username,
       avatarUrl: profile?.avatarUrl ??
           data.storyOwnerAvatarUrl ??

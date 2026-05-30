@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -169,8 +169,12 @@ class _ExploreFeedScreenState extends ConsumerState<ExploreFeedScreen>
                         unselectedLabelStyle: const TextStyle(
                             fontWeight: FontWeight.normal, fontSize: 15),
                         tabs: [
-                          Tab(text: AppLocalizations.of(context)?.forYou ?? "برای شما"),
-                          Tab(text: AppLocalizations.of(context)?.following ?? "دنبال شده‌ها"),
+                          Tab(
+                              text: AppLocalizations.of(context)?.forYou ??
+                                  "برای شما"),
+                          Tab(
+                              text: AppLocalizations.of(context)?.following ??
+                                  "دنبال شده‌ها"),
                         ],
                       ),
                     ),
@@ -241,9 +245,12 @@ class _ForYouTab extends ConsumerWidget {
             onRefresh: () =>
                 ref.read(personalizedFeedProvider.notifier).refreshPosts(),
             child: _FeedEmptyState(
-              title: AppLocalizations.of(context)?.noPostsReady ?? 'هنوز پستی برای شما آماده نشده',
-              subtitle: AppLocalizations.of(context)?.followToPersonalize ?? 'با دنبال‌کردن کاربران جدید، فید شما سریع‌تر شخصی‌سازی می‌شود.',
-              actionLabel: AppLocalizations.of(context)?.searchUsers ?? 'جستجوی کاربران',
+              title: AppLocalizations.of(context)?.noPostsReady ??
+                  'هنوز پستی برای شما آماده نشده',
+              subtitle: AppLocalizations.of(context)?.followToPersonalize ??
+                  'با دنبال‌کردن کاربران جدید، فید شما سریع‌تر شخصی‌سازی می‌شود.',
+              actionLabel:
+                  AppLocalizations.of(context)?.searchUsers ?? 'جستجوی کاربران',
               onAction: () {
                 Navigator.push(
                   context,
@@ -287,7 +294,8 @@ class _ForYouTab extends ConsumerWidget {
         onRefresh: () =>
             ref.read(personalizedFeedProvider.notifier).refreshPosts(),
         child: _FeedErrorState(
-          message: AppLocalizations.of(context)?.loadSuggestedFailed ?? 'بارگذاری پست‌های پیشنهادی ناموفق بود.',
+          message: AppLocalizations.of(context)?.loadSuggestedFailed ??
+              'بارگذاری پست‌های پیشنهادی ناموفق بود.',
           onRetry: () =>
               ref.read(personalizedFeedProvider.notifier).refreshPosts(),
         ),
@@ -312,9 +320,12 @@ class _FollowingTab extends ConsumerWidget {
             onRefresh: () =>
                 ref.read(fetchFollowingPostsProvider.notifier).refreshPosts(),
             child: _FeedEmptyState(
-              title: AppLocalizations.of(context)?.noFollowingPosts ?? 'پستی از دنبال‌شده‌ها پیدا نشد',
-              subtitle: AppLocalizations.of(context)?.followMorePeople ?? 'افراد بیشتری را دنبال کنید یا کمی بعد دوباره بررسی کنید.',
-              actionLabel: AppLocalizations.of(context)?.refreshFeed ?? 'تازه‌سازی فید',
+              title: AppLocalizations.of(context)?.noFollowingPosts ??
+                  'پستی از دنبال‌شده‌ها پیدا نشد',
+              subtitle: AppLocalizations.of(context)?.followMorePeople ??
+                  'افراد بیشتری را دنبال کنید یا کمی بعد دوباره بررسی کنید.',
+              actionLabel:
+                  AppLocalizations.of(context)?.refreshFeed ?? 'تازه‌سازی فید',
               onAction: () =>
                   ref.read(fetchFollowingPostsProvider.notifier).refreshPosts(),
             ),
@@ -354,7 +365,8 @@ class _FollowingTab extends ConsumerWidget {
         onRefresh: () =>
             ref.read(fetchFollowingPostsProvider.notifier).refreshPosts(),
         child: _FeedErrorState(
-          message: AppLocalizations.of(context)?.loadFollowingFailed ?? 'بارگذاری پست‌های دنبال‌شده ناموفق بود.',
+          message: AppLocalizations.of(context)?.loadFollowingFailed ??
+              'بارگذاری پست‌های دنبال‌شده ناموفق بود.',
           onRetry: () =>
               ref.read(fetchFollowingPostsProvider.notifier).refreshPosts(),
         ),
@@ -395,7 +407,10 @@ class _FeedLoadingState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListView.separated(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: EdgeInsets.only(
+        top: 8,
+        bottom: MediaQuery.of(context).viewPadding.bottom + 110,
+      ),
       itemBuilder: (_, __) => const PostCardSkeleton(),
       separatorBuilder: (_, __) => const Divider(height: 0.5, thickness: 0.5),
       itemCount: 4,
@@ -474,7 +489,10 @@ class _FeedErrorState extends StatelessWidget {
               style: Theme.of(context).textTheme.bodyLarge,
             ),
             const SizedBox(height: 12),
-            ElevatedButton(onPressed: onRetry, child: Text(AppLocalizations.of(context)?.retry ?? 'تلاش مجدد')),
+            ElevatedButton(
+                onPressed: onRetry,
+                child:
+                    Text(AppLocalizations.of(context)?.retry ?? 'تلاش مجدد')),
           ],
         ),
       ),
@@ -509,7 +527,8 @@ class _FeedConnectionBanner extends StatelessWidget {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    AppLocalizations.of(context)?.noInternetConnection ?? 'اتصال اینترنت برقرار نیست',
+                    AppLocalizations.of(context)?.noInternetConnection ??
+                        'اتصال اینترنت برقرار نیست',
                     style: TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.w600,
@@ -524,7 +543,8 @@ class _FeedConnectionBanner extends StatelessWidget {
                     padding:
                         const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                   ),
-                  child: Text(AppLocalizations.of(context)?.recheck ?? 'بررسی مجدد'),
+                  child: Text(
+                      AppLocalizations.of(context)?.recheck ?? 'بررسی مجدد'),
                 ),
               ],
             )
@@ -577,7 +597,7 @@ class _ThreadPostItem extends ConsumerWidget {
 
     // استفاده از GestureDetector به جای InkWell برای حذف افکت ریپل از کل پست
     return GestureDetector(
-      behavior: HitTestBehavior.opaque, // اطمینان از کلیک‌پذیری کل محدوده
+      behavior: HitTestBehavior.opaque,
       onTap: () {
         unawaited(ref.read(goPostsRepositoryProvider).trackFeedEvent(
               postId: post.id,
@@ -588,11 +608,13 @@ class _ThreadPostItem extends ConsumerWidget {
           MaterialPageRoute(builder: (_) => PostDetailsPage(postId: post.id)),
         );
       },
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Column(
-          children: [
-            Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ── هدر + متن (با padding معمولی) ─────────────────────
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // آواتار کاربر
@@ -621,7 +643,7 @@ class _ThreadPostItem extends ConsumerWidget {
                   ),
                 ),
                 const SizedBox(width: 12),
-                // محتوای پست
+                // اطلاعات کاربر + متن پست
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -698,7 +720,10 @@ class _ThreadPostItem extends ConsumerWidget {
                                         child: Center(
                                           child: FittedBox(
                                             fit: BoxFit.scaleDown,
-                                            child: Text(AppLocalizations.of(context)?.requested ?? 'درخواست شد'),
+                                            child: Text(
+                                                AppLocalizations.of(context)
+                                                        ?.requested ??
+                                                    'درخواست شد'),
                                           ),
                                         ),
                                       )
@@ -711,14 +736,12 @@ class _ThreadPostItem extends ConsumerWidget {
                                                     targetId == currentUserId) {
                                                   return;
                                                 }
-
                                                 ref
                                                     .read(
                                                         _feedFollowLoadingProvider
                                                             .notifier)
                                                     .update((s) =>
                                                         {...s, targetId});
-
                                                 try {
                                                   final status = await ref
                                                       .read(
@@ -780,7 +803,11 @@ class _ThreadPostItem extends ConsumerWidget {
                                             : Center(
                                                 child: FittedBox(
                                                   fit: BoxFit.scaleDown,
-                                                  child: Text(AppLocalizations.of(context)?.follow ?? 'دنبال کردن'),
+                                                  child: Text(
+                                                      AppLocalizations.of(
+                                                                  context)
+                                                              ?.follow ??
+                                                          'دنبال کردن'),
                                                 ),
                                               ),
                                       ),
@@ -793,200 +820,196 @@ class _ThreadPostItem extends ConsumerWidget {
 
                       // متن پست
                       if (post.content.isNotEmpty) ...[
-                        Directionality(
-                          textDirection: _getTextDirection(post.content),
-                          child: HashtagRichText(
-                            text: post.content,
-                            style: TextStyle(
-                              fontSize: 15,
-                              height: 1.4,
-                              color:
-                                  colorScheme.onSurface.withValues(alpha: 0.9),
-                            ),
-                            hashtagStyle: const TextStyle(
-                              color: Colors.blue,
-                              fontWeight: FontWeight.w700,
-                            ),
-                            maxLines: 6,
-                            overflow: TextOverflow.ellipsis,
-                            onHashtagTap: (tag) {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) =>
-                                      SearchPage(initialHashtag: '#$tag'),
-                                ),
-                              );
-                            },
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                      ],
-
-                      // تصویر پست
-                      if (hasImage)
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(14),
-                          child: DoubleTapLikeOverlay(
-                            isAlreadyLiked: isLiked,
-                            onDoubleTap: () async {
-                              if (isLiked) return;
-                              ref
-                                  .read(likeStateProvider.notifier)
-                                  .updateLikeState(post.id, true);
-                              try {
-                                await ref
-                                    .read(postActionsServiceProvider)
-                                    .toggleLike(
-                                      postId: post.id,
-                                      ownerId: post.userId,
-                                      ref: ref,
-                                    );
-                              } catch (_) {
-                                if (context.mounted) {
-                                  ref
-                                      .read(likeStateProvider.notifier)
-                                      .updateLikeState(post.id, false);
-                                }
-                              }
-                            },
-                            child: ConstrainedBox(
-                              constraints: const BoxConstraints(
-                                maxHeight: 280,
-                                minWidth: double.infinity,
+                        Container(
+                          width: double.infinity,
+                          alignment: _getTextDirection(post.content) ==
+                                  TextDirection.rtl
+                              ? Alignment.centerRight
+                              : Alignment.centerLeft,
+                          child: Directionality(
+                            textDirection: _getTextDirection(post.content),
+                            child: HashtagRichText(
+                              text: post.content,
+                              style: TextStyle(
+                                fontSize: 15,
+                                height: 1.4,
+                                color: colorScheme.onSurface
+                                    .withValues(alpha: 0.9),
                               ),
-                              child: CachedNetworkImage(
-                                imageUrl: post.imageUrl!,
-                                fit: BoxFit.cover,
-                                placeholder: (_, __) => Container(
-                                  height: 180,
-                                  color: isDark
-                                      ? Colors.grey[800]
-                                      : Colors.grey[200],
-                                  child: const Center(
-                                      child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: AppColors.primary,
-                                  )),
-                                ),
-                                errorWidget: (_, __, ___) => Container(
-                                  height: 180,
-                                  color: isDark
-                                      ? Colors.grey[800]
-                                      : Colors.grey[200],
-                                  child: const Icon(Icons.broken_image),
-                                ),
+                              hashtagStyle: const TextStyle(
+                                color: Colors.blue,
+                                fontWeight: FontWeight.w700,
                               ),
-                            ),
-                          ),
-                        ),
-
-                      const SizedBox(height: 12),
-
-                      // دکمه‌های اکشن - دقیقاً مشابه پروفایل
-                      Row(
-                        children: [
-                          // دکمه لایک
-                          PostLikeButton(
-                            isLiked: isLiked,
-                            likeCount: likeCount,
-                            onTap: () async {
-                              ref
-                                  .read(likeStateProvider.notifier)
-                                  .updateLikeState(post.id, !isLiked);
-                              try {
-                                await ref
-                                    .read(postActionsServiceProvider)
-                                    .toggleLike(
-                                      postId: post.id,
-                                      ownerId: post.userId,
-                                      ref: ref,
-                                    );
-                              } catch (_) {
-                                if (context.mounted) {
-                                  ref
-                                      .read(likeStateProvider.notifier)
-                                      .updateLikeState(post.id, isLiked);
-                                }
-                              }
-                            },
-                          ),
-                          const SizedBox(width: 16),
-                          // دکمه کامنت
-                          PostCommentButton(
-                            commentCount: post.commentCount,
-                            onTap: () {
-                              unawaited(ref
-                                  .read(goPostsRepositoryProvider)
-                                  .trackFeedEvent(
-                                    postId: post.id,
-                                    eventType: 'comment',
-                                  ));
-                              showCommentsBottomSheet2(
-                                context,
-                                postId: post.id,
-                                postTitle: post.content.isNotEmpty
-                                    ? post.content.substring(
-                                        0,
-                                        post.content.length > 30
-                                            ? 30
-                                            : post.content.length)
-                                    : 'پست',
-                              );
-                            },
-                          ),
-                          const SizedBox(width: 16),
-                          PostSaveButton(
-                            isSaved: isSaved,
-                            onTap: () async {
-                              final ok = await ref
-                                  .read(savedPostIdsProvider.notifier)
-                                  .toggle(post.id, post: post);
-                              if (!ok && context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('خطا در ذخیره پست'),
+                              maxLines: 6,
+                              overflow: TextOverflow.ellipsis,
+                              onHashtagTap: (tag) {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) =>
+                                        SearchPage(initialHashtag: '#$tag'),
                                   ),
                                 );
-                              }
-                            },
-                          ),
-                          const SizedBox(width: 16),
-                          // دکمه اشتراک‌گذاری
-                          GestureDetector(
-                            onTap: () {
-                              unawaited(ref
-                                  .read(goPostsRepositoryProvider)
-                                  .trackFeedEvent(
-                                    postId: post.id,
-                                    eventType: 'share',
-                                  ));
-                              SmartShareService()
-                                  .showShareOptions(post, context);
-                            },
-                            child: Image.asset(
-                              'lib/utils/images/component/send.png',
-                              width: 20,
-                              height: 20,
-                              color:
-                                  isDark ? Colors.grey[400] : Colors.grey[600],
+                              },
                             ),
                           ),
-                          const Spacer(),
-                          // منو (سه نقطه) - با همان استایل پروفایل (Container)
-                          _buildPostActions(context, ref, post, isDark),
-                        ],
-                      ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
               ],
             ),
+          ),
+
+          // ── تصویر تمام‌عرض ──────────────────────────────────────
+          if (hasImage) ...[
+            const SizedBox(height: 10),
+            DoubleTapLikeOverlay(
+              isAlreadyLiked: isLiked,
+              onDoubleTap: () async {
+                if (isLiked) return;
+                ref
+                    .read(likeStateProvider.notifier)
+                    .updateLikeState(post.id, true);
+                try {
+                  await ref
+                      .read(postActionsServiceProvider)
+                      .toggleLike(
+                        postId: post.id,
+                        ownerId: post.userId,
+                        ref: ref,
+                      );
+                } catch (_) {
+                  if (context.mounted) {
+                    ref
+                        .read(likeStateProvider.notifier)
+                        .updateLikeState(post.id, false);
+                  }
+                }
+              },
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 420),
+                child: CachedNetworkImage(
+                  imageUrl: post.imageUrl!,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                  placeholder: (_, __) => Container(
+                    height: 260,
+                    color: isDark ? Colors.grey[800] : Colors.grey[200],
+                    child: const Center(
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                  ),
+                  errorWidget: (_, __, ___) => Container(
+                    height: 180,
+                    color: isDark ? Colors.grey[800] : Colors.grey[200],
+                    child: const Icon(Icons.broken_image),
+                  ),
+                ),
+              ),
+            ),
           ],
-        ),
+
+          // ── دکمه‌های اکشن ─────────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 4, 12),
+            child: Row(
+              children: [
+                PostLikeButton(
+                  isLiked: isLiked,
+                  likeCount: likeCount,
+                  onTap: () async {
+                    ref
+                        .read(likeStateProvider.notifier)
+                        .updateLikeState(post.id, !isLiked);
+                    try {
+                      await ref
+                          .read(postActionsServiceProvider)
+                          .toggleLike(
+                            postId: post.id,
+                            ownerId: post.userId,
+                            ref: ref,
+                          );
+                    } catch (_) {
+                      if (context.mounted) {
+                        ref
+                            .read(likeStateProvider.notifier)
+                            .updateLikeState(post.id, isLiked);
+                      }
+                    }
+                  },
+                ),
+                const SizedBox(width: 16),
+                PostCommentButton(
+                  commentCount: post.commentCount,
+                  onTap: () {
+                    unawaited(ref
+                        .read(goPostsRepositoryProvider)
+                        .trackFeedEvent(
+                          postId: post.id,
+                          eventType: 'comment',
+                        ));
+                    showCommentsBottomSheet2(
+                      context,
+                      postId: post.id,
+                      postTitle: post.content.isNotEmpty
+                          ? post.content.substring(
+                              0,
+                              post.content.length > 30
+                                  ? 30
+                                  : post.content.length)
+                          : 'پست',
+                    );
+                  },
+                ),
+                const SizedBox(width: 16),
+                PostSaveButton(
+                  isSaved: isSaved,
+                  onTap: () async {
+                    final ok = await ref
+                        .read(savedPostIdsProvider.notifier)
+                        .toggle(post.id, post: post);
+                    if (!ok && context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('خطا در ذخیره پست'),
+                        ),
+                      );
+                    }
+                  },
+                ),
+                const SizedBox(width: 16),
+                GestureDetector(
+                  onTap: () {
+                    unawaited(ref
+                        .read(goPostsRepositoryProvider)
+                        .trackFeedEvent(
+                          postId: post.id,
+                          eventType: 'share',
+                        ));
+                    SmartShareService().showShareOptions(post, context);
+                  },
+                  child: Image.asset(
+                    'lib/utils/images/component/send.png',
+                    width: 20,
+                    height: 20,
+                    color: isDark ? Colors.grey[400] : Colors.grey[600],
+                  ),
+                ),
+                const Spacer(),
+                _buildPostActions(context, ref, post, isDark),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
+
 
   // --- Post actions menu logic ---
   Widget _buildPostActions(
@@ -1264,7 +1287,9 @@ class _ThreadPostItem extends ConsumerWidget {
 
   TextDirection _getTextDirection(String text) {
     if (text.isEmpty) return TextDirection.rtl;
-    final firstChar = text.trim().isNotEmpty ? text.trim()[0] : '';
+    final cleanedText = text.replaceAll(RegExp(r'[^\w\u0600-\u06FF]'), '');
+    if (cleanedText.isEmpty) return TextDirection.rtl;
+    final firstChar = cleanedText[0];
     final persianRegex = RegExp(r'[\u0600-\u06FF]');
     return persianRegex.hasMatch(firstChar)
         ? TextDirection.rtl

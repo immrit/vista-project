@@ -1,4 +1,4 @@
-// ignore_for_file: unused_element, deprecated_member_use
+﻿// ignore_for_file: unused_element, deprecated_member_use
 
 import 'dart:async';
 
@@ -401,7 +401,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         statusBarIconBrightness: isLight ? Brightness.dark : Brightness.light,
         statusBarBrightness: isLight ? Brightness.light : Brightness.dark,
         systemStatusBarContrastEnforced: false,
-        systemNavigationBarColor: theme.scaffoldBackgroundColor,
+        // هاله: در تم روشن سفید، در تم تاریک رنگ scaffold
+        systemNavigationBarColor: isLight
+            ? Colors.white
+            : theme.scaffoldBackgroundColor,
         systemNavigationBarContrastEnforced: false,
         systemNavigationBarIconBrightness:
             isLight ? Brightness.dark : Brightness.light,
@@ -435,58 +438,111 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ),
           ],
         ),
-        bottomNavigationBar: LiquidGlassContainer(
-          margin: const EdgeInsets.only(left: 16, right: 16, bottom: 20),
-          blur: 30.0,
-          opacity: isDark ? 0.05 : 0.1, // Minimal frosted glass
-          color: isDark ? Colors.black : Colors.white,
-          borderRadius: BorderRadius.circular(30),
-          child: SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: [
-                  // Home
-                  _buildPremiumNavItem(
-                    index: 0,
-                    activeIcon: _NavIcons.homeActive,
-                    inactiveIcon: _NavIcons.homeInactive,
-                    isDark: isDark,
-                  ),
-                  // Search
-                  _buildPremiumNavItem(
-                    index: 1,
-                    activeIcon: _NavIcons.search,
-                    inactiveIcon: _NavIcons.search,
-                    isDark: isDark,
-                  ),
-                  // Add (Center Button)
-                  _buildPremiumAddButton(isDark),
-                  // Chat with Badge
-                  _buildPremiumNavItemWithBadge(
-                    index: 3,
-                    activeIcon: _NavIcons.chatActive,
-                    inactiveIcon: _NavIcons.chatInactive,
-                    badgeCount: unreadCount,
-                    isDark: isDark,
-                  ),
-                  // Profile
-                  _buildPremiumNavItem(
-                    index: 4,
-                    activeIcon: _NavIcons.profileActive,
-                    inactiveIcon: _NavIcons.profileInactive,
-                    isDark: isDark,
-                  ),
-                ],
-              ),
-            ),
-          ),
+        bottomNavigationBar: _buildBottomNavWithHalo(
+          isDark: isDark,
+          unreadCount: unreadCount,
+          theme: theme,
         ),
       ),
     );
   }
 
+  /// باتم نویگیشن جزیره‌ای + هاله رنگی زیرش (مثل تلگرام جدید)
+  Widget _buildBottomNavWithHalo({
+    required bool isDark,
+    required int unreadCount,
+    required ThemeData theme,
+  }) {
+    final haloColor = isDark ? theme.scaffoldBackgroundColor : Colors.white;
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
+
+    // ارتفاع تخمینی جزیره
+    const islandApproxHeight = 62.0;
+    // فاصله جزیره از پایین
+    const islandBottomMargin = 28.0;
+    // هاله از بالای جزیره شروع و تا پایین صفحه ادامه داره
+    final haloHeight = islandApproxHeight + islandBottomMargin + bottomPadding + 20;
+
+    return SizedBox(
+      height: haloHeight,
+      child: Stack(
+        alignment: Alignment.bottomCenter,
+        children: [
+          // هاله gradient (از بالای جزیره به پایین)
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            height: haloHeight,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    haloColor.withValues(alpha: 0.0),
+                    haloColor.withValues(alpha: 0.55),
+                    haloColor.withValues(alpha: 0.88),
+                    haloColor,
+                  ],
+                  stops: const [0.0, 0.35, 0.65, 1.0],
+                ),
+              ),
+            ),
+          ),
+
+          // جزیره اصلی (روی هاله)
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: islandBottomMargin + bottomPadding,
+            child: LiquidGlassContainer(
+              margin: const EdgeInsets.symmetric(horizontal: 16),
+              blur: 30.0,
+              opacity: isDark ? 0.05 : 0.1,
+              color: isDark ? Colors.black : Colors.white,
+              borderRadius: BorderRadius.circular(30),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    _buildPremiumNavItem(
+                      index: 0,
+                      activeIcon: _NavIcons.homeActive,
+                      inactiveIcon: _NavIcons.homeInactive,
+                      isDark: isDark,
+                    ),
+                    _buildPremiumNavItem(
+                      index: 1,
+                      activeIcon: _NavIcons.search,
+                      inactiveIcon: _NavIcons.search,
+                      isDark: isDark,
+                    ),
+                    _buildPremiumAddButton(isDark),
+                    _buildPremiumNavItemWithBadge(
+                      index: 3,
+                      activeIcon: _NavIcons.chatActive,
+                      inactiveIcon: _NavIcons.chatInactive,
+                      badgeCount: unreadCount,
+                      isDark: isDark,
+                    ),
+                    _buildPremiumNavItem(
+                      index: 4,
+                      activeIcon: _NavIcons.profileActive,
+                      inactiveIcon: _NavIcons.profileInactive,
+                      isDark: isDark,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
   /// آیتم ناوبری Premium با آیکون تصویری
   Widget _buildPremiumNavItem({
     required int index,

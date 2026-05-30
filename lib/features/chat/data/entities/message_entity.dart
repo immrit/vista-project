@@ -194,9 +194,22 @@ class MessageEntity {
       errorMessage: errorMessage,
       reactions: reactions,
       sharedPostData: sharedPostData,
-      storyReplyData: storyReplyDataJson != null
-          ? StoryReplyData.fromJson(jsonDecode(storyReplyDataJson!))
-          : null,
+      storyReplyData: _resolveStoryReplyData(),
+    );
+  }
+
+  StoryReplyData? _resolveStoryReplyData() {
+    if (storyReplyDataJson != null && storyReplyDataJson!.trim().isNotEmpty) {
+      try {
+        return StoryReplyData.fromJson(jsonDecode(storyReplyDataJson!));
+      } catch (_) {
+        // Fall through to reply fields.
+      }
+    }
+    return StoryReplyData.parseFromReplyFields(
+      replyToMessageId: replyToMessageId,
+      replyToContent: replyToContent,
+      replyToSenderName: replyToSenderName,
     );
   }
 

@@ -198,6 +198,10 @@ abstract class IStoryRepository {
     required String storyId,
     required String ownerId,
   });
+
+  /// وضعیت دقیق اجازه پاسخ برای یک استوری مشخص (از endpoint سرور)
+  Future<StoryResult<({bool canReply, StoryReplyPermission permission})>>
+      getStoryReplyAccess(String storyId);
 }
 
 /// مدل بازدیدکننده استوری

@@ -1,5 +1,32 @@
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import '../../core/story_enums.dart';
+import '../../../../utils/env_config.dart';
+
+String _parseMediaUrl(dynamic value) {
+  if (value == null) return '';
+  if (value is List) return value.isNotEmpty ? value.first?.toString() ?? '' : '';
+  
+  String result = value.toString();
+  if (result.startsWith('[') && result.endsWith(']')) {
+    try {
+      final List parsed = json.decode(result);
+      if (parsed.isNotEmpty) result = parsed.first?.toString() ?? '';
+    } catch (_) {}
+  }
+  if (result.startsWith('{') && result.endsWith('}')) {
+    final inner = result.substring(1, result.length - 1);
+    final parts = inner.split(',');
+    if (parts.isNotEmpty) result = parts.first.trim();
+  }
+
+  if (result.isNotEmpty && !result.startsWith('http')) {
+    final baseUrl = EnvConfig.apiBaseUrl.replaceFirst('api.', 's3.');
+    final cleanPath = result.startsWith('/') ? result.substring(1) : result;
+    return '$baseUrl/$cleanPath';
+  }
+  return result;
+}
 
 /// مدل رسانه استوری
 @immutable
@@ -54,13 +81,13 @@ class StoryMedia {
 
   factory StoryMedia.fromMap(Map<String, dynamic> map) {
     return StoryMedia(
-      url: map['url'] ?? map['media_url'] ?? '',
+      url: _parseMediaUrl(map['url'] ?? map['media_url']),
       type: StoryMediaType.values.firstWhere(
         (e) => e.name == (map['type'] ?? map['media_type'] ?? 'image'),
         orElse: () => StoryMediaType.image,
       ),
       durationSeconds: map['duration_seconds'],
-      thumbnailUrl: map['thumbnail_url'],
+      thumbnailUrl: map['thumbnail_url'] != null ? _parseMediaUrl(map['thumbnail_url']) : null,
       filter: map['filter'],
       metadata: map['metadata'],
     );

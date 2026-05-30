@@ -139,13 +139,25 @@ class SearchNotifier extends StateNotifier<SearchState> {
           selectedTab: 2,
         );
       } else {
-        final usersFuture = _fetchUsersPage(normalizedQuery, 0);
-        final hashtagsFuture = _canSearchAsTag(normalizedQuery)
-            ? _searchService.searchHashtag(normalizedQuery)
-            : Future.value(const <PublicPostModel>[]);
+        var users = const <ProfileModel>[];
+        var hashtags = const <PublicPostModel>[];
+        var userSearchSucceeded = true;
+        String? error;
 
-        final users = await usersFuture;
-        final hashtags = await hashtagsFuture;
+        try {
+          users = await _fetchUsersPage(normalizedQuery, 0);
+        } catch (e) {
+          userSearchSucceeded = false;
+          error = UserFriendlyErrorUtils.getUserFriendlyMessage(e);
+        }
+
+        if (_canSearchAsTag(normalizedQuery)) {
+          try {
+            hashtags = await _searchService.searchHashtag(normalizedQuery);
+          } catch (_) {
+            // Hashtag lookup is supplementary for non-# searches.
+          }
+        }
 
         state = state.copyWith(
           userResults: users,
@@ -153,7 +165,9 @@ class SearchNotifier extends StateNotifier<SearchState> {
           isLoading: false,
           selectedTab: 0,
           userOffset: users.length,
-          hasMoreUsers: users.length >= _userLimit,
+          hasMoreUsers: userSearchSucceeded && users.length >= _userLimit,
+          error: error,
+          clearError: error == null,
         );
       }
     } catch (e) {
@@ -176,7 +190,8 @@ class SearchNotifier extends StateNotifier<SearchState> {
 
     state = state.copyWith(isLoadingMoreUsers: true, clearError: true);
     try {
-      final newUsers = await _fetchUsersPage(state.currentQuery, state.userOffset);
+      final newUsers =
+          await _fetchUsersPage(state.currentQuery, state.userOffset);
       final allUsers = [...state.userResults, ...newUsers];
 
       state = state.copyWith(

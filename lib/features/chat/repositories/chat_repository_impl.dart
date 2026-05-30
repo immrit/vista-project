@@ -389,6 +389,13 @@ class ChatRepositoryImpl implements ChatRepository {
     final messageId = payload.id ?? const Uuid().v4();
     final now = DateTime.now();
 
+    final storyReplyData = StoryReplyData.parseFromReplyFields(
+      replyToMessageId: payload.replyToMessageId,
+      replyToContent: payload.replyToContent,
+      replyToSenderName: payload.replyToSenderName,
+    );
+    final isStoryReplyMessage = storyReplyData != null;
+
     // â”€â”€ optimistic local save â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     final optimistic = MessageModel(
       id: messageId,
@@ -412,6 +419,8 @@ class ChatRepositoryImpl implements ChatRepository {
       replyToMessageId: payload.replyToMessageId,
       replyToContent: payload.replyToContent,
       replyToSenderName: payload.replyToSenderName,
+      messageType: isStoryReplyMessage ? 'storyReply' : null,
+      storyReplyData: storyReplyData,
     );
     await _local.saveMessage(optimistic);
 
@@ -1183,6 +1192,28 @@ class ChatRepositoryImpl implements ChatRepository {
 
   MessageModel _mergeLocal(MessageModel server, MessageModel? local) {
     if (local == null) return server;
+
+    final replyToMessageId = _preferNonEmpty(
+      server.replyToMessageId,
+      local.replyToMessageId,
+    );
+    final replyToContent = _preferStoryReplyContent(
+      server.replyToContent,
+      local.replyToContent,
+    );
+    final replyToSenderName = _preferNonEmpty(
+      server.replyToSenderName,
+      local.replyToSenderName,
+    );
+
+    StoryReplyData? storyReplyData =
+        local.storyReplyData ?? server.storyReplyData;
+    storyReplyData ??= StoryReplyData.parseFromReplyFields(
+      replyToMessageId: replyToMessageId,
+      replyToContent: replyToContent,
+      replyToSenderName: replyToSenderName,
+    );
+
     return server.copyWith(
       attachmentFileName: server.attachmentFileName?.isNotEmpty == true
           ? server.attachmentFileName
@@ -1201,6 +1232,11 @@ class ChatRepositoryImpl implements ChatRepository {
           : local.audioAlbum,
       mediaGroupId: server.mediaGroupId ?? local.mediaGroupId,
       duration: server.duration ?? local.duration,
+      replyToMessageId: replyToMessageId,
+      replyToContent: replyToContent,
+      replyToSenderName: replyToSenderName,
+      messageType: storyReplyData != null ? 'storyReply' : server.messageType,
+      storyReplyData: storyReplyData,
       localFilePath: local.localFilePath,
       localImagePath: local.localImagePath,
       isUploading: false,
@@ -1208,6 +1244,25 @@ class ChatRepositoryImpl implements ChatRepository {
       isPending: false,
       isFailed: false,
     );
+  }
+
+  String? _preferNonEmpty(String? primary, String? fallback) {
+    final primaryValue = primary?.trim() ?? '';
+    if (primaryValue.isNotEmpty) return primaryValue;
+    final fallbackValue = fallback?.trim() ?? '';
+    return fallbackValue.isNotEmpty ? fallbackValue : null;
+  }
+
+  String? _preferStoryReplyContent(String? server, String? local) {
+    final serverValue = server?.trim() ?? '';
+    final localValue = local?.trim() ?? '';
+    if (localValue.startsWith('{') && !serverValue.startsWith('{')) {
+      return localValue;
+    }
+    if (serverValue.startsWith('{')) return serverValue;
+    if (localValue.length > serverValue.length) return localValue;
+    if (serverValue.isNotEmpty) return serverValue;
+    return localValue.isNotEmpty ? localValue : null;
   }
 
   ConversationModel _convFromGo(Map<String, dynamic> j, String uid) {
@@ -1325,6 +1380,7 @@ class ChatRepositoryImpl implements ChatRepository {
       'reply_to_message_id': j['reply_to_message_id'],
       'reply_to_content': j['reply_to_content'],
       'reply_to_sender_name': j['reply_to_sender_name'],
+      'reply_to_kind': j['reply_to_kind'],
       'is_forwarded': j['is_forwarded'] ?? false,
       'original_sender_id': j['original_sender_id'],
       'original_message_id': j['original_message_id'],

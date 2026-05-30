@@ -265,7 +265,7 @@ class PostImageUploadService {
       // بررسی فرمت فایل
       final extension = path.extension(file.path).toLowerCase();
       if (!_isValidAudioFormat(extension)) {
-        throw Exception('فقط فایل‌های mp3 و m4a پشتیبانی می‌شوند');
+        throw Exception('این فرمت فایل صوتی پشتیبانی نمی‌شود');
       }
 
       final originalBaseName = path.basenameWithoutExtension(file.path);
@@ -289,7 +289,7 @@ class PostImageUploadService {
   }
 
   static bool _isValidAudioFormat(String extension) {
-    return ['.mp3', '.m4a'].contains(extension);
+    return ['.mp3', '.m4a', '.wav', '.ogg', '.aac', '.flac', '.wma'].contains(extension);
   }
 
   static String _sanitizeMusicFileName(String input) {
@@ -335,7 +335,7 @@ class PostImageUploadService {
       // بررسی فرمت فایل
       final extension = path.extension(file.path).toLowerCase();
       if (!_isValidVideoFormat(extension)) {
-        throw Exception('فقط فایل‌های mp4، mov و mkv پشتیبانی می‌شوند');
+        throw Exception('این فرمت فایل ویدیویی پشتیبانی نمی‌شود');
       }
 
       // ساخت نام منحصر به فرد برای فایل
@@ -365,7 +365,7 @@ class PostImageUploadService {
     try {
       final extension = path.extension(fileName).toLowerCase();
       if (!_isValidVideoFormat(extension)) {
-        throw Exception('فقط فایل‌های mp4، mov و mkv پشتیبانی می‌شوند');
+        throw Exception('این فرمت فایل ویدیویی پشتیبانی نمی‌شود');
       }
 
       // بررسی سایز فایل (حداکثر ۱۰ مگابایت)
@@ -396,7 +396,7 @@ class PostImageUploadService {
   }
 
   static bool _isValidVideoFormat(String extension) {
-    return ['.mp4', '.mov', '.mkv'].contains(extension);
+    return ['.mp4', '.mov', '.mkv', '.webm', '.avi'].contains(extension);
   }
 
   static String _getVideoContentType(String extension) {

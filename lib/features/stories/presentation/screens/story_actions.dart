@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../domain/entities/entities.dart';
 import '../../core/story_enums.dart';
+import '../widgets/glass_layer.dart';
 
 /// سطح حریم خصوصی استوری
 enum StoryPrivacyLevel {
@@ -64,6 +65,7 @@ class StoryActions extends StatefulWidget {
   final String? storyOwnerUsername;
   final StoryReplyPermission replyPermission;
   final bool canReply;
+  final bool isReplySending;
   final bool isPreUpload; // ✅ حالت قبل از آپلود
   final StoryPrivacyLevel initialPrivacy;
   final Function(String message)? onReply;
@@ -79,6 +81,7 @@ class StoryActions extends StatefulWidget {
     this.storyOwnerUsername,
     this.replyPermission = StoryReplyPermission.everyone,
     this.canReply = true,
+    this.isReplySending = false,
     this.isPreUpload = false,
     this.initialPrivacy = StoryPrivacyLevel.everyone,
     this.onReply,
@@ -296,56 +299,68 @@ class _StoryActionsState extends State<StoryActions> {
         Row(
           children: [
             Expanded(
-              child: Container(
-                height: 44,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(22),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.3),
-                  ),
+              child: GlassLayer(
+                borderRadius: BorderRadius.circular(22),
+                blur: 14,
+                opacity: 0.38,
+                baseColor: Colors.black,
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.22),
+                  width: 0.8,
                 ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _replyController,
-                        enabled: widget.canReply,
-                        style: const TextStyle(color: Colors.white),
-                        decoration: InputDecoration(
-                          hintText: _replyHint(ownerDisplayName),
-                          hintStyle: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.5),
+                child: SizedBox(
+                  height: 44,
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _replyController,
+                          enabled: widget.canReply && !widget.isReplySending,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontFamily: 'Vazir',
                           ),
-                          border: InputBorder.none,
-                          contentPadding:
-                              const EdgeInsets.symmetric(horizontal: 16),
+                          decoration: InputDecoration(
+                            hintText: widget.isReplySending
+                                ? 'در حال ارسال...'
+                                : _replyHint(ownerDisplayName),
+                            hintStyle: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.55),
+                              fontFamily: 'Vazir',
+                            ),
+                            border: InputBorder.none,
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                            ),
+                          ),
+                          onSubmitted: (value) => _submitReply(value),
                         ),
-                        onSubmitted: (value) {
-                          if (widget.canReply && value.trim().isNotEmpty) {
-                            widget.onReply?.call(value.trim());
-                            _replyController.clear();
-                          }
-                        },
                       ),
-                    ),
-                    IconButton(
-                      onPressed: widget.canReply
-                          ? () {
-                              final text = _replyController.text.trim();
-                              if (text.isNotEmpty) {
-                                widget.onReply?.call(text);
-                                _replyController.clear();
-                              }
-                            }
-                          : null,
-                      icon: Icon(
-                        Icons.send,
-                        color: widget.canReply ? Colors.white : Colors.white38,
-                        size: 20,
-                      ),
-                    ),
-                  ],
+                      if (widget.isReplySending)
+                        const Padding(
+                          padding: EdgeInsets.only(right: 12),
+                          child: SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white70,
+                            ),
+                          ),
+                        )
+                      else
+                        IconButton(
+                          onPressed: widget.canReply ? _submitReplyFromButton : null,
+                          icon: Icon(
+                            Icons.send_rounded,
+                            color: widget.canReply
+                                ? Colors.white
+                                : Colors.white38,
+                            size: 22,
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -353,15 +368,17 @@ class _StoryActionsState extends State<StoryActions> {
             GestureDetector(
               onTap: () => setState(() => _showReactions = !_showReactions),
               onLongPress: () => _quickReact(StoryReactionType.like),
-              child: Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.15),
-                  shape: BoxShape.circle,
-                ),
-                child: const Center(
-                  child: Text('❤️', style: TextStyle(fontSize: 20)),
+              child: GlassLayer(
+                borderRadius: BorderRadius.circular(22),
+                blur: 12,
+                opacity: 0.32,
+                baseColor: Colors.black,
+                child: const SizedBox(
+                  width: 44,
+                  height: 44,
+                  child: Center(
+                    child: Text('❤️', style: TextStyle(fontSize: 20)),
+                  ),
                 ),
               ),
             ),
@@ -369,6 +386,17 @@ class _StoryActionsState extends State<StoryActions> {
         ),
       ],
     );
+  }
+
+  void _submitReply(String value) {
+    final text = value.trim();
+    if (!widget.canReply || widget.isReplySending || text.isEmpty) return;
+    widget.onReply?.call(text);
+    _replyController.clear();
+  }
+
+  void _submitReplyFromButton() {
+    _submitReply(_replyController.text);
   }
 
   String _replyHint(String ownerDisplayName) {

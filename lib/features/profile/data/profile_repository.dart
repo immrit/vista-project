@@ -128,8 +128,10 @@ class ProfileRepository {
       final statusCode = e.response?.statusCode;
       // If fetching another user's profile and they are not found or we don't have access,
       // return a default fallback profile instead of breaking the UI or session.
-      if (!isSelf && (statusCode == 401 || statusCode == 403 || statusCode == 404)) {
-        logInfo('⚠️ Falling back to default profile for user $userId (Status: $statusCode)');
+      if (!isSelf &&
+          (statusCode == 401 || statusCode == 403 || statusCode == 404)) {
+        logInfo(
+            '⚠️ Falling back to default profile for user $userId (Status: $statusCode)');
         return {
           'id': userId,
           'username': 'کاربر حذف شده',
@@ -193,12 +195,71 @@ class ProfileRepository {
     int limit = 20,
     int offset = 0,
   }) async {
-    final response = await _dio.get(
-      '/profiles/search',
-      queryParameters: {'q': query, 'limit': limit, 'offset': offset},
-      options: await _optionalAuthOptions(),
-    );
-    return _parseProfileList(response.data);
+    final normalizedQuery = query.trim().replaceFirst(RegExp(r'^@+'), '');
+    final exactProfile = offset == 0 &&
+            normalizedQuery.isNotEmpty &&
+            _looksLikeUsername(normalizedQuery)
+        ? await _fetchExactUsernameProfile(normalizedQuery)
+        : null;
+
+    List<ProfileModel> profiles;
+    try {
+      final response = await _dio.get(
+        '/profiles/search',
+        queryParameters: {
+          'q': normalizedQuery,
+          'limit': limit,
+          'offset': offset
+        },
+        options: await _optionalAuthOptions(),
+      );
+      profiles = _parseProfileList(response.data);
+    } on DioException catch (e) {
+      final shouldRetryAsPrefix = e.response?.statusCode == 500 &&
+          normalizedQuery.isNotEmpty &&
+          !normalizedQuery.endsWith('*');
+      if (!shouldRetryAsPrefix) {
+        profiles = const [];
+      } else {
+        try {
+          final response = await _dio.get(
+            '/profiles/search',
+            queryParameters: {
+              'q': '$normalizedQuery*',
+              'limit': limit,
+              'offset': offset,
+            },
+            options: await _optionalAuthOptions(),
+          );
+          profiles = _parseProfileList(response.data);
+        } catch (_) {
+          profiles = const [];
+        }
+      }
+    } catch (_) {
+      profiles = const [];
+    }
+
+    if (exactProfile == null) {
+      return profiles;
+    }
+
+    final withoutDuplicate =
+        profiles.where((profile) => profile.id != exactProfile.id).toList();
+    return [exactProfile, ...withoutDuplicate];
+  }
+
+  Future<ProfileModel?> _fetchExactUsernameProfile(String username) async {
+    try {
+      final data = await fetchProfileByUsername(username.toLowerCase());
+      return ProfileModel.fromMap(data);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  bool _looksLikeUsername(String query) {
+    return RegExp(r'^[A-Za-z0-9_.]{2,32}$').hasMatch(query);
   }
 
   static String _trimmed(dynamic value) => value?.toString().trim() ?? '';
@@ -341,12 +402,25 @@ class ProfileRepository {
   }
 
   List<ProfileModel> _parseProfileList(dynamic data) {
-    final map = Map<String, dynamic>.from(data as Map);
+    if (data is! Map) return const [];
+    final map = Map<String, dynamic>.from(data);
     final profiles = map['profiles'] as List? ?? const [];
-    return profiles
-        .whereType<Map>()
-        .map((item) => ProfileModel.fromMap(Map<String, dynamic>.from(item)))
-        .toList(growable: false);
+    final parsed = <ProfileModel>[];
+    for (final item in profiles.whereType<Map>()) {
+      try {
+        parsed.add(
+          ProfileModel.fromMap(
+            _normalizeProfileMap(
+              Map<String, dynamic>.from(item),
+              fallbackUserId: '',
+            ),
+          ),
+        );
+      } catch (_) {
+        // Skip malformed search entries so one bad profile cannot break search.
+      }
+    }
+    return parsed;
   }
 
   Future<void> requestVerification({

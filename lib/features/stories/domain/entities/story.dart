@@ -4,6 +4,24 @@ import '../../core/story_enums.dart';
 import 'story_media.dart';
 import 'story_editor_models.dart';
 
+String? _parseMediaUrl(dynamic value) {
+  if (value == null) return null;
+  if (value is List) return value.isNotEmpty ? value.first?.toString() : null;
+  final str = value.toString();
+  if (str.startsWith('[') && str.endsWith(']')) {
+    try {
+      final List parsed = json.decode(str);
+      if (parsed.isNotEmpty) return parsed.first?.toString();
+    } catch (_) {}
+  }
+  if (str.startsWith('{') && str.endsWith('}')) {
+    final inner = str.substring(1, str.length - 1);
+    final parts = inner.split(',');
+    if (parts.isNotEmpty) return parts.first.trim();
+  }
+  return str.isEmpty ? null : str;
+}
+
 /// Entity اصلی استوری
 @immutable
 class Story {
@@ -221,7 +239,7 @@ class Story {
       mentions: (map['mentions'] as List?)
           ?.map((m) => StoryMention.fromMap(m))
           .toList(),
-      musicUrl: map['music_url'],
+      musicUrl: _parseMediaUrl(map['music_url']),
       musicTitle: map['music_title'],
       interactiveElements: parsedInteractiveElements,
     );
@@ -447,7 +465,7 @@ class StoryLink {
   factory StoryLink.fromMap(Map<String, dynamic> map) => StoryLink(
         url: map['url'] ?? '',
         title: map['title'],
-        thumbnailUrl: map['thumbnail_url'],
+        thumbnailUrl: _parseMediaUrl(map['thumbnail_url']),
       );
 }
 
