@@ -4,6 +4,7 @@ import 'package:Vista/utils/env_config.dart';
 import 'dart:io';
 import 'package:device_info_plus/device_info_plus.dart';
 import '../../../security/logging_utility.dart';
+import '../../../services/system_status_service.dart';
 import '../domain/auth_exceptions.dart';
 
 // ══════════════════════════════════════════════════════════════
@@ -283,6 +284,10 @@ class AuthRepository {
     required String password,
   }) async {
     try {
+      await SystemStatusService.instance.ensureFeatureEnabled(
+        SystemFeature.login,
+        forceRefresh: true,
+      );
       final response = await _dio.post('/register', data: {
         if (username != null && username.isNotEmpty) 'username': username,
         'full_name': fullName,
@@ -307,6 +312,10 @@ class AuthRepository {
     required String password,
   }) async {
     try {
+      await SystemStatusService.instance.ensureFeatureEnabled(
+        SystemFeature.login,
+        forceRefresh: true,
+      );
       String? deviceName;
       String? platformInfo;
       try {
@@ -390,6 +399,10 @@ class AuthRepository {
 
   Future<LookupIdentifierResponse> lookupIdentifier(String identifier) async {
     try {
+      await SystemStatusService.instance.ensureFeatureEnabled(
+        SystemFeature.login,
+        forceRefresh: true,
+      );
       final response = await _dio.post('/lookup', data: {
         'identifier': identifier,
       });
@@ -408,6 +421,10 @@ class AuthRepository {
   // ─── ارسال کد تایید OTP ───
   Future<SendOtpResponse> sendOtp(String phoneNumber) async {
     try {
+      await SystemStatusService.instance.ensureFeatureEnabled(
+        SystemFeature.login,
+        forceRefresh: true,
+      );
       final response = await _dio.post('/send-otp', data: {
         'phone_number': phoneNumber,
       });
@@ -427,6 +444,10 @@ class AuthRepository {
     required String code,
   }) async {
     try {
+      await SystemStatusService.instance.ensureFeatureEnabled(
+        SystemFeature.login,
+        forceRefresh: true,
+      );
       final response = await _dio.post('/verify-otp', data: {
         'phone_number': phoneNumber,
         'code': code,
@@ -514,6 +535,10 @@ class AuthRepository {
     required String newPassword,
   }) async {
     try {
+      await SystemStatusService.instance.ensureFeatureEnabled(
+        SystemFeature.login,
+        forceRefresh: true,
+      );
       final response = await _dio.post('/reset-password-sms', data: {
         'phone_number': phoneNumber,
         'code': code,
@@ -537,6 +562,10 @@ class AuthRepository {
   // ─── دریافت گزینه‌های بازیابی ───
   Future<List<RecoveryOption>> getRecoveryOptions(String identifier) async {
     try {
+      await SystemStatusService.instance.ensureFeatureEnabled(
+        SystemFeature.login,
+        forceRefresh: true,
+      );
       final response = await _dio.post('/recovery-options', data: {
         'identifier': identifier,
       });
@@ -566,6 +595,10 @@ class AuthRepository {
   // ─── ارسال کد بازیابی ───
   Future<void> sendRecoveryCode(String optionId) async {
     try {
+      await SystemStatusService.instance.ensureFeatureEnabled(
+        SystemFeature.login,
+        forceRefresh: true,
+      );
       final response = await _dio.post('/recovery-send', data: {
         'option_id': optionId,
       });
@@ -588,6 +621,10 @@ class AuthRepository {
     required String code,
   }) async {
     try {
+      await SystemStatusService.instance.ensureFeatureEnabled(
+        SystemFeature.login,
+        forceRefresh: true,
+      );
       final response = await _dio.post('/recovery-verify', data: {
         'option_id': optionId,
         'code': code,
@@ -614,6 +651,10 @@ class AuthRepository {
     required String newPassword,
   }) async {
     try {
+      await SystemStatusService.instance.ensureFeatureEnabled(
+        SystemFeature.login,
+        forceRefresh: true,
+      );
       final response = await _dio.post('/recovery-complete', data: {
         'password_reset_token': token,
         'new_password': newPassword,

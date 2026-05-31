@@ -3,6 +3,7 @@ import 'package:Vista/utils/env_config.dart';
 
 import '../features/auth/providers/auth_controller.dart';
 import '../model/CommentModel.dart';
+import 'system_status_service.dart';
 
 class CommentPage {
   final List<CommentModel> comments;
@@ -27,8 +28,7 @@ class CommentRepository {
     ));
   }
 
-  static String get _backendUrl =>
-      EnvConfig.apiBaseUrl ?? 'http://10.0.2.2:8080';
+  static String get _backendUrl => EnvConfig.apiBaseUrl;
 
   Future<List<CommentModel>> getComments({
     required String postId,
@@ -61,6 +61,10 @@ class CommentRepository {
     required String content,
     String? parentCommentId,
   }) async {
+    await SystemStatusService.instance.ensureFeatureEnabled(
+      SystemFeature.comments,
+      forceRefresh: true,
+    );
     final response = await _dio.post(
       '/comments',
       data: {

@@ -270,7 +270,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   // ─── keyboard / emoji panel (Telegram-style) ────────────────────────────
   double _cachedKeyboardHeight = 300.0; // last observed keyboard height
   bool _showEmojiPanel = false;
-  bool _isKeyboardRequested = false;    // spacer while keyboard is opening
+  bool _isKeyboardRequested = false; // spacer while keyboard is opening
   Timer? _keyboardRequestTimeoutTimer;
   // Lock A – emoji→keyboard dismiss animation (keyboard going away).
   // Prevents didChangeMetrics from closing the panel while h>80 temporarily.
@@ -306,11 +306,11 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   ProviderSubscription<AsyncValue<List<MessageModel>>>? _messagesListener;
   ProviderSubscription<AsyncValue<Map<String, dynamic>>>?
       _performanceSettingsListener;
-  ProviderSubscription<AsyncValue<ConnectionStatus>>?
-      _connectionStatusListener;
+  ProviderSubscription<AsyncValue<ConnectionStatus>>? _connectionStatusListener;
   ConnectionStatus _latestConnectionStatus = ConnectionStatus.connecting;
   bool _showConnectionBannerAfterDelay = false;
   Timer? _connectionBannerDelayTimer;
+  bool _didInitialJumpToBottom = false;
 
   @override
   void initState() {
@@ -362,6 +362,10 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
     // ✅ Polling Fallback: هر 30 ثانیه برای اطمینان از دریافت پیام‌ها
     _startPolling();
+    // Force one early refresh even if realtime reports connected.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_triggerPollingRefresh());
+    });
   }
 
   void _bootstrapInitialReplyContext() {
@@ -370,8 +374,9 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
     _pendingReplyContext = _PendingReplyContext(
       content: initialContent,
-      senderName: (widget.args.initialReplySenderName ?? widget.args.otherUserName)
-          .trim(),
+      senderName:
+          (widget.args.initialReplySenderName ?? widget.args.otherUserName)
+              .trim(),
       senderId: widget.args.initialReplySenderId ?? widget.args.otherUserId,
       fromNote: widget.args.initialReplyFromNote,
     );
@@ -489,8 +494,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   }
 
   void _setupConnectionStatusBannerListener() {
-    _connectionStatusListener =
-        ref.listenManual<AsyncValue<ConnectionStatus>>(
+    _connectionStatusListener = ref.listenManual<AsyncValue<ConnectionStatus>>(
       chatConnectionStatusProvider,
       (previous, next) {
         final status = next.valueOrNull;
@@ -602,6 +606,14 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         });
       }
       return;
+    }
+
+    if (!_didInitialJumpToBottom) {
+      _didInitialJumpToBottom = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_scrollController.hasClients) return;
+        _scrollController.jumpTo(0);
+      });
     }
 
     final firstId = uiMessages.first.id;
@@ -1395,6 +1407,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
           .setOpenConversation(widget.args.conversationId);
       _chatRepository.setActiveConversation(widget.args.conversationId);
       _startActiveConversationHeartbeat();
+      unawaited(_triggerPollingRefresh());
       return;
     }
 
@@ -1935,7 +1948,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       orElse: () => ConnectionStatus.connecting,
     );
     final isConnected = connectionStatus == ConnectionStatus.connected;
-    final showConnectionBanner = !isConnected && _showConnectionBannerAfterDelay;
+    final showConnectionBanner =
+        !isConnected && _showConnectionBannerAfterDelay;
 
     return Stack(
       children: [
@@ -2510,9 +2524,10 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       elevation: 0,
       backgroundColor: appBarColor,
       surfaceTintColor: Colors.transparent,
-      systemOverlayStyle:
-          (theme.isDark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark)
-              .copyWith(
+      systemOverlayStyle: (theme.isDark
+              ? SystemUiOverlayStyle.light
+              : SystemUiOverlayStyle.dark)
+          .copyWith(
         statusBarColor: appBarColor,
         systemStatusBarContrastEnforced: false,
       ),
@@ -3708,11 +3723,13 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         content: '', // محتوای خالی برای GIF
         attachmentUrl: gifUrl,
         attachmentType: 'gif', // نوع attachment
-        replyToMessageId:
-            _resolveReplyToMessageId(replyTo: replyTo, pendingReply: pendingReply),
+        replyToMessageId: _resolveReplyToMessageId(
+            replyTo: replyTo, pendingReply: pendingReply),
         replyToContent: replyTo?.content ?? pendingReply?.content,
         replyToSenderName: replyTo != null
-            ? (replyTo.senderId == _currentUserId ? 'شما' : widget.args.otherUserName)
+            ? (replyTo.senderId == _currentUserId
+                ? 'شما'
+                : widget.args.otherUserName)
             : pendingReply?.senderName,
         replyToKind:
             _resolveReplyToKind(replyTo: replyTo, pendingReply: pendingReply),
@@ -3859,7 +3876,9 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                   ),
                   replyToContent: replyTo?.content ?? pendingReply?.content,
                   replyToSenderName: replyTo != null
-                      ? (replyTo.senderId == _currentUserId ? 'شما' : widget.args.otherUserName)
+                      ? (replyTo.senderId == _currentUserId
+                          ? 'شما'
+                          : widget.args.otherUserName)
                       : pendingReply?.senderName,
                   replyToKind: _resolveReplyToKind(
                     replyTo: replyTo,
@@ -3944,11 +3963,13 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       final params = SendMessageParams(
         conversationId: targetConvId,
         content: content,
-        replyToMessageId:
-            _resolveReplyToMessageId(replyTo: replyTo, pendingReply: pendingReply),
+        replyToMessageId: _resolveReplyToMessageId(
+            replyTo: replyTo, pendingReply: pendingReply),
         replyToContent: replyTo?.content ?? pendingReply?.content,
         replyToSenderName: replyTo != null
-            ? (replyTo.senderId == _currentUserId ? 'شما' : widget.args.otherUserName)
+            ? (replyTo.senderId == _currentUserId
+                ? 'شما'
+                : widget.args.otherUserName)
             : pendingReply?.senderName,
         replyToKind:
             _resolveReplyToKind(replyTo: replyTo, pendingReply: pendingReply),
@@ -4308,8 +4329,9 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
               replyToMessageId: message.replyToMessageId,
               replyToContent: message.replyToContent,
               replyToSenderName: message.replyToSenderName,
-              replyToKind:
-                  _isSyntheticNoteReplyId(message.replyToMessageId) ? 'note' : null,
+              replyToKind: _isSyntheticNoteReplyId(message.replyToMessageId)
+                  ? 'note'
+                  : null,
             );
 
     if (!resend.isSuccess) {
@@ -4354,8 +4376,9 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                 replyToMessageId: message.replyToMessageId,
                 replyToContent: message.replyToContent,
                 replyToSenderName: message.replyToSenderName,
-                replyToKind:
-                    _isSyntheticNoteReplyId(message.replyToMessageId) ? 'note' : null,
+                replyToKind: _isSyntheticNoteReplyId(message.replyToMessageId)
+                    ? 'note'
+                    : null,
               );
       if (!resend.isSuccess) {
         await chatRepository.markUploadFailed(
@@ -4420,30 +4443,31 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       return;
     }
 
-    final result =
-        await ref.read(chatActionControllerProvider.notifier).sendMessage(
-              id: message.id,
-              conversationId: message.conversationId,
-              content: message.content,
-              attachmentUrl: uploadResult.url,
-              attachmentType: normalizedType,
-              attachmentFileName:
-                  message.attachmentFileName ?? p.basename(file.path),
-              attachmentMimeType: message.attachmentMimeType ??
-                  _guessMimeTypeFromPath(file.path),
-              attachmentSizeBytes:
-                  message.attachmentSizeBytes ?? await file.length(),
-              audioTitle: message.audioTitle,
-              audioArtist: message.audioArtist,
-              audioAlbum: message.audioAlbum,
-              duration: message.duration,
-              mediaGroupId: message.mediaGroupId,
-              replyToMessageId: message.replyToMessageId,
-              replyToContent: message.replyToContent,
-              replyToSenderName: message.replyToSenderName,
-              replyToKind:
-                  _isSyntheticNoteReplyId(message.replyToMessageId) ? 'note' : null,
-            );
+    final result = await ref
+        .read(chatActionControllerProvider.notifier)
+        .sendMessage(
+          id: message.id,
+          conversationId: message.conversationId,
+          content: message.content,
+          attachmentUrl: uploadResult.url,
+          attachmentType: normalizedType,
+          attachmentFileName:
+              message.attachmentFileName ?? p.basename(file.path),
+          attachmentMimeType:
+              message.attachmentMimeType ?? _guessMimeTypeFromPath(file.path),
+          attachmentSizeBytes:
+              message.attachmentSizeBytes ?? await file.length(),
+          audioTitle: message.audioTitle,
+          audioArtist: message.audioArtist,
+          audioAlbum: message.audioAlbum,
+          duration: message.duration,
+          mediaGroupId: message.mediaGroupId,
+          replyToMessageId: message.replyToMessageId,
+          replyToContent: message.replyToContent,
+          replyToSenderName: message.replyToSenderName,
+          replyToKind:
+              _isSyntheticNoteReplyId(message.replyToMessageId) ? 'note' : null,
+        );
 
     if (!result.isSuccess) {
       await chatRepository.markUploadFailed(
@@ -5023,7 +5047,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         index = 0;
       }
 
-      final storyUser = _buildStoryUserForReply(data, stories, ownerId: ownerId);
+      final storyUser =
+          _buildStoryUserForReply(data, stories, ownerId: ownerId);
 
       if (mounted) {
         Navigator.of(context, rootNavigator: true).pop();
@@ -5081,7 +5106,9 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         : (profile?.username ?? widget.args.otherUserName);
 
     return StoryUser(
-      id: resolvedOwnerId.isNotEmpty ? resolvedOwnerId : widget.args.otherUserId,
+      id: resolvedOwnerId.isNotEmpty
+          ? resolvedOwnerId
+          : widget.args.otherUserId,
       username: username,
       avatarUrl: profile?.avatarUrl ??
           data.storyOwnerAvatarUrl ??
@@ -6691,7 +6718,9 @@ class _ChatMediaAlbumBubble extends StatelessWidget {
       final end = (i + 3 > count) ? count : i + 3;
       rows.add(List<int>.generate(end - i, (offset) => i + offset));
     }
-    if (rows.length >= 2 && rows.last.length == 1 && rows[rows.length - 2].length == 3) {
+    if (rows.length >= 2 &&
+        rows.last.length == 1 &&
+        rows[rows.length - 2].length == 3) {
       final moved = rows[rows.length - 2].removeLast();
       rows.last.insert(0, moved);
     }
@@ -6728,8 +6757,7 @@ class _ChatMediaAlbumBubble extends StatelessWidget {
                 ],
               ),
             ),
-            if (rowIndex != rowCount - 1)
-              const SizedBox(height: _albumTileGap),
+            if (rowIndex != rowCount - 1) const SizedBox(height: _albumTileGap),
           ],
         ],
       ),
@@ -6743,8 +6771,9 @@ class _ChatMediaAlbumBubble extends StatelessWidget {
     required int colCount,
   }) {
     final radius = BorderRadius.only(
-      topLeft:
-          rowIndex == 0 && colIndex == 0 ? const Radius.circular(12) : Radius.zero,
+      topLeft: rowIndex == 0 && colIndex == 0
+          ? const Radius.circular(12)
+          : Radius.zero,
       topRight: rowIndex == 0 && colIndex == colCount - 1
           ? const Radius.circular(12)
           : Radius.zero,

@@ -3,6 +3,7 @@ import 'package:Vista/utils/env_config.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../model/publicPostModel.dart';
+import '../../../services/system_status_service.dart';
 import '../../auth/providers/auth_controller.dart';
 
 final goPostsRepositoryProvider = Provider<GoPostsRepository>((ref) {
@@ -122,10 +123,15 @@ class GoPostsRepository {
   Future<List<PublicPostModel>> exploreFeed({
     int limit = 15,
     dynamic offset = 0,
+    bool debug = false,
   }) async {
     final response = await _dio.get(
       '/explore',
-      queryParameters: {'limit': limit, 'offset': offset},
+      queryParameters: {
+        'limit': limit,
+        'offset': offset,
+        if (debug) 'debug': 'true',
+      },
       options: await _optionalAuthOptions(),
     );
     return _parsePostList(response.data);
@@ -183,6 +189,10 @@ class GoPostsRepository {
     bool hideLikeCount = false,
     bool hideCommentCount = false,
   }) async {
+    await SystemStatusService.instance.ensureFeatureEnabled(
+      SystemFeature.posts,
+      forceRefresh: true,
+    );
     final response = await _dio.post(
       '/posts',
       data: {

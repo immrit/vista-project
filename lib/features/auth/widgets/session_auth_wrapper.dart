@@ -4,6 +4,7 @@ import 'package:Vista/features/auth/providers/auth_controller.dart';
 import 'package:Vista/features/home/screens/homeScreen.dart';
 import 'package:Vista/features/profile/screens/profile_setup_wizard_screen.dart';
 import 'package:Vista/middleware/session_middleware.dart';
+import 'package:Vista/screens/maintenance_screen.dart';
 import 'package:Vista/services/session_manager_service_v2.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -22,6 +23,7 @@ class _SessionAuthWrapperState extends ConsumerState<SessionAuthWrapper> {
   bool _isLoading = true;
   bool _isAuthenticated = false;
   bool _requiresProfileSetup = false;
+  bool _isMaintenance = false;
 
   @override
   void initState() {
@@ -43,8 +45,12 @@ class _SessionAuthWrapperState extends ConsumerState<SessionAuthWrapper> {
           duration: const Duration(
               days: 1), // stay on screen practically forever until killed
         );
+        setState(() {
+          _isMaintenance = true;
+          _isLoading = false;
+        });
       }
-      return; // Stuck loading forever
+      return;
     }
 
     // ─── Step 1: بررسی توکن محلی ───────────────────────────────
@@ -148,6 +154,10 @@ class _SessionAuthWrapperState extends ConsumerState<SessionAuthWrapper> {
           ),
         ),
       );
+    }
+
+    if (_isMaintenance) {
+      return const MaintenanceScreen();
     }
 
     if (_isAuthenticated) {

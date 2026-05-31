@@ -43,7 +43,14 @@ DateTime? parseBirthDate(String? value) {
 
   final trimmed = value.trim();
   final parsed = DateTime.tryParse(trimmed);
-  if (parsed != null) return parsed;
+  if (parsed != null) {
+    // Legacy data may store Jalali dates like "1402-07-12".
+    // DateTime.tryParse treats them as Gregorian year 1402, which causes
+    // mixed/incorrect calendar rendering in profile forms.
+    if (parsed.year >= 1700) {
+      return parsed;
+    }
+  }
 
   final parts = trimmed.split(RegExp(r'[-/]'));
   if (parts.length != 3) return null;

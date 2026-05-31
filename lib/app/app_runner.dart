@@ -21,6 +21,7 @@ import 'package:Vista/services/session_manager_service_v2.dart';
 
 import 'package:Vista/services/auto_lock_service.dart';
 import 'package:Vista/services/network_state_service.dart';
+import 'package:Vista/services/system_status_service.dart';
 import 'package:Vista/services/system_ui_bar_service.dart';
 
 import 'package:Vista/DB/profile_cache_service.dart';
@@ -224,6 +225,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
   late final AppLinks _appLinks;
   StreamSubscription? _linkSubscription;
   Timer? _sessionCheckTimer;
+  Timer? _systemStatusTimer;
   bool _isLoading = false;
   bool _pushServiceInitialized = false;
 
@@ -232,6 +234,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
   @override
   void dispose() {
     _sessionCheckTimer?.cancel();
+    _systemStatusTimer?.cancel();
     _linkSubscription?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     try {
@@ -253,6 +256,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
     unawaited(_bootstrapAuthenticatedUser());
 
     _startSessionMonitoring();
+    _startSystemStatusMonitoring();
     _setupNetworkStateListener();
     _setupSessionTerminationHandler();
   }
@@ -300,9 +304,9 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
     try {
       final hasTokenSession = await TokenStorage.hasValidSession();
       if (!hasTokenSession) return;
-      final state =
+      final isValid =
           await sessionManager.verifyCurrentSession(forceServer: false);
-      if (state == SessionVerificationState.invalid) {
+      if (!isValid) {
         await _handleUserSignOut();
       }
     } catch (_) {}
@@ -325,6 +329,28 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
         Timer.periodic(const Duration(minutes: 5), (timer) async {
       await _handlePotentialSessionExpiry();
     });
+  }
+
+  void _startSystemStatusMonitoring() {
+    unawaited(_refreshSystemStatus(force: true));
+    _systemStatusTimer = Timer.periodic(const Duration(seconds: 60), (_) async {
+      await _refreshSystemStatus(force: true);
+    });
+  }
+
+  Future<void> _refreshSystemStatus({bool force = false}) async {
+    try {
+      final status = await SystemStatusService.instance.fetchStatus(
+        force: force,
+      );
+      if (status?.maintenance == true) {
+        final context = navigatorKey.currentContext;
+        if (context != null && context.mounted) {
+          Navigator.of(context)
+              .pushNamedAndRemoveUntil('/maintenance', (route) => false);
+        }
+      }
+    } catch (_) {}
   }
 
   void _setupNetworkStateListener() {
@@ -362,6 +388,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
       AutoLockService().recordUserActivity();
       AutoLockService().refreshSettings();
       SessionManagerServiceV2().onAppResumed();
+      unawaited(_refreshSystemStatus(force: true));
     } else if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.inactive) {
       AutoLockService().recordUserActivity();

@@ -21,6 +21,7 @@ import '../../../DB/isar_database_manager.dart';
 import '../../../DB/entities/deletion_task_entity.dart';
 import '../../auth/providers/auth_controller.dart';
 import '../../../services/session_manager_service_v2.dart';
+import '../../../services/system_status_service.dart';
 import '../data/datasources/chat_local_datasource_isar.dart';
 import '../domain/message_payload.dart';
 import '../services/sse_manager.dart';
@@ -171,6 +172,17 @@ class ChatRepositoryImpl implements ChatRepository {
   @override
   Future<ChatResult<ConversationModel>> createConversation(String otherUserId,
       {bool isSecret = false}) async {
+    try {
+      await SystemStatusService.instance.ensureFeatureEnabled(
+        SystemFeature.chat,
+        forceRefresh: true,
+      );
+    } on FeatureDisabledException catch (e) {
+      return ChatResult.failure(e.message);
+    } on MaintenanceModeException catch (e) {
+      return ChatResult.failure(e.toString());
+    }
+
     final uid = await _userId();
     final opts = await _authOptions();
     if (uid == null || opts == null) {
@@ -380,6 +392,17 @@ class ChatRepositoryImpl implements ChatRepository {
 
   @override
   Future<ChatResult<MessageModel>> sendMessage(MessagePayload payload) async {
+    try {
+      await SystemStatusService.instance.ensureFeatureEnabled(
+        SystemFeature.chat,
+        forceRefresh: true,
+      );
+    } on FeatureDisabledException catch (e) {
+      return ChatResult.failure(e.message);
+    } on MaintenanceModeException catch (e) {
+      return ChatResult.failure(e.toString());
+    }
+
     final uid = await _userId();
     final opts = await _authOptions();
     if (uid == null || opts == null) {

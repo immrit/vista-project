@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -39,6 +39,7 @@ import 'package:Vista/core/theme/app_theme.dart';
 import '../../../widgets/skeleton_loading.dart';
 import '../widgets/double_tap_like_overlay.dart';
 import 'package:Vista/l10n/generated/app_localizations.dart';
+import '../widgets/dwell_detector.dart';
 
 // -----------------------------------------------------------------------------
 // SCREEN
@@ -279,11 +280,26 @@ class _ForYouTab extends ConsumerWidget {
               }
 
               final post = posts[index];
-              return Column(
-                children: [
-                  _ThreadPostItem(post: post, isForYou: true),
-                  const Divider(height: 0.5, thickness: 0.5),
-                ],
+              return DwellDetector(
+                itemKey: post.id,
+                onView: () {
+                  unawaited(ref.read(goPostsRepositoryProvider).trackFeedEvent(
+                    postId: post.id,
+                    eventType: 'view',
+                  ));
+                },
+                onDwell: () {
+                  unawaited(ref.read(goPostsRepositoryProvider).trackFeedEvent(
+                    postId: post.id,
+                    eventType: 'dwell',
+                  ));
+                },
+                child: Column(
+                  children: [
+                    _ThreadPostItem(post: post, isForYou: true),
+                    const Divider(height: 0.5, thickness: 0.5),
+                  ],
+                ),
               );
             },
           ),
@@ -350,11 +366,26 @@ class _FollowingTab extends ConsumerWidget {
               }
 
               final post = posts[index];
-              return Column(
-                children: [
-                  _ThreadPostItem(post: post, isForYou: false),
-                  const Divider(height: 0.5, thickness: 0.5),
-                ],
+              return DwellDetector(
+                itemKey: post.id,
+                onView: () {
+                  unawaited(ref.read(goPostsRepositoryProvider).trackFeedEvent(
+                    postId: post.id,
+                    eventType: 'view',
+                  ));
+                },
+                onDwell: () {
+                  unawaited(ref.read(goPostsRepositoryProvider).trackFeedEvent(
+                    postId: post.id,
+                    eventType: 'dwell',
+                  ));
+                },
+                child: Column(
+                  children: [
+                    _ThreadPostItem(post: post, isForYou: false),
+                    const Divider(height: 0.5, thickness: 0.5),
+                  ],
+                ),
               );
             },
           ),
@@ -880,6 +911,10 @@ class _ThreadPostItem extends ConsumerWidget {
                         ownerId: post.userId,
                         ref: ref,
                       );
+                  unawaited(ref.read(goPostsRepositoryProvider).trackFeedEvent(
+                        postId: post.id,
+                        eventType: 'like',
+                      ));
                 } catch (_) {
                   if (context.mounted) {
                     ref
@@ -926,9 +961,10 @@ class _ThreadPostItem extends ConsumerWidget {
                   iconSize: 19,
                   gap: 4,
                   onTap: () async {
+                    final willLike = !isLiked;
                     ref
                         .read(likeStateProvider.notifier)
-                        .updateLikeState(post.id, !isLiked);
+                        .updateLikeState(post.id, willLike);
                     try {
                       await ref
                           .read(postActionsServiceProvider)
@@ -937,6 +973,14 @@ class _ThreadPostItem extends ConsumerWidget {
                             ownerId: post.userId,
                             ref: ref,
                           );
+                      if (willLike) {
+                        unawaited(
+                          ref.read(goPostsRepositoryProvider).trackFeedEvent(
+                                postId: post.id,
+                                eventType: 'like',
+                              ),
+                        );
+                      }
                     } catch (_) {
                       if (context.mounted) {
                         ref
@@ -977,9 +1021,16 @@ class _ThreadPostItem extends ConsumerWidget {
                   isSaved: isSaved,
                   iconSize: 19,
                   onTap: () async {
+                    final wasSaved = isSaved;
                     final ok = await ref
                         .read(savedPostIdsProvider.notifier)
                         .toggle(post.id, post: post);
+                    if (ok && !wasSaved) {
+                      unawaited(ref.read(goPostsRepositoryProvider).trackFeedEvent(
+                            postId: post.id,
+                            eventType: 'save',
+                          ));
+                    }
                     if (!ok && context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
