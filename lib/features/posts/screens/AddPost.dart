@@ -33,10 +33,10 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
 
   int get _maxCharLength {
     final currentUser = ref.read(userProvider);
-    if (currentUser?.isVerified == true) {
-      if (currentUser?.verificationType == 'blueTick') return 2000;
-      if (currentUser?.verificationType == 'goldTick') return 500;
-    }
+    if (currentUser?.verificationType == 'blueTick') return 2000;
+    if (currentUser?.verificationType == 'goldTick' ||
+        currentUser?.verificationType == 'blackTick' ||
+        currentUser?.isPremiumUser == true) return 400;
     return 200;
   }
   File? _selectedImage;
@@ -554,59 +554,126 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
         ),
         body: GestureDetector(
           onTap: () => FocusScope.of(context).unfocus(),
-          child: Column(
+          child: Stack(
             children: [
-              // بخش اصلی
-              Expanded(
-                child: SingleChildScrollView(
-                  physics: const BouncingScrollPhysics(),
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+              Column(
+                children: [
+                  // بخش اصلی
+                  Expanded(
+                    child: SingleChildScrollView(
+                      physics: const BouncingScrollPhysics(),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // نویسنده پست
+                            _buildAuthorCard(
+                                textColor, secondaryTextColor, cardColor),
+
+                            const SizedBox(height: 16),
+
+                            // فیلد متن
+
+                            _buildContentTextField(
+                                textColor, secondaryTextColor, cardColor),
+
+                            const SizedBox(height: 16),
+
+                            // اضافه کردن ویجت پیش‌نمایش ویدیو
+                            if (_videoPlayerController != null &&
+                                _videoPlayerController!.value.isInitialized)
+                              _buildVideoPreview(),
+
+                            // پیش‌نمایش تصویر
+                            if (_selectedImage != null ||
+                                _selectedImageBytes != null)
+                              _buildImagePreview(isDarkMode)
+                            else
+                              _buildMediaUploadSection(isDarkMode, primaryColor),
+
+                            // پیش‌نمایش موزیک
+                            if (_selectedMusic != null)
+                              _buildMusicPreview(
+                                  isDarkMode, primaryColor, textColor),
+
+                            const SizedBox(height: 50),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  // بخش پایین صفحه
+                ],
+              ),
+              
+              // نمایش تولتیپ تبلیغاتی برای کاربران عادی
+              if (_maxCharLength == 200)
+                Positioned(
+                  bottom: 8,
+                  right: 16,
+                  child: GestureDetector(
+                    onTap: () {
+                      Navigator.pushNamed(context, '/verification-store');
+                    },
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      alignment: Alignment.bottomRight,
                       children: [
-                        // نویسنده پست
-                        _buildAuthorCard(
-                            textColor, secondaryTextColor, cardColor),
-
-                        const SizedBox(height: 16),
-
-                        // فیلد متن
-
-                        _buildContentTextField(
-                            textColor, secondaryTextColor, cardColor),
-
-                        const SizedBox(height: 16),
-
-                        // هشتگ‌ها داخل متن پست با # نوشته می‌شوند (مثل ویستا)
-                        // و در لحظه پیشنهاد هشتگ‌های موجود نمایش داده می‌شود.
-                        const SizedBox(height: 16),
-
-// اضافه کردن ویجت پیش‌نمایش ویدیو
-                        if (_videoPlayerController != null &&
-                            _videoPlayerController!.value.isInitialized)
-                          _buildVideoPreview(),
-
-                        // پیش‌نمایش تصویر
-                        if (_selectedImage != null ||
-                            _selectedImageBytes != null)
-                          _buildImagePreview(isDarkMode)
-                        else
-                          _buildMediaUploadSection(isDarkMode, primaryColor),
-
-                        // پیش‌نمایش موزیک
-                        if (_selectedMusic != null)
-                          _buildMusicPreview(
-                              isDarkMode, primaryColor, textColor),
-
-                        const SizedBox(height: 50),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF4A90E2), // رنگ آبی تلگرامی
+                            borderRadius: BorderRadius.circular(12),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.2),
+                                blurRadius: 4,
+                                offset: const Offset(0, 2),
+                              )
+                            ],
+                          ),
+                          child: const Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                'ارتقا به پریمیوم',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              Text(
+                                '۴۰۰ کاراکتر بنویسید',
+                                style: TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 10,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        // فلش تولتیپ (مثلث)
+                        Positioned(
+                          bottom: -4,
+                          right: 16, // تراز شده با مرکز شمارشگر
+                          child: Transform.rotate(
+                            angle: 45 * 3.14159 / 180,
+                            child: Container(
+                              width: 10,
+                              height: 10,
+                              color: const Color(0xFF4A90E2),
+                            ),
+                          ),
+                        ),
                       ],
                     ),
                   ),
                 ),
-              ),
-
-              // بخش پایین صفحه
             ],
           ),
         ),

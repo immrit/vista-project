@@ -267,12 +267,20 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   // ✅ اندازه‌گیری ارتفاع اینپوت بار برای پدینگ دقیق لیست
   double _inputHeight = 70.0; // مقدار اولیه بدون emoji panel
 
-  // ✅ مدیریت keyboard/emoji – منطق تلگرام
-  // ارتفاع کیبورد cache می‌شود؛ input ثابت می‌ماند و فقط پنل پایین swap می‌شود
-  double _cachedKeyboardHeight = 300.0;
+  // ─── keyboard / emoji panel (Telegram-style) ────────────────────────────
+  double _cachedKeyboardHeight = 300.0; // last observed keyboard height
   bool _showEmojiPanel = false;
-  bool _isKeyboardRequested = false;
+  bool _isKeyboardRequested = false;    // spacer while keyboard is opening
   Timer? _keyboardRequestTimeoutTimer;
+  // Lock A – emoji→keyboard dismiss animation (keyboard going away).
+  // Prevents didChangeMetrics from closing the panel while h>80 temporarily.
+  bool _lockEmojiPanel = false;
+  Timer? _lockEmojiPanelTimer;
+  // Lock B – keyboard→emoji appear animation (keyboard coming up).
+  // Keeps reservedHeight pinned to _cachedKeyboardHeight so the input bar
+  // doesn't jump while kbViewInset is still small mid-animation.
+  bool _isKeyboardOpening = false;
+  Timer? _keyboardOpeningTimer;
 
   // ═══════════════════════════════════════════════════════════════════════════
   // 🎬 LIFECYCLE
@@ -1314,6 +1322,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     _adaptiveEffectsController.updateScrollVelocity(0);
 
     _keyboardRequestTimeoutTimer?.cancel();
+    _lockEmojiPanelTimer?.cancel();
+    _keyboardOpeningTimer?.cancel();
     _scrollEndTimer?.cancel();
     _appBarAnimController.dispose();
     _scrollController.removeListener(_onScroll);
@@ -1329,35 +1339,51 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     super.dispose();
   }
 
-  /// ارتفاع ناحیه پایین (کیبورد یا پنل ایموجی) – تلگرام
-  double _bottomPanelHeight(double kbInset) {
-    if (_showEmojiPanel || _isKeyboardRequested) return _cachedKeyboardHeight;
-    return kbInset;
-  }
-
-  /// offset عمودی input bar از پایین صفحه – تلگرام
-  /// emoji: Column(Input+Panel) از bottom:0
-  /// keyboard: Input از bottom:kbInset
-  /// transition: Input از bottom:cached تا کیبورد بیاد
-  double _inputBottomOffset(double kbInset) {
-    if (_showEmojiPanel) return 0;
-    if (_isKeyboardRequested) return _cachedKeyboardHeight;
-    return kbInset;
-  }
-
-  /// وقتی کیبورد ظاهر/مخفی شد، ارتفاعش را cache می‌کنیم
+  /// کیبورد ظاهر/مخفی شد – فقط height را cache کن
   @override
   void didChangeMetrics() {
     super.didChangeMetrics();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      final kbHeight = MediaQuery.of(context).viewInsets.bottom;
-      if (kbHeight > 80) {
+      final h = MediaQuery.of(context).viewInsets.bottom;
+
+      if (h > 80) {
+        // ── keyboard is visible (fully or mid-animation) ──────────────────
         _keyboardRequestTimeoutTimer?.cancel();
         setState(() {
-          _cachedKeyboardHeight = kbHeight;
           _isKeyboardRequested = false;
+
+          if (!_lockEmojiPanel) {
+            // ─── Core fix for real-device behaviour ─────────────────────────
+            // On physical Android devices, didChangeMetrics fires on EVERY
+            // animation frame during both keyboard APPEAR and DISMISS.
+            //
+            //   Appear:  h goes  0 → 150 → 400 → 650  (increasing)
+            //   Dismiss: h goes 650 → 400 → 150 →  90 (decreasing)
+            //
+            // Only update the cache when h is GROWING (keyboard appearing).
+            // During dismiss h is always ≤ the cached peak, so the cache
+            // is preserved at the true keyboard height.
+            if (h > _cachedKeyboardHeight) {
+              _cachedKeyboardHeight = h;
+            }
+            _showEmojiPanel = false;
+          }
+
+          // ── Lock B: release "keyboard opening" guard ──────────────────
+          // Keep the input pinned until the keyboard reaches ≥95 % of its
+          // full height (within one or two frames of the stable position).
+          // After that, kbViewInset ≈ _cachedKeyboardHeight so no jump.
+          if (_isKeyboardOpening && h >= _cachedKeyboardHeight * 0.95) {
+            _keyboardOpeningTimer?.cancel();
+            _isKeyboardOpening = false;
+          }
         });
+      } else if (_lockEmojiPanel) {
+        // ── keyboard is gone (h ≤ 80) while lock A is still held ─────────
+        // The keyboard dismiss animation has completed – safe to release.
+        _lockEmojiPanelTimer?.cancel();
+        _lockEmojiPanel = false;
       }
     });
   }
@@ -1852,17 +1878,45 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     final theme = context.chatTheme;
     final kbViewInset = MediaQuery.of(context).viewInsets.bottom;
     final keyboardVisible = kbViewInset > 80;
-
-    // ── تلگرام: input ثابت، swap فوری بین keyboard و emoji panel ─────────────
-    final bottomPanelHeight = _bottomPanelHeight(kbViewInset);
-    final inputBottomOffset = _inputBottomOffset(kbViewInset);
     final safeBottom = MediaQuery.paddingOf(context).bottom;
-    final idleSafeInset = (!_showEmojiPanel &&
-            !_isKeyboardRequested &&
-            kbViewInset <= 0)
-        ? safeBottom
-        : 0.0;
-    final totalBottomSpace = _inputHeight + bottomPanelHeight + idleSafeInset;
+
+    // ── Telegram-style reserved-space logic ────────────────────────────────
+    //
+    //  The space BELOW the input bar is always exactly one of these values:
+    //
+    //  ① emoji panel or transition lock active
+    //       → _cachedKeyboardHeight  (fixed, never follows kbViewInset)
+    //       WHY: during the keyboard-dismiss animation kbViewInset decreases
+    //       (650 → 0 over ~300 ms). If we tracked it the input bar would
+    //       visually "fall" with the keyboard – exactly the jump the user
+    //       sees. By pinning to the cached peak height the input stays still.
+    //
+    //  ② keyboard fully visible, no emoji transition
+    //       → kbViewInset  (follows keyboard height in real time)
+    //
+    //  ③ keyboard requested (spacer while keyboard opens)
+    //       → _cachedKeyboardHeight
+    //
+    //  ④ idle (no keyboard, no emoji)
+    //       → safeBottom
+    //
+    final double reservedHeight;
+    if (_showEmojiPanel || _lockEmojiPanel || _isKeyboardOpening) {
+      // ① emoji panel active  → fixed cached height (no jump during dismiss)
+      // ② lock A active       → keyboard still animating out, hold height
+      // ③ lock B active       → keyboard animating in, hold height until ≥95%
+      reservedHeight = _cachedKeyboardHeight;
+    } else if (keyboardVisible) {
+      // ④ keyboard fully visible, no transition → track actual inset
+      reservedHeight = kbViewInset;
+    } else if (_isKeyboardRequested) {
+      // ⑤ keyboard requested but not yet visible → hold cached height
+      reservedHeight = _cachedKeyboardHeight;
+    } else {
+      // ⑥ idle
+      reservedHeight = safeBottom;
+    }
+    final totalBottomSpace = _inputHeight + reservedHeight;
     // ─────────────────────────────────────────────────────────────────────────
 
     final adaptiveEffects = ref.watch(adaptiveEffectsProvider);
@@ -1976,15 +2030,13 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                   ),
                 ),
 
-              // لایه 4: input + پنل پایین (منطق تلگرام)
-              // keyboard mode → Positioned(bottom: kbInset) + فقط input
-              // emoji mode   → Positioned(bottom: 0) + Column(input, emojiPanel)
-              // transition   → Positioned(bottom: cached) + فقط input تا کیبورد بیاد
+              // لایه 4: input + SizedBox زیرش (منطق تلگرام)
+              // همیشه bottom:0 – SizedBox ارتفاع رزرو می‌کند
               if (!_isCurrentUserBlocked && !_isOtherUserBlocked)
                 Positioned(
                   left: 0,
                   right: 0,
-                  bottom: inputBottomOffset + idleSafeInset,
+                  bottom: 0,
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1993,11 +2045,12 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                           reduceEffects: reduceEffects,
                           allowHeavyEffects: adaptiveEffects.allowHeavyBlur,
                           blurSigma: adaptiveEffects.blurSigma),
-                      if (_showEmojiPanel)
-                        SizedBox(
-                          height: _cachedKeyboardHeight,
-                          child: _buildEmojiPanel(theme),
-                        ),
+                      SizedBox(
+                        height: reservedHeight,
+                        child: _showEmojiPanel && !keyboardVisible
+                            ? _buildEmojiPanel(theme)
+                            : const SizedBox.shrink(),
+                      ),
                     ],
                   ),
                 ),
@@ -2045,25 +2098,55 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     });
   }
 
-  /// تلگرام: swap فوری keyboard ↔ emoji – input ثابت می‌ماند
+  /// Telegram-style: keyboard ↔ emoji swap
   void _onEmojiPanelToggled(bool show) {
+    _keyboardRequestTimeoutTimer?.cancel();
     if (show) {
-      final currentKbHeight = MediaQuery.of(context).viewInsets.bottom;
+      // ── keyboard → emoji ─────────────────────────────────────────────────
+      // 1. Capture current keyboard height (if visible).
+      // 2. Engage the lock so that the keyboard-dismiss animation on real
+      //    devices cannot trigger didChangeMetrics → _showEmojiPanel=false.
+      // 3. Mark panel open and dismiss keyboard.
+      _lockEmojiPanelTimer?.cancel();
+      _lockEmojiPanel = true;
+      // The lock covers the keyboard dismiss animation (max ~400 ms on real
+      // devices) plus a small buffer → 600 ms total.
+      _lockEmojiPanelTimer = Timer(const Duration(milliseconds: 600), () {
+        _lockEmojiPanel = false;
+      });
+
+      final h = MediaQuery.of(context).viewInsets.bottom;
       setState(() {
-        if (currentKbHeight > 80) _cachedKeyboardHeight = currentKbHeight;
+        if (h > 80) _cachedKeyboardHeight = h;
         _showEmojiPanel = true;
         _isKeyboardRequested = false;
       });
-      _keyboardRequestTimeoutTimer?.cancel();
       _focusNode.unfocus();
       SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
     } else {
-      _keyboardRequestTimeoutTimer?.cancel();
+      // ── emoji → keyboard ─────────────────────────────────────────────────
+      // Release Lock A so didChangeMetrics can work normally once the
+      // keyboard appears.
+      _lockEmojiPanelTimer?.cancel();
+      _lockEmojiPanel = false;
+
+      // Engage Lock B: keep reservedHeight pinned to _cachedKeyboardHeight
+      // throughout the keyboard-appear animation so the input bar doesn't
+      // jump while kbViewInset is still small mid-animation.
+      _keyboardOpeningTimer?.cancel();
+      _isKeyboardOpening = true;
+      // Safety: clear if keyboard never appears (e.g. focus rejected)
+      _keyboardOpeningTimer = Timer(const Duration(milliseconds: 800), () {
+        if (mounted) setState(() => _isKeyboardOpening = false);
+      });
+
       setState(() {
         _showEmojiPanel = false;
         _isKeyboardRequested = true;
       });
-      _keyboardRequestTimeoutTimer = Timer(const Duration(milliseconds: 600), () {
+      _focusNode.requestFocus();
+      _keyboardRequestTimeoutTimer =
+          Timer(const Duration(milliseconds: 800), () {
         if (mounted && _isKeyboardRequested) {
           setState(() => _isKeyboardRequested = false);
         }

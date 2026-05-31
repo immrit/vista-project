@@ -18,15 +18,17 @@ class PostLikeButton extends StatefulWidget {
   final double iconSize;
   final double gap;
   final TextStyle? countStyle;
+  final bool showCount;
 
   const PostLikeButton({
     super.key,
     required this.isLiked,
     required this.likeCount,
     required this.onTap,
-    this.iconSize = 22,
-    this.gap = 6,
+    this.iconSize = 20,
+    this.gap = 4,
     this.countStyle,
+    this.showCount = true,
   });
 
   @override
@@ -70,8 +72,8 @@ class _PostLikeButtonState extends State<PostLikeButton>
     final baseColor = isDark ? Colors.white70 : Colors.black87;
     final countStyle = widget.countStyle ??
         TextStyle(
-          fontSize: 13,
-          fontWeight: FontWeight.w500,
+          fontSize: 12.5,
+          fontWeight: FontWeight.w400,
           color: isDark ? Colors.white70 : Colors.black54,
         );
 
@@ -83,22 +85,24 @@ class _PostLikeButtonState extends State<PostLikeButton>
           _controller.forward().then((_) => _controller.reverse());
         }
       },
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(12),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 3),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             ScaleTransition(
               scale: _scale,
               child: Icon(
-                widget.isLiked ? Icons.favorite : Icons.favorite_border,
+                widget.isLiked ? Icons.favorite_rounded : Icons.favorite_border,
                 color: widget.isLiked ? Colors.red : baseColor,
                 size: widget.iconSize,
               ),
             ),
-            SizedBox(width: widget.gap),
-            Text(_formatCount(widget.likeCount), style: countStyle),
+            if (widget.showCount) ...[
+              SizedBox(width: widget.gap),
+              Text(_formatCount(widget.likeCount), style: countStyle),
+            ],
           ],
         ),
       ),
@@ -112,14 +116,16 @@ class PostCommentButton extends StatelessWidget {
   final double iconSize;
   final double gap;
   final TextStyle? countStyle;
+  final bool showCount;
 
   const PostCommentButton({
     super.key,
     required this.commentCount,
     required this.onTap,
-    this.iconSize = 22,
-    this.gap = 6,
+    this.iconSize = 20,
+    this.gap = 4,
     this.countStyle,
+    this.showCount = true,
   });
 
   @override
@@ -128,28 +134,30 @@ class PostCommentButton extends StatelessWidget {
     final baseColor = isDark ? Colors.white70 : Colors.black54;
     final countStyle = this.countStyle ??
         TextStyle(
-          fontSize: 13,
-          fontWeight: FontWeight.w500,
+          fontSize: 12.5,
+          fontWeight: FontWeight.w400,
           color: isDark ? Colors.white70 : Colors.black54,
         );
 
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(12),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 3),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Use the same custom comment icon asset used elsewhere in the app (e.g. profile/public posts).
             Image.asset(
               'lib/utils/images/component/comment.png',
               width: iconSize,
               height: iconSize,
               color: baseColor,
+              filterQuality: FilterQuality.high,
             ),
-            SizedBox(width: gap),
-            Text(_formatCount(commentCount), style: countStyle),
+            if (showCount) ...[
+              SizedBox(width: gap),
+              Text(_formatCount(commentCount), style: countStyle),
+            ],
           ],
         ),
       ),
@@ -167,7 +175,7 @@ class PostSaveButton extends StatelessWidget {
     super.key,
     required this.isSaved,
     required this.onTap,
-    this.iconSize = 22,
+    this.iconSize = 20,
     this.activeColor,
   });
 
@@ -179,9 +187,9 @@ class PostSaveButton extends StatelessWidget {
 
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(12),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 3),
         child: Icon(
           isSaved ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
           size: iconSize,

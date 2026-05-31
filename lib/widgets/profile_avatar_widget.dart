@@ -15,7 +15,9 @@ class ProfileAvatar extends ConsumerWidget {
   final bool showOnlineStatus;
   final bool showDisplayName;
   final VoidCallback? onTap;
-  final String? imageUrl; // اضافه شده برای استفاده در فید وقتی عکس رو داریم
+  final String? imageUrl;
+  /// اگر true باشد، حلقه استوری نمایش داده نمی‌شود و onTap همیشه اجرا می‌شود
+  final bool disableStoryRing;
 
   const ProfileAvatar({
     super.key,
@@ -25,21 +27,25 @@ class ProfileAvatar extends ConsumerWidget {
     this.showDisplayName = false,
     this.onTap,
     this.imageUrl,
+    this.disableStoryRing = false,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // 1. دریافت وضعیت استوری کاربر
-    final storiesAsync = ref.watch(activeStoriesProvider);
-    final storyUser = storiesAsync.valueOrNull?.firstWhere(
-        (u) => u.id == userId,
-        orElse: () => StoryUser(
-            id: userId,
-            username: 'unknown',
-            stories: [])); // اگر پیدا نشد، یک ابجکت خالی
+    // 1. دریافت وضعیت استوری کاربر (فقط زمانی که disableStoryRing نباشد)
+    final storiesAsync =
+        disableStoryRing ? null : ref.watch(activeStoriesProvider);
+    final storyUser = disableStoryRing
+        ? null
+        : storiesAsync?.valueOrNull?.firstWhere(
+            (u) => u.id == userId,
+            orElse: () =>
+                StoryUser(id: userId, username: 'unknown', stories: []));
 
-    final hasStories = storyUser != null && storyUser.stories.isNotEmpty;
-    final hasUnseenStories = storyUser?.hasUnseenStories ?? false;
+    final hasStories =
+        !disableStoryRing && storyUser != null && storyUser.stories.isNotEmpty;
+    final hasUnseenStories =
+        !disableStoryRing && (storyUser?.hasUnseenStories ?? false);
 
     // 2. دریافت اطلاعات پروفایل (اگر imageUrl پاس داده نشده باشد)
     final profile =
@@ -56,8 +62,8 @@ class ProfileAvatar extends ConsumerWidget {
 
     return GestureDetector(
       onTap: () {
-        if (hasStories) {
-          _openStoryViewer(context, storiesAsync.value!, storyUser);
+        if (hasStories && !disableStoryRing) {
+          _openStoryViewer(context, storiesAsync!.value!, storyUser);
         } else {
           onTap?.call();
         }

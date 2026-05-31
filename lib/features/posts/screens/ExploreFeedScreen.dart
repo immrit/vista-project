@@ -916,12 +916,15 @@ class _ThreadPostItem extends ConsumerWidget {
 
           // ── دکمه‌های اکشن ─────────────────────────────────────
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 10, 4, 12),
+            padding: const EdgeInsets.fromLTRB(12, 4, 12, 10),
             child: Row(
               children: [
                 PostLikeButton(
                   isLiked: isLiked,
                   likeCount: likeCount,
+                  showCount: !post.hideLikeCount,
+                  iconSize: 19,
+                  gap: 4,
                   onTap: () async {
                     ref
                         .read(likeStateProvider.notifier)
@@ -943,9 +946,12 @@ class _ThreadPostItem extends ConsumerWidget {
                     }
                   },
                 ),
-                const SizedBox(width: 16),
+                const SizedBox(width: 14),
                 PostCommentButton(
                   commentCount: post.commentCount,
+                  showCount: !post.hideCommentCount,
+                  iconSize: 19,
+                  gap: 4,
                   onTap: () {
                     unawaited(ref
                         .read(goPostsRepositoryProvider)
@@ -966,9 +972,10 @@ class _ThreadPostItem extends ConsumerWidget {
                     );
                   },
                 ),
-                const SizedBox(width: 16),
+                const SizedBox(width: 14),
                 PostSaveButton(
                   isSaved: isSaved,
+                  iconSize: 19,
                   onTap: () async {
                     final ok = await ref
                         .read(savedPostIdsProvider.notifier)
@@ -982,8 +989,9 @@ class _ThreadPostItem extends ConsumerWidget {
                     }
                   },
                 ),
-                const SizedBox(width: 16),
-                GestureDetector(
+                const SizedBox(width: 14),
+                // Share button with proper tap area
+                InkWell(
                   onTap: () {
                     unawaited(ref
                         .read(goPostsRepositoryProvider)
@@ -993,11 +1001,16 @@ class _ThreadPostItem extends ConsumerWidget {
                         ));
                     SmartShareService().showShareOptions(post, context);
                   },
-                  child: Image.asset(
-                    'lib/utils/images/component/send.png',
-                    width: 20,
-                    height: 20,
-                    color: isDark ? Colors.grey[400] : Colors.grey[600],
+                  borderRadius: BorderRadius.circular(12),
+                  child: Padding(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 3, vertical: 3),
+                    child: Image.asset(
+                      'lib/utils/images/component/send.png',
+                      width: 19,
+                      height: 19,
+                      color: isDark ? Colors.grey[400] : Colors.grey[600],
+                    ),
                   ),
                 ),
                 const Spacer(),
@@ -1033,17 +1046,12 @@ class _ThreadPostItem extends ConsumerWidget {
           ),
           elevation: 8,
           color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-          // آیکون دقیقاً مشابه پروفایل با کانتینر
-          icon: Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: isDark ? Colors.grey[850] : Colors.grey[100],
-              borderRadius: BorderRadius.circular(20),
-            ),
+          icon: Padding(
+            padding: const EdgeInsets.all(4),
             child: Icon(
               Icons.more_horiz,
-              size: 18,
-              color: isDark ? Colors.grey[400] : Colors.grey[600],
+              size: 20,
+              color: isDark ? Colors.grey[500] : Colors.grey[500],
             ),
           ),
           itemBuilder: (context) {
@@ -1098,9 +1106,72 @@ class _ThreadPostItem extends ConsumerWidget {
 
             // منطق نمایش گزینه ویرایش
             final currentUserProfile = ref.read(currentUserProfileProvider);
+            final canManagePrivacy = currentUserProfile.value != null &&
+                PremiumFeaturesHelper.canManagePostEngagementPrivacy(
+                  currentUserProfile.value!,
+                ) &&
+                isCurrentUserPost;
             final hasPremiumEdit = currentUserProfile.value != null &&
                 PremiumFeaturesHelper.canEditPost(currentUserProfile.value!) &&
                 isCurrentUserPost;
+
+            if (isCurrentUserPost) {
+              if (canManagePrivacy) {
+                items.add(PopupMenuItem<String>(
+                  value: 'toggle_like_count',
+                  child: Row(
+                    children: [
+                      Icon(
+                        post.hideLikeCount
+                            ? Icons.visibility_rounded
+                            : Icons.visibility_off_rounded,
+                        size: 20,
+                        color: Colors.deepPurple,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        post.hideLikeCount
+                            ? 'نمایش تعداد لایک'
+                            : 'مخفی کردن تعداد لایک',
+                      ),
+                    ],
+                  ),
+                ));
+                items.add(PopupMenuItem<String>(
+                  value: 'toggle_comment_count',
+                  child: Row(
+                    children: [
+                      Icon(
+                        post.hideCommentCount
+                            ? Icons.visibility_rounded
+                            : Icons.visibility_off_rounded,
+                        size: 20,
+                        color: Colors.deepPurple,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        post.hideCommentCount
+                            ? 'نمایش تعداد کامنت'
+                            : 'مخفی کردن تعداد کامنت',
+                      ),
+                    ],
+                  ),
+                ));
+              } else {
+                items.add(const PopupMenuItem<String>(
+                  value: 'privacy_locked',
+                  child: Row(
+                    children: [
+                      Icon(Icons.lock_outline, size: 20, color: Colors.grey),
+                      SizedBox(width: 8),
+                      Text('کنترل آمار لایک/کامنت'),
+                      Spacer(),
+                      Icon(Icons.workspace_premium, size: 18, color: Colors.amber),
+                    ],
+                  ),
+                ));
+              }
+            }
 
             if (isBlueTick || hasPremiumEdit) {
               items.add(PopupMenuItem<String>(
@@ -1189,6 +1260,64 @@ class _ThreadPostItem extends ConsumerWidget {
             } else if (value == 'edit_locked') {
               PremiumFeaturesHelper.showPremiumPromptDialog(context,
                   feature: 'ویرایش پست');
+            } else if (value == 'privacy_locked') {
+              PremiumFeaturesHelper.showPremiumPromptDialog(
+                context,
+                feature: 'مخفی‌سازی آمار لایک و کامنت',
+              );
+            } else if (value == 'toggle_like_count' ||
+                value == 'toggle_comment_count') {
+              final currentProfile = ref.read(currentUserProfileProvider).value;
+              if (currentProfile == null ||
+                  !PremiumFeaturesHelper.canManagePostEngagementPrivacy(
+                    currentProfile,
+                  )) {
+                PremiumFeaturesHelper.showPremiumPromptDialog(
+                  context,
+                  feature: 'مخفی‌سازی آمار لایک و کامنت',
+                );
+                return;
+              }
+
+              try {
+                final hideLike = value == 'toggle_like_count'
+                    ? !post.hideLikeCount
+                    : null;
+                final hideComment = value == 'toggle_comment_count'
+                    ? !post.hideCommentCount
+                    : null;
+
+                await ref.read(goPostsRepositoryProvider).updateEngagementVisibility(
+                      postId: post.id,
+                      hideLikeCount: hideLike,
+                      hideCommentCount: hideComment,
+                    );
+
+                // ignore: unused_result
+                ref.refresh(personalizedFeedProvider);
+                // ignore: unused_result
+                ref.refresh(fetchFollowingPostsProvider);
+
+                if (context.mounted) {
+                  final updatedLikeHidden =
+                      hideLike ?? post.hideLikeCount;
+                  final updatedCommentHidden =
+                      hideComment ?? post.hideCommentCount;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        'آمار لایک: ${updatedLikeHidden ? 'مخفی' : 'نمایش'} | '
+                        'کامنت: ${updatedCommentHidden ? 'مخفی' : 'نمایش'}',
+                      ),
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  UserFriendlyErrorUtils.showErrorSnackBar(context, e);
+                }
+              }
             }
           },
         );

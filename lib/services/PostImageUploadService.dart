@@ -257,9 +257,9 @@ class PostImageUploadService {
     try {
       // بررسی سایز فایل
       final fileSize = await file.length();
-      final maxSize = 10 * 1024 * 1024; // 10MB
+      final maxSize = 50 * 1024 * 1024; // 50MB
       if (fileSize > maxSize) {
-        throw Exception('حجم فایل باید کمتر از 10 مگابایت باشد');
+        throw Exception('حجم فایل موزیک باید کمتر از ۵۰ مگابایت باشد');
       }
 
       // بررسی فرمت فایل
@@ -325,11 +325,11 @@ class PostImageUploadService {
     void Function(double progress)? onProgress,
   }) async {
     try {
-      // بررسی سایز فایل (حداکثر ۱۰ مگابایت)
+      // بررسی سایز فایل (حداکثر ۵۰۰ مگابایت)
       final fileSize = await file.length();
-      final maxSize = 10 * 1024 * 1024; // 10MB
+      final maxSize = 500 * 1024 * 1024; // 500MB
       if (fileSize > maxSize) {
-        throw Exception('حجم فایل باید کمتر از ۱۰ مگابایت باشد');
+        throw Exception('حجم فایل ویدیو باید کمتر از ۵۰۰ مگابایت باشد');
       }
 
       // بررسی فرمت فایل
@@ -368,9 +368,9 @@ class PostImageUploadService {
         throw Exception('این فرمت فایل ویدیویی پشتیبانی نمی‌شود');
       }
 
-      // بررسی سایز فایل (حداکثر ۱۰ مگابایت)
-      if (fileBytes.length > 10 * 1024 * 1024) {
-        throw Exception('حجم فایل باید کمتر از ۱۰ مگابایت باشد');
+      // بررسی سایز فایل (حداکثر ۵۰۰ مگابایت)
+      if (fileBytes.length > 500 * 1024 * 1024) {
+        throw Exception('حجم فایل ویدیو باید کمتر از ۵۰۰ مگابایت باشد');
       }
 
       // ساخت نام منحصر به فرد برای فایل

@@ -1,4 +1,4 @@
-﻿// ignore_for_file: unused_element, deprecated_member_use
+// ignore_for_file: unused_element, deprecated_member_use
 
 import 'dart:async';
 
@@ -26,6 +26,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:Vista/utils/glassmorphism.dart';
 import 'package:Vista/core/theme/app_theme.dart';
 import 'package:Vista/l10n/generated/app_localizations.dart';
+import 'package:Vista/features/posts/widgets/upload_progress_overlay.dart';
 
 // ✅ Provider تعداد مکالمه‌های خوانده‌نشده
 final unreadConversationsCountProvider = Provider<int>((ref) {
@@ -427,14 +428,25 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       child: Scaffold(
         extendBody: true,
         backgroundColor: theme.scaffoldBackgroundColor,
-        body: IndexedStack(
-          index: _selectedIndex,
+        body: Stack(
           children: [
-            ..._persistentTabs,
-            ProfileScreen(
-              key: ValueKey('$_currentUserId:$_currentUsername'),
-              userId: _currentUserId,
-              username: _currentUsername,
+            IndexedStack(
+              index: _selectedIndex,
+              children: [
+                ..._persistentTabs,
+                ProfileScreen(
+                  key: ValueKey('$_currentUserId:$_currentUsername'),
+                  userId: _currentUserId,
+                  username: _currentUsername,
+                ),
+              ],
+            ),
+            // نوار پیشرفت آپلود - مشابه اینستاگرام/X
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 8,
+              left: 0,
+              right: 0,
+              child: const UploadProgressOverlay(),
             ),
           ],
         ),
@@ -460,15 +472,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     const islandApproxHeight = 62.0;
     // فاصله جزیره از پایین
     const islandBottomMargin = 28.0;
-    // هاله از بالای جزیره شروع و تا پایین صفحه ادامه داره
-    final haloHeight = islandApproxHeight + islandBottomMargin + bottomPadding + 20;
+    // ارتفاع کل ناحیه باتم نویگیشن
+    final navBarHeight = islandApproxHeight + islandBottomMargin + bottomPadding + 20;
+    // ارتفاع هاله که از وسط جزیره به پایین شروع میشه
+    final haloHeight = (islandApproxHeight / 2) + islandBottomMargin + bottomPadding + 10;
 
     return SizedBox(
-      height: haloHeight,
+      height: navBarHeight,
       child: Stack(
         alignment: Alignment.bottomCenter,
+        clipBehavior: Clip.none,
         children: [
-          // هاله gradient (از بالای جزیره به پایین)
+          // هاله gradient
           Positioned(
             left: 0,
             right: 0,

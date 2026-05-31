@@ -62,6 +62,17 @@ class _PricingPageState extends ConsumerState<PricingPage> {
       'subtitle': 'امکان ویرایش کپشن و مدیای پست‌ها پس از انتشار'
     },
     {
+      'icon': Icons.text_snippet,
+      'title': 'پست‌های طولانی‌تر',
+      'subtitle': 'امکان نوشتن کپشن و متن طولانی تا ۴۰۰۰ کاراکتر (کاربران عادی: ۱۰۰۰ کاراکتر)'
+    },
+    {
+      'icon': Icons.visibility_off_outlined,
+      'title': 'کنترل نمایش آمار لایک/کامنت',
+      'subtitle':
+          'برای هر پست می‌توانید نمایش تعداد لایک و کامنت را فعال یا غیرفعال کنید'
+    },
+    {
       'icon': Icons.video_collection,
       'title': 'آپلود ویدیوهای طولانی‌تر',
       'subtitle': 'امکان آپلود و برش ویدیو تا ۲ دقیقه (بجای ۱ دقیقه)'

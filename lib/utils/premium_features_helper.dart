@@ -13,6 +13,11 @@ class PremiumFeaturesHelper {
     return currentUser.hasGoldBadge || currentUser.hasBlueBadge;
   }
 
+  /// بررسی دسترسی به مخفی‌سازی آمار لایک/کامنت
+  static bool canManagePostEngagementPrivacy(UserModel currentUser) {
+    return currentUser.hasGoldBadge || currentUser.hasBlueBadge;
+  }
+
   /// نمایش دیالوگ ترغیب به خرید تیک طلایی (طراحی مشابه ویستا)
   static void showPremiumPromptDialog(
     BuildContext context, {
@@ -127,6 +132,11 @@ class PremiumFeaturesHelper {
                     _buildFeatureItem(Icons.verified, 'نشان تایید طلایی'),
                     const SizedBox(height: 12),
                     _buildFeatureItem(Icons.edit_note, 'ویرایش نامحدود پست'),
+                    const SizedBox(height: 12),
+                    _buildFeatureItem(
+                      Icons.visibility_off_outlined,
+                      'مخفی‌سازی آمار لایک و کامنت پست',
+                    ),
 
                     const SizedBox(height: 24),
 

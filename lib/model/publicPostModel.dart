@@ -24,6 +24,8 @@ class PublicPostModel {
 
   int likeCount;
   bool isLiked;
+  final bool hideLikeCount;
+  final bool hideCommentCount;
   final bool isVerified;
   final VerificationType verificationType;
   int commentCount;
@@ -48,6 +50,8 @@ class PublicPostModel {
     this.profiles, // افزودن پارامتر profiles
     this.likeCount = 0,
     this.isLiked = false,
+    this.hideLikeCount = false,
+    this.hideCommentCount = false,
     this.isVerified = false,
     this.verificationType = VerificationType.none,
     this.commentCount = 0,
@@ -88,6 +92,16 @@ class PublicPostModel {
       profiles: map['profiles'] as Map<String, dynamic>?,
       likeCount: _parseInt(map, 'like_count'),
       isLiked: _parseBool(map, 'is_liked'),
+      hideLikeCount: _parseVisibilityFlag(
+        map,
+        primaryKey: 'hide_like_count',
+        fallbackKeys: const ['is_like_count_hidden', 'hide_likes_count'],
+      ),
+      hideCommentCount: _parseVisibilityFlag(
+        map,
+        primaryKey: 'hide_comment_count',
+        fallbackKeys: const ['is_comment_count_hidden', 'hide_comments_count'],
+      ),
       isVerified: _parseIsVerified(map),
       verificationType:
           _parseVerificationType(map), // <-- فقط همین خط تغییر کند
@@ -170,6 +184,24 @@ class PublicPostModel {
       {bool defaultValue = false}) {
     if (map[key] is bool) return map[key] as bool;
     return defaultValue;
+  }
+
+  static bool _parseVisibilityFlag(
+    Map<String, dynamic> map, {
+    required String primaryKey,
+    List<String> fallbackKeys = const [],
+  }) {
+    final keys = <String>[primaryKey, ...fallbackKeys];
+    for (final key in keys) {
+      if (!map.containsKey(key)) continue;
+      final raw = map[key];
+      if (raw is bool) return raw;
+      if (raw is num) return raw != 0;
+      final text = raw?.toString().trim().toLowerCase();
+      if (text == 'true' || text == '1' || text == 'yes') return true;
+      if (text == 'false' || text == '0' || text == 'no') return false;
+    }
+    return false;
   }
 
   static DateTime? _parseDateTime(Map<String, dynamic> map, String key) {
@@ -284,6 +316,8 @@ class PublicPostModel {
           },
       'like_count': likeCount,
       'is_liked': isLiked,
+      'hide_like_count': hideLikeCount,
+      'hide_comment_count': hideCommentCount,
       'comment_count': commentCount,
       'hashtags': hashtags,
       'tags': hashtags,
@@ -317,6 +351,8 @@ class PublicPostModel {
     Map<String, dynamic>? profiles, // افزودن پارامتر profiles به copyWith
     int? likeCount,
     bool? isLiked,
+    bool? hideLikeCount,
+    bool? hideCommentCount,
     bool? isVerified,
     VerificationType? verificationType,
     int? commentCount,
@@ -345,6 +381,8 @@ class PublicPostModel {
       profiles: profiles ?? this.profiles,
       likeCount: likeCount ?? this.likeCount,
       isLiked: isLiked ?? this.isLiked,
+      hideLikeCount: hideLikeCount ?? this.hideLikeCount,
+      hideCommentCount: hideCommentCount ?? this.hideCommentCount,
       isVerified: isVerified ?? this.isVerified,
       verificationType: verificationType ?? this.verificationType,
       commentCount: commentCount ?? this.commentCount,
@@ -376,6 +414,8 @@ class PublicPostModel {
       avatarUrl: $avatarUrl, 
       likeCount: $likeCount, 
       isLiked: $isLiked, 
+      hideLikeCount: $hideLikeCount,
+      hideCommentCount: $hideCommentCount,
       isVerified: $isVerified, 
       verificationType: $verificationType,
       commentCount: $commentCount,

@@ -167,14 +167,9 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
   }
 
   void _onFocusChange() {
-    // tap روی text field وقتی emoji باز است → برگشت به کیبورد
+    // کاربر روی text field کلیک کرد در حالی که emoji باز است
     if (widget.focusNode?.hasFocus == true && widget.isEmojiPanelOpen) {
       widget.onEmojiPickerToggled?.call(false);
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          SystemChannels.textInput.invokeMethod<void>('TextInput.show');
-        }
-      });
     }
   }
 
@@ -418,33 +413,8 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
 
   void _toggleEmojiPicker() {
     HapticFeedback.selectionClick();
-
-    if (widget.isEmojiPanelOpen) {
-      // Emoji → Keyboard (تلگرام: swap فوری)
-      widget.onEmojiPickerToggled?.call(false);
-      _showKeyboard();
-    } else {
-      // Keyboard → Emoji (تلگرام: swap فوری)
-      widget.onEmojiPickerToggled?.call(true);
-      widget.focusNode?.unfocus();
-      SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
-    }
-  }
-
-  /// نمایش مطمئن کیبورد - هم requestFocus هم TextInput.show
-  void _showKeyboard() {
-    if (widget.focusNode?.hasFocus == true) {
-      // focus داریم، مستقیم کیبورد رو نشون بده
-      SystemChannels.textInput.invokeMethod<void>('TextInput.show');
-    } else {
-      widget.focusNode?.requestFocus();
-      // بعد از اینکه focus برقرار شد، کیبورد رو نشون بده
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          SystemChannels.textInput.invokeMethod<void>('TextInput.show');
-        }
-      });
-    }
+    // parent تمام کنترل را دارد؛ child فقط toggle را emit می‌کند
+    widget.onEmojiPickerToggled?.call(!widget.isEmojiPanelOpen);
   }
 
   void _reportHeightIfNeeded() {
@@ -791,53 +761,60 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
   }
 
   Widget _buildTextField(ChatTheme theme) {
-    // Get current text direction based on content
     final textDirection = _detectTextDirection(widget.controller.text);
-    final textAlign =
-        textDirection == TextDirection.rtl ? TextAlign.right : TextAlign.left;
 
-    return Focus(
-      child: TextField(
-        controller: widget.controller,
-        focusNode: widget.focusNode,
-        enabled: widget.enabled,
-        maxLines: 5,
-        minLines: 1,
-        maxLength: 4000,
-        textInputAction: TextInputAction.newline,
-        textDirection: textDirection,
-        textAlign: textAlign,
-        style: TextStyle(
-          color: theme.textColor,
-          fontSize: 15, // فونت کمی کوچک‌تر
-          fontFamily: 'Vazir',
-          fontFamilyFallback: const [
-            'Apple Color Emoji',
-            'Segoe UI Emoji',
-            'Noto Color Emoji',
-          ],
+    // TextAlign.start is direction-relative:
+    //   RTL text → visually right-aligned  (correct for Persian)
+    //   LTR text → visually left-aligned   (correct for Latin)
+    // Using TextAlign.right / TextAlign.left (absolute) can shift the cursor
+    // rendering by one logical position on some Android IMEs.
+    final textAlign = TextAlign.start;
+
+    // NOTE: The Focus wrapper that previously surrounded this TextField has
+    // been removed. It created a second, anonymous FocusNode in the subtree
+    // that occasionally captured focus events meant for widget.focusNode.
+    // That caused the cursor to jump to a wrong position (e.g., between ل
+    // and ا instead of after ا) because Flutter resets the selection when
+    // focus is transferred between nodes.
+    return TextField(
+      controller: widget.controller,
+      focusNode: widget.focusNode,
+      enabled: widget.enabled,
+      maxLines: 5,
+      minLines: 1,
+      maxLength: 4000,
+      textInputAction: TextInputAction.newline,
+      textDirection: textDirection,
+      textAlign: textAlign,
+      style: TextStyle(
+        color: theme.textColor,
+        fontSize: 15,
+        fontFamily: 'Vazir',
+        fontFamilyFallback: const [
+          'Apple Color Emoji',
+          'Segoe UI Emoji',
+          'Noto Color Emoji',
+        ],
+      ),
+      decoration: InputDecoration(
+        filled: false,
+        hintText: widget.hint ?? 'پیام...',
+        hintStyle: TextStyle(
+          color: theme.secondaryTextColor.withValues(alpha: 0.6),
+          fontSize: 15,
         ),
-        decoration: InputDecoration(
-          filled: false, // جلوگیری از رنگ پس‌زمینه پیش‌فرض تم
-          hintText: widget.hint ?? 'پیام...',
-          hintStyle: TextStyle(
-            color: theme.secondaryTextColor.withValues(alpha: 0.6),
-            fontSize: 15, // فونت کوچک‌تر
-          ),
-          counterText: "", // Hide the counter
-          border: InputBorder.none,
-          enabledBorder: InputBorder.none,
-          focusedBorder: InputBorder.none,
-          errorBorder: InputBorder.none,
-          focusedErrorBorder: InputBorder.none,
-          disabledBorder: InputBorder.none,
-          // ✅ تنظیم پدینگ برای تراز شدن متن - باریک‌تر و وسط
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 6,
-            vertical: 12, // افزایش vertical برای تراز بهتر با دکمه‌ها
-          ),
-          isDense: true,
+        counterText: '',
+        border: InputBorder.none,
+        enabledBorder: InputBorder.none,
+        focusedBorder: InputBorder.none,
+        errorBorder: InputBorder.none,
+        focusedErrorBorder: InputBorder.none,
+        disabledBorder: InputBorder.none,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 6,
+          vertical: 12,
         ),
+        isDense: true,
       ),
     );
   }

@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../services/PostImageUploadService.dart';
+import '../../../../services/local_notification_center.dart';
 import '../../auth/providers/auth_controller.dart';
 import '../data/go_posts_repository.dart';
 import 'package:uuid/uuid.dart';
@@ -45,6 +47,119 @@ class PostUploadNotifier extends StateNotifier<List<UploadTask>> {
   PostUploadNotifier() : super([]);
 
   final _uuid = const Uuid();
+  final _notif = LocalNotificationCenter.plugin;
+
+  // کانال اختصاصی آپلود
+  static const _uploadChannelId = 'post_upload_progress';
+  static const _uploadChannelName = 'آپلود پست';
+  static const _socialChannelId = 'social_notify';
+
+  String _kindLabel(String kind) {
+    switch (kind) {
+      case 'video':
+        return 'ویدیو';
+      case 'music':
+        return 'موزیک';
+      case 'image':
+        return 'تصویر';
+      default:
+        return 'پست';
+    }
+  }
+
+  int _notifId(String taskId) => taskId.hashCode.abs() % 100000;
+
+  Future<void> _showProgressNotification(
+    String taskId,
+    String kind,
+    int progress,
+  ) async {
+    if (kIsWeb) return;
+    try {
+      final label = _kindLabel(kind);
+      final id = _notifId(taskId);
+      await _notif.show(
+        id: id,
+        title: 'در حال ارسال $label...',
+        body: '$progress٪ آپلود شده',
+        notificationDetails: NotificationDetails(
+          android: AndroidNotificationDetails(
+            _uploadChannelId,
+            _uploadChannelName,
+            channelDescription: 'پیشرفت آپلود محتوای پست',
+            importance: Importance.low,
+            priority: Priority.low,
+            showProgress: true,
+            maxProgress: 100,
+            progress: progress,
+            ongoing: true,
+            onlyAlertOnce: true,
+            enableVibration: false,
+            playSound: false,
+            icon: '@mipmap/ic_launcher',
+          ),
+          iOS: const DarwinNotificationDetails(
+            presentAlert: false,
+            presentBadge: false,
+            presentSound: false,
+          ),
+        ),
+      );
+    } catch (_) {}
+  }
+
+  Future<void> _showCompletionNotification(
+    String taskId,
+    String kind, {
+    required bool success,
+    String? errorMessage,
+  }) async {
+    if (kIsWeb) return;
+    try {
+      final id = _notifId(taskId);
+      final label = _kindLabel(kind);
+      // Cancel ongoing progress notification
+      await _notif.cancel(id: id);
+
+      await _notif.show(
+        id: id + 1,
+        title: success ? '$label با موفقیت ارسال شد ✓' : 'ارسال $label ناموفق بود',
+        body: success
+            ? 'پست شما در فید ویستا منتشر شد'
+            : (errorMessage ?? 'لطفاً دوباره تلاش کنید'),
+        notificationDetails: NotificationDetails(
+          android: AndroidNotificationDetails(
+            _socialChannelId,
+            'فعالیت‌های اجتماعی',
+            channelDescription: 'اعلان‌های اجتماعی ویستا',
+            importance: success ? Importance.defaultImportance : Importance.high,
+            priority: success ? Priority.defaultPriority : Priority.high,
+            icon: '@mipmap/ic_launcher',
+            enableVibration: success,
+            playSound: success,
+          ),
+          iOS: DarwinNotificationDetails(
+            presentAlert: true,
+            presentBadge: false,
+            presentSound: success,
+          ),
+        ),
+      );
+    } catch (_) {}
+  }
+
+  // آخرین درصدی که نوتیفیکیشن نمایش دادیم (برای جلوگیری از ارسال بیش از حد)
+  final Map<String, int> _lastNotifiedProgress = {};
+
+  void _maybeNotifyProgress(String taskId, String kind, double progress) {
+    final pct = (progress * 100).round();
+    final last = _lastNotifiedProgress[taskId] ?? -1;
+    // فقط هر ۱۰٪ یک‌بار اطلاع‌رسانی کن
+    if (pct - last >= 10 || pct == 100) {
+      _lastNotifiedProgress[taskId] = pct;
+      unawaited(_showProgressNotification(taskId, kind, pct));
+    }
+  }
 
   String _musicTitleFromFileName(String? fileName) {
     if (fileName == null || fileName.trim().isEmpty) return 'موزیک';
@@ -101,6 +216,9 @@ class PostUploadNotifier extends StateNotifier<List<UploadTask>> {
       )
     ];
 
+    // نمایش نوتیفیکیشن شروع آپلود
+    unawaited(_showProgressNotification(taskId, kind, 0));
+
     unawaited(() async {
       try {
         double completedWeight = 0.0;
@@ -109,6 +227,7 @@ class PostUploadNotifier extends StateNotifier<List<UploadTask>> {
               .clamp(0.0, 0.99)
               .toDouble();
           _updateTaskProgress(taskId, value);
+          _maybeNotifyProgress(taskId, kind, value);
         }
 
         // 1. Upload Media
@@ -186,20 +305,25 @@ class PostUploadNotifier extends StateNotifier<List<UploadTask>> {
         );
         _updateTaskProgress(taskId, 1.0);
 
-        // 3. Mark success and remove after delay
+        // 3. Mark success, show completion notification, and remove after delay
         _updateTaskStatus(taskId, 'success');
+        _lastNotifiedProgress.remove(taskId);
+        unawaited(_showCompletionNotification(taskId, kind, success: true));
 
-        // Remove from list after 3 seconds so user sees success message
-        await Future.delayed(const Duration(seconds: 3));
+        // Remove from list after 3.5 seconds so user sees success state
+        await Future.delayed(const Duration(milliseconds: 3500));
         state = state.where((t) => t.id != taskId).toList();
       } catch (e) {
         debugPrint('Upload failed: $e');
-        _updateTaskStatus(
+        final errMsg = _friendlyUploadError(e.toString());
+        _updateTaskStatus(taskId, 'failed', errorMessage: errMsg);
+        _lastNotifiedProgress.remove(taskId);
+        unawaited(_showCompletionNotification(
           taskId,
-          'failed',
-          errorMessage: _friendlyUploadError(e.toString()),
-        );
-        // Keep failed tasks in list so user can retry or dismiss
+          kind,
+          success: false,
+          errorMessage: errMsg,
+        ));
       }
     }());
   }

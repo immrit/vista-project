@@ -523,6 +523,9 @@ class _SavedPostItem extends ConsumerWidget {
                           PostLikeButton(
                             isLiked: isLiked,
                             likeCount: likeCount,
+                            showCount: !post.hideLikeCount,
+                            iconSize: 19,
+                            gap: 4,
                             onTap: () async {
                               ref
                                   .read(likeStateProvider.notifier)
@@ -544,11 +547,14 @@ class _SavedPostItem extends ConsumerWidget {
                               }
                             },
                           ),
-                          const SizedBox(width: 16),
+                          const SizedBox(width: 14),
 
                           // کامنت
                           PostCommentButton(
                             commentCount: post.commentCount,
+                            showCount: !post.hideCommentCount,
+                            iconSize: 19,
+                            gap: 4,
                             onTap: () {
                               showCommentsBottomSheet2(
                                 context,
@@ -563,11 +569,12 @@ class _SavedPostItem extends ConsumerWidget {
                               );
                             },
                           ),
-                          const SizedBox(width: 16),
+                          const SizedBox(width: 14),
 
                           // ذخیره (bookmark) - با قابلیت unsave مستقیم
                           PostSaveButton(
                             isSaved: isSaved,
+                            iconSize: 19,
                             onTap: () async {
                               final ok = await ref
                                   .read(savedPostIdsProvider.notifier)
@@ -602,17 +609,25 @@ class _SavedPostItem extends ConsumerWidget {
                               }
                             },
                           ),
-                          const SizedBox(width: 16),
+                          const SizedBox(width: 14),
 
                           // اشتراک‌گذاری
-                          GestureDetector(
+                          InkWell(
                             onTap: () =>
                                 SmartShareService().showShareOptions(post, context),
-                            child: Image.asset(
-                              'lib/utils/images/component/send.png',
-                              width: 20,
-                              height: 20,
-                              color: isDark ? Colors.grey[400] : Colors.grey[600],
+                            borderRadius: BorderRadius.circular(12),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 3,
+                                vertical: 3,
+                              ),
+                              child: Image.asset(
+                                'lib/utils/images/component/send.png',
+                                width: 19,
+                                height: 19,
+                                color:
+                                    isDark ? Colors.grey[400] : Colors.grey[600],
+                              ),
                             ),
                           ),
 

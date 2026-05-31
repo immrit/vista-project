@@ -29,8 +29,8 @@ class BackendUploadService {
 
   static final Dio _api = Dio(BaseOptions(
     baseUrl: '$_backendUrl/v1',
-    connectTimeout: const Duration(seconds: 15),
-    receiveTimeout: const Duration(seconds: 15),
+    connectTimeout: const Duration(seconds: 20),
+    receiveTimeout: const Duration(seconds: 20),
     sendTimeout: const Duration(seconds: 30),
     headers: {'Content-Type': 'application/json'},
   ));
@@ -72,9 +72,9 @@ class BackendUploadService {
     logInfo('UPLOAD HEADERS: $headers');
 
     final dio = Dio(BaseOptions(
-      connectTimeout: const Duration(seconds: 15),
-      sendTimeout: const Duration(minutes: 5),
-      receiveTimeout: const Duration(seconds: 30),
+      connectTimeout: const Duration(seconds: 20),
+      sendTimeout: const Duration(minutes: 30),
+      receiveTimeout: const Duration(minutes: 2),
     ));
 
     if (!kIsWeb) {

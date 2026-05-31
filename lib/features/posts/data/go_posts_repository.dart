@@ -180,6 +180,8 @@ class GoPostsRepository {
     String? musicUrl,
     String? musicTitle,
     List<String>? tags,
+    bool hideLikeCount = false,
+    bool hideCommentCount = false,
   }) async {
     final response = await _dio.post(
       '/posts',
@@ -191,6 +193,8 @@ class GoPostsRepository {
         if (musicTitle != null && musicTitle.isNotEmpty)
           'music_title': musicTitle,
         'tags': tags ?? const <String>[],
+        'hide_like_count': hideLikeCount,
+        'hide_comment_count': hideCommentCount,
       },
       options: await _authOptions(),
     );
@@ -199,14 +203,44 @@ class GoPostsRepository {
 
   Future<PublicPostModel> updatePost({
     required String postId,
-    required String content,
+    String? content,
+    bool? hideLikeCount,
+    bool? hideCommentCount,
   }) async {
+    final payload = <String, dynamic>{};
+    if (content != null) payload['content'] = content;
+    if (hideLikeCount != null) payload['hide_like_count'] = hideLikeCount;
+    if (hideCommentCount != null) {
+      payload['hide_comment_count'] = hideCommentCount;
+    }
+
+    if (payload.isEmpty) {
+      throw ArgumentError('At least one field must be provided for updatePost');
+    }
+
     final response = await _dio.patch(
       '/posts/$postId',
-      data: {'content': content},
+      data: payload,
       options: await _authOptions(),
     );
     return _postFromGo(_asMap(response.data));
+  }
+
+  Future<PublicPostModel> updateEngagementVisibility({
+    required String postId,
+    bool? hideLikeCount,
+    bool? hideCommentCount,
+  }) async {
+    if (hideLikeCount == null && hideCommentCount == null) {
+      throw ArgumentError(
+        'At least one visibility flag must be provided',
+      );
+    }
+    return updatePost(
+      postId: postId,
+      hideLikeCount: hideLikeCount,
+      hideCommentCount: hideCommentCount,
+    );
   }
 
   Future<Set<String>> getSavedPostIds({

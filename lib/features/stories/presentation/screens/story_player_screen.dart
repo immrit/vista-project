@@ -48,7 +48,6 @@ class StoryPlayerScreen extends ConsumerStatefulWidget {
 class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
     with SingleTickerProviderStateMixin {
   late AnimationController _progressController;
-  late PageController _pageController;
   VideoPlayerController? _videoController;
 
   int _currentUserIndex = 0;
@@ -70,6 +69,7 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
   // Stores the pointer-down position so onTap (which is arena-resolved)
   // can decide prev/pause/next without firing when a child sticker wins.
   Offset? _lastTapPosition;
+  int _userTransitionDirection = 1; // 1 => next user, -1 => previous user.
 
   @override
   void initState() {
@@ -82,8 +82,6 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
       duration:
           const Duration(seconds: StoryConstants.defaultStoryDurationSeconds),
     )..addStatusListener(_onProgressComplete);
-
-    _pageController = PageController(initialPage: _currentUserIndex);
 
     // Full screen immersive mode
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
@@ -112,7 +110,6 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
   @override
   void dispose() {
     _progressController.dispose();
-    _pageController.dispose();
     _videoController?.dispose();
     _musicPreviewStopTimer?.cancel();
     _musicPlayerStateSub?.cancel();
@@ -127,6 +124,7 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
   StoryUser get _currentUser => widget.users[_currentUserIndex];
   Story get _currentStory => _currentUser.stories[_currentStoryIndex];
   bool get _isOwnStory => _currentStory.userId == _currentUserId;
+  bool get _isRtl => Directionality.of(context) == TextDirection.rtl;
 
   void _onProgressComplete(AnimationStatus status) {
     if (status == AnimationStatus.completed) {
@@ -241,14 +239,11 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
       });
       _initializeStory();
     } else if (_currentUserIndex < widget.users.length - 1) {
+      _userTransitionDirection = 1;
       setState(() {
         _currentUserIndex++;
         _currentStoryIndex = 0;
       });
-      _pageController.nextPage(
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
-      );
       _initializeStory();
     } else {
       Navigator.of(context).pop();
@@ -262,14 +257,11 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
       });
       _initializeStory();
     } else if (_currentUserIndex > 0) {
+      _userTransitionDirection = -1;
       setState(() {
         _currentUserIndex--;
         _currentStoryIndex = widget.users[_currentUserIndex].stories.length - 1;
       });
-      _pageController.previousPage(
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
-      );
       _initializeStory();
     }
   }
@@ -297,11 +289,20 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
 
     final screenWidth = MediaQuery.of(context).size.width;
     final dx = pos.dx;
+    final leftActionIsNext = _isRtl;
 
     if (dx < screenWidth * 0.3) {
-      _previousStory();
+      if (leftActionIsNext) {
+        _nextStory();
+      } else {
+        _previousStory();
+      }
     } else if (dx > screenWidth * 0.7) {
-      _nextStory();
+      if (leftActionIsNext) {
+        _previousStory();
+      } else {
+        _nextStory();
+      }
     } else {
       _togglePause();
     }
@@ -407,7 +408,7 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
               fit: StackFit.expand,
               children: [
                 // محتوای استوری
-                _buildContent(),
+                _buildAnimatedStoryContent(),
 
                 // نوار پیشرفت
                 if (_dragOffsetY == 0) // Hide UI when dragging for cleaner look
@@ -480,6 +481,46 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
         // Interactive elements (stickers, text) from Story Editor
         ..._buildInteractiveElements(),
       ],
+    );
+  }
+
+  /// Adds an Instagram-like transition only when switching between users.
+  Widget _buildAnimatedStoryContent() {
+    final rtlFactor = _isRtl ? -1.0 : 1.0;
+    final signedDir = _userTransitionDirection * rtlFactor;
+
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 320),
+      switchInCurve: Curves.easeOutCubic,
+      switchOutCurve: Curves.easeInCubic,
+      transitionBuilder: (child, animation) {
+        final slideAnimation = Tween<Offset>(
+          begin: Offset(signedDir * 0.12, 0),
+          end: Offset.zero,
+        ).animate(animation);
+
+        return FadeTransition(
+          opacity: animation,
+          child: SlideTransition(
+            position: slideAnimation,
+            child: child,
+          ),
+        );
+      },
+      layoutBuilder: (currentChild, previousChildren) {
+        return Stack(
+          fit: StackFit.expand,
+          children: <Widget>[
+            ...previousChildren,
+            if (currentChild != null) currentChild,
+          ],
+        );
+      },
+      child: KeyedSubtree(
+        // Animate only when changing user, not while changing story within user.
+        key: ValueKey('story_user_$_currentUserIndex'),
+        child: _buildContent(),
+      ),
     );
   }
 

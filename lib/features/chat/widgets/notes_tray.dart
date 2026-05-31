@@ -260,6 +260,7 @@ class _NoteTrayItem extends ConsumerWidget {
                       size: 64,
                       imageUrl: avatarUrl,
                       showOnlineStatus: false,
+                      disableStoryRing: true,
                       onTap: openReplySheet,
                     ),
                   ),
@@ -455,6 +456,7 @@ class _NoteQuickReplySheetState extends ConsumerState<_NoteQuickReplySheet> {
                   size: 48,
                   imageUrl: widget.avatarUrl,
                   showOnlineStatus: false,
+                  disableStoryRing: true,
                 ),
                 title: Text(
                   widget.username,

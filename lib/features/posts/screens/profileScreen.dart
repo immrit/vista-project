@@ -41,6 +41,7 @@ import 'package:Vista/utils/premium_features_helper.dart';
 import '../../../utils/user_friendly_error_utils.dart';
 import 'package:Vista/features/posts/widgets/standard_edit_post_dialog.dart';
 import 'package:Vista/features/posts/screens/PostDetailPage.dart';
+import 'package:Vista/features/posts/data/go_posts_repository.dart';
 import 'package:Vista/features/search/screens/searchPage.dart';
 import 'package:Vista/features/posts/widgets/hashtag_rich_text.dart';
 import 'package:Vista/features/posts/widgets/post_music_bubble.dart';
@@ -2159,14 +2160,14 @@ class _PostListItem extends ConsumerWidget {
                                   isLiked
                                       ? Icons.favorite
                                       : Icons.favorite_border,
-                                  size: 20,
+                                  size: 19,
                                   color: isLiked
                                       ? Colors.red
                                       : (isDark
                                           ? Colors.grey[400]
                                           : Colors.grey[600]),
                                 ),
-                                if (likeCount > 0) ...[
+                                if (!post.hideLikeCount && likeCount > 0) ...[
                                   const SizedBox(width: 4),
                                   Text(
                                     _formatCount(likeCount),
@@ -2183,7 +2184,7 @@ class _PostListItem extends ConsumerWidget {
                           );
                         },
                       ),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: 6),
                       // دکمه کامنت
                       _buildActionTapTarget(
                         onTap: () => _showCommentsSheet(context, ref),
@@ -2192,12 +2193,13 @@ class _PostListItem extends ConsumerWidget {
                           children: [
                             Image.asset(
                               'lib/utils/images/component/comment.png',
-                              width: 20,
-                              height: 20,
+                              width: 19,
+                              height: 19,
                               color:
                                   isDark ? Colors.grey[400] : Colors.grey[600],
                             ),
-                            if (post.commentCount > 0) ...[
+                            if (!post.hideCommentCount &&
+                                post.commentCount > 0) ...[
                               const SizedBox(width: 4),
                               Text(
                                 _formatCount(post.commentCount),
@@ -2212,7 +2214,7 @@ class _PostListItem extends ConsumerWidget {
                           ],
                         ),
                       ),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: 6),
                       // دکمه ذخیره
                       _buildAction(
                         icon: isSaved
@@ -2233,15 +2235,15 @@ class _PostListItem extends ConsumerWidget {
                           }
                         },
                       ),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: 6),
                       // دکمه اشتراک‌گذاری
                       _buildActionTapTarget(
                         onTap: () =>
                             SmartShareService().showShareOptions(post, context),
                         child: Image.asset(
                           'lib/utils/images/component/send.png',
-                          width: 20,
-                          height: 20,
+                          width: 19,
+                          height: 19,
                           color: isDark ? Colors.grey[400] : Colors.grey[600],
                         ),
                       ),
@@ -2272,7 +2274,7 @@ class _PostListItem extends ConsumerWidget {
         children: [
           Icon(
             icon,
-            size: 20,
+            size: 19,
             color: iconColor ?? (isDark ? Colors.grey[400] : Colors.grey[600]),
           ),
           if (count != null && count > 0) ...[
@@ -2300,7 +2302,7 @@ class _PostListItem extends ConsumerWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(12),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
           child: child,
         ),
       ),
@@ -2396,16 +2398,12 @@ class _PostListItem extends ConsumerWidget {
           ),
           elevation: 8,
           color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-          icon: Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: isDark ? Colors.grey[850] : Colors.grey[100],
-              borderRadius: BorderRadius.circular(20),
-            ),
+          icon: Padding(
+            padding: const EdgeInsets.all(4),
             child: Icon(
               Icons.more_horiz,
-              size: 18,
-              color: isDark ? Colors.grey[400] : Colors.grey[600],
+              size: 20,
+              color: isDark ? Colors.grey[500] : Colors.grey[500],
             ),
           ),
           itemBuilder: (context) {
@@ -2448,9 +2446,72 @@ class _PostListItem extends ConsumerWidget {
 
             // منطق نمایش گزینه ویرایش
             final currentUserProfile = ref.read(currentUserProfileProvider);
+            final canManagePrivacy = currentUserProfile.value != null &&
+                PremiumFeaturesHelper.canManagePostEngagementPrivacy(
+                  currentUserProfile.value!,
+                ) &&
+                isCurrentUserPost;
             final hasPremiumEdit = currentUserProfile.value != null &&
                 PremiumFeaturesHelper.canEditPost(currentUserProfile.value!) &&
                 isCurrentUserPost;
+
+            if (isCurrentUserPost) {
+              if (canManagePrivacy) {
+                items.add(PopupMenuItem<String>(
+                  value: 'toggle_like_count',
+                  child: Row(
+                    children: [
+                      Icon(
+                        post.hideLikeCount
+                            ? Icons.visibility_rounded
+                            : Icons.visibility_off_rounded,
+                        size: 20,
+                        color: Colors.deepPurple,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        post.hideLikeCount
+                            ? 'نمایش تعداد لایک'
+                            : 'مخفی کردن تعداد لایک',
+                      ),
+                    ],
+                  ),
+                ));
+                items.add(PopupMenuItem<String>(
+                  value: 'toggle_comment_count',
+                  child: Row(
+                    children: [
+                      Icon(
+                        post.hideCommentCount
+                            ? Icons.visibility_rounded
+                            : Icons.visibility_off_rounded,
+                        size: 20,
+                        color: Colors.deepPurple,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        post.hideCommentCount
+                            ? 'نمایش تعداد کامنت'
+                            : 'مخفی کردن تعداد کامنت',
+                      ),
+                    ],
+                  ),
+                ));
+              } else {
+                items.add(const PopupMenuItem<String>(
+                  value: 'privacy_locked',
+                  child: Row(
+                    children: [
+                      Icon(Icons.lock_outline, size: 20, color: Colors.grey),
+                      SizedBox(width: 8),
+                      Text('کنترل آمار لایک/کامنت'),
+                      Spacer(),
+                      Icon(Icons.workspace_premium, size: 18, color: Colors.amber),
+                    ],
+                  ),
+                ));
+              }
+            }
 
             if (isBlueTick || hasPremiumEdit) {
               items.add(PopupMenuItem<String>(
@@ -2521,6 +2582,60 @@ class _PostListItem extends ConsumerWidget {
             } else if (value == 'edit_locked') {
               PremiumFeaturesHelper.showPremiumPromptDialog(context,
                   feature: 'ویرایش پست');
+            } else if (value == 'privacy_locked') {
+              PremiumFeaturesHelper.showPremiumPromptDialog(
+                context,
+                feature: 'مخفی‌سازی آمار لایک و کامنت',
+              );
+            } else if (value == 'toggle_like_count' ||
+                value == 'toggle_comment_count') {
+              final currentProfile = ref.read(currentUserProfileProvider).value;
+              if (currentProfile == null ||
+                  !PremiumFeaturesHelper.canManagePostEngagementPrivacy(
+                    currentProfile,
+                  )) {
+                PremiumFeaturesHelper.showPremiumPromptDialog(
+                  context,
+                  feature: 'مخفی‌سازی آمار لایک و کامنت',
+                );
+                return;
+              }
+
+              try {
+                final hideLike = value == 'toggle_like_count'
+                    ? !post.hideLikeCount
+                    : null;
+                final hideComment = value == 'toggle_comment_count'
+                    ? !post.hideCommentCount
+                    : null;
+
+                await ref.read(goPostsRepositoryProvider).updateEngagementVisibility(
+                      postId: post.id,
+                      hideLikeCount: hideLike,
+                      hideCommentCount: hideComment,
+                    );
+
+                ref.invalidate(profilePostsProvider(post.userId));
+
+                if (context.mounted) {
+                  final updatedLikeHidden = hideLike ?? post.hideLikeCount;
+                  final updatedCommentHidden =
+                      hideComment ?? post.hideCommentCount;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        'آمار لایک: ${updatedLikeHidden ? 'مخفی' : 'نمایش'} | '
+                        'کامنت: ${updatedCommentHidden ? 'مخفی' : 'نمایش'}',
+                      ),
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  UserFriendlyErrorUtils.showErrorSnackBar(context, e);
+                }
+              }
             }
           },
         );
