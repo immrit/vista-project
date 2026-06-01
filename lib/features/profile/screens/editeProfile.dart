@@ -34,12 +34,41 @@ class _EditProfileState extends ConsumerState<EditProfile> {
   // تاریخ تولد
   String? _birthDate;
   DateTime? _selectedDate;
+  String? _gender;
+  String? _maritalStatus;
+  bool _showEmail = false;
+  bool _showBirthDate = false;
+  bool _showGender = false;
+  bool _showMaritalStatus = false;
+  bool _profileOptionsLoaded = false;
 
   File? _imageFile;
   final picker = ImagePicker();
 
   // Add validation pattern constant
   final _emailPattern = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
+
+  bool _boolValue(dynamic value, {bool fallback = false}) {
+    if (value is bool) return value;
+    if (value is num) return value != 0;
+    final normalized = value?.toString().trim().toLowerCase();
+    if (normalized == null || normalized.isEmpty) return fallback;
+    if (normalized == 'true' || normalized == '1' || normalized == 'yes') {
+      return true;
+    }
+    if (normalized == 'false' || normalized == '0' || normalized == 'no') {
+      return false;
+    }
+    return fallback;
+  }
+
+  String? _allowedValue(dynamic value, Set<String> allowed) {
+    final text = value?.toString().trim();
+    if (text == null || text.isEmpty || !allowed.contains(text)) {
+      return null;
+    }
+    return text;
+  }
 
   @override
   void initState() {
@@ -57,13 +86,25 @@ class _EditProfileState extends ConsumerState<EditProfile> {
           _birthDate = data['birth_date']?.toString();
           _selectedDate = parseBirthDate(_birthDate);
         }
+        _gender = _allowedValue(
+          data['gender'],
+          {'male', 'female', 'prefer_not_to_say'},
+        );
+        _maritalStatus = _allowedValue(
+          data['marital_status'],
+          {'single', 'married', 'prefer_not_to_say'},
+        );
+        _showEmail = _boolValue(data['show_email']);
+        _showBirthDate = _boolValue(data['show_birth_date']);
+        _showGender = _boolValue(data['show_gender']);
+        _showMaritalStatus = _boolValue(data['show_marital_status']);
+        _profileOptionsLoaded = true;
       });
     }
   }
 
   Future<void> _showDatePicker() async {
-    final locale =
-        resolveBirthDateLocale(context, ref.read(localeProvider));
+    final locale = resolveBirthDateLocale(context, ref.read(localeProvider));
     final picked = await pickBirthDate(
       context,
       locale: locale,
@@ -354,6 +395,14 @@ class _EditProfileState extends ConsumerState<EditProfile> {
         return;
       }
 
+      if (_gender == null || _gender!.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('جنسیت را انتخاب کنید')),
+        );
+        setState(() => _isLoading = false);
+        return;
+      }
+
       if (rawPhone.isEmpty || normalizedPhone == null) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -391,6 +440,12 @@ class _EditProfileState extends ConsumerState<EditProfile> {
         if (email.isNotEmpty) 'email': email,
         'bio': bioController.text.trim(),
         'birth_date': _birthDate,
+        'gender': _gender,
+        if (_maritalStatus != null) 'marital_status': _maritalStatus,
+        'show_email': _showEmail,
+        'show_birth_date': _showBirthDate,
+        'show_gender': _showGender,
+        'show_marital_status': _showMaritalStatus,
         'phone_number': normalizedPhone,
       });
 
@@ -602,6 +657,21 @@ class _EditProfileState extends ConsumerState<EditProfile> {
               _birthDate = data['birth_date']?.toString();
               _selectedDate = parseBirthDate(_birthDate);
             }
+            if (!_profileOptionsLoaded) {
+              _gender = _allowedValue(
+                data['gender'],
+                {'male', 'female', 'prefer_not_to_say'},
+              );
+              _maritalStatus = _allowedValue(
+                data['marital_status'],
+                {'single', 'married', 'prefer_not_to_say'},
+              );
+              _showEmail = _boolValue(data['show_email']);
+              _showBirthDate = _boolValue(data['show_birth_date']);
+              _showGender = _boolValue(data['show_gender']);
+              _showMaritalStatus = _boolValue(data['show_marital_status']);
+              _profileOptionsLoaded = true;
+            }
 
             return _isLoading
                 ? const Center(child: CircularProgressIndicator())
@@ -727,6 +797,54 @@ class _EditProfileState extends ConsumerState<EditProfile> {
                           onTap: _showDatePicker,
                         ),
                         const SizedBox(height: 16),
+                        _buildDropdownField(
+                          title: 'جنسیت',
+                          icon: Icons.person_outline,
+                          value: _gender,
+                          items: const [
+                            DropdownMenuItem(
+                              value: 'male',
+                              child: Text('مرد'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'female',
+                              child: Text('زن'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'prefer_not_to_say',
+                              child: Text('ترجیح می‌دهم نگویم'),
+                            ),
+                          ],
+                          onChanged: (value) {
+                            setState(() => _gender = value);
+                          },
+                        ),
+                        const SizedBox(height: 16),
+                        _buildDropdownField(
+                          title: 'وضعیت تاهل',
+                          icon: Icons.favorite_outline,
+                          value: _maritalStatus,
+                          items: const [
+                            DropdownMenuItem(
+                              value: 'single',
+                              child: Text('مجرد'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'married',
+                              child: Text('متاهل'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'prefer_not_to_say',
+                              child: Text('ترجیح می‌دهم نگویم'),
+                            ),
+                          ],
+                          onChanged: (value) {
+                            setState(() => _maritalStatus = value);
+                          },
+                        ),
+                        const SizedBox(height: 16),
+                        _buildVisibilitySection(),
+                        const SizedBox(height: 16),
                         _buildProfileField(
                           title: 'درباره من',
                           icon: Icons.info_outline,
@@ -835,6 +953,148 @@ class _EditProfileState extends ConsumerState<EditProfile> {
         style: TextStyle(
           color: isDarkMode ? Colors.white : Colors.black,
         ),
+      ),
+    );
+  }
+
+  Widget _buildDropdownField({
+    required String title,
+    required IconData icon,
+    required String? value,
+    required List<DropdownMenuItem<String>> items,
+    required ValueChanged<String?> onChanged,
+  }) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: isDarkMode ? Colors.grey[850] : Colors.grey[100],
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: DropdownButtonFormField<String>(
+        initialValue: value,
+        decoration: InputDecoration(
+          labelText: title,
+          labelStyle: TextStyle(
+            color: isDarkMode ? Colors.white70 : Colors.black54,
+          ),
+          prefixIcon:
+              Icon(icon, color: isDarkMode ? Colors.white : Colors.black),
+          border: InputBorder.none,
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        ),
+        dropdownColor: isDarkMode ? Colors.grey[850] : Colors.white,
+        iconEnabledColor: isDarkMode ? Colors.white70 : Colors.black54,
+        style: TextStyle(
+          color: isDarkMode ? Colors.white : Colors.black,
+          fontSize: 16,
+        ),
+        items: items,
+        onChanged: onChanged,
+      ),
+    );
+  }
+
+  Widget _buildVisibilitySection() {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final textColor = isDarkMode ? Colors.white : Colors.black;
+    final subColor = isDarkMode ? Colors.white70 : Colors.black54;
+    final dividerColor = isDarkMode ? Colors.grey[800] : Colors.grey[200];
+
+    return Container(
+      decoration: BoxDecoration(
+        color: isDarkMode ? Colors.grey[850] : Colors.grey[100],
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.visibility_outlined,
+                  color: isDarkMode ? Colors.white : Colors.black,
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Text(
+                    'نمایش در جزییات اکانت',
+                    style: TextStyle(
+                      color: textColor,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          _buildVisibilitySwitch(
+            title: 'ایمیل',
+            subtitle: 'نمایش ایمیل در صفحه جزییات اکانت',
+            value: _showEmail,
+            onChanged: (value) => setState(() => _showEmail = value),
+            textColor: textColor,
+            subColor: subColor,
+          ),
+          Divider(height: 1, indent: 56, color: dividerColor),
+          _buildVisibilitySwitch(
+            title: 'تاریخ تولد',
+            subtitle: 'نمایش تاریخ تولد در صفحه جزییات اکانت',
+            value: _showBirthDate,
+            onChanged: (value) => setState(() => _showBirthDate = value),
+            textColor: textColor,
+            subColor: subColor,
+          ),
+          Divider(height: 1, indent: 56, color: dividerColor),
+          _buildVisibilitySwitch(
+            title: 'جنسیت',
+            subtitle: 'نمایش جنسیت در صفحه جزییات اکانت',
+            value: _showGender,
+            onChanged: (value) => setState(() => _showGender = value),
+            textColor: textColor,
+            subColor: subColor,
+          ),
+          Divider(height: 1, indent: 56, color: dividerColor),
+          _buildVisibilitySwitch(
+            title: 'وضعیت تاهل',
+            subtitle: 'نمایش وضعیت تاهل در صفحه جزییات اکانت',
+            value: _showMaritalStatus,
+            onChanged: (value) => setState(() => _showMaritalStatus = value),
+            textColor: textColor,
+            subColor: subColor,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildVisibilitySwitch({
+    required String title,
+    required String subtitle,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+    required Color textColor,
+    required Color subColor,
+  }) {
+    return SwitchListTile(
+      value: value,
+      onChanged: onChanged,
+      contentPadding: const EdgeInsetsDirectional.only(start: 56, end: 12),
+      title: Text(
+        title,
+        style: TextStyle(
+          color: textColor,
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      subtitle: Text(
+        subtitle,
+        style: TextStyle(color: subColor, fontSize: 12),
       ),
     );
   }

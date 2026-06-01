@@ -96,33 +96,55 @@ Dio createPinnedDioClient({
         final data = e.response!.data;
         if (data is Map &&
             (data['error'] == 'banned' ||
+                data['error'] == 'account_banned' ||
                 data['error'] == 'account_suspended')) {
           // Banned or Suspended
           TokenStorage.clearAll();
           final context = navigatorKey.currentContext;
           if (context != null) {
             Navigator.of(context)
-                .pushNamedAndRemoveUntil('/login', (route) => false);
-            if (data['error'] == 'banned') {
+                .pushNamedAndRemoveUntil('/banned', (route) => false);
+            if (data['error'] == 'banned' ||
+                data['error'] == 'account_banned') {
               VistaToast.error(
                 context: context,
-                message: 'دستگاه شما به دلیل تخلف مسدود شده است.',
+                message: 'حساب شما به دلیل تخلف مسدود شده است.',
               );
             } else {
               VistaToast.error(
                 context: context,
-                message: 'شما اجازه دسترسی به ویستا را ندارید',
+                message: 'شما اجازه دسترسی به ویستا را ندارید (حساب معلق)',
               );
             }
+          }
+        } else if (data is Map && data['error'] == 'account_muted') {
+          final context = navigatorKey.currentContext;
+          if (context != null) {
+            VistaToast.error(
+              context: context,
+              message:
+                  'شما به دلیل تخلف محدود شده‌اید و مجاز به ارسال محتوا نیستید.',
+            );
           }
         } else if (data is Map && data['error'] == 'feature_disabled') {
           final context = navigatorKey.currentContext;
           if (context != null) {
+            final feature = '${data['feature'] ?? ''}'.trim();
+            final message = _featureDisabledMessage(feature);
             VistaToast.info(
               context: context,
-              message: 'این قابلیت موقتاً غیرفعال شده است.',
+              message: message,
             );
           }
+        }
+      } else if (e.response?.statusCode == 429) {
+        final context = navigatorKey.currentContext;
+        if (context != null) {
+          VistaToast.info(
+            context: context,
+            message:
+                'درخواست‌ها بیش از حد مجاز است. چند لحظه بعد دوباره تلاش کنید.',
+          );
         }
       }
       return handler.next(e);
@@ -168,6 +190,29 @@ bool _hasValidPinnedFingerprints() {
     return true;
   }
   return false;
+}
+
+String _featureDisabledMessage(String feature) {
+  switch (feature) {
+    case 'chat':
+      return 'پیام‌رسانی موقتاً از اتاق کنترل غیرفعال شده است.';
+    case 'posts':
+      return 'ارسال پست موقتاً از اتاق کنترل غیرفعال شده است.';
+    case 'comments':
+      return 'ثبت کامنت موقتاً از اتاق کنترل غیرفعال شده است.';
+    case 'feed':
+      return 'فید موقتاً از اتاق کنترل غیرفعال شده است.';
+    case 'stories':
+      return 'استوری موقتاً از اتاق کنترل غیرفعال شده است.';
+    case 'uploads':
+      return 'آپلود فایل موقتاً از اتاق کنترل غیرفعال شده است.';
+    case 'payments':
+      return 'پرداخت موقتاً از اتاق کنترل غیرفعال شده است.';
+    case 'auth':
+      return 'ورود و ثبت‌نام موقتاً از اتاق کنترل غیرفعال شده است.';
+    default:
+      return 'این قابلیت موقتاً از اتاق کنترل غیرفعال شده است.';
+  }
 }
 
 String _sha256Hex(List<int> data) {

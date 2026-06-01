@@ -7,6 +7,7 @@ import '../../../../services/PostImageUploadService.dart';
 import '../../../../services/local_notification_center.dart';
 import '../../auth/providers/auth_controller.dart';
 import '../data/go_posts_repository.dart';
+import '../../../../services/user_friendly_error_handler.dart';
 import 'package:uuid/uuid.dart';
 
 class UploadTask {
@@ -315,7 +316,7 @@ class PostUploadNotifier extends StateNotifier<List<UploadTask>> {
         state = state.where((t) => t.id != taskId).toList();
       } catch (e) {
         debugPrint('Upload failed: $e');
-        final errMsg = _friendlyUploadError(e.toString());
+        final errMsg = UserFriendlyErrorHandler.getFriendlyMessage(e, context: 'post_upload');
         _updateTaskStatus(taskId, 'failed', errorMessage: errMsg);
         _lastNotifiedProgress.remove(taskId);
         unawaited(_showCompletionNotification(
@@ -326,12 +327,6 @@ class PostUploadNotifier extends StateNotifier<List<UploadTask>> {
         ));
       }
     }());
-  }
-
-  String _friendlyUploadError(String raw) {
-    final cleaned = raw.replaceFirst(RegExp(r'^Exception:\s*'), '').trim();
-    if (cleaned.isEmpty) return 'آپلود ناموفق بود. لطفا دوباره تلاش کنید.';
-    return cleaned;
   }
 
   void _updateTaskStatus(String id, String status, {String? errorMessage}) {

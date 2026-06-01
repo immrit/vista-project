@@ -8,7 +8,11 @@ enum SystemFeature {
   login('login'),
   chat('chat'),
   posts('posts'),
-  comments('comments');
+  comments('comments'),
+  feed('feed'),
+  stories('stories'),
+  uploads('uploads'),
+  payments('payments');
 
   const SystemFeature(this.key);
   final String key;
@@ -34,13 +38,45 @@ class MaintenanceModeException implements Exception {
   String toString() => 'The service is currently in maintenance mode.';
 }
 
+class SystemAlert {
+  final String id;
+  final String severity;
+  final String scope;
+  final String message;
+  final String? feature;
+
+  const SystemAlert({
+    required this.id,
+    required this.severity,
+    required this.scope,
+    required this.message,
+    this.feature,
+  });
+
+  factory SystemAlert.fromJson(Map<String, dynamic> json) {
+    return SystemAlert(
+      id: '${json['id'] ?? ''}',
+      severity: '${json['severity'] ?? 'info'}',
+      scope: '${json['scope'] ?? 'global'}',
+      message: '${json['message'] ?? ''}',
+      feature: json['feature'] == null ? null : '${json['feature']}',
+    );
+  }
+}
+
 class SystemStatus {
   final bool maintenance;
   final Map<String, bool> features;
+  final List<SystemAlert> alerts;
+  final int schemaVersion;
+  final DateTime? generatedAt;
 
   const SystemStatus({
     required this.maintenance,
     required this.features,
+    this.alerts = const [],
+    this.schemaVersion = 1,
+    this.generatedAt,
   });
 
   factory SystemStatus.fromJson(Map<String, dynamic> json) {
@@ -83,6 +119,15 @@ class SystemStatus {
       final disabled =
           _readDisabledBoolFromAny(root, _disabledKeys[feature] ?? const []);
       if (disabled != null) features[feature.key] = !disabled;
+
+      final nestedEnabled = _readBoolFromAny(
+        features.cast<String, dynamic>(),
+        [
+          ...(_enabledKeys[feature] ?? const <String>[]),
+          ...(_featureAliases[feature] ?? const <String>[]),
+        ],
+      );
+      if (nestedEnabled != null) features[feature.key] = nestedEnabled;
     }
 
     return SystemStatus(
@@ -95,6 +140,9 @@ class SystemStatus {
           ]) ??
           false,
       features: features,
+      alerts: _readAlerts(root),
+      schemaVersion: _readInt(root['schema_version']) ?? 1,
+      generatedAt: DateTime.tryParse('${root['generated_at'] ?? ''}'),
     );
   }
 }
@@ -110,6 +158,14 @@ class SystemStatusService {
   Future<SystemStatus?>? _inFlightFetch;
 
   SystemStatus? get cachedStatus => _cachedStatus;
+  List<SystemAlert> get activeAlerts => _cachedStatus?.alerts ?? const [];
+  SystemAlert? get firstCriticalAlert {
+    final alerts = activeAlerts;
+    for (final alert in alerts) {
+      if (alert.severity.toLowerCase() == 'critical') return alert;
+    }
+    return alerts.isEmpty ? null : alerts.first;
+  }
 
   Future<SystemStatus?> fetchStatus({bool force = false}) async {
     if (!force && !_isStale && _cachedStatus != null) {
@@ -253,6 +309,34 @@ const Map<SystemFeature, List<String>> _featureAliases = {
     'create_comment',
     'comment_create',
   ],
+  SystemFeature.feed: [
+    'feed',
+    'timeline',
+    'explore',
+    'home_feed',
+    'following_feed',
+  ],
+  SystemFeature.stories: [
+    'stories',
+    'story',
+    'story_create',
+    'create_story',
+    'highlights',
+  ],
+  SystemFeature.uploads: [
+    'uploads',
+    'upload',
+    'media_upload',
+    'file_upload',
+    'presign',
+  ],
+  SystemFeature.payments: [
+    'payments',
+    'payment',
+    'bazaar',
+    'subscription',
+    'premium',
+  ],
 };
 
 const Map<SystemFeature, List<String>> _enabledKeys = {
@@ -264,6 +348,10 @@ const Map<SystemFeature, List<String>> _enabledKeys = {
     'comment_enabled',
     'create_comment_enabled',
   ],
+  SystemFeature.feed: ['feed_enabled', 'explore_enabled'],
+  SystemFeature.stories: ['stories_enabled', 'story_enabled'],
+  SystemFeature.uploads: ['uploads_enabled', 'upload_enabled'],
+  SystemFeature.payments: ['payments_enabled', 'payment_enabled'],
 };
 
 const Map<SystemFeature, List<String>> _disabledKeys = {
@@ -279,6 +367,10 @@ const Map<SystemFeature, List<String>> _disabledKeys = {
     'comment_disabled',
     'create_comment_disabled',
   ],
+  SystemFeature.feed: ['feed_disabled', 'explore_disabled'],
+  SystemFeature.stories: ['stories_disabled', 'story_disabled'],
+  SystemFeature.uploads: ['uploads_disabled', 'upload_disabled'],
+  SystemFeature.payments: ['payments_disabled', 'payment_disabled'],
 };
 
 Map<String, dynamic> _asMap(Object? value) {
@@ -308,6 +400,23 @@ bool? _readBool(Object? value) {
     }
   }
   return null;
+}
+
+int? _readInt(Object? value) {
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  if (value is String) return int.tryParse(value.trim());
+  return null;
+}
+
+List<SystemAlert> _readAlerts(Map<String, dynamic> root) {
+  final raw = root['alerts'] ?? root['client_alerts'] ?? root['clientAlerts'];
+  if (raw is! List) return const [];
+  return raw
+      .whereType<Map>()
+      .map((item) => SystemAlert.fromJson(item.cast<String, dynamic>()))
+      .where((alert) => alert.id.isNotEmpty || alert.message.isNotEmpty)
+      .toList(growable: false);
 }
 
 bool? _readBoolFromAny(Map<String, dynamic> map, List<String> keys) {

@@ -28,6 +28,27 @@ void main() {
 
       expect(profile.verificationType, profile_model.VerificationType.none);
     });
+
+    test('parses personal detail visibility fields', () {
+      final profile = profile_model.ProfileModel.fromMap({
+        'id': 'u3',
+        'username': 'carol',
+        'email': 'carol@example.com',
+        'birth_date': '2000-01-02',
+        'gender': 'female',
+        'marital_status': 'single',
+        'show_email': true,
+        'show_birth_date': '1',
+        'show_gender': 1,
+      });
+
+      expect(profile.gender, 'female');
+      expect(profile.maritalStatus, 'single');
+      expect(profile.showEmail, isTrue);
+      expect(profile.showBirthDate, isTrue);
+      expect(profile.showGender, isTrue);
+      expect(profile.showMaritalStatus, isFalse);
+    });
   });
 
   group('PublicPostModel parsing', () {

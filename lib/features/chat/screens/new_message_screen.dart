@@ -24,7 +24,6 @@ class _NewMessageScreenState extends ConsumerState<NewMessageScreen> {
   Timer? _debounce;
 
   bool _isLoading = true;
-  bool _isSearchingGlobally = false;
   bool _isSecretMode = false;
   List<GroupUserItem> _users = [];
   List<GroupUserItem>? _globalSearchResults;
@@ -67,27 +66,19 @@ class _NewMessageScreenState extends ConsumerState<NewMessageScreen> {
         if (!mounted) return;
         setState(() {
           _globalSearchResults = null;
-          _isSearchingGlobally = false;
         });
         return;
       }
-
-      if (!mounted) return;
-      setState(() {
-        _isSearchingGlobally = true;
-      });
 
       _service.searchUsers(query).then((results) {
         if (!mounted) return;
         setState(() {
           _globalSearchResults = results;
-          _isSearchingGlobally = false;
         });
       }).catchError((_) {
         if (!mounted) return;
         setState(() {
           _globalSearchResults = [];
-          _isSearchingGlobally = false;
         });
       });
     });

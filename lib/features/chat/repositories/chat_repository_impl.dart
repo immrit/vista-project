@@ -20,6 +20,7 @@ import '../../../../security/logging_utility.dart';
 import '../../../DB/isar_database_manager.dart';
 import '../../../DB/entities/deletion_task_entity.dart';
 import '../../auth/providers/auth_controller.dart';
+import '../../../services/device_id_service.dart';
 import '../../../services/session_manager_service_v2.dart';
 import '../../../services/system_status_service.dart';
 import '../data/datasources/chat_local_datasource_isar.dart';
@@ -57,7 +58,10 @@ class ChatRepositoryImpl implements ChatRepository {
       baseUrl: '$_base/v1',
       connectTimeout: const Duration(seconds: 10),
       receiveTimeout: const Duration(seconds: 20),
-      headers: {'Content-Type': 'application/json'},
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Device-ID': DeviceIdService.id,
+      },
     ));
 
     // âœ… SSE singleton Ø´Ø±ÙˆØ¹ Ù…ÛŒØ´Ù‡ â€” Ù‡Ù…Ù‡ provider Ù‡Ø§ Ø§Ø² ÛŒÙ‡ Ú©Ø§Ù†Ú©Ø´Ù† Ø§Ø³ØªÙØ§Ø¯Ù‡ Ù…ÛŒâ€ŒÚ©Ù†Ù†
@@ -506,26 +510,6 @@ class ChatRepositoryImpl implements ChatRepository {
       logWarning('E2EE Encryption failed: $e');
       return rawContent;
     }
-  }
-
-  Future<List<MessageModel>> _decryptMessages(
-      List<MessageModel> msgs, String? otherPublicKey) async {
-    if (otherPublicKey == null || otherPublicKey.isEmpty) return msgs;
-    final decrypted = <MessageModel>[];
-    for (var m in msgs) {
-      if (m.content.startsWith('e2ee:v1:')) {
-        try {
-          final clear =
-              await E2EEService().decryptMessage(m.content, otherPublicKey);
-          decrypted.add(m.copyWith(content: clear));
-        } catch (_) {
-          decrypted.add(m);
-        }
-      } else {
-        decrypted.add(m);
-      }
-    }
-    return decrypted;
   }
 
   @override

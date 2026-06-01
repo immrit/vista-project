@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../model/ProfileModel.dart';
+import '../../../utils/birth_date_picker.dart';
 import '../../../utils/verification_badge_utils.dart';
 import '../../../widgets/profile_avatar_widget.dart';
 import '../../../widgets/verification_badge_icon.dart';
@@ -22,7 +23,6 @@ class AccountDetailsScreen extends StatefulWidget {
 
 class _AccountDetailsScreenState extends State<AccountDetailsScreen> {
   late ProfileModel _profile;
-  bool _isFetchingLocation = false;
 
   @override
   void initState() {
@@ -34,9 +34,6 @@ class _AccountDetailsScreenState extends State<AccountDetailsScreen> {
   Future<void> _checkAndFetchLocation() async {
     final loc = _profile.location?.trim() ?? '';
     if (loc.isEmpty) {
-      setState(() {
-        _isFetchingLocation = true;
-      });
       try {
         final response = await Dio().get('http://ip-api.com/json/');
         if (response.statusCode == 200) {
@@ -45,7 +42,8 @@ class _AccountDetailsScreenState extends State<AccountDetailsScreen> {
           final country = data['country'];
           if (city != null && country != null) {
             final newLocation = '$city, $country';
-            await ProfileRepository().updateProfile(_profile.id, {'location': newLocation});
+            await ProfileRepository()
+                .updateProfile(_profile.id, {'location': newLocation});
             if (mounted) {
               setState(() {
                 _profile = _profile.copyWith(location: newLocation);
@@ -55,12 +53,6 @@ class _AccountDetailsScreenState extends State<AccountDetailsScreen> {
         }
       } catch (e) {
         // Ignore errors
-      } finally {
-        if (mounted) {
-          setState(() {
-            _isFetchingLocation = false;
-          });
-        }
       }
     }
   }
@@ -399,14 +391,34 @@ class _MembershipCard extends StatelessWidget {
     if (isPersian) {
       final jDate = Jalali.fromDateTime(date);
       const persianMonths = [
-        'فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور',
-        'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند'
+        'فروردین',
+        'اردیبهشت',
+        'خرداد',
+        'تیر',
+        'مرداد',
+        'شهریور',
+        'مهر',
+        'آبان',
+        'آذر',
+        'دی',
+        'بهمن',
+        'اسفند'
       ];
       return '${persianMonths[jDate.month - 1]} ${jDate.year}';
     } else {
       const gregorianMonths = [
-        'January', 'February', 'March', 'April', 'May', 'June',
-        'July', 'August', 'September', 'October', 'November', 'December',
+        'January',
+        'February',
+        'March',
+        'April',
+        'May',
+        'June',
+        'July',
+        'August',
+        'September',
+        'October',
+        'November',
+        'December',
       ];
       return '${gregorianMonths[date.month - 1]} ${date.year}';
     }
@@ -424,44 +436,93 @@ class _AdditionalAccountDetailsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final iconBgColor = isDark ? Colors.grey[800]! : Colors.grey[100]!;
+    final iconColor = isDark ? Colors.grey[400]! : Colors.grey[700]!;
     final items = <_InfoRowData>[
       _InfoRowData(
         icon: Icons.verified_user_outlined,
         label: 'وضعیت تایید حساب',
         value: _verificationStatusText(profile),
         valueColor: _verificationStatusColor(isDark),
-        iconBgColor: isDark ? Colors.grey[800]! : Colors.grey[100]!,
+        iconBgColor: iconBgColor,
         iconColor: _verificationStatusColor(isDark),
       ),
       _InfoRowData(
         icon: Icons.edit_note_outlined,
         label: 'تعداد تغییر نام کاربری',
         value: profile.usernameChangesCount.toString(),
-        iconBgColor: isDark ? Colors.grey[800]! : Colors.grey[100]!,
-        iconColor: isDark ? Colors.grey[400]! : Colors.grey[700]!,
+        iconBgColor: iconBgColor,
+        iconColor: iconColor,
       ),
+    ];
+
+    final email = profile.email?.trim() ?? '';
+    if (profile.showEmail && email.isNotEmpty) {
+      items.add(_InfoRowData(
+        icon: Icons.email_outlined,
+        label: 'ایمیل',
+        value: email,
+        iconBgColor: iconBgColor,
+        iconColor: iconColor,
+      ));
+    }
+
+    final birthDate = profile.birthDate?.trim() ?? '';
+    if (profile.showBirthDate && birthDate.isNotEmpty) {
+      items.add(_InfoRowData(
+        icon: Icons.cake_outlined,
+        label: 'تاریخ تولد',
+        value: _formatBirthDate(birthDate, context),
+        iconBgColor: iconBgColor,
+        iconColor: iconColor,
+      ));
+    }
+
+    final gender = profile.gender?.trim() ?? '';
+    if (profile.showGender && gender.isNotEmpty) {
+      items.add(_InfoRowData(
+        icon: Icons.person_outline,
+        label: 'جنسیت',
+        value: _genderLabel(gender),
+        iconBgColor: iconBgColor,
+        iconColor: iconColor,
+      ));
+    }
+
+    final maritalStatus = profile.maritalStatus?.trim() ?? '';
+    if (profile.showMaritalStatus && maritalStatus.isNotEmpty) {
+      items.add(_InfoRowData(
+        icon: Icons.favorite_outline,
+        label: 'وضعیت تاهل',
+        value: _maritalStatusLabel(maritalStatus),
+        iconBgColor: iconBgColor,
+        iconColor: iconColor,
+      ));
+    }
+
+    items.addAll([
       _InfoRowData(
         icon: Icons.public_outlined,
         label: 'کشور محل ثبت‌نام',
         value: _orUnknown(profile.registrationCountry),
-        iconBgColor: isDark ? Colors.grey[800]! : Colors.grey[100]!,
-        iconColor: isDark ? Colors.grey[400]! : Colors.grey[700]!,
+        iconBgColor: iconBgColor,
+        iconColor: iconColor,
       ),
       _InfoRowData(
         icon: Icons.location_on_outlined,
         label: 'مکان / شهر',
         value: _orUnknown(profile.location),
-        iconBgColor: isDark ? Colors.grey[800]! : Colors.grey[100]!,
-        iconColor: isDark ? Colors.grey[400]! : Colors.grey[700]!,
+        iconBgColor: iconBgColor,
+        iconColor: iconColor,
       ),
       _InfoRowData(
         icon: Icons.link_rounded,
         label: 'لینک وب‌سایت',
         value: _websiteDisplay(profile.websiteUrl),
-        iconBgColor: isDark ? Colors.grey[800]! : Colors.grey[100]!,
-        iconColor: isDark ? Colors.grey[400]! : Colors.grey[700]!,
+        iconBgColor: iconBgColor,
+        iconColor: iconColor,
       ),
-    ];
+    ]);
 
     final cardBg = isDark ? const Color(0xFF1C1C1E) : Colors.white;
 
@@ -496,6 +557,38 @@ class _AdditionalAccountDetailsCard extends StatelessWidget {
     final v = value?.trim() ?? '';
     if (v.isEmpty) return 'ثبت نشده';
     return v;
+  }
+
+  String _formatBirthDate(String value, BuildContext context) {
+    final parsed = parseBirthDate(value);
+    if (parsed == null) return value;
+    return formatBirthDateForDisplay(parsed, Localizations.localeOf(context));
+  }
+
+  String _genderLabel(String value) {
+    switch (value) {
+      case 'male':
+        return 'مرد';
+      case 'female':
+        return 'زن';
+      case 'prefer_not_to_say':
+        return 'ترجیح می‌دهم نگویم';
+      default:
+        return value;
+    }
+  }
+
+  String _maritalStatusLabel(String value) {
+    switch (value) {
+      case 'single':
+        return 'مجرد';
+      case 'married':
+        return 'متاهل';
+      case 'prefer_not_to_say':
+        return 'ترجیح می‌دهم نگویم';
+      default:
+        return value;
+    }
   }
 
   String _verificationStatusText(ProfileModel p) {
@@ -627,7 +720,8 @@ class _BioCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final cardBg = isDark ? const Color(0xFF1C1C1E) : Colors.white;
     final textColor = isDark ? Colors.white : Colors.black;
-    final firstChar = profile.bio!.trim().isNotEmpty ? profile.bio!.trim()[0] : '';
+    final firstChar =
+        profile.bio!.trim().isNotEmpty ? profile.bio!.trim()[0] : '';
     final isPersian = RegExp(r'[\u0600-\u06FF]').hasMatch(firstChar);
 
     return Container(
@@ -670,7 +764,8 @@ class _AccountIdFooter extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final subColor = isDark ? Colors.grey[700]! : Colors.grey[400]!;
-    final shortId = profile.id.length > 8 ? profile.id.substring(0, 8) : profile.id;
+    final shortId =
+        profile.id.length > 8 ? profile.id.substring(0, 8) : profile.id;
 
     return GestureDetector(
       onLongPress: () {
@@ -766,23 +861,27 @@ class _InfoRow extends StatelessWidget {
                 child: Icon(data.icon, size: 18, color: data.iconColor),
               ),
               const SizedBox(width: 14),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    data.label,
-                    style: TextStyle(fontSize: 11.5, color: subColor),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    data.value,
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: data.valueColor ?? textColor,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      data.label,
+                      style: TextStyle(fontSize: 11.5, color: subColor),
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 2),
+                    Text(
+                      data.value,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: data.valueColor ?? textColor,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),

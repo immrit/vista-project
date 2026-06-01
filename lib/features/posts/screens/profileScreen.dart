@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'dart:async';
@@ -11,6 +11,7 @@ import '../../../provider/optimized_conversations_provider.dart';
 import '../../../DB/profile_cache_service.dart';
 import 'package:Vista/widgets/profile_avatar_widget.dart'; // NEW IMPORT
 import '../providers/saved_posts_provider.dart';
+import '../widgets/post_action_buttons.dart';
 
 // Imports for existing functionality
 import '../../../features/chat/screens/modern_chat_screen.dart';
@@ -2121,7 +2122,6 @@ class _PostListItem extends ConsumerWidget {
                   // دکمه‌های اکشن
                   Row(
                     children: [
-                      // دکمه لایک
                       Consumer(
                         builder: (context, ref, child) {
                           final isLiked =
@@ -2132,11 +2132,17 @@ class _PostListItem extends ConsumerWidget {
                                   ? (isLiked ? 1 : -1)
                                   : 0);
 
-                          return _buildActionTapTarget(
+                          return PostLikeButton(
+                            isLiked: isLiked,
+                            likeCount: likeCount,
+                            showCount: !post.hideLikeCount,
+                            iconSize: 19,
+                            gap: 4,
                             onTap: () async {
+                              final willLike = !isLiked;
                               ref
                                   .read(likeStateProvider.notifier)
-                                  .updateLikeState(post.id, !isLiked);
+                                  .updateLikeState(post.id, willLike);
                               try {
                                 await ref
                                     .read(postActionsServiceProvider)
@@ -2153,77 +2159,21 @@ class _PostListItem extends ConsumerWidget {
                                 }
                               }
                             },
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  isLiked
-                                      ? Icons.favorite
-                                      : Icons.favorite_border,
-                                  size: 19,
-                                  color: isLiked
-                                      ? Colors.red
-                                      : (isDark
-                                          ? Colors.grey[400]
-                                          : Colors.grey[600]),
-                                ),
-                                if (!post.hideLikeCount && likeCount > 0) ...[
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    _formatCount(likeCount),
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      color: isDark
-                                          ? Colors.grey[400]
-                                          : Colors.grey[600],
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
                           );
                         },
                       ),
-                      const SizedBox(width: 6),
-                      // دکمه کامنت
-                      _buildActionTapTarget(
+                      const SizedBox(width: 14),
+                      PostCommentButton(
+                        commentCount: post.commentCount,
+                        showCount: !post.hideCommentCount,
+                        iconSize: 19,
+                        gap: 4,
                         onTap: () => _showCommentsSheet(context, ref),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Image.asset(
-                              'lib/utils/images/component/comment.png',
-                              width: 19,
-                              height: 19,
-                              color:
-                                  isDark ? Colors.grey[400] : Colors.grey[600],
-                            ),
-                            if (!post.hideCommentCount &&
-                                post.commentCount > 0) ...[
-                              const SizedBox(width: 4),
-                              Text(
-                                _formatCount(post.commentCount),
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  color: isDark
-                                      ? Colors.grey[400]
-                                      : Colors.grey[600],
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
                       ),
-                      const SizedBox(width: 6),
-                      // دکمه ذخیره
-                      _buildAction(
-                        icon: isSaved
-                            ? Icons.bookmark_rounded
-                            : Icons.bookmark_border,
-                        count: null,
-                        iconColor: isSaved
-                            ? Theme.of(context).colorScheme.primary
-                            : null,
+                      const SizedBox(width: 14),
+                      PostSaveButton(
+                        isSaved: isSaved,
+                        iconSize: 19,
                         onTap: () async {
                           final ok = await ref
                               .read(savedPostIdsProvider.notifier)
@@ -2235,20 +2185,22 @@ class _PostListItem extends ConsumerWidget {
                           }
                         },
                       ),
-                      const SizedBox(width: 6),
-                      // دکمه اشتراک‌گذاری
-                      _buildActionTapTarget(
+                      const SizedBox(width: 14),
+                      InkWell(
                         onTap: () =>
                             SmartShareService().showShareOptions(post, context),
-                        child: Image.asset(
-                          'lib/utils/images/component/send.png',
-                          width: 19,
-                          height: 19,
-                          color: isDark ? Colors.grey[400] : Colors.grey[600],
+                        borderRadius: BorderRadius.circular(12),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 3),
+                          child: Image.asset(
+                            'lib/utils/images/component/send.png',
+                            width: 19,
+                            height: 19,
+                            color: isDark ? Colors.grey[400] : Colors.grey[600],
+                          ),
                         ),
                       ),
                       const Spacer(),
-                      // دکمه منو (۳ نقطه)
                       _buildPostMenu(context, ref),
                     ],
                   ),
@@ -2256,54 +2208,6 @@ class _PostListItem extends ConsumerWidget {
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAction({
-    required IconData icon,
-    required int? count,
-    required VoidCallback onTap,
-    Color? iconColor,
-  }) {
-    return _buildActionTapTarget(
-      onTap: onTap,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            icon,
-            size: 19,
-            color: iconColor ?? (isDark ? Colors.grey[400] : Colors.grey[600]),
-          ),
-          if (count != null && count > 0) ...[
-            const SizedBox(width: 4),
-            Text(
-              _formatCount(count),
-              style: TextStyle(
-                fontSize: 13,
-                color: isDark ? Colors.grey[400] : Colors.grey[600],
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildActionTapTarget({
-    required VoidCallback onTap,
-    required Widget child,
-  }) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
-          child: child,
         ),
       ),
     );
@@ -2328,15 +2232,6 @@ class _PostListItem extends ConsumerWidget {
     } else {
       return 'now';
     }
-  }
-
-  String _formatCount(int count) {
-    if (count >= 1000000) {
-      return '${(count / 1000000).toStringAsFixed(1)}M';
-    } else if (count >= 1000) {
-      return '${(count / 1000).toStringAsFixed(1)}K';
-    }
-    return count.toString();
   }
 
   String _resolveMusicTitle() {

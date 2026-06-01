@@ -3,6 +3,7 @@ import 'package:Vista/utils/env_config.dart';
 
 import '../features/auth/providers/auth_controller.dart';
 import '../model/CommentModel.dart';
+import 'device_id_service.dart';
 import 'system_status_service.dart';
 
 class CommentPage {
@@ -24,7 +25,10 @@ class CommentRepository {
       baseUrl: '$_backendUrl/v1',
       connectTimeout: const Duration(seconds: 15),
       receiveTimeout: const Duration(seconds: 20),
-      headers: {'Content-Type': 'application/json'},
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Device-ID': DeviceIdService.id,
+      },
     ));
   }
 

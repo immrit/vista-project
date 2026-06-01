@@ -9,7 +9,7 @@ import '../models/profile_note_model.dart';
 /// سرویس مدیریت وضعیت پروفایل
 class ProfileNoteService {
   static String get _backendUrl =>
-      EnvConfig.apiBaseUrl ?? 'http://10.0.2.2:8080';
+      EnvConfig.apiBaseUrl;
 
   late final Dio _dio;
 

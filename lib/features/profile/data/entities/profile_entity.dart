@@ -33,9 +33,15 @@ class ProfileEntity {
   String? role;
 
   int? joinOrder;
-  
+
   String? phoneNumber;
   String? birthDate;
+  String? gender;
+  String? maritalStatus;
+  bool showEmail = false;
+  bool showBirthDate = false;
+  bool showGender = false;
+  bool showMaritalStatus = false;
 
   // Last time this profile was updated in cache
   DateTime lastUpdated = DateTime.now();
@@ -61,6 +67,12 @@ class ProfileEntity {
       ..joinOrder = model.joinOrder
       ..phoneNumber = model.phoneNumber
       ..birthDate = model.birthDate
+      ..gender = model.gender
+      ..maritalStatus = model.maritalStatus
+      ..showEmail = model.showEmail
+      ..showBirthDate = model.showBirthDate
+      ..showGender = model.showGender
+      ..showMaritalStatus = model.showMaritalStatus
       ..lastUpdated = DateTime.now();
   }
 
@@ -85,6 +97,12 @@ class ProfileEntity {
       joinOrder: joinOrder,
       phoneNumber: phoneNumber,
       birthDate: birthDate,
+      gender: gender,
+      maritalStatus: maritalStatus,
+      showEmail: showEmail,
+      showBirthDate: showBirthDate,
+      showGender: showGender,
+      showMaritalStatus: showMaritalStatus,
       // Note: `posts` are loaded separately using PostEntity query
     );
   }

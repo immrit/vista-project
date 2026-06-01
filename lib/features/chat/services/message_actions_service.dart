@@ -31,7 +31,7 @@ class MessageActionsService {
   static const editTimeLimit = Duration(hours: 48);
 
   static String get _backendUrl =>
-      EnvConfig.apiBaseUrl ?? 'http://10.0.2.2:8080';
+      EnvConfig.apiBaseUrl;
 
   Dio _buildDio() {
     return Dio(BaseOptions(

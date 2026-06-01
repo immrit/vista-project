@@ -38,6 +38,12 @@ class ProfileModel extends Equatable {
   final int? joinOrder; // ترتیب ثبت‌نام در ویستا
   final String? phoneNumber;
   final String? birthDate;
+  final String? gender;
+  final String? maritalStatus;
+  final bool showEmail;
+  final bool showBirthDate;
+  final bool showGender;
+  final bool showMaritalStatus;
   final int usernameChangesCount;
   final String? registrationCountry;
 
@@ -65,6 +71,12 @@ class ProfileModel extends Equatable {
     this.joinOrder,
     this.phoneNumber,
     this.birthDate,
+    this.gender,
+    this.maritalStatus,
+    this.showEmail = false,
+    this.showBirthDate = false,
+    this.showGender = false,
+    this.showMaritalStatus = false,
     this.usernameChangesCount = 0,
     this.registrationCountry,
   });
@@ -78,6 +90,20 @@ class ProfileModel extends Equatable {
     for (final value in values) {
       final trimmed = _trimmed(value);
       if (trimmed.isNotEmpty) return trimmed;
+    }
+    return fallback;
+  }
+
+  static bool _boolValue(dynamic value, {bool fallback = false}) {
+    if (value is bool) return value;
+    if (value is num) return value != 0;
+    final normalized = value?.toString().trim().toLowerCase();
+    if (normalized == null || normalized.isEmpty) return fallback;
+    if (normalized == 'true' || normalized == '1' || normalized == 'yes') {
+      return true;
+    }
+    if (normalized == 'false' || normalized == '0' || normalized == 'no') {
+      return false;
     }
     return fallback;
   }
@@ -134,6 +160,12 @@ class ProfileModel extends Equatable {
           : null,
       phoneNumber: map['phone_number']?.toString(),
       birthDate: map['birth_date']?.toString(),
+      gender: map['gender']?.toString(),
+      maritalStatus: map['marital_status']?.toString(),
+      showEmail: _boolValue(map['show_email']),
+      showBirthDate: _boolValue(map['show_birth_date']),
+      showGender: _boolValue(map['show_gender']),
+      showMaritalStatus: _boolValue(map['show_marital_status']),
       usernameChangesCount:
           int.tryParse((map['username_changes_count'] ?? 0).toString()) ?? 0,
       registrationCountry: map['registration_country']?.toString(),
@@ -178,6 +210,12 @@ class ProfileModel extends Equatable {
       'join_order': joinOrder,
       'phone_number': phoneNumber,
       'birth_date': birthDate,
+      'gender': gender,
+      'marital_status': maritalStatus,
+      'show_email': showEmail,
+      'show_birth_date': showBirthDate,
+      'show_gender': showGender,
+      'show_marital_status': showMaritalStatus,
       'username_changes_count': usernameChangesCount,
       'registration_country': registrationCountry,
     };
@@ -209,6 +247,12 @@ class ProfileModel extends Equatable {
     int? joinOrder,
     String? phoneNumber,
     String? birthDate,
+    String? gender,
+    String? maritalStatus,
+    bool? showEmail,
+    bool? showBirthDate,
+    bool? showGender,
+    bool? showMaritalStatus,
     int? usernameChangesCount,
     String? registrationCountry,
   }) {
@@ -236,6 +280,12 @@ class ProfileModel extends Equatable {
       joinOrder: joinOrder ?? this.joinOrder,
       phoneNumber: phoneNumber ?? this.phoneNumber,
       birthDate: birthDate ?? this.birthDate,
+      gender: gender ?? this.gender,
+      maritalStatus: maritalStatus ?? this.maritalStatus,
+      showEmail: showEmail ?? this.showEmail,
+      showBirthDate: showBirthDate ?? this.showBirthDate,
+      showGender: showGender ?? this.showGender,
+      showMaritalStatus: showMaritalStatus ?? this.showMaritalStatus,
       usernameChangesCount: usernameChangesCount ?? this.usernameChangesCount,
       registrationCountry: registrationCountry ?? this.registrationCountry,
     );
@@ -266,6 +316,12 @@ class ProfileModel extends Equatable {
         joinOrder,
         phoneNumber,
         birthDate,
+        gender,
+        maritalStatus,
+        showEmail,
+        showBirthDate,
+        showGender,
+        showMaritalStatus,
         usernameChangesCount,
         registrationCountry,
       ];

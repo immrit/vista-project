@@ -215,6 +215,10 @@ class _ProfileSetupWizardScreenState
       'birth_date': formatBirthDateForStorage(_birthDate!),
       if (_gender != null) 'gender': _gender,
       if (_maritalStatus != null) 'marital_status': _maritalStatus,
+      'show_email': false,
+      'show_birth_date': false,
+      'show_gender': false,
+      'show_marital_status': false,
       if (email.isNotEmpty) 'email': email,
     };
 

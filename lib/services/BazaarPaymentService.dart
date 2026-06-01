@@ -5,6 +5,8 @@ import 'package:Vista/utils/env_config.dart';
 import 'current_user_service.dart';
 import '../features/auth/providers/auth_controller.dart';
 import '../security/logging_utility.dart';
+import 'device_id_service.dart';
+import 'system_status_service.dart';
 
 class BazaarPaymentService {
   static const platform = MethodChannel('ir.coffevista.vista/bazaar_native');
@@ -12,7 +14,7 @@ class BazaarPaymentService {
   bool _isConnected = false;
 
   static String get _backendUrl =>
-      EnvConfig.apiBaseUrl ?? 'http://10.0.2.2:8080';
+      EnvConfig.apiBaseUrl;
 
   Future<bool> init() async {
     print('🔄 [Flutter] Connecting to Native Poolakey...');
@@ -28,6 +30,20 @@ class BazaarPaymentService {
 
   Future<Map<String, dynamic>> purchaseSubscription(String productId) async {
     print("🛒 [Flutter] Requesting purchase: $productId");
+
+    try {
+      await SystemStatusService.instance.ensureFeatureEnabled(
+        SystemFeature.payments,
+        forceRefresh: true,
+      );
+    } on FeatureDisabledException {
+      return {
+        'success': false,
+        'message': 'پرداخت‌ها موقتاً توسط مدیریت غیرفعال شده‌اند.'
+      };
+    } on MaintenanceModeException {
+      return {'success': false, 'message': 'سیستم در حالت تعمیرات است.'};
+    }
 
     if (!_isConnected) {
       final connected = await init();
@@ -93,6 +109,7 @@ class BazaarPaymentService {
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $accessToken',
+          'X-Device-ID': DeviceIdService.id,
         },
       ));
 

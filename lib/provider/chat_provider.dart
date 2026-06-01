@@ -48,7 +48,7 @@ class UserBlockNotifier extends StateNotifier<AsyncValue<void>> {
   UserBlockNotifier() : super(const AsyncValue.data(null));
 
   static String get _backendUrl =>
-      EnvConfig.apiBaseUrl ?? 'http://10.0.2.2:8080';
+      EnvConfig.apiBaseUrl;
 
   Future<Dio?> _authedDio() async {
     final token = await TokenStorage.getAccessToken();
@@ -95,7 +95,7 @@ class UserReportNotifier extends StateNotifier<AsyncValue<void>> {
   UserReportNotifier() : super(const AsyncValue.data(null));
 
   static String get _backendUrl =>
-      EnvConfig.apiBaseUrl ?? 'http://10.0.2.2:8080';
+      EnvConfig.apiBaseUrl;
 
   Future<void> reportUser(String userId, String reason) async {
     state = const AsyncValue.loading();

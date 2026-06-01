@@ -50,7 +50,7 @@ class TelegramReadReceiptService {
   TelegramReadReceiptService._internal();
 
   static String get _backendUrl =>
-      EnvConfig.apiBaseUrl ?? 'http://10.0.2.2:8080';
+      EnvConfig.apiBaseUrl;
 
   late final Dio _dio = Dio(
     BaseOptions(

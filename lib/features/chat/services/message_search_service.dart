@@ -73,7 +73,7 @@ class MessageSearchService {
   MessageSearchService() {
     _dio = Dio(
       BaseOptions(
-        baseUrl: '${EnvConfig.apiBaseUrl ?? 'http://10.0.2.2:8080'}/v1',
+        baseUrl: '${EnvConfig.apiBaseUrl}/v1',
         connectTimeout: const Duration(seconds: 10),
         receiveTimeout: const Duration(seconds: 20),
         headers: {'Content-Type': 'application/json'},

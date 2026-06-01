@@ -113,42 +113,6 @@ class _EnhancedChatBackgroundState
     );
   }
 
-  /// Pattern پیش‌فرض اگر تصویر pattern نباشد
-  Widget _buildDefaultPattern(bool isDark) {
-    return CustomPaint(
-      painter: _TelegramPatternPainter(isDark: isDark),
-      size: Size.infinite,
-    );
-  }
-}
-
-/// Pattern Painter (شبیه نقش‌های ویستا)
-class _TelegramPatternPainter extends CustomPainter {
-  final bool isDark;
-
-  _TelegramPatternPainter({required this.isDark});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = (isDark ? Colors.white : Colors.black).withValues(alpha: 0.03)
-      ..strokeWidth = 1
-      ..style = PaintingStyle.stroke;
-
-    const spacing = 30.0;
-
-    // خطوط مورب (مثل ویستا)
-    for (double i = -size.height; i < size.width + size.height; i += spacing) {
-      canvas.drawLine(
-        Offset(i, 0),
-        Offset(i + size.height, size.height),
-        paint,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 /// Telegram-style Message Background Pattern

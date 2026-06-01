@@ -1300,19 +1300,6 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
     return false;
   }
 
-  String _extractPostIdFromMessage(MessageModel message) {
-    final postIdFromModel = message.sharedPostData?.postId.trim() ?? '';
-    if (postIdFromModel.isNotEmpty) return postIdFromModel;
-
-    final map = _decodeSharedPostMap(message);
-    return _firstNonEmpty([map?['postId'], map?['post_id']]) ?? '';
-  }
-
-  void _openSharedPost(MessageModel message) {
-    final postId = _extractPostIdFromMessage(message);
-    _openSharedPostById(postId);
-  }
-
   void _openSharedPostById(String postId) {
     if (postId.isEmpty) {
       _showSnackBar('شناسه پست یافت نشد', isError: true);

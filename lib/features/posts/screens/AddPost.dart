@@ -84,19 +84,6 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
     }
   }
 
-  double _calculateProgress() {
-    return (contentController.text.length / _maxCharLength).clamp(0.0, 1.0);
-  }
-
-  Color _getCharCountColor() {
-    final int count = contentController.text.length;
-    if (count > _maxCharLength) return Colors.redAccent;
-    if (count > _maxCharLength * 0.8) return Colors.orangeAccent;
-    return Theme.of(context).brightness == Brightness.dark
-        ? Colors.white70
-        : Colors.black54;
-  }
-
   Future<void> _pickImage({ImageSource source = ImageSource.gallery}) async {
     try {
       final ImagePicker picker = ImagePicker();

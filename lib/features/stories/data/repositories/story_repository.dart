@@ -2,6 +2,8 @@ import 'package:dio/dio.dart';
 import 'package:Vista/utils/env_config.dart';
 
 import '../../../../security/logging_utility.dart';
+import '../../../../services/device_id_service.dart';
+import '../../../../services/system_status_service.dart';
 import '../../../auth/providers/auth_controller.dart';
 import '../../core/story_enums.dart';
 import '../../domain/entities/entities.dart';
@@ -15,7 +17,10 @@ class StoryRepository implements IStoryRepository {
         baseUrl: '$_backendUrl/v1',
         connectTimeout: const Duration(seconds: 15),
         receiveTimeout: const Duration(seconds: 20),
-        headers: {'Content-Type': 'application/json'},
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Device-ID': DeviceIdService.id,
+        },
       ),
     );
   }
@@ -27,6 +32,9 @@ class StoryRepository implements IStoryRepository {
   @override
   Future<StoryResult<List<StoryUser>>> getActiveStories() async {
     try {
+      await SystemStatusService.instance.ensureFeatureEnabled(
+        SystemFeature.stories,
+      );
       final response =
           await _dio.get('/stories/active', options: await _authOptions());
       final users = _asList(_asMap(response.data)['users']);
@@ -53,6 +61,9 @@ class StoryRepository implements IStoryRepository {
   @override
   Future<StoryResult<List<Story>>> getUserStories(String userId) async {
     try {
+      await SystemStatusService.instance.ensureFeatureEnabled(
+        SystemFeature.stories,
+      );
       final response = await _dio.get('/stories/users/$userId',
           options: await _authOptions());
       final stories = _asList(_asMap(response.data)['stories'])
@@ -70,6 +81,9 @@ class StoryRepository implements IStoryRepository {
   @override
   Future<StoryResult<Story>> getStoryById(String storyId) async {
     try {
+      await SystemStatusService.instance.ensureFeatureEnabled(
+        SystemFeature.stories,
+      );
       final response =
           await _dio.get('/stories/$storyId', options: await _authOptions());
       return StoryResult.success(_storyFromGo(_asMap(response.data)));
@@ -82,6 +96,10 @@ class StoryRepository implements IStoryRepository {
   @override
   Future<StoryResult<Story>> uploadStory(StoryUploadParams params) async {
     try {
+      await SystemStatusService.instance.ensureFeatureEnabled(
+        SystemFeature.stories,
+        forceRefresh: true,
+      );
       final uploadResult = await StoryUploadService.uploadMedia(
         mediaFile: params.mediaFile,
         type: params.mediaType,

@@ -7,6 +7,8 @@ import 'package:Vista/utils/env_config.dart';
 
 import '../security/logging_utility.dart';
 import '../features/auth/providers/auth_controller.dart';
+import 'device_id_service.dart';
+import 'system_status_service.dart';
 
 class BackendUploadResult {
   final String url;
@@ -22,17 +24,20 @@ class BackendUploadResult {
 
 class BackendUploadService {
   static String get _backendUrl =>
-      EnvConfig.apiBaseUrl ?? 'http://10.0.2.2:8080';
+      EnvConfig.apiBaseUrl;
 
   static String get _bucketName =>
-      'vista-bucket' ?? 'vista-bucket-name' ?? 'coffevista';
+      'vista-bucket';
 
   static final Dio _api = Dio(BaseOptions(
     baseUrl: '$_backendUrl/v1',
     connectTimeout: const Duration(seconds: 20),
     receiveTimeout: const Duration(seconds: 20),
     sendTimeout: const Duration(seconds: 30),
-    headers: {'Content-Type': 'application/json'},
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Device-ID': DeviceIdService.id,
+    },
   ));
 
   static Future<Options> _authOptions() async {
@@ -55,6 +60,11 @@ class BackendUploadService {
     if (objectKey.trim().isEmpty) {
       throw 'مسیر فایل نامعتبر است';
     }
+
+    await SystemStatusService.instance.ensureFeatureEnabled(
+      SystemFeature.uploads,
+      forceRefresh: true,
+    );
 
     final presign = await _presign(
       objectKey: objectKey,
@@ -126,6 +136,11 @@ class BackendUploadService {
 
   static Future<bool> deleteObject(String objectKey) async {
     if (objectKey.trim().isEmpty) return false;
+
+    await SystemStatusService.instance.ensureFeatureEnabled(
+      SystemFeature.uploads,
+      forceRefresh: true,
+    );
 
     final response = await _api.post(
       '/uploads/delete',

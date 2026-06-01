@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../auth/data/auth_repository.dart';
 import '../../auth/providers/auth_controller.dart';
+import '../../chat/screens/modern_chat_screen.dart';
 
 class ContactUsScreen extends StatefulWidget {
   const ContactUsScreen({super.key});
@@ -23,9 +24,10 @@ class _ContactUsScreenState extends State<ContactUsScreen> {
   final _messageController = TextEditingController();
 
   bool _isSubmitting = false;
+  bool _isOpeningSupportChat = false;
   late final Dio _dio = Dio(
     BaseOptions(
-      baseUrl: '${EnvConfig.apiBaseUrl ?? 'http://10.0.2.2:8080'}/v1',
+      baseUrl: '${EnvConfig.apiBaseUrl}/v1',
       connectTimeout: const Duration(seconds: 15),
       receiveTimeout: const Duration(seconds: 15),
       headers: {'Content-Type': 'application/json'},
@@ -135,6 +137,29 @@ class _ContactUsScreenState extends State<ContactUsScreen> {
                 textAlign: TextAlign.justify,
               ),
               const SizedBox(height: 32.0),
+              SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: ElevatedButton.icon(
+                  onPressed:
+                      _isOpeningSupportChat ? null : _openSupportChat,
+                  icon: _isOpeningSupportChat
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.support_agent),
+                  label: const Text(
+                    'گفتگوی آنلاین با پشتیبانی',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16.0),
               _buildContactCard(
                 context,
                 icon: Icons.email_outlined,
@@ -166,6 +191,76 @@ class _ContactUsScreenState extends State<ContactUsScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _openSupportChat() async {
+    final token = await TokenStorage.getAccessToken();
+    if (token == null || token.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('برای گفتگوی پشتیبانی ابتدا وارد حساب شوید.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _isOpeningSupportChat = true;
+    });
+
+    try {
+      final res = await _dio.post(
+        '/chat/support/conversation',
+        options: Options(headers: {'Authorization': 'Bearer $token'}),
+      );
+      final data = Map<String, dynamic>.from(res.data as Map);
+      final conversationId = data['id']?.toString() ?? '';
+      if (conversationId.isEmpty) {
+        throw StateError('support conversation id is empty');
+      }
+      final supportName =
+          data['name']?.toString().trim().isNotEmpty == true
+              ? data['name'].toString()
+              : 'Vista Support';
+      final supportAvatar = data['image']?.toString();
+      final supportUserId = data['peer_id']?.toString() ?? '';
+
+      if (!mounted) return;
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => ModernChatScreen(
+            args: ChatScreenArgs(
+              conversationId: conversationId,
+              otherUserName: supportName,
+              otherUserAvatar:
+                  supportAvatar != null && supportAvatar.isNotEmpty
+                      ? supportAvatar
+                      : null,
+              otherUserId: supportUserId,
+            ),
+          ),
+        ),
+      );
+    } catch (error) {
+      logDebug('خطا در باز کردن گفتگوی پشتیبانی: $error');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('باز کردن گفتگوی پشتیبانی ناموفق بود. دوباره تلاش کنید.'),
+            behavior: SnackBarBehavior.floating,
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isOpeningSupportChat = false;
+        });
+      }
+    }
   }
 
   Widget _buildContactCard(

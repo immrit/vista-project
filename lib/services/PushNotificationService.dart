@@ -43,7 +43,7 @@ class PushNotificationService {
   static const int _maxPendingActions = 30;
   static const Uuid _uuid = Uuid();
   static String get _backendUrl =>
-      EnvConfig.apiBaseUrl ?? 'http://10.0.2.2:8080';
+      EnvConfig.apiBaseUrl;
 
   static FlutterLocalNotificationsPlugin get notificationsPlugin =>
       LocalNotificationCenter.plugin;

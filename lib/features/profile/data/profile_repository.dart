@@ -275,6 +275,20 @@ class ProfileRepository {
     return fallback;
   }
 
+  static bool _boolValue(dynamic value, {bool fallback = false}) {
+    if (value is bool) return value;
+    if (value is num) return value != 0;
+    final normalized = value?.toString().trim().toLowerCase();
+    if (normalized == null || normalized.isEmpty) return fallback;
+    if (normalized == 'true' || normalized == '1' || normalized == 'yes') {
+      return true;
+    }
+    if (normalized == 'false' || normalized == '0' || normalized == 'no') {
+      return false;
+    }
+    return fallback;
+  }
+
   Map<String, dynamic> _normalizeProfileMap(
     Map<String, dynamic> data, {
     required String fallbackUserId,
@@ -296,6 +310,12 @@ class ProfileRepository {
     data['follow_status'] ??= 'none';
     data['email'] ??= '';
     data['phone_number'] ??= '';
+    data['gender'] ??= '';
+    data['marital_status'] ??= '';
+    data['show_email'] = _boolValue(data['show_email']);
+    data['show_birth_date'] = _boolValue(data['show_birth_date']);
+    data['show_gender'] = _boolValue(data['show_gender']);
+    data['show_marital_status'] = _boolValue(data['show_marital_status']);
     data['role'] ??= 'normal';
     return data;
   }

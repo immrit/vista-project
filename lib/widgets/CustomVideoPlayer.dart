@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'VideoPlayerConfig.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
@@ -70,7 +69,6 @@ class CustomVideoPlayer extends ConsumerStatefulWidget {
 class _CustomVideoPlayerState extends ConsumerState<CustomVideoPlayer>
     with SingleTickerProviderStateMixin, AutomaticKeepAliveClientMixin {
   VideoPlayerController? _controller; // تغییر به nullable
-  final VideoPlayerConfig _config = VideoPlayerConfig();
   bool _isPlayerInitialized = false;
   bool _isFullScreen = false;
   bool _isInitialized = false;

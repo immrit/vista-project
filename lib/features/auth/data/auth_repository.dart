@@ -4,6 +4,7 @@ import 'package:Vista/utils/env_config.dart';
 import 'dart:io';
 import 'package:device_info_plus/device_info_plus.dart';
 import '../../../security/logging_utility.dart';
+import '../../../services/device_id_service.dart';
 import '../../../services/system_status_service.dart';
 import '../domain/auth_exceptions.dart';
 
@@ -239,7 +240,10 @@ class AuthRepository {
       baseUrl: '$_backendUrl/v1/auth',
       connectTimeout: const Duration(seconds: 15),
       receiveTimeout: const Duration(seconds: 15),
-      headers: {'Content-Type': 'application/json'},
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Device-ID': DeviceIdService.id,
+      },
     ));
     _dio.interceptors.add(LogInterceptor(
       request: true,

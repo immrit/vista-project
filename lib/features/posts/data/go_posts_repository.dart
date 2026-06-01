@@ -3,6 +3,7 @@ import 'package:Vista/utils/env_config.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../model/publicPostModel.dart';
+import '../../../services/device_id_service.dart';
 import '../../../services/system_status_service.dart';
 import '../../auth/providers/auth_controller.dart';
 
@@ -59,14 +60,24 @@ class GoPostsRepository {
       baseUrl: '$_backendUrl/v1',
       connectTimeout: const Duration(seconds: 15),
       receiveTimeout: const Duration(seconds: 20),
-      headers: {'Content-Type': 'application/json'},
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Device-ID': DeviceIdService.id,
+      },
     ));
+  }
+
+  Future<void> _ensureFeedEnabled() {
+    return SystemStatusService.instance.ensureFeatureEnabled(
+      SystemFeature.feed,
+    );
   }
 
   Future<List<PublicPostModel>> getFeed({
     int limit = 15,
     dynamic offset = 0,
   }) async {
+    await _ensureFeedEnabled();
     final response = await _dio.get(
       '/feed',
       queryParameters: {'limit': limit, 'offset': offset},
@@ -79,6 +90,7 @@ class GoPostsRepository {
     int limit = 15,
     dynamic offset = 0,
   }) async {
+    await _ensureFeedEnabled();
     final response = await _dio.get(
       '/feed/following',
       queryParameters: {'limit': limit, 'offset': offset},
@@ -125,6 +137,7 @@ class GoPostsRepository {
     dynamic offset = 0,
     bool debug = false,
   }) async {
+    await _ensureFeedEnabled();
     final response = await _dio.get(
       '/explore',
       queryParameters: {
@@ -144,6 +157,7 @@ class GoPostsRepository {
   }) async {
     final cleanTag = Uri.encodeComponent(hashtag.replaceAll('#', '').trim());
     if (cleanTag.isEmpty) return const [];
+    await _ensureFeedEnabled();
     final response = await _dio.get(
       '/posts/hashtag/$cleanTag',
       queryParameters: {'limit': limit, 'offset': offset},
@@ -156,6 +170,7 @@ class GoPostsRepository {
     int limit = 20,
     int days = 30,
   }) async {
+    await _ensureFeedEnabled();
     final response = await _dio.get(
       '/hashtags/trending',
       queryParameters: {'limit': limit, 'days': days},
@@ -171,6 +186,7 @@ class GoPostsRepository {
     final cleanKeyword = keyword.replaceAll('#', '').trim();
     if (cleanKeyword.isEmpty) return const [];
 
+    await _ensureFeedEnabled();
     final response = await _dio.get(
       '/hashtags/search',
       queryParameters: {'q': cleanKeyword, 'limit': limit},

@@ -21,7 +21,7 @@ class SecurityProvider extends ChangeNotifier {
         _httpClient = httpClient ?? http.Client();
 
   static String get _backendUrl =>
-      EnvConfig.apiBaseUrl ?? 'http://10.0.2.2:8080';
+      EnvConfig.apiBaseUrl;
 
   bool _isAuthenticated = false;
   AuthUserResponse? _currentUser;

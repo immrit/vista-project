@@ -13,7 +13,7 @@ class TypingService {
   TypingService._internal();
 
   static String get _backendUrl =>
-      EnvConfig.apiBaseUrl ?? 'http://10.0.2.2:8080';
+      EnvConfig.apiBaseUrl;
 
   static const Duration _typingTimeout = Duration(seconds: 8);
   static const Duration _typingSyncThrottle = Duration(seconds: 1);
