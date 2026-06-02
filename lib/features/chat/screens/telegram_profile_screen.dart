@@ -37,6 +37,7 @@ import '../widgets/block_report_bottom_sheet.dart';
 
 import '../../../features/chat/providers/chat_providers.dart';
 import '../../../provider/provider.dart';
+import '../../../utils/avatar_asset_utils.dart';
 import '../../../utils/user_friendly_error_utils.dart';
 import '../../posts/screens/profileScreen.dart';
 import '../../posts/screens/PostDetailPage.dart';
@@ -184,6 +185,9 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
 
   /// هدر با تصویر پروفایل بزرگ
   Widget _buildProfileHeader(bool isDark, AsyncValue<bool> userOnlineAsync) {
+    final avatarProvider =
+        AvatarAssetUtils.imageProvider(widget.otherUserAvatar);
+
     return SliverToBoxAdapter(
       child: Stack(
         children: [
@@ -201,32 +205,23 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
                 ],
               ),
             ),
-            child: widget.otherUserAvatar != null &&
-                    widget.otherUserAvatar!.isNotEmpty
+            child: avatarProvider != null
                 ? Stack(
                     fit: StackFit.expand,
                     children: [
                       // تصویر اصلی با بلور
-                      CachedNetworkImage(
-                        imageUrl: widget.otherUserAvatar!,
-                        fit: BoxFit.cover,
-                        placeholder: (context, url) =>
-                            _buildShimmerPlaceholder(),
-                        errorWidget: (context, url, error) =>
-                            _buildDefaultAvatarBackground(isDark),
-                        imageBuilder: (context, imageProvider) => Container(
-                          decoration: BoxDecoration(
-                            image: DecorationImage(
-                              image: imageProvider,
-                              fit: BoxFit.cover,
-                            ),
+                      Container(
+                        decoration: BoxDecoration(
+                          image: DecorationImage(
+                            image: avatarProvider,
+                            fit: BoxFit.cover,
                           ),
-                          child: ClipRect(
-                            child: BackdropFilter(
-                              filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
-                              child: Container(
-                                color: Colors.black.withValues(alpha: 0.2),
-                              ),
+                        ),
+                        child: ClipRect(
+                          child: BackdropFilter(
+                            filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
+                            child: Container(
+                              color: Colors.black.withValues(alpha: 0.2),
                             ),
                           ),
                         ),
@@ -281,15 +276,12 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
                         ],
                       ),
                       child: ClipOval(
-                        child: widget.otherUserAvatar != null &&
-                                widget.otherUserAvatar!.isNotEmpty
-                            ? CachedNetworkImage(
-                                imageUrl: widget.otherUserAvatar!,
+                        child: avatarProvider != null
+                            ? AvatarAssetUtils.image(
+                                source: widget.otherUserAvatar,
                                 fit: BoxFit.cover,
-                                placeholder: (context, url) =>
-                                    _buildAvatarShimmer(),
-                                errorWidget: (context, url, error) =>
-                                    _buildDefaultAvatar(isDark),
+                                placeholder: _buildAvatarShimmer(),
+                                fallback: _buildDefaultAvatar(isDark),
                               )
                             : _buildDefaultAvatar(isDark),
                       ),
@@ -1747,6 +1739,9 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
   Widget _buildFloatingAppBar(bool isDark) {
     if (!_showCollapsedTitle) return const SizedBox.shrink();
 
+    final avatarProvider =
+        AvatarAssetUtils.imageProvider(widget.otherUserAvatar);
+
     return Positioned(
       top: 0,
       left: 0,
@@ -1779,10 +1774,8 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
                 const SizedBox(width: 8),
                 CircleAvatar(
                   radius: 18,
-                  backgroundImage: widget.otherUserAvatar != null
-                      ? CachedNetworkImageProvider(widget.otherUserAvatar!)
-                      : null,
-                  child: widget.otherUserAvatar == null
+                  backgroundImage: avatarProvider,
+                  child: avatarProvider == null
                       ? Text(widget.otherUserName[0].toUpperCase())
                       : null,
                 ),
@@ -1817,14 +1810,6 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
   // ═══════════════════════════════════════════════════════════════════════════
   // 🛠️ متدهای کمکی
   // ═══════════════════════════════════════════════════════════════════════════
-
-  Widget _buildShimmerPlaceholder() {
-    return Shimmer.fromColors(
-      baseColor: Colors.grey[800]!,
-      highlightColor: Colors.grey[600]!,
-      child: Container(color: Colors.grey[800]),
-    );
-  }
 
   Widget _buildAvatarShimmer() {
     return Shimmer.fromColors(
@@ -2062,7 +2047,9 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
 
   /// نمایش تصویر پروفایل تمام صفحه
   void _showFullScreenAvatar() {
-    if (widget.otherUserAvatar == null || widget.otherUserAvatar!.isEmpty) {
+    final avatarProvider =
+        AvatarAssetUtils.imageProvider(widget.otherUserAvatar);
+    if (avatarProvider == null) {
       return;
     }
 
@@ -2079,8 +2066,7 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
           body: Hero(
             tag: 'profile_avatar_${widget.otherUserId}',
             child: PhotoView(
-              imageProvider:
-                  CachedNetworkImageProvider(widget.otherUserAvatar!),
+              imageProvider: avatarProvider,
               backgroundDecoration: const BoxDecoration(color: Colors.black),
               minScale: PhotoViewComputedScale.contained,
               maxScale: PhotoViewComputedScale.covered * 2,

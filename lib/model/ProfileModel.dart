@@ -46,6 +46,9 @@ class ProfileModel extends Equatable {
   final bool showMaritalStatus;
   final int usernameChangesCount;
   final String? registrationCountry;
+  final String? subscriptionPlan;
+  final DateTime? subscriptionExpiresAt;
+  final int? premiumDaysRemaining;
 
   const ProfileModel({
     required this.id,
@@ -79,6 +82,9 @@ class ProfileModel extends Equatable {
     this.showMaritalStatus = false,
     this.usernameChangesCount = 0,
     this.registrationCountry,
+    this.subscriptionPlan,
+    this.subscriptionExpiresAt,
+    this.premiumDaysRemaining,
   });
 
   static String _trimmed(dynamic value) => value?.toString().trim() ?? '';
@@ -169,6 +175,14 @@ class ProfileModel extends Equatable {
       usernameChangesCount:
           int.tryParse((map['username_changes_count'] ?? 0).toString()) ?? 0,
       registrationCountry: map['registration_country']?.toString(),
+      subscriptionPlan: map['subscription_plan']?.toString(),
+      subscriptionExpiresAt: map['subscription_expires_at'] != null
+          ? DateTime.tryParse(map['subscription_expires_at'].toString())
+              ?.toLocal()
+          : null,
+      premiumDaysRemaining: map['premium_days_remaining'] != null
+          ? int.tryParse(map['premium_days_remaining'].toString())
+          : null,
     );
   }
 
@@ -218,6 +232,10 @@ class ProfileModel extends Equatable {
       'show_marital_status': showMaritalStatus,
       'username_changes_count': usernameChangesCount,
       'registration_country': registrationCountry,
+      'subscription_plan': subscriptionPlan,
+      'subscription_expires_at': subscriptionExpiresAt?.toUtc().toIso8601String(),
+      if (premiumDaysRemaining != null)
+        'premium_days_remaining': premiumDaysRemaining,
     };
   }
 
@@ -255,6 +273,9 @@ class ProfileModel extends Equatable {
     bool? showMaritalStatus,
     int? usernameChangesCount,
     String? registrationCountry,
+    String? subscriptionPlan,
+    DateTime? subscriptionExpiresAt,
+    int? premiumDaysRemaining,
   }) {
     return ProfileModel(
       id: id ?? this.id,
@@ -288,6 +309,11 @@ class ProfileModel extends Equatable {
       showMaritalStatus: showMaritalStatus ?? this.showMaritalStatus,
       usernameChangesCount: usernameChangesCount ?? this.usernameChangesCount,
       registrationCountry: registrationCountry ?? this.registrationCountry,
+      subscriptionPlan: subscriptionPlan ?? this.subscriptionPlan,
+      subscriptionExpiresAt:
+          subscriptionExpiresAt ?? this.subscriptionExpiresAt,
+      premiumDaysRemaining:
+          premiumDaysRemaining ?? this.premiumDaysRemaining,
     );
   }
 
@@ -340,4 +366,7 @@ class ProfileModel extends Equatable {
   bool get isAdminOrModerator => role == 'admin' || role == 'moderator';
   bool get isNormalUser => role == 'normal' || role == null;
   bool get isPremiumUser => role == 'premium';
+  bool get hasUnlimitedPrivileges => hasBlueBadge;
+  bool get hasPremiumPrivileges =>
+      hasUnlimitedPrivileges || hasGoldBadge || hasBlackBadge || isPremiumUser;
 }

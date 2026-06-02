@@ -695,7 +695,7 @@ class _CommentItemState extends ConsumerState<CommentItem>
               ElevatedButton(
                 onPressed: () {
                   Navigator.pop(context);
-                  Navigator.pushNamed(context, '/verification-store');
+                  Navigator.pushNamed(context, '/premium');
                 },
                 child: Text('پریمیوم شوید'),
               ),

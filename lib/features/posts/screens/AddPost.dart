@@ -31,14 +31,13 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
   final TextEditingController contentController = TextEditingController();
   bool isLoading = false;
 
-  int get _maxCharLength {
+  int? get _maxCharLength {
     final currentUser = ref.read(userProvider);
-    if (currentUser?.verificationType == 'blueTick') return 2000;
-    if (currentUser?.verificationType == 'goldTick' ||
-        currentUser?.verificationType == 'blackTick' ||
-        currentUser?.isPremiumUser == true) return 400;
+    if (currentUser?.hasUnlimitedPrivileges == true) return null;
+    if (currentUser?.hasPremiumPrivileges == true) return 400;
     return 200;
   }
+
   File? _selectedImage;
   Uint8List? _selectedImageBytes; // برای وب
   String? _selectedImageName; // برای وب
@@ -437,8 +436,9 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
       return;
     }
 
-    if (content.length > _maxCharLength) {
-      _showSnackBar('متن پست نمی‌تواند بیشتر از $_maxCharLength کاراکتر باشد');
+    final maxCharLength = _maxCharLength;
+    if (maxCharLength != null && content.length > maxCharLength) {
+      _showSnackBar('متن پست نمی‌تواند بیشتر از $maxCharLength کاراکتر باشد');
       return;
     }
 
@@ -577,7 +577,8 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
                                 _selectedImageBytes != null)
                               _buildImagePreview(isDarkMode)
                             else
-                              _buildMediaUploadSection(isDarkMode, primaryColor),
+                              _buildMediaUploadSection(
+                                  isDarkMode, primaryColor),
 
                             // پیش‌نمایش موزیک
                             if (_selectedMusic != null)
@@ -594,7 +595,7 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
                   // بخش پایین صفحه
                 ],
               ),
-              
+
               // نمایش تولتیپ تبلیغاتی برای کاربران عادی
               if (_maxCharLength == 200)
                 Positioned(
@@ -602,7 +603,7 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
                   right: 16,
                   child: GestureDetector(
                     onTap: () {
-                      Navigator.pushNamed(context, '/verification-store');
+                      Navigator.pushNamed(context, '/premium');
                     },
                     child: Stack(
                       clipBehavior: Clip.none,
@@ -1133,6 +1134,31 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
               builder: (context, value, _) {
                 final maxLen = _maxCharLength;
                 final count = value.text.length;
+                if (maxLen == null) {
+                  final indicatorColor =
+                      isDarkMode ? Colors.white70 : Colors.black54;
+                  return Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      SizedBox(
+                        width: 42,
+                        height: 42,
+                        child: CircularProgressIndicator(
+                          value: 1,
+                          strokeWidth: 3,
+                          backgroundColor:
+                              isDarkMode ? Colors.white12 : Colors.black12,
+                          color: indicatorColor,
+                        ),
+                      ),
+                      Icon(
+                        Icons.all_inclusive_rounded,
+                        size: 19,
+                        color: indicatorColor,
+                      ),
+                    ],
+                  );
+                }
                 final progress = (count / maxLen).clamp(0.0, 1.0);
                 final remaining = maxLen - count;
 

@@ -1,10 +1,10 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../model/publicPostModel.dart';
 import '../../model/ProfileModel.dart';
+import '../../utils/avatar_asset_utils.dart';
 
 import '../../provider/optimized_conversations_provider.dart';
 import '../../features/chat/providers/chat_providers.dart';
@@ -283,17 +283,17 @@ class _UserSelectionBottomSheetState
                       child: ClipOval(
                         child: conversation.otherUserAvatar != null &&
                                 conversation.otherUserAvatar.isNotEmpty
-                            ? CachedNetworkImage(
-                                imageUrl: conversation.otherUserAvatar,
+                            ? AvatarAssetUtils.image(
+                                source: conversation.otherUserAvatar,
                                 fit: BoxFit.cover,
-                                placeholder: (context, url) => Container(
+                                placeholder: Container(
                                   color: Colors.grey[200],
                                   child: const Center(
                                     child: CircularProgressIndicator(
                                         strokeWidth: 2),
                                   ),
                                 ),
-                                errorWidget: (context, url, error) =>
+                                fallback:
                                     _buildDefaultAvatar(theme, conversation),
                               )
                             : _buildDefaultAvatar(theme, conversation),

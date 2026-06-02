@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import '../../../provider/optimized_conversations_provider.dart';
 import '../services/message_forward_service.dart';
 import '../../../services/user_friendly_error_handler.dart';
+import '../../../utils/avatar_asset_utils.dart';
 
 final messageForwardServiceProvider = Provider((ref) {
   return MessageForwardService();
@@ -251,18 +251,17 @@ class _ForwardMessageSheetState extends ConsumerState<ForwardMessageSheet>
                       ),
                       child: ClipOval(
                         child: userAvatar != null && userAvatar.isNotEmpty
-                            ? CachedNetworkImage(
-                                imageUrl: userAvatar,
+                            ? AvatarAssetUtils.image(
+                                source: userAvatar,
                                 fit: BoxFit.cover,
-                                placeholder: (context, url) => Container(
+                                placeholder: Container(
                                   color: Colors.grey[200],
                                   child: const Center(
                                     child: CircularProgressIndicator(
                                         strokeWidth: 2),
                                   ),
                                 ),
-                                errorWidget: (context, url, error) =>
-                                    _buildDefaultAvatar(theme, userName),
+                                fallback: _buildDefaultAvatar(theme, userName),
                               )
                             : _buildDefaultAvatar(theme, userName),
                       ),

@@ -1,14 +1,3 @@
-// lib/features/chat/widgets/enhanced_chat_background.dart
-//
-// بک‌گراند چت با الهام از ویستا
-//
-// ویژگی‌ها:
-// ✅ والپیپر کش شده با Fade transition
-// ✅ Pattern overlay (مثل ویستا)
-// ✅ Blur effect برای dark mode
-// ✅ حالت تم روشن و تاریک
-// ✅ Smooth animations
-//
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';

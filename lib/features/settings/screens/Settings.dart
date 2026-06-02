@@ -13,7 +13,9 @@ import 'subpages/ThemeSettingsPage.dart';
 import 'subpages/data_storage_settings_page.dart';
 import 'subpages/notification_settings_page.dart';
 import 'subpages/privacy_security_page.dart';
+import 'vistaStore/pricing_page.dart';
 import 'package:Vista/l10n/generated/app_localizations.dart';
+import 'package:Vista/utils/premium_subscription_utils.dart';
 import '../../../provider/locale_provider.dart';
 
 class Settings extends ConsumerWidget {
@@ -51,10 +53,14 @@ class Settings extends ConsumerWidget {
     Map<String, dynamic>? profile,
     bool isDark,
   ) {
+    final isPremium = PremiumSubscriptionUtils.isPremiumActive(profile);
+
     return ListView(
       padding: const EdgeInsets.symmetric(vertical: 14),
       children: [
         _buildProfileCard(context, profile, isDark),
+        const SizedBox(height: 12),
+        _buildPremiumEntry(context, isDark, isPremium, profile),
         const SizedBox(height: 12),
         _buildGroup(
           isDark: isDark,
@@ -164,6 +170,109 @@ class Settings extends ConsumerWidget {
         _buildAppVersionLabel(isDark),
         const SizedBox(height: 12),
       ],
+    );
+  }
+
+  Widget _buildPremiumEntry(
+    BuildContext context,
+    bool isDark,
+    bool isPremium,
+    Map<String, dynamic>? profile,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const PricingPage()),
+          ),
+          borderRadius: BorderRadius.circular(14),
+          child: Ink(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              gradient: LinearGradient(
+                colors: isPremium
+                    ? [
+                        const Color(0xFF8774E1).withValues(alpha: 0.35),
+                        const Color(0xFF6C5CE7).withValues(alpha: 0.2),
+                      ]
+                    : [
+                        const Color(0xFF8774E1),
+                        const Color(0xFF6C5CE7),
+                      ],
+                begin: Alignment.topRight,
+                end: Alignment.bottomLeft,
+              ),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.2),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      isPremium
+                          ? Icons.verified
+                          : Icons.workspace_premium_rounded,
+                      color: Colors.white,
+                      size: 26,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          isPremium ? 'ویستا پریمیوم فعال' : 'ویستا پریمیوم',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          isPremium
+                              ? PremiumSubscriptionUtils.remainingLabel(profile)
+                              : 'تیک طلایی، استوری ۴۸ساعته، فایل ۵۰مگ و بیشتر',
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.9),
+                            fontSize: 12,
+                            height: 1.35,
+                          ),
+                        ),
+                        if (isPremium &&
+                            PremiumSubscriptionUtils.formatExpiryDate(profile)
+                                .isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            'تمدید اشتراک → روزها به موجودی شما اضافه می‌شود',
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.75),
+                              fontSize: 11,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    Icons.chevron_left,
+                    color: Colors.white.withValues(alpha: 0.85),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 

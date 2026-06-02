@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../model/conversation_model.dart';
@@ -7,6 +6,7 @@ import '../../../features/chat/providers/chat_providers.dart';
 // import '../../../provider/chat_provider.dart'; // Unused
 import '../../../provider/optimized_conversations_provider.dart';
 import '../../../features/chat/screens/modern_chat_screen.dart';
+import '../../../utils/avatar_asset_utils.dart';
 import '../../../utils/user_friendly_error_utils.dart';
 
 /// صفحه نمایش گفتگوهای بایگانی شده
@@ -333,11 +333,10 @@ class _ArchivedConversationItem extends StatelessWidget {
           ),
           child: ClipOval(
             child: conversation.otherUserAvatar?.isNotEmpty == true
-                ? CachedNetworkImage(
-                    imageUrl: conversation.otherUserAvatar!,
+                ? AvatarAssetUtils.image(
+                    source: conversation.otherUserAvatar,
                     fit: BoxFit.cover,
-                    errorWidget: (_, __, ___) =>
-                        _buildDefaultAvatar(theme, displayName),
+                    fallback: _buildDefaultAvatar(theme, displayName),
                   )
                 : _buildDefaultAvatar(theme, displayName),
           ),

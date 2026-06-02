@@ -95,8 +95,12 @@ class _DocumentUploadSheetState extends State<DocumentUploadSheet>
   String? _mimeType;
   DocumentType? _fileType;
 
-  int get _maxBytes => _uploadPolicy.maxBytesFor(widget.profile);
-  int get _maxMb => _maxBytes ~/ (1024 * 1024);
+  int? get _maxBytes => _uploadPolicy.maxBytesFor(widget.profile);
+  String get _limitLabel {
+    final maxBytes = _maxBytes;
+    if (maxBytes == null) return 'بدون محدودیت حجم';
+    return 'تا ${maxBytes ~/ (1024 * 1024)} مگابایت';
+  }
 
   @override
   void initState() {
@@ -186,7 +190,7 @@ class _DocumentUploadSheetState extends State<DocumentUploadSheet>
             child: Icon(Icons.upload_file_rounded, color: accentColor),
           ),
           title: const Text('ارسال فایل'),
-          subtitle: Text('Image / PDF / Audio تا $_maxMb مگابایت'),
+          subtitle: Text('Image / PDF / Audio $_limitLabel'),
           trailing: IconButton(
             onPressed: () => Navigator.pop(context),
             icon: Icon(Icons.close_rounded, color: theme.iconTheme.color),

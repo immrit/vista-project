@@ -1,9 +1,9 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../provider/provider.dart';
 import '../../model/ProfileModel.dart';
 import 'package:Vista/utils/const.dart';
+import 'package:Vista/utils/avatar_asset_utils.dart';
 import 'package:Vista/features/stories/presentation/providers/story_providers.dart';
 import 'package:Vista/features/stories/domain/entities/story_user.dart';
 
@@ -16,6 +16,7 @@ class ProfileAvatar extends ConsumerWidget {
   final bool showDisplayName;
   final VoidCallback? onTap;
   final String? imageUrl;
+
   /// اگر true باشد، حلقه استوری نمایش داده نمی‌شود و onTap همیشه اجرا می‌شود
   final bool disableStoryRing;
 
@@ -37,8 +38,7 @@ class ProfileAvatar extends ConsumerWidget {
         disableStoryRing ? null : ref.watch(activeStoriesProvider);
     final storyUser = disableStoryRing
         ? null
-        : storiesAsync?.valueOrNull?.firstWhere(
-            (u) => u.id == userId,
+        : storiesAsync?.valueOrNull?.firstWhere((u) => u.id == userId,
             orElse: () =>
                 StoryUser(id: userId, username: 'unknown', stories: []));
 
@@ -164,12 +164,11 @@ class ProfileAvatar extends ConsumerWidget {
 
   Widget _buildImage(BuildContext context, String? url) {
     if (url != null && url.isNotEmpty) {
-      return CachedNetworkImage(
-        imageUrl: url,
+      return AvatarAssetUtils.image(
+        source: url,
         fit: BoxFit.cover,
-        placeholder: (context, url) => _buildDefaultAvatar(context, size!),
-        errorWidget: (context, url, error) =>
-            _buildDefaultAvatar(context, size!),
+        placeholder: _buildDefaultAvatar(context, size!),
+        fallback: _buildDefaultAvatar(context, size!),
       );
     }
     return _buildDefaultAvatar(context, size!);

@@ -1372,6 +1372,10 @@ class ChatRepositoryImpl implements ChatRepository {
       'id': j['id'],
       'conversation_id': j['conversation_id'],
       'sender_id': j['sender_id'],
+      'sender_name':
+          _firstNonEmpty(j['sender_name'], j['sender_username'], j['username']),
+      'sender_avatar': _firstNonEmpty(
+          j['sender_avatar'], j['sender_avatar_url'], j['avatar_url']),
       'content': j['content'] ?? '',
       'created_at': j['created_at'] ?? DateTime.now().toIso8601String(),
       'attachment_url': j['media_url'] ?? j['attachment_url'],

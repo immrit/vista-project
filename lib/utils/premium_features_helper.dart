@@ -5,17 +5,17 @@ import '../model/publicPostModel.dart';
 class PremiumFeaturesHelper {
   /// بررسی دسترسی به ویرایش پست
   static bool canEditPost(UserModel currentUser) {
-    return currentUser.hasGoldBadge || currentUser.hasBlueBadge;
+    return currentUser.hasPremiumPrivileges;
   }
 
   /// بررسی دسترسی به استوری ۴۸ ساعته
   static bool canPostLongDurationStory(UserModel currentUser) {
-    return currentUser.hasGoldBadge || currentUser.hasBlueBadge;
+    return currentUser.hasPremiumPrivileges;
   }
 
   /// بررسی دسترسی به مخفی‌سازی آمار لایک/کامنت
   static bool canManagePostEngagementPrivacy(UserModel currentUser) {
-    return currentUser.hasGoldBadge || currentUser.hasBlueBadge;
+    return currentUser.hasPremiumPrivileges;
   }
 
   /// نمایش دیالوگ ترغیب به خرید تیک طلایی (طراحی مشابه ویستا)
@@ -146,7 +146,7 @@ class PremiumFeaturesHelper {
                       child: ElevatedButton(
                         onPressed: () {
                           Navigator.pop(context);
-                          Navigator.pushNamed(context, '/verification-store');
+                          Navigator.pushNamed(context, '/premium');
                         },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFF8774E1),
@@ -158,7 +158,7 @@ class PremiumFeaturesHelper {
                           elevation: 0,
                         ),
                         child: const Text(
-                          'دریافت اشتراک الماس',
+                          'مشاهده ویستا پریمیوم',
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,

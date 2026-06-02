@@ -142,4 +142,7 @@ class UserModel extends Equatable {
   bool get hasAnyBadge =>
       isVerified && verificationType != VerificationType.none;
   bool get isPremiumUser => role == 'premium';
+  bool get hasUnlimitedPrivileges => hasBlueBadge;
+  bool get hasPremiumPrivileges =>
+      hasUnlimitedPrivileges || hasGoldBadge || hasBlackBadge || isPremiumUser;
 }

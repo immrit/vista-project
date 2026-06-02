@@ -124,7 +124,13 @@ class BazaarPaymentService {
 
       final data = response.data as Map<String, dynamic>;
       if (data['success'] == true) {
-        return {'success': true, 'message': 'اشتراک ویژه فعال شد! 🎉'};
+        return {
+          'success': true,
+          'message': data['message']?.toString() ?? 'اشتراک ویژه فعال شد! 🎉',
+          'expires_at': data['expires_at'],
+          'days_added': data['days_added'],
+          'plan': data['plan'],
+        };
       } else {
         return {
           'success': false,

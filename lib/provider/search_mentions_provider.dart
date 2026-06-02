@@ -218,7 +218,7 @@ class SearchNotifier extends StateNotifier<SearchState> {
     users.sort((a, b) {
       int getScore(ProfileModel profile) {
         if (profile.hasBlueBadge) return 3;
-        if (profile.hasGoldBadge) return 2;
+        if (profile.hasGoldBadge || profile.hasBlackBadge) return 2;
         return 1;
       }
 

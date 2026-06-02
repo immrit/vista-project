@@ -86,22 +86,35 @@ class StoryUser {
     // Parse verification type
     StoryVerificationType parseVerificationType(String? type) {
       if (type == null) return StoryVerificationType.none;
-      if (type == 'blueTick') return StoryVerificationType.blue;
-      if (type == 'goldTick') return StoryVerificationType.gold;
-      if (type == 'blackTick') return StoryVerificationType.black;
+      final normalized =
+          type.trim().toLowerCase().replaceAll(RegExp(r'[^a-z]'), '');
+      if (normalized == 'blue' || normalized == 'bluetick') {
+        return StoryVerificationType.blue;
+      }
+      if (normalized == 'gold' || normalized == 'goldtick') {
+        return StoryVerificationType.gold;
+      }
+      if (normalized == 'black' || normalized == 'blacktick') {
+        return StoryVerificationType.black;
+      }
       return StoryVerificationType.values.firstWhere(
         (e) => e.name == type,
         orElse: () => StoryVerificationType.none,
       );
     }
 
+    final verificationType = parseVerificationType(map['verification_type']);
+    final isPremium = map['is_premium'] == true ||
+        map['role'] == 'premium' ||
+        verificationType != StoryVerificationType.none;
+
     return StoryUser(
       id: map['id'] ?? map['user_id'] ?? '',
       username: map['username'] ?? '',
       avatarUrl: map['avatar_url'] ?? map['profile_image_url'],
       isVerified: map['is_verified'] ?? false,
-      isPremium: map['is_premium'] ?? map['role'] == 'premium',
-      verificationType: parseVerificationType(map['verification_type']),
+      isPremium: isPremium,
+      verificationType: verificationType,
       stories: stories ?? [],
       lastStoryAt: map['last_story_at'] != null
           ? DateTime.parse(map['last_story_at'])

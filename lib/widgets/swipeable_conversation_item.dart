@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../model/conversation_model.dart';
 import '../../services/telegram_read_receipt_service.dart';
 import '../../features/chat/widgets/telegram_message_status.dart';
 import '../../features/chat/utils/conversation_name_utils.dart';
 import '../provider/typing_provider.dart';
+import '../utils/avatar_asset_utils.dart';
 import 'package:Vista/utils/const.dart';
 
 /// 🚀 ویجت Swipeable برای آیتم مکالمه (مثل ویستا)
@@ -385,27 +385,11 @@ class _AvatarWidgetState extends State<_AvatarWidget>
               child: child,
             );
           },
-          child: CachedNetworkImage(
-            imageUrl: widget.avatarUrl!,
+          child: AvatarAssetUtils.image(
+            source: widget.avatarUrl,
             fit: BoxFit.cover,
-            placeholder: (_, __) =>
-                const SizedBox.shrink(), // چیزی نشون نده چون default زیرش هست
-            errorWidget: (_, __, ___) =>
-                const SizedBox.shrink(), // error هم default رو نشون میده
-            imageBuilder: (context, imageProvider) {
-              // وقتی تصویر لود شد، انیمیشن رو شروع کن
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                _onImageLoaded();
-              });
-              return Container(
-                decoration: BoxDecoration(
-                  image: DecorationImage(
-                    image: imageProvider,
-                    fit: BoxFit.cover,
-                  ),
-                ),
-              );
-            },
+            fallback: const SizedBox.shrink(),
+            onLoaded: _onImageLoaded,
           ),
         ),
       ],

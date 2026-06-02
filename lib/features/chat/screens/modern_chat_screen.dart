@@ -31,6 +31,7 @@ import '../../../DB/profile_cache_service.dart';
 import '../../../model/ProfileModel.dart';
 import '../../../model/message_model.dart';
 import '../../../utils/compat_extensions.dart';
+import '../../../utils/avatar_asset_utils.dart';
 import '../../../utils/time_utils.dart';
 import '../providers/chat_providers.dart';
 import '../repositories/chat_repository.dart';
@@ -39,6 +40,7 @@ import '../domain/message_payload.dart';
 
 // ✅ Theme & Widgets
 import '../theme/chat_theme.dart';
+import '../models/group_member_item.dart';
 import '../widgets/enhanced_chat_background.dart';
 import '../widgets/telegram_reaction_picker.dart'
     show kDefaultReactions, TelegramReactionPicker;
@@ -77,6 +79,7 @@ import '../services/attachment_type_resolver.dart';
 import '../services/audio_metadata_service.dart';
 import '../services/upload_policy_service.dart';
 import '../services/message_tombstone_service.dart';
+import '../services/group_service.dart';
 import '../../../services/typing_service.dart'; // ✅ سرویس تایپینگ
 import '../../../services/current_chat_tracker.dart';
 import '../../../services/PushNotificationService.dart';
@@ -231,6 +234,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   final AttachmentTypeResolver _attachmentTypeResolver =
       const AttachmentTypeResolver();
   final MessageTombstoneService _tombstoneService = MessageTombstoneService();
+  final GroupService _groupService = GroupService();
   late final ChatRepository _chatRepository;
   late final TypingService _typingService;
   late final AdaptiveEffectsController _adaptiveEffectsController;
@@ -244,6 +248,9 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   // Profile
   ProfileModel? _otherUserProfile;
   ProfileModel? _currentUserProfile; // ✅ پروفایل کاربر فعلی برای چک کردن badge
+  List<GroupMemberItem> _groupMembers = const [];
+  Map<String, GroupMemberItem> _groupMemberById = const {};
+  bool _isLoadingGroupMembers = false;
 
   // Reaction picker
   String? _reactionPickerMessageId;
@@ -326,6 +333,9 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     _fetchUserProfileIfNeeded();
     _loadHiddenMessages();
     _initSecretChatPolicy();
+    if (widget.args.isGroup) {
+      unawaited(_loadGroupMembersForHeader());
+    }
 
     // ✅ شروع گوش دادن به Read Receipts
     _initReadReceipts();
@@ -938,11 +948,34 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     }
   }
 
+  Future<void> _loadGroupMembersForHeader() async {
+    if (!widget.args.isGroup || _isLoadingGroupMembers) return;
+
+    setState(() => _isLoadingGroupMembers = true);
+    try {
+      final members =
+          await _groupService.fetchGroupMembers(widget.args.conversationId);
+      if (!mounted) return;
+
+      setState(() {
+        _groupMembers = members;
+        _groupMemberById = {
+          for (final member in members) member.userId: member,
+        };
+        _isLoadingGroupMembers = false;
+      });
+    } catch (e) {
+      debugPrint('Error loading group members for chat header: $e');
+      if (mounted) {
+        setState(() => _isLoadingGroupMembers = false);
+      }
+    }
+  }
+
   /// ✅ چک کردن اینکه کاربر می‌تواند ویرایش کند (تیک طلایی یا آبی)
   bool get _canEditMessages {
     if (_currentUserProfile == null) return false;
-    return _currentUserProfile!.hasGoldBadge ||
-        _currentUserProfile!.hasBlueBadge;
+    return _currentUserProfile!.hasPremiumPrivileges;
   }
 
   /// ✅ نمایش دیالوگ ارتقا به پریمیوم
@@ -2723,6 +2756,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                         ),
                       ],
                     )
+                  else if (widget.args.isGroup)
+                    _buildGroupPresenceSummary(theme)
                   else
                     TelegramOnlineStatus(
                       userId: widget.args.otherUserId,
@@ -2741,6 +2776,65 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     );
   }
 
+  Widget _buildGroupPresenceSummary(ChatTheme theme) {
+    if (_isLoadingGroupMembers && _groupMembers.isEmpty) {
+      return Text(
+        'در حال بررسی اعضا...',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          color: theme.secondaryTextColor,
+          fontSize: 12,
+        ),
+      );
+    }
+
+    if (_groupMembers.isEmpty) {
+      return Text(
+        '۰ آنلاین، ۰ آفلاین',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          color: theme.secondaryTextColor,
+          fontSize: 12,
+        ),
+      );
+    }
+
+    return Consumer(
+      builder: (context, ref, _) {
+        var onlineCount = 0;
+        for (final member in _groupMembers) {
+          final presenceAsync =
+              ref.watch(userPresenceStreamProvider(member.userId));
+          final isAvailable = presenceAsync.maybeWhen(
+            data: (state) =>
+                state.isOnline ||
+                state.isTyping ||
+                state.isRecording ||
+                state.isAway,
+            orElse: () => false,
+          );
+          if (isAvailable) onlineCount++;
+        }
+
+        final offlineCount = (_groupMembers.length - onlineCount)
+            .clamp(0, _groupMembers.length)
+            .toInt();
+
+        return Text(
+          '$onlineCount آنلاین، $offlineCount آفلاین'.toPersianDigit(),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: theme.secondaryTextColor,
+            fontSize: 12,
+          ),
+        );
+      },
+    );
+  }
+
   /// آواتار با نشانگر آنلاین
   Widget _buildAvatarWithOnlineIndicator(ChatTheme theme) {
     return SizedBox(
@@ -2750,12 +2844,12 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         children: [
           // آواتار اصلی
           _buildAvatar(theme),
-          // نقطه آنلاین
-          Positioned(
-            right: 0,
-            bottom: 0,
-            child: _buildOnlineDot(),
-          ),
+          if (!widget.args.isGroup)
+            Positioned(
+              right: 0,
+              bottom: 0,
+              child: _buildOnlineDot(),
+            ),
         ],
       ),
     );
@@ -2802,14 +2896,14 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       ),
       child: widget.args.otherUserAvatar != null
           ? ClipOval(
-              child: CachedNetworkImage(
-                imageUrl: widget.args.otherUserAvatar!,
+              child: AvatarAssetUtils.image(
+                source: widget.args.otherUserAvatar,
                 fit: BoxFit.cover,
                 // ✅ بسیار مهم: آواتار ۴۰ پیکسلی نباید عکس ۲۰۰۰ پیکسلی در رم نگه دارد
                 memCacheWidth: 100,
                 memCacheHeight: 100,
-                placeholder: (context, url) => _buildAvatarText(theme),
-                errorWidget: (_, __, ___) => _buildAvatarText(theme),
+                placeholder: _buildAvatarText(theme),
+                fallback: _buildAvatarText(theme),
               ),
             )
           : _buildAvatarText(theme),
@@ -3148,34 +3242,14 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                                                           message);
                                                   _focusNode.requestFocus();
                                                 },
-                                                child: _buildBubbleContent(
-                                                  message,
-                                                  isMe,
-                                                  renderItem.primaryIndex,
-                                                  isFirstInGroup,
-                                                  isLastInGroup,
-                                                  adaptiveEffects,
-                                                  conversationGalleryItems:
-                                                      conversationImageGallery
-                                                          .items,
-                                                  conversationGalleryIndexByMessageId:
-                                                      conversationImageGallery
-                                                          .indexByMessageId,
-                                                ),
-                                              )
-                                            : (renderItem.isAlbum
-                                                ? _buildAlbumBubbleContent(
-                                                    renderItem,
-                                                    isMe,
-                                                    adaptiveEffects,
-                                                    conversationGalleryItems:
-                                                        conversationImageGallery
-                                                            .items,
-                                                    conversationGalleryIndexByMessageId:
-                                                        conversationImageGallery
-                                                            .indexByMessageId,
-                                                  )
-                                                : _buildBubbleContent(
+                                                child: _buildGroupSenderFrame(
+                                                  message: message,
+                                                  isMe: isMe,
+                                                  isFirstInGroup:
+                                                      isFirstInGroup,
+                                                  isLastInGroup: isLastInGroup,
+                                                  theme: theme,
+                                                  child: _buildBubbleContent(
                                                     message,
                                                     isMe,
                                                     renderItem.primaryIndex,
@@ -3188,6 +3262,53 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                                                     conversationGalleryIndexByMessageId:
                                                         conversationImageGallery
                                                             .indexByMessageId,
+                                                  ),
+                                                ),
+                                              )
+                                            : (renderItem.isAlbum
+                                                ? _buildGroupSenderFrame(
+                                                    message: message,
+                                                    isMe: isMe,
+                                                    isFirstInGroup:
+                                                        isFirstInGroup,
+                                                    isLastInGroup:
+                                                        isLastInGroup,
+                                                    theme: theme,
+                                                    child:
+                                                        _buildAlbumBubbleContent(
+                                                      renderItem,
+                                                      isMe,
+                                                      adaptiveEffects,
+                                                      conversationGalleryItems:
+                                                          conversationImageGallery
+                                                              .items,
+                                                      conversationGalleryIndexByMessageId:
+                                                          conversationImageGallery
+                                                              .indexByMessageId,
+                                                    ),
+                                                  )
+                                                : _buildGroupSenderFrame(
+                                                    message: message,
+                                                    isMe: isMe,
+                                                    isFirstInGroup:
+                                                        isFirstInGroup,
+                                                    isLastInGroup:
+                                                        isLastInGroup,
+                                                    theme: theme,
+                                                    child: _buildBubbleContent(
+                                                      message,
+                                                      isMe,
+                                                      renderItem.primaryIndex,
+                                                      isFirstInGroup,
+                                                      isLastInGroup,
+                                                      adaptiveEffects,
+                                                      conversationGalleryItems:
+                                                          conversationImageGallery
+                                                              .items,
+                                                      conversationGalleryIndexByMessageId:
+                                                          conversationImageGallery
+                                                              .indexByMessageId,
+                                                    ),
                                                   )),
                                       ),
                                     ),
@@ -3296,6 +3417,158 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     final isLastInGroup = !sameAsBelow;
 
     return (isFirstInGroup, isLastInGroup);
+  }
+
+  Widget _buildGroupSenderFrame({
+    required MessageModel message,
+    required bool isMe,
+    required bool isFirstInGroup,
+    required bool isLastInGroup,
+    required ChatTheme theme,
+    required Widget child,
+  }) {
+    if (!widget.args.isGroup || isMe) return child;
+
+    final senderName = _resolveMessageSenderName(message);
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        SizedBox(
+          width: 38,
+          child: isLastInGroup
+              ? Padding(
+                  padding: const EdgeInsets.only(left: 4, bottom: 6),
+                  child: _buildGroupSenderAvatar(message, senderName, theme),
+                )
+              : const SizedBox.shrink(),
+        ),
+        Flexible(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (isFirstInGroup)
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => _openGroupSenderProfile(message),
+                  child: Padding(
+                    padding: const EdgeInsets.only(
+                      left: 14,
+                      right: 12,
+                      top: 2,
+                      bottom: 1,
+                    ),
+                    child: Text(
+                      senderName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: theme.sendButtonColor,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ),
+              child,
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildGroupSenderAvatar(
+    MessageModel message,
+    String senderName,
+    ChatTheme theme,
+  ) {
+    final avatarUrl = _resolveMessageSenderAvatar(message);
+    final initial =
+        senderName.trim().isNotEmpty ? senderName.trim()[0].toUpperCase() : '?';
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _openGroupSenderProfile(message),
+      child: Container(
+        width: 32,
+        height: 32,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              theme.sendButtonColor.withValues(alpha: 0.72),
+              theme.sendButtonColor.withValues(alpha: 0.95),
+            ],
+          ),
+        ),
+        child: avatarUrl != null
+            ? ClipOval(
+                child: AvatarAssetUtils.image(
+                  source: avatarUrl,
+                  fit: BoxFit.cover,
+                  memCacheWidth: 96,
+                  memCacheHeight: 96,
+                  placeholder: _buildGroupSenderInitial(initial),
+                  fallback: _buildGroupSenderInitial(initial),
+                ),
+              )
+            : _buildGroupSenderInitial(initial),
+      ),
+    );
+  }
+
+  Widget _buildGroupSenderInitial(String initial) {
+    return Center(
+      child: Text(
+        initial,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 13,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+
+  String _resolveMessageSenderName(MessageModel message) {
+    final memberName = _groupMemberById[message.senderId]?.displayName.trim();
+    if (memberName != null && memberName.isNotEmpty) return memberName;
+
+    final messageName = message.senderName?.trim();
+    if (messageName != null && messageName.isNotEmpty) return messageName;
+
+    return 'کاربر';
+  }
+
+  String? _resolveMessageSenderAvatar(MessageModel message) {
+    final memberAvatar = _groupMemberById[message.senderId]?.avatarUrl?.trim();
+    if (memberAvatar != null && memberAvatar.isNotEmpty) return memberAvatar;
+
+    final messageAvatar = message.senderAvatar?.trim();
+    if (messageAvatar != null && messageAvatar.isNotEmpty) {
+      return messageAvatar;
+    }
+
+    return null;
+  }
+
+  void _openGroupSenderProfile(MessageModel message) {
+    final userId = message.senderId.trim();
+    if (userId.isEmpty) return;
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => ProfileScreen(
+          userId: userId,
+          username: _resolveMessageSenderName(message),
+        ),
+      ),
+    );
   }
 
   MessageStatus _getMessageStatus(MessageModel message) {
@@ -4703,8 +4976,12 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         : const <MessageModel>[];
     final albumHasOnlyImages =
         isAlbumContext && albumImageMessages.length == normalizedGroup.length;
-    final isDocument = message.attachmentType != null &&
+    final hasAttachmentUrl =
+        (message.attachmentUrl?.trim().isNotEmpty ?? false);
+    final isDocument = hasAttachmentUrl &&
+        message.attachmentType != null &&
         ![
+          'text',
           'gif',
           'image',
           'video',
@@ -5114,7 +5391,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
           data.storyOwnerAvatarUrl ??
           widget.args.otherUserAvatar,
       isVerified: profile?.isVerified ?? false,
-      isPremium: profile?.role == 'premium',
+      isPremium: profile?.hasPremiumPrivileges ?? false,
       verificationType: verificationType,
       stories: stories,
       lastStoryAt:
@@ -6087,6 +6364,9 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                 isMe: isMe,
                 time: message.createdAt,
                 status: _getMessageStatus(message),
+                senderName: _resolveMessageSenderName(message),
+                showSenderNameInBubble: false,
+                compactWithAvatar: widget.args.isGroup && !isMe,
                 attachmentUrl: message.attachmentUrl,
                 attachmentType: message.attachmentType,
                 attachmentFileName: message.attachmentFileName,

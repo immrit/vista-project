@@ -8,7 +8,7 @@ enum ChatSendMode { gallery, camera, file }
 
 class AllowedFileResult {
   final bool isAllowed;
-  final int maxBytes;
+  final int? maxBytes;
   final String? attachmentType;
   final String? error;
 
@@ -20,7 +20,7 @@ class AllowedFileResult {
   });
 
   factory AllowedFileResult.allowed({
-    required int maxBytes,
+    required int? maxBytes,
     required String attachmentType,
   }) {
     return AllowedFileResult._(
@@ -31,7 +31,7 @@ class AllowedFileResult {
   }
 
   factory AllowedFileResult.rejected({
-    required int maxBytes,
+    required int? maxBytes,
     required String error,
   }) {
     return AllowedFileResult._(
@@ -70,8 +70,10 @@ class UploadPolicyService {
     'flac',
   };
 
-  int maxBytesFor(ProfileModel? profile) {
-    return profile?.role == 'premium' ? premiumMaxBytes : normalMaxBytes;
+  int? maxBytesFor(ProfileModel? profile) {
+    if (profile?.hasUnlimitedPrivileges == true) return null;
+    if (profile?.hasPremiumPrivileges == true) return premiumMaxBytes;
+    return normalMaxBytes;
   }
 
   AllowedFileResult validateFile({
@@ -83,7 +85,7 @@ class UploadPolicyService {
     var ext = p.extension(file.path).replaceFirst('.', '').toLowerCase();
     final bytes = file.lengthSync();
 
-    if (bytes > maxBytes) {
+    if (maxBytes != null && bytes > maxBytes) {
       final maxMb = maxBytes ~/ (1024 * 1024);
       return AllowedFileResult.rejected(
         maxBytes: maxBytes,
