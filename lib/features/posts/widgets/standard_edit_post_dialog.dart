@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:Vista/model/publicPostModel.dart';
 import 'package:Vista/features/posts/data/go_posts_repository.dart';
 import '../../../utils/user_friendly_error_utils.dart';
-import '../../../provider/provider.dart';
 
 void showStandardEditDialog({
   required BuildContext context,
@@ -14,12 +13,6 @@ void showStandardEditDialog({
   final TextEditingController contentController =
       TextEditingController(text: post.content);
   bool isLoading = false;
-  final currentUser = ref.read(userProvider);
-  final int? maxLength = currentUser?.hasUnlimitedPrivileges == true
-      ? null
-      : currentUser?.hasPremiumPrivileges == true
-          ? 400
-          : 200;
 
   // تابع تشخیص جهت متن
   TextDirection getTextDirection(String text) {
@@ -76,7 +69,7 @@ void showStandardEditDialog({
                           child: TextField(
                             controller: contentController,
                             maxLines: 4,
-                            maxLength: maxLength,
+                            maxLength: 300,
                             textDirection:
                                 getTextDirection(contentController.text),
                             onChanged: (value) {
@@ -87,9 +80,8 @@ void showStandardEditDialog({
                                 borderRadius: BorderRadius.circular(8),
                               ),
                               hintText: 'متن پست را ویرایش کنید...',
-                              counterText: maxLength == null
-                                  ? '${contentController.text.length} / بدون محدودیت'
-                                  : '${contentController.text.length}/$maxLength',
+                              counterText:
+                                  '${contentController.text.length}/300',
                               filled: true,
                               fillColor: Theme.of(context).brightness ==
                                       Brightness.dark
@@ -118,17 +110,6 @@ void showStandardEditDialog({
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
                               content: Text('متن پست نمی‌تواند خالی باشد'),
-                              backgroundColor: Colors.red,
-                            ),
-                          );
-                          return;
-                        }
-                        if (maxLength != null && content.length > maxLength) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                'متن پست نمی‌تواند بیشتر از $maxLength کاراکتر باشد',
-                              ),
                               backgroundColor: Colors.red,
                             ),
                           );

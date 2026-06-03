@@ -31,10 +31,14 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
   final TextEditingController contentController = TextEditingController();
   bool isLoading = false;
 
-  int? get _maxCharLength {
+  int get _maxCharLength {
     final currentUser = ref.read(userProvider);
-    if (currentUser?.hasUnlimitedPrivileges == true) return null;
-    if (currentUser?.hasPremiumPrivileges == true) return 400;
+    if (currentUser?.hasBlueBadge == true) return 2000;
+    if (currentUser?.hasGoldBadge == true ||
+        currentUser?.hasBlackBadge == true ||
+        currentUser?.isPremiumUser == true) {
+      return 400;
+    }
     return 200;
   }
 
@@ -437,7 +441,7 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
     }
 
     final maxCharLength = _maxCharLength;
-    if (maxCharLength != null && content.length > maxCharLength) {
+    if (content.length > maxCharLength) {
       _showSnackBar('متن پست نمی‌تواند بیشتر از $maxCharLength کاراکتر باشد');
       return;
     }
@@ -1134,31 +1138,6 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
               builder: (context, value, _) {
                 final maxLen = _maxCharLength;
                 final count = value.text.length;
-                if (maxLen == null) {
-                  final indicatorColor =
-                      isDarkMode ? Colors.white70 : Colors.black54;
-                  return Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      SizedBox(
-                        width: 42,
-                        height: 42,
-                        child: CircularProgressIndicator(
-                          value: 1,
-                          strokeWidth: 3,
-                          backgroundColor:
-                              isDarkMode ? Colors.white12 : Colors.black12,
-                          color: indicatorColor,
-                        ),
-                      ),
-                      Icon(
-                        Icons.all_inclusive_rounded,
-                        size: 19,
-                        color: indicatorColor,
-                      ),
-                    ],
-                  );
-                }
                 final progress = (count / maxLen).clamp(0.0, 1.0);
                 final remaining = maxLen - count;
 

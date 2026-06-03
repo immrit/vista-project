@@ -91,6 +91,8 @@
                 <data android:scheme="vista" />
                 <data android:host="auth" />
                 <data android:host="post" />
+                <data android:host="profile" />
+                <data android:host="group" />
                 <data android:pathPattern="/.*" />
             </intent-filter>
         </activity>

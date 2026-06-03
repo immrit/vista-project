@@ -32,6 +32,7 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
 
   // Logic State
   bool _isPhoneInput = false;
+  bool _isRegistering = false;
 
   // OTP State
   int countdown = 60;
@@ -113,12 +114,18 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
                 ? lookup.normalizedIdentifier!
                 : normalizedPhone!;
         if (lookup.exists && lookup.authFlow == 'password') {
+          setState(() => _isRegistering = false);
           _nextPage(1);
-        } else {
+        } else if (lookup.exists) {
+          setState(() => _isRegistering = false);
           _sendOtp(isResend: false);
+        } else {
+          setState(() => _isRegistering = true);
+          _nextPage(1);
         }
       } else {
         if (lookup.exists) {
+          setState(() => _isRegistering = false);
           _nextPage(1);
         } else {
           _showSnack('برای ثبت نام جدید لطفاً از شماره موبایل استفاده کنید');
@@ -145,6 +152,11 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
     }
 
     setState(() => _isLoading = true);
+
+    if (_isRegistering) {
+      _sendOtp(isResend: false);
+      return;
+    }
 
     try {
       final authState = ref.read(authControllerProvider);
@@ -294,10 +306,26 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
           return;
         }
 
+        if (_isRegistering) {
+           final password = _passwordController.text;
+           if (password.isNotEmpty) {
+               try {
+                   await ref.read(authControllerProvider.notifier).register(
+                       phoneNumber: phone,
+                       password: password,
+                       fullName: '',
+                   );
+               } catch (e) {
+                   debugPrint('Error setting password during registration: $e');
+               }
+           }
+        }
+
         _showSnack('خوش آمدید!');
 
-        if (authState.isNewUser ||
-            authState.currentUser?.profileCompleted == false) {
+        final finalAuthState = ref.read(authControllerProvider);
+        if (finalAuthState.isNewUser ||
+            finalAuthState.currentUser?.profileCompleted == false) {
           Navigator.pushReplacementNamed(context, '/profile-setup');
         } else {
           Navigator.pushReplacementNamed(context, '/home');
@@ -466,10 +494,18 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
           ),
           const SizedBox(height: 28),
           Text(
-            "رمز عبور خود را وارد کنید",
+            _isRegistering ? "انتخاب رمز عبور" : "رمز عبور خود را وارد کنید",
             style: Theme.of(context).textTheme.headlineMedium,
             textAlign: TextAlign.center,
           ),
+          if (_isRegistering) ...[
+            const SizedBox(height: 8),
+            Text(
+              "رمز عبوری شامل حداقل ۸ کاراکتر ترکیبی از حروف و اعداد انتخاب کنید.",
+              style: Theme.of(context).textTheme.bodyMedium,
+              textAlign: TextAlign.center,
+            ),
+          ],
           const SizedBox(height: 32),
           TextField(
             controller: _passwordController,
@@ -498,25 +534,26 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
                     width: 20,
                     child: CircularProgressIndicator(
                         strokeWidth: 2, color: Colors.white))
-                : const Text("ورود"),
+                : Text(_isRegistering ? "تایید و دریافت کد پیامکی" : "ورود"),
           ),
           const SizedBox(height: 8),
-          TextButton(
-            onPressed: _isLoading
-                ? null
-                : () {
-                    final prefill = _sanitizeInput(_inputController.text);
-                    Navigator.pushNamed(
-                      context,
-                      '/reset-password',
-                      arguments: {
-                        'prefill': prefill,
-                        'method': _isPhoneInput ? 'sms' : 'email',
-                      },
-                    );
-                  },
-            child: const Text('فراموشی رمزعبور؟'),
-          ),
+          if (!_isRegistering)
+            TextButton(
+              onPressed: _isLoading
+                  ? null
+                  : () {
+                      final prefill = _sanitizeInput(_inputController.text);
+                      Navigator.pushNamed(
+                        context,
+                        '/reset-password',
+                        arguments: {
+                          'prefill': prefill,
+                          'method': _isPhoneInput ? 'sms' : 'email',
+                        },
+                      );
+                    },
+              child: const Text('فراموشی رمزعبور؟'),
+            ),
           const SizedBox(height: 8),
         ],
       ),

@@ -61,6 +61,17 @@
 	<string>برای ثبت موقعیت مکانی نشست‌های فعال نیاز به دسترسی به موقعیت داریم</string>
 	
 	<!-- Deep Linking Configuration -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>ir.coffevista.vista</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>vista</string>
+			</array>
+		</dict>
+	</array>
 	
 	<!-- Associated Domains for Universal Links -->
 	<key>com.apple.developer.associated-domains</key>
