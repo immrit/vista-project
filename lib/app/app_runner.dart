@@ -35,6 +35,7 @@ import 'package:Vista/middleware/session_middleware.dart';
 import 'package:Vista/provider/theme_provider.dart';
 import 'package:Vista/provider/app_settings_provider.dart';
 import 'package:Vista/provider/locale_provider.dart';
+import 'package:Vista/provider/optimized_conversations_provider.dart';
 
 // Utils
 import 'package:Vista/utils/const.dart';
@@ -294,6 +295,13 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
   }
 
   Future<void> _handleUserSignOut() async {
+    try {
+      await CacheRepository().wipeAllData();
+      ref.invalidate(optimizedConversationsProvider);
+    } catch (e) {
+      debugPrint('Error wiping data on sign out: $e');
+    }
+
     if (mounted && navigatorKey.currentContext != null) {
       Navigator.of(navigatorKey.currentContext!)
           .pushNamedAndRemoveUntil('/auth', (route) => false);
@@ -328,6 +336,15 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
   void _startSessionMonitoring() {
     _sessionCheckTimer =
         Timer.periodic(const Duration(minutes: 5), (timer) async {
+      // اگر آفلاین هستیم، خطای شبکه را به عنوان شکست احراز هویتی حساب نکن
+      try {
+        final networkService = NetworkStateService();
+        final networkState = networkService.currentState;
+        if (!networkState.isConnected) {
+          debugPrint('🔴 [SessionMonitor] Offline — skipping session check');
+          return;
+        }
+      } catch (_) {}
       await _handlePotentialSessionExpiry();
     });
   }
@@ -356,11 +373,17 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
 
   void _setupNetworkStateListener() {
     try {
-      NetworkStateService().stateStream.listen((state) {
+      final networkService = NetworkStateService();
+      // مطمئن شو که سرویس راه‌اندازی شده باشد
+      unawaited(Future.microtask(() => networkService.initialize()));
+      networkService.stateStream.listen((state) {
         if (state.isConnected) {
+          debugPrint('🟢 [Network] Connection restored — triggering session sync');
           Future.delayed(const Duration(seconds: 2), () {
             try {
               SessionManagerServiceV2().onNetworkRestored();
+              // یک بار هم بررسی نشست بلافاصله انجام شود
+              _handlePotentialSessionExpiry();
             } catch (_) {}
           });
         }
@@ -369,16 +392,74 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
   }
 
   void _setupSessionTerminationHandler() {
-    SessionManagerServiceV2().onSessionTerminated = () {
+    SessionManagerServiceV2().onSessionTerminated = () async {
+      try {
+        await CacheRepository().wipeAllData();
+        ref.invalidate(optimizedConversationsProvider);
+      } catch (e) {
+        debugPrint('Error wiping data on session terminated: $e');
+      }
+
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         final context = navigatorKey.currentContext;
         if (context == null || !context.mounted) return;
-        Navigator.of(context).pushAndRemoveUntil(
-            MaterialPageRoute(builder: (context) => const AuthWizardScreen()),
-            (r) => false);
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('نشست شما توسط دستگاه دیگری خاتمه یافت')));
+
+        // نمایش dialog حرفه‌ای — مشابه تلگرام
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (ctx) => AlertDialog(
+            backgroundColor: const Color(0xFF1C1C1E),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            title: const Row(
+              children: [
+                Text('🚨 ', style: TextStyle(fontSize: 22)),
+                Text(
+                  'نشست بسته شد',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontFamily: 'Vazirmatn',
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+            content: const Text(
+              'نشست شما توسط یک دستگاه دیگر خاتمه یافت. '  
+              'اگر شما نبودید، این می‌تواند نشانه نفوذ به حساب شما باشد.',
+              style: TextStyle(
+                color: Color(0xFFAAAAAA),
+                fontFamily: 'Vazirmatn',
+                fontSize: 14,
+                height: 1.6,
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(ctx).pop();
+                  Navigator.of(context).pushAndRemoveUntil(
+                    MaterialPageRoute(
+                        builder: (_) => const AuthWizardScreen()),
+                    (r) => false,
+                  );
+                },
+                child: const Text(
+                  'ورود مجدد',
+                  style: TextStyle(
+                    color: Color(0xFF3478F6),
+                    fontFamily: 'Vazirmatn',
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
       });
     };
   }

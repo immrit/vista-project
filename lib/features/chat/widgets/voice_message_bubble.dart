@@ -1,4 +1,4 @@
-﻿// lib/features/chat/widgets/voice_message_bubble.dart
+// lib/features/chat/widgets/voice_message_bubble.dart
 //
 // ویجت پیام صوتی مدرن با الهام از ویستا
 //
@@ -291,7 +291,7 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble>
         children: [
           if (showTrackMeta) ...[
             Align(
-              alignment: Alignment.centerLeft,
+              alignment: AlignmentDirectional.centerStart,
               child: Text(
                 playbackTitle,
                 maxLines: 1,
@@ -307,7 +307,7 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble>
             ),
             if (playbackArtist.isNotEmpty)
               Align(
-                alignment: Alignment.centerLeft,
+                alignment: AlignmentDirectional.centerStart,
                 child: Padding(
                   padding: const EdgeInsets.only(top: 2, bottom: 6),
                   child: Text(
@@ -393,7 +393,7 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble>
           if (widget.caption != null && widget.caption!.trim().isNotEmpty) ...[
             const SizedBox(height: 8),
             Align(
-              alignment: Alignment.centerRight,
+              alignment: AlignmentDirectional.centerEnd,
               child: TelegramEmojiText(
                 widget.caption!,
                 useTelegramEmoji: EmojiRenderPolicy.useTelegramEmojiRenderer(),

@@ -221,7 +221,7 @@ class OnlineStatusText extends StatelessWidget {
         children: [
           if (showTypingDots && presence.isTyping)
             Padding(
-              padding: const EdgeInsets.only(left: 4),
+              padding: const EdgeInsetsDirectional.only(end: 4),
               child: TypingDotsAnimation(
                 color: _getTextColor(context),
               ),
@@ -484,8 +484,8 @@ class AvatarWithOnlineStatus extends ConsumerWidget {
             presenceAsync.maybeWhen(
               data: (presence) {
                 if (!presence.isOnline) return const SizedBox.shrink();
-                return Positioned(
-                  right: 0,
+                return PositionedDirectional(
+                  end: 0,
                   bottom: 0,
                   child: OnlineStatusDot(
                     status: presence.status,

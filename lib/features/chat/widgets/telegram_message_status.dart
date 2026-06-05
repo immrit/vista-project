@@ -1,4 +1,4 @@
-﻿// lib/features/chat/widgets/telegram_message_status.dart
+// lib/features/chat/widgets/telegram_message_status.dart
 //
 // ویجت نمایش وضعیت پیام - کاملاً مشابه ویستا
 // اصلاح شده: رفع مشکل پرش با استفاده از CustomPainter برای تمام وضعیت‌ها
@@ -313,7 +313,7 @@ class MessageTimeAndStatus extends StatelessWidget {
       children: [
         if (isEdited)
           Padding(
-            padding: const EdgeInsets.only(left: 4),
+            padding: const EdgeInsetsDirectional.only(start: 4),
             child: Text(
               'ویرایش شده',
               style: TextStyle(

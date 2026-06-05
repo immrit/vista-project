@@ -40,28 +40,38 @@ class _SwipeToReplyState extends State<SwipeToReply>
   }
 
   void _onHorizontalDragUpdate(DragUpdateDetails details) {
-    if (widget.isMe) {
-      // My messages swipe left to reply
-      if (details.primaryDelta! > 0 && _dragExtent == 0) {
-        return; // Prevent right swipe
-      }
-      _dragExtent += details.primaryDelta!;
-      if (_dragExtent > 0) _dragExtent = 0; // Cap at 0
+    final isRTL = Directionality.of(context) == TextDirection.rtl;
 
-      if (_dragExtent < -_triggerThreshold && !_triggered) {
+    if (widget.isMe) {
+      // My messages: LTR swipe left to reply. RTL swipe right to reply.
+      if (!isRTL) {
+        if (details.primaryDelta! > 0 && _dragExtent == 0) return; // Prevent right swipe in LTR
+        _dragExtent += details.primaryDelta!;
+        if (_dragExtent > 0) _dragExtent = 0;
+      } else {
+        if (details.primaryDelta! < 0 && _dragExtent == 0) return; // Prevent left swipe in RTL
+        _dragExtent += details.primaryDelta!;
+        if (_dragExtent < 0) _dragExtent = 0;
+      }
+
+      if (_dragExtent.abs() > _triggerThreshold && !_triggered) {
         _triggered = true;
         HapticFeedback.lightImpact();
         widget.onReply();
       }
     } else {
-      // Other messages swipe right to reply
-      if (details.primaryDelta! < 0 && _dragExtent == 0) {
-        return; // Prevent left swipe
+      // Other messages: LTR swipe right to reply. RTL swipe left to reply.
+      if (!isRTL) {
+        if (details.primaryDelta! < 0 && _dragExtent == 0) return; // Prevent left swipe in LTR
+        _dragExtent += details.primaryDelta!;
+        if (_dragExtent < 0) _dragExtent = 0;
+      } else {
+        if (details.primaryDelta! > 0 && _dragExtent == 0) return; // Prevent right swipe in RTL
+        _dragExtent += details.primaryDelta!;
+        if (_dragExtent > 0) _dragExtent = 0;
       }
-      _dragExtent += details.primaryDelta!;
-      if (_dragExtent < 0) _dragExtent = 0; // Cap at 0
 
-      if (_dragExtent > _triggerThreshold && !_triggered) {
+      if (_dragExtent.abs() > _triggerThreshold && !_triggered) {
         _triggered = true;
         HapticFeedback.lightImpact();
         widget.onReply();
@@ -97,9 +107,10 @@ class _SwipeToReplyState extends State<SwipeToReply>
               alignment: Alignment.center,
               children: [
                 if (offset.abs() > 10)
-                  Positioned(
-                    right: widget.isMe ? -40 - (offset.abs() * 0.1) : null,
-                    left: !widget.isMe ? -40 - (offset.abs() * 0.1) : null,
+                  Positioned.directional(
+                    textDirection: Directionality.of(context),
+                    end: widget.isMe ? -40 - (offset.abs() * 0.1) : null,
+                    start: !widget.isMe ? -40 - (offset.abs() * 0.1) : null,
                     child: Opacity(
                       opacity:
                           (offset.abs() / _triggerThreshold).clamp(0.0, 1.0),

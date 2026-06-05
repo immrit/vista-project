@@ -20,8 +20,6 @@ class ActiveSessionsScreen extends ConsumerStatefulWidget {
 
 class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen>
     with SingleTickerProviderStateMixin {
-  String? _resolvedCurrentSessionId;
-  bool _isResolvingSession = false;
   late AnimationController _pulseController;
 
   @override
@@ -38,41 +36,6 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen>
   void dispose() {
     _pulseController.dispose();
     super.dispose();
-  }
-
-  Future<void> _resolveCurrentSession(
-    List<SessionModel> sessions,
-    SessionManagerServiceV2 sessionManager,
-    String? currentSessionId,
-  ) async {
-    if (_isResolvingSession) return;
-
-    if (currentSessionId != null &&
-        sessions.any((s) => s.id == currentSessionId)) {
-      _resolvedCurrentSessionId = currentSessionId;
-      return;
-    }
-
-    _isResolvingSession = true;
-
-    try {
-      final foundSessionId = await sessionManager.findCurrentSessionId();
-      if (foundSessionId != null &&
-          sessions.any((s) => s.id == foundSessionId)) {
-        _resolvedCurrentSessionId = foundSessionId;
-        if (mounted) setState(() {});
-      } else {
-        _resolvedCurrentSessionId =
-            sessions.isNotEmpty ? sessions.first.id : null;
-        if (mounted) setState(() {});
-      }
-    } catch (e) {
-      _resolvedCurrentSessionId =
-          sessions.isNotEmpty ? sessions.first.id : null;
-      if (mounted) setState(() {});
-    } finally {
-      _isResolvingSession = false;
-    }
   }
 
   @override
@@ -107,26 +70,17 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen>
           data: (sessions) {
             if (sessions.isEmpty) return _buildEmptyState(isDark);
 
-            final actualCurrentSessionId =
-                _resolvedCurrentSessionId ?? currentSessionId;
-
-            if (_resolvedCurrentSessionId == null ||
-                !sessions.any((s) => s.id == _resolvedCurrentSessionId)) {
-              _resolveCurrentSession(
-                  sessions, sessionManager, currentSessionId);
-            }
-
             SessionModel? currentSession;
-            if (actualCurrentSessionId != null) {
-              try {
-                currentSession = sessions.firstWhere(
-                  (s) => s.id == actualCurrentSessionId,
-                );
-              } catch (e) {
-                currentSession = sessions.isNotEmpty ? sessions.first : null;
+            try {
+              currentSession = sessions.firstWhere((s) => s.isCurrentSession);
+            } catch (_) {
+              // Fallback to local session ID if backend flag is missing
+              if (currentSessionId != null) {
+                try {
+                  currentSession = sessions.firstWhere((s) => s.id == currentSessionId);
+                } catch (_) {}
               }
-            } else {
-              currentSession = sessions.isNotEmpty ? sessions.first : null;
+              currentSession ??= sessions.isNotEmpty ? sessions.first : null;
             }
 
             final otherSessions = currentSession != null
@@ -252,7 +206,7 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen>
 
           // Device Info
           Text(
-            session.deviceInfo.deviceName,
+            session.deviceName ?? session.deviceInfo.deviceName,
             style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.bold,
@@ -345,7 +299,7 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen>
         ),
       ),
       title: Text(
-        session.deviceInfo.deviceName,
+        session.deviceName ?? session.deviceInfo.deviceName,
         style: TextStyle(
           fontWeight: FontWeight.w600,
           fontSize: 15,
@@ -569,17 +523,6 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen>
   Future<void> _terminateAllSessions(
     SessionManagerServiceV2 sessionManager,
   ) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => _buildConfirmDialog(
-        title: 'خاتمه تمام نشست‌ها',
-        message: 'آیا از خاتمه تمام نشست‌های دیگر مطمئن هستید؟',
-        isDark: Theme.of(context).brightness == Brightness.dark,
-      ),
-    );
-
-    if (confirmed != true) return;
-
     final allowed = await SensitiveActionGuard.verify(
       context,
       action: SensitiveAction.terminateAllOtherSessions,
@@ -750,7 +693,7 @@ class _SessionDetailsSheet extends StatelessWidget {
 
             // Device Name
             Text(
-              session.deviceInfo.deviceName,
+              session.deviceName ?? session.deviceInfo.deviceName,
               style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,

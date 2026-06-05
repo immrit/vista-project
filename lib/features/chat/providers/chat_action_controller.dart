@@ -127,6 +127,23 @@ class ChatActionController extends _$ChatActionController {
     }
   }
 
+  Future<ActionResult<void>> resendMessage(MessageModel message) async {
+    return sendMessage(
+      conversationId: message.conversationId,
+      content: message.content,
+      id: message.id,
+      attachmentUrl: message.attachmentUrl,
+      attachmentType: message.attachmentType,
+      attachmentFileName: message.attachmentFileName,
+      attachmentMimeType: message.attachmentMimeType,
+      attachmentSizeBytes: message.attachmentSizeBytes,
+      replyToMessageId: message.replyToMessageId,
+      replyToContent: message.replyToContent,
+      replyToSenderName: message.replyToSenderName,
+      mediaGroupId: message.mediaGroupId,
+    );
+  }
+
   Future<ActionResult<void>> editMessage({
     required String messageId,
     required String newContent,

@@ -88,7 +88,14 @@ class DeepLinkService {
     }
 
     // ÙÙ‚Ø· Ù¾Ø´ØªÛŒØ¨Ø§Ù†ÛŒ Ø§Ø² https://cafevista.ir
-    if (scheme == 'https' && (host == 'cafevista.ir' || host == 'vista.me')) {
+    final normalizedHost = host.toLowerCase();
+    final isVistaWebHost = normalizedHost == 'cafevista.ir' ||
+        normalizedHost == 'www.cafevista.ir' ||
+        normalizedHost == 'coffevista.ir' ||
+        normalizedHost == 'www.coffevista.ir' ||
+        normalizedHost == 'vista.me';
+
+    if (scheme == 'https' && isVistaWebHost) {
       // Ù¾Ø±Ø¯Ø§Ø²Ø´ Ù…Ø³ÛŒØ±Ù‡Ø§ÛŒ Ù…Ø®ØªÙ„Ù
       if (path.startsWith('/post/') && pathSegments.length >= 2) {
         final postId = pathSegments[1];

@@ -21,60 +21,14 @@ class TelegramEmojiTextEditingController extends TextEditingController {
   }) {
     final effectiveStyle = style ?? DefaultTextStyle.of(context).style;
 
-    // While composing (IME), use default rendering to keep composition stable.
-    if (!useTelegramEmoji ||
-        text.isEmpty ||
-        (withComposing &&
-            value.composing.isValid &&
-            !value.composing.isCollapsed)) {
-      return super.buildTextSpan(
-        context: context,
-        style: effectiveStyle,
-        withComposing: withComposing,
-      );
-    }
-
-    final lookup = TelegramEmojiLookup.instance;
-    final spans = <InlineSpan>[];
-    final plainBuffer = StringBuffer();
-    final emojiSize =
-        ((effectiveStyle.fontSize ?? 14) * 1.18).clamp(12.0, 36.0);
-
-    void flushBuffer() {
-      if (plainBuffer.isEmpty) return;
-      spans.add(
-        TextSpan(
-          text: plainBuffer.toString(),
-          style: effectiveStyle,
-        ),
-      );
-      plainBuffer.clear();
-    }
-
-    for (final grapheme in text.characters) {
-      if (!lookup.hasAsset(grapheme)) {
-        plainBuffer.write(grapheme);
-        continue;
-      }
-
-      flushBuffer();
-      spans.add(
-        WidgetSpan(
-          alignment: PlaceholderAlignment.middle,
-          child: TelegramEmojiInline(
-            emoji: grapheme,
-            size: emojiSize,
-            fallbackStyle: effectiveStyle,
-          ),
-        ),
-      );
-    }
-
-    flushBuffer();
-
-    return TextSpan(
+    // Due to Flutter IME issues where WidgetSpan replaces surrogate pairs and
+    // breaks the length synchronization, we must use the native text rendering
+    // inside the TextField. This prevents issues like Enter key converting emojis
+    // into question marks.
+    return super.buildTextSpan(
+      context: context,
       style: effectiveStyle,
-      children: spans,
+      withComposing: withComposing,
     );
   }
 }

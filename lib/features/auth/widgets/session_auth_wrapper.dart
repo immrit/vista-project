@@ -84,6 +84,7 @@ class _SessionAuthWrapperState extends ConsumerState<SessionAuthWrapper> {
               const Duration(seconds: 8),
               onTimeout: () => throw Exception('timeout'),
             );
+        if (!mounted) return;
         await TokenStorage.saveUserId(user.id);
         ref.read(authControllerProvider.notifier).acceptAuthenticatedUser(user);
         requiresProfileSetup = !user.profileCompleted;
@@ -100,6 +101,7 @@ class _SessionAuthWrapperState extends ConsumerState<SessionAuthWrapper> {
       // در غیر این صورت: ادامه با توکن محلی
       final userId = await TokenStorage.getUserId();
       if (userId != null && userId.isNotEmpty) {
+        if (!mounted) return;
         ref.read(authControllerProvider.notifier).acceptAuthenticatedUser(
               AuthUserResponse(
                 id: userId,

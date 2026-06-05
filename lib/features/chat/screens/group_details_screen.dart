@@ -56,22 +56,28 @@ class _GroupDetailsScreenState extends ConsumerState<GroupDetailsScreen> {
 
   Future<void> _loadGroup() async {
     setState(() => _isLoading = true);
-    final info = await _groupService.fetchGroupInfo(widget.conversationId);
-    final members =
-        await _groupService.fetchGroupMembers(widget.conversationId);
-    final invite = await _groupService.getInvite(widget.conversationId);
+    try {
+      final info = await _groupService.fetchGroupInfo(widget.conversationId);
+      final members =
+          await _groupService.fetchGroupMembers(widget.conversationId);
+      final invite = await _groupService.getInvite(widget.conversationId);
 
-    if (!mounted) return;
-    setState(() {
-      _groupName = info?['name'] as String? ?? 'گروه';
-      _groupImage = info?['image'] as String?;
-      _createdBy = info?['created_by'] as String?;
-      _maxMembers = info?['max_members'] as int? ?? 20;
-      _members = members;
-      _inviteCode = invite['invite_code'] as String?;
-      _inviteEnabled = invite['invite_enabled'] as bool? ?? true;
-      _isLoading = false;
-    });
+      if (!mounted) return;
+      setState(() {
+        _groupName = info?['name'] as String? ?? 'گروه';
+        _groupImage = info?['image'] as String?;
+        _createdBy = info?['created_by'] as String?;
+        _maxMembers = info?['max_members'] as int? ?? 20;
+        _members = members;
+        _inviteCode = invite['invite_code'] as String?;
+        _inviteEnabled = invite['invite_enabled'] as bool? ?? true;
+        _isLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      _showSnack(_mapGroupError(e));
+    }
   }
 
   Future<void> _editName() async {

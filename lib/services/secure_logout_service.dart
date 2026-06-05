@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import '../core/data/cache/cache_repository.dart';
 import '../features/auth/screens/auth_wizard_screen.dart';
+import '../provider/optimized_conversations_provider.dart';
 import '../security/logging_utility.dart';
 import '../security/secure_kv_store.dart';
 import 'advanced_security_service.dart';
@@ -54,6 +55,9 @@ class SecureLogoutService {
       // 5. Backend Logout & Session Termination
       // SessionManagerV2 terminates the active Go backend session.
       await SessionManagerServiceV2().userLogout();
+
+      // Clear Riverpod global states that hold sensitive cached data
+      ref.invalidate(optimizedConversationsProvider);
 
       logInfo('✅ Secure Logout completed successfully.');
 

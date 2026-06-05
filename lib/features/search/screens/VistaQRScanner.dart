@@ -178,7 +178,13 @@ class _VistaQRScannerState extends ConsumerState<VistaQRScanner>
     // بررسی فرمت گروه (vista://group یا https://cafevista.ir/group)
     if (code.startsWith('vista://group/') ||
         code.startsWith('https://cafevista.ir/group/') ||
-        code.startsWith('http://cafevista.ir/group/')) {
+        code.startsWith('http://cafevista.ir/group/') ||
+        code.startsWith('https://www.cafevista.ir/group/') ||
+        code.startsWith('http://www.cafevista.ir/group/') ||
+        code.startsWith('https://coffevista.ir/group/') ||
+        code.startsWith('http://coffevista.ir/group/') ||
+        code.startsWith('https://www.coffevista.ir/group/') ||
+        code.startsWith('http://www.coffevista.ir/group/')) {
       setState(() {
         _isProcessing = true;
         _isLoading = true;
@@ -189,7 +195,13 @@ class _VistaQRScannerState extends ConsumerState<VistaQRScanner>
       final inviteCode = code
           .replaceFirst('vista://group/', '')
           .replaceFirst('https://cafevista.ir/group/', '')
-          .replaceFirst('http://cafevista.ir/group/', '');
+          .replaceFirst('http://cafevista.ir/group/', '')
+          .replaceFirst('https://www.cafevista.ir/group/', '')
+          .replaceFirst('http://www.cafevista.ir/group/', '')
+          .replaceFirst('https://coffevista.ir/group/', '')
+          .replaceFirst('http://coffevista.ir/group/', '')
+          .replaceFirst('https://www.coffevista.ir/group/', '')
+          .replaceFirst('http://www.coffevista.ir/group/', '');
       if (inviteCode.isEmpty) {
         setState(() {
           _isLoading = false;

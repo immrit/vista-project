@@ -1,15 +1,16 @@
 import 'package:flutter/animation.dart';
 
 import 'chat_performance_profile.dart';
+import '../../../utils/vista_motion.dart';
 
 enum MotionProfile { performance, balanced, expressive }
 
 class MotionTokens {
   const MotionTokens._();
 
-  static Curve get standardCurve => Curves.easeOutCubic;
-  static Curve get emphasizedCurve => Curves.easeOutBack;
-  static Curve get quickCurve => Curves.easeOut;
+  static Curve get standardCurve => VistaMotion.smooth;
+  static Curve get emphasizedCurve => VistaMotion.springy;
+  static Curve get quickCurve => VistaMotion.snappy;
 
   static Duration messageEntry({
     required ChatEffectsLevel effectsLevel,
@@ -17,19 +18,17 @@ class MotionTokens {
   }) {
     switch (effectsLevel) {
       case ChatEffectsLevel.low:
-        return const Duration(milliseconds: 120);
+        // Reduce motion (کاهش حرکت) -> No entry animation
+        return Duration.zero;
       case ChatEffectsLevel.medium:
         return profile == MotionProfile.performance
-            ? const Duration(milliseconds: 140)
-            : const Duration(milliseconds: 170);
+            ? VistaMotion.durationFast
+            : VistaMotion.durationMedium;
       case ChatEffectsLevel.high:
-        if (profile == MotionProfile.performance) {
-          return const Duration(milliseconds: 160);
-        }
         if (profile == MotionProfile.expressive) {
-          return const Duration(milliseconds: 230);
+          return VistaMotion.durationSlow;
         }
-        return const Duration(milliseconds: 190);
+        return VistaMotion.durationMedium;
     }
   }
 
@@ -39,15 +38,12 @@ class MotionTokens {
   }) {
     switch (effectsLevel) {
       case ChatEffectsLevel.low:
-        return const Duration(milliseconds: 90);
+        // Reduce motion -> Very fast or zero
+        return Duration.zero;
       case ChatEffectsLevel.medium:
-        return profile == MotionProfile.expressive
-            ? const Duration(milliseconds: 140)
-            : const Duration(milliseconds: 110);
+        return const Duration(milliseconds: 100);
       case ChatEffectsLevel.high:
-        return profile == MotionProfile.performance
-            ? const Duration(milliseconds: 120)
-            : const Duration(milliseconds: 160);
+        return VistaMotion.durationFast;
     }
   }
 }

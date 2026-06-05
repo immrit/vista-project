@@ -536,47 +536,60 @@ class _FullScreenImageViewerState extends State<FullScreenImageViewer>
                 final photoController = _getPhotoController(index);
                 final imageProvider = _resolveImageProvider(item);
 
-                return Transform.scale(
-                  scale: _isDragging ? _dragScale : 1.0,
-                  child: GestureDetector(
-                    onTap: _toggleControls,
-                    child: Hero(
-                      tag: item.heroTag,
-                      child: imageProvider == null
-                          ? const Center(
-                              child: Icon(
-                                Icons.image_not_supported_outlined,
-                                size: 64,
-                                color: Colors.white54,
-                              ),
-                            )
-                          : PhotoView(
-                              imageProvider: imageProvider,
-                              controller: photoController,
-                              minScale: PhotoViewComputedScale.contained,
-                              maxScale: PhotoViewComputedScale.covered * 3,
-                              initialScale: PhotoViewComputedScale.contained,
-                              backgroundDecoration: const BoxDecoration(
-                                color: Colors.black,
-                              ),
-                              loadingBuilder: (context, event) => Center(
-                                child: CircularProgressIndicator(
-                                  value: event == null
-                                      ? null
-                                      : event.cumulativeBytesLoaded /
-                                          (event.expectedTotalBytes ?? 1),
-                                  color: Colors.white,
-                                ),
-                              ),
-                              errorBuilder: (context, error, stackTrace) =>
-                                  const Center(
+                return Transform.translate(
+                  offset: Offset(0, _isDragging ? _dragDistance : 0),
+                  child: Transform.scale(
+                    scale: _isDragging ? _dragScale : 1.0,
+                    child: GestureDetector(
+                      onTap: _toggleControls,
+                      child: Hero(
+                        tag: item.heroTag,
+                        // ✅ اضافه کردن flightShuttleBuilder برای جلوگیری از مشکل رندر متن‌ها یا پس‌زمینه‌ها در حین پرواز
+                        flightShuttleBuilder: (flightContext, animation, flightDirection, fromHeroContext, toHeroContext) {
+                          final Widget toHero = toHeroContext.widget;
+                          return AnimatedBuilder(
+                            animation: animation,
+                            builder: (context, child) {
+                              return toHero;
+                            },
+                          );
+                        },
+                        child: imageProvider == null
+                            ? const Center(
                                 child: Icon(
-                                  Icons.broken_image_rounded,
+                                  Icons.image_not_supported_outlined,
                                   size: 64,
                                   color: Colors.white54,
                                 ),
+                              )
+                            : PhotoView(
+                                imageProvider: imageProvider,
+                                controller: photoController,
+                                minScale: PhotoViewComputedScale.contained,
+                                maxScale: PhotoViewComputedScale.covered * 3,
+                                initialScale: PhotoViewComputedScale.contained,
+                                backgroundDecoration: const BoxDecoration(
+                                  color: Colors.transparent, // ✅ تغییر به transparent برای جلوگیری از پرواز پس‌زمینه سیاه
+                                ),
+                                loadingBuilder: (context, event) => Center(
+                                  child: CircularProgressIndicator(
+                                    value: event == null
+                                        ? null
+                                        : event.cumulativeBytesLoaded /
+                                            (event.expectedTotalBytes ?? 1),
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                errorBuilder: (context, error, stackTrace) =>
+                                    const Center(
+                                  child: Icon(
+                                    Icons.broken_image_rounded,
+                                    size: 64,
+                                    color: Colors.white54,
+                                  ),
+                                ),
                               ),
-                            ),
+                      ),
                     ),
                   ),
                 );

@@ -10,6 +10,8 @@ class SessionModel {
   final DateTime lastActivity;
   final DateTime createdAt;
   final bool isActive;
+  final bool isCurrentSession;
+  final String? deviceName;
   final String? appVersion;
   final String? platform;
   final String? fcmToken;
@@ -24,6 +26,8 @@ class SessionModel {
     required this.lastActivity,
     required this.createdAt,
     required this.isActive,
+    this.isCurrentSession = false,
+    this.deviceName,
     this.appVersion,
     this.platform,
     this.fcmToken,
@@ -101,6 +105,8 @@ class SessionModel {
       lastActivity: DateTime.parse(json['last_activity'] as String),
       createdAt: DateTime.parse(json['created_at'] as String),
       isActive: json['is_active'] as bool,
+      isCurrentSession: (json['is_current_session'] as bool?) ?? false,
+      deviceName: json['device_name'] as String?,
       appVersion: json['app_version'] as String?,
       platform: json['platform'] as String?,
       fcmToken: json['fcm_token'] as String?,
@@ -118,6 +124,8 @@ class SessionModel {
       'last_activity': lastActivity.toIso8601String(),
       'created_at': createdAt.toIso8601String(),
       'is_active': isActive,
+      'is_current_session': isCurrentSession,
+      'device_name': deviceName,
       'app_version': appVersion,
       'platform': platform,
       'fcm_token': fcmToken,
@@ -134,6 +142,8 @@ class SessionModel {
     DateTime? lastActivity,
     DateTime? createdAt,
     bool? isActive,
+    bool? isCurrentSession,
+    String? deviceName,
     String? appVersion,
     String? platform,
     String? fcmToken,
@@ -148,6 +158,8 @@ class SessionModel {
       lastActivity: lastActivity ?? this.lastActivity,
       createdAt: createdAt ?? this.createdAt,
       isActive: isActive ?? this.isActive,
+      isCurrentSession: isCurrentSession ?? this.isCurrentSession,
+      deviceName: deviceName ?? this.deviceName,
       appVersion: appVersion ?? this.appVersion,
       platform: platform ?? this.platform,
       fcmToken: fcmToken ?? this.fcmToken,

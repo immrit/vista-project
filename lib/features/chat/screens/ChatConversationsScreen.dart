@@ -1,4 +1,4 @@
-﻿// import '../../../security/logging_utility.dart'; // ⛔️ حذف شد - دیگر استفاده نمی‌شود
+// import '../../../security/logging_utility.dart'; // ⛔️ حذف شد - دیگر استفاده نمی‌شود
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -149,9 +149,9 @@ class _ChatConversationsScreenState
                 return Container(
                   width: 10,
                   height: 10,
-                  margin: const EdgeInsets.only(
-                      left:
-                          8), // Right side in LTR, Left in RTL (Persian)? Actions are usually at end.
+                  margin: const EdgeInsetsDirectional.only(
+                      start:
+                          8), // Start margin in directional applies spacing consistently
                   // In RTL (Persian), actions are on the LEFT.
                   // EdgeInsets.only(left: 8) seems correct for spacing from the edge or next icon?
                   // Wait, actions are usually [Search, Menu, Gap].

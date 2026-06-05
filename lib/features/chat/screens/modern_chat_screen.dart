@@ -63,6 +63,7 @@ import '../../../provider/optimized_conversations_provider.dart';
 import '../../../provider/settings_providers.dart';
 import '../../../services/telegram_read_receipt_service.dart';
 import '../../../services/current_user_service.dart';
+import '../../../services/user_profile_service.dart';
 
 // ✅ New Features
 import '../widgets/chat_attachment_sheet.dart';
@@ -3439,7 +3440,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
           width: 38,
           child: isLastInGroup
               ? Padding(
-                  padding: const EdgeInsets.only(left: 4, bottom: 6),
+                  padding: const EdgeInsetsDirectional.only(start: 4, bottom: 6),
                   child: _buildGroupSenderAvatar(message, senderName, theme),
                 )
               : const SizedBox.shrink(),
@@ -3539,6 +3540,12 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     final memberName = _groupMemberById[message.senderId]?.displayName.trim();
     if (memberName != null && memberName.isNotEmpty) return memberName;
 
+    final cachedProfile = UserProfileService().getCachedProfile(message.senderId);
+    if (cachedProfile != null) {
+      final name = cachedProfile['username']?.trim() ?? cachedProfile['full_name']?.trim();
+      if (name != null && name.isNotEmpty) return name;
+    }
+
     final messageName = message.senderName?.trim();
     if (messageName != null && messageName.isNotEmpty) return messageName;
 
@@ -3548,6 +3555,12 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   String? _resolveMessageSenderAvatar(MessageModel message) {
     final memberAvatar = _groupMemberById[message.senderId]?.avatarUrl?.trim();
     if (memberAvatar != null && memberAvatar.isNotEmpty) return memberAvatar;
+
+    final cachedProfile = UserProfileService().getCachedProfile(message.senderId);
+    if (cachedProfile != null) {
+      final avatar = cachedProfile['avatar_url']?.trim();
+      if (avatar != null && avatar.isNotEmpty) return avatar;
+    }
 
     final messageAvatar = message.senderAvatar?.trim();
     if (messageAvatar != null && messageAvatar.isNotEmpty) {
@@ -5003,6 +5016,19 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
     // 4. ساخت آیتم‌های منو
     final items = <TelegramContextMenuItem>[
+      // ارسال مجدد (در صورت خطا)
+      if (isMe && message.statusNotifier.value == MessageDeliveryStatus.failed) ...[
+        TelegramContextMenuItem(
+          icon: Icons.refresh_rounded,
+          label: 'ارسال مجدد',
+          color: Colors.orange,
+          onTap: () {
+            ref.read(chatActionControllerProvider.notifier).resendMessage(message);
+          },
+        ),
+        const TelegramContextMenuItem.divider(),
+      ],
+
       // Reply
       TelegramContextMenuItem(
         icon: Icons.reply_rounded,

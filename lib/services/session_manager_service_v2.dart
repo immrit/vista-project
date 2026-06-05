@@ -124,16 +124,21 @@ class SessionManagerServiceV2 {
     required String method,
     required String path,
     Map<String, dynamic>? body,
+    Map<String, String>? headers,
   }) async {
-    final headers = await _buildHeaders();
+    final baseHeaders = await _buildHeaders();
+    final mergedHeaders = {
+      ...baseHeaders,
+      if (headers != null) ...headers,
+    };
     final uri = _backendUri(path);
     http.Response response;
     if (method == 'GET') {
-      response = await http.get(uri, headers: headers).timeout(_backendTimeout);
+      response = await http.get(uri, headers: mergedHeaders).timeout(_backendTimeout);
     } else {
       response = await http
           .post(uri,
-              headers: headers, body: body == null ? null : jsonEncode(body))
+              headers: mergedHeaders, body: body == null ? null : jsonEncode(body))
           .timeout(_backendTimeout);
     }
     if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -320,10 +325,6 @@ class SessionManagerServiceV2 {
   // ═══════════════════════════════════════════════════════════
 
   Future<bool> _quickSessionCheck() async {
-    if (_currentSessionId == null || _sessionToken == null) {
-      _verificationState = SessionVerificationState.invalid;
-      return false;
-    }
     final hasToken = await TokenStorage.hasValidSession();
     if (!hasToken) {
       final refreshed = await _refreshSessionWithRetry();
@@ -336,6 +337,13 @@ class SessionManagerServiceV2 {
         return true; // We accept them offline!
       }
     }
+
+    if (_currentSessionId == null || _sessionToken == null) {
+      _verificationState = SessionVerificationState.pendingVerification;
+      _registerSessionInBackground();
+      return true; // Trust the token, register session later
+    }
+
     return await _checkSessionInDatabase();
   }
 
@@ -670,9 +678,16 @@ class SessionManagerServiceV2 {
     try {
       final userId = await _getAuthenticatedUserId();
       if (userId == null) return [];
+      // ارسال current_session_id تا بکند is_current_session را مشخص کند
+      final path = _currentSessionId != null
+          ? '/v1/sessions/active?current_session_id=$_currentSessionId'
+          : '/v1/sessions/active';
       final result = await _backendRequest(
         method: 'GET',
-        path: '/v1/sessions/active',
+        path: path,
+        headers: _currentSessionId != null
+            ? {'X-Session-ID': _currentSessionId!}
+            : null,
       );
       if (result is Map && result['sessions'] is List) {
         return (result['sessions'] as List)

@@ -344,11 +344,11 @@ class _ImprovedAnimatedMessageBubbleState
               },
               onDoubleTap: widget.onDoubleTap,
               child: Padding(
-                padding: EdgeInsets.only(
-                  left: widget.isMe
+                padding: EdgeInsetsDirectional.only(
+                  start: widget.isMe
                       ? oppositeInset
                       : (widget.compactWithAvatar ? 6 : edgeInset),
-                  right: widget.isMe ? edgeInset : oppositeInset,
+                  end: widget.isMe ? edgeInset : oppositeInset,
                   bottom: widget.isLastInGroup ? 4 : 1.5,
                   top: widget.isFirstInGroup ? 4 : 1.5,
                 ),
@@ -364,7 +364,12 @@ class _ImprovedAnimatedMessageBubbleState
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
                         Flexible(
-                          child: _buildMessageBubble(theme),
+                          child: ConstrainedBox(
+                            constraints: BoxConstraints(
+                              maxWidth: MediaQuery.of(context).size.width * 0.82,
+                            ),
+                            child: _buildMessageBubble(theme),
+                          ),
                         ),
                       ],
                     ),
@@ -421,10 +426,10 @@ class _ImprovedAnimatedMessageBubbleState
   Widget _buildForwardHeader(ChatTheme theme) {
     return Container(
       margin: const EdgeInsets.fromLTRB(8, 8, 8, 4),
-      padding: const EdgeInsets.only(left: 4),
+      padding: const EdgeInsetsDirectional.only(start: 4),
       decoration: BoxDecoration(
-        border: Border(
-          left: BorderSide(
+        border: BorderDirectional(
+          start: BorderSide(
             color: theme.sendButtonColor.withValues(alpha: 0.5),
             width: 2,
           ),
@@ -523,8 +528,8 @@ class _ImprovedAnimatedMessageBubbleState
               ? Colors.white.withValues(alpha: 0.15)
               : Colors.black.withValues(alpha: 0.05),
           borderRadius: BorderRadius.circular(8),
-          border: Border(
-            right: BorderSide(
+          border: BorderDirectional(
+            start: BorderSide(
               color: theme.sendButtonColor,
               width: 3,
             ),

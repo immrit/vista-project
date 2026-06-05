@@ -1,6 +1,7 @@
 // ignore_for_file: unused_element, deprecated_member_use
 
 import 'dart:async';
+import 'dart:io' as io;
 
 import 'package:Vista/features/chat/screens/ChatConversationsScreen.dart'
     show ChatConversationsScreen;
@@ -385,7 +386,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       return;
     }
     // خروج از برنامه
-    SystemNavigator.pop();
+    io.exit(0);
   }
 
   @override

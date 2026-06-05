@@ -99,8 +99,11 @@ class AuthNavigationService {
   static bool _isRedirecting = false;
   static DateTime? _lastRedirectAttempt;
 
-  /// شمارنده تلاش‌های ناموفق
+  /// شمارنده تلاش‌های ناموفق — فقط خطاهای احراز هویتی (4xx) شمرده می‌شوند، نه خطاهای شبکه
   static int _consecutiveFailures = 0;
+
+  /// شمارنده خطاهای شبکه (جداگانه — هرگز باعث logout نمی‌شود)
+  static int _networkFailures = 0;
 
   /// Cache بررسی نشست
   static SessionVerificationResult? _cachedResult;
@@ -254,11 +257,28 @@ class AuthNavigationService {
           return refreshResult;
         }
 
-        // refresh ناموفق بود
+        // refresh ناموفق بود — فقط خطاهای احراز هویتی را بشمار (نه شبکه)
+        final isNetErr = refreshResult.state == SessionState.networkError;
+        if (isNetErr) {
+          _networkFailures++;
+          logInfo('🌐 [AuthNav] Network failure #$_networkFailures (not counting toward auth limit)');
+          // در صورت خطای شبکه، به session محلی اعتماد کن
+          final localResult = quickCheck();
+          if (localResult.isValid) {
+            return SessionVerificationResult(
+              state: SessionState.authenticated,
+              message: 'نشست محلی معتبر (آفلاین)',
+              userId: localResult.userId,
+            );
+          }
+          _updateCache(refreshResult);
+          return refreshResult;
+        }
         _consecutiveFailures++;
+        _networkFailures = 0;
 
         if (_consecutiveFailures >= _maxConsecutiveFailures) {
-          logInfo('❌ [AuthNav] Too many consecutive failures');
+          logInfo('❌ [AuthNav] Too many consecutive auth failures');
           final terminalResult = SessionVerificationResult(
             state: SessionState.expiredTerminal,
             message: 'امکان تمدید نشست وجود ندارد',
@@ -291,9 +311,10 @@ class AuthNavigationService {
     } catch (e) {
       logInfo('❌ [AuthNav] Verification error: $e');
 
-      // در صورت خطای شبکه، به session محلی اعتماد کن
+      // در صورت خطای شبکه، هرگز logout نکن — به session محلی اعتماد کن
       if (_isNetworkError(e)) {
-        logInfo('🌐 [AuthNav] Network error, trusting local session');
+        _networkFailures++;
+        logInfo('🌐 [AuthNav] Network error #$_networkFailures, trusting local session');
         final localResult = quickCheck();
         if (localResult.isValid) {
           return SessionVerificationResult(
@@ -302,6 +323,12 @@ class AuthNavigationService {
             userId: localResult.userId,
           );
         }
+        // حتی بدون userId، خطای شبکه نباید باعث logout شود
+        return const SessionVerificationResult(
+          state: SessionState.networkError,
+          message: 'خطا در اتصال به سرور — نشست حفظ شده',
+          canRetry: true,
+        );
       }
 
       return SessionVerificationResult(
@@ -609,7 +636,14 @@ class AuthNavigationService {
         errorStr.contains('connection refused') ||
         errorStr.contains('connection timed out') ||
         errorStr.contains('network is unreachable') ||
-        errorStr.contains('no internet');
+        errorStr.contains('no internet') ||
+        errorStr.contains('handshakeexception') ||
+        errorStr.contains('clientexception') ||
+        errorStr.contains('timeout') ||
+        errorStr.contains('timedout') ||
+        errorStr.contains('errno = 101') ||
+        errorStr.contains('errno = 111') ||
+        errorStr.contains('os error');
   }
 
   /// پیام مناسب برای هر وضعیت
@@ -735,6 +769,7 @@ class AuthNavigationService {
     _isRedirecting = false;
     _lastRedirectAttempt = null;
     _consecutiveFailures = 0;
+    _networkFailures = 0;
     _cachedResult = null;
     _cacheTime = null;
     _currentState = SessionState.verifying;

@@ -438,7 +438,7 @@ class _GroupCreateScreenState extends ConsumerState<GroupCreateScreen> {
 
   Widget _buildSelectedChip(ThemeData theme, GroupUserItem user) {
     return Container(
-      padding: const EdgeInsets.only(left: 4, right: 10),
+      padding: const EdgeInsetsDirectional.only(start: 4, end: 10),
       decoration: BoxDecoration(
         color: theme.colorScheme.primary.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(20),

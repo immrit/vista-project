@@ -264,6 +264,8 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
         context,
         PageRouteBuilder(
           opaque: false,
+          transitionDuration: const Duration(milliseconds: 300),
+          reverseTransitionDuration: const Duration(milliseconds: 300),
           pageBuilder: (_, __, ___) => FullScreenImageViewer(
             galleryItems: galleryItems,
             initialIndex: initialIndex,
@@ -274,7 +276,12 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
             },
           ),
           transitionsBuilder: (context, animation, secondaryAnimation, child) {
-            return FadeTransition(opacity: animation, child: child);
+            final curvedAnimation = CurvedAnimation(
+              parent: animation,
+              curve: Curves.easeOutCubic,
+              reverseCurve: Curves.easeOutCubic,
+            );
+            return FadeTransition(opacity: curvedAnimation, child: child);
           },
         ),
       );
