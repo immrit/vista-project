@@ -43,6 +43,10 @@ class ProfileEntity {
   bool showGender = false;
   bool showMaritalStatus = false;
 
+  String? subscriptionPlan;
+  DateTime? subscriptionExpiresAt;
+  int? premiumDaysRemaining;
+
   // Last time this profile was updated in cache
   DateTime lastUpdated = DateTime.now();
 
@@ -73,6 +77,9 @@ class ProfileEntity {
       ..showBirthDate = model.showBirthDate
       ..showGender = model.showGender
       ..showMaritalStatus = model.showMaritalStatus
+      ..subscriptionPlan = model.subscriptionPlan
+      ..subscriptionExpiresAt = model.subscriptionExpiresAt
+      ..premiumDaysRemaining = model.premiumDaysRemaining
       ..lastUpdated = DateTime.now();
   }
 
@@ -103,6 +110,9 @@ class ProfileEntity {
       showBirthDate: showBirthDate,
       showGender: showGender,
       showMaritalStatus: showMaritalStatus,
+      subscriptionPlan: subscriptionPlan,
+      subscriptionExpiresAt: subscriptionExpiresAt,
+      premiumDaysRemaining: premiumDaysRemaining,
       // Note: `posts` are loaded separately using PostEntity query
     );
   }

@@ -319,16 +319,18 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
                    debugPrint('Error setting password during registration: $e');
                }
            }
-        }
-
-        _showSnack('خوش آمدید!');
-
-        final finalAuthState = ref.read(authControllerProvider);
-        if (finalAuthState.isNewUser ||
-            finalAuthState.currentUser?.profileCompleted == false) {
-          Navigator.pushReplacementNamed(context, '/profile-setup');
+           _showSnack('خوش آمدید!');
+           final finalAuthState = ref.read(authControllerProvider);
+           if (finalAuthState.isNewUser ||
+               finalAuthState.currentUser?.profileCompleted == false) {
+             Navigator.pushReplacementNamed(context, '/profile-setup');
+           } else {
+             Navigator.pushReplacementNamed(context, '/home');
+           }
         } else {
-          Navigator.pushReplacementNamed(context, '/home');
+           // User successfully logged in via OTP.
+           // They DO NOT have a password. Force them to set one.
+           Navigator.pushReplacementNamed(context, '/mandatory-password');
         }
       } else {
         setState(() {

@@ -1,4 +1,5 @@
 import 'dart:ui';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -20,8 +21,13 @@ class PricingPage extends ConsumerStatefulWidget {
   ConsumerState<PricingPage> createState() => _PricingPageState();
 }
 
-class _PricingPageState extends ConsumerState<PricingPage> {
-  static const Color _premiumColor = Color(0xFF8774E1);
+class _PricingPageState extends ConsumerState<PricingPage> with SingleTickerProviderStateMixin {
+  // تم رنگی لاکچری و پریمیوم
+  static const Color _goldStart = Color(0xFFFFD700);
+  static const Color _goldEnd = Color(0xFFFDB931);
+  static const Color _darkBg = Color(0xFF0F0F13);
+  static const Color _glassBgDark = Color(0x1AFFFFFF);
+  static const Color _glassBorderDark = Color(0x33FFFFFF);
 
   final BazaarPaymentService _bazaarService = BazaarPaymentService();
   bool _isBazaarConnected = false;
@@ -29,7 +35,10 @@ class _PricingPageState extends ConsumerState<PricingPage> {
   bool _isPurchasing = false;
   int _selectedPlanIndex = 1;
 
-  /// مبالغ هم‌خوان با بک‌اند (`payment/repository.go`).
+  late AnimationController _pulseController;
+  late Animation<double> _pulseAnimation;
+
+  /// مبالغ هم‌خوان با بک‌اند
   static const int _monthlyAmount = 49000;
   static const int _yearlyAmount = 399000;
 
@@ -55,8 +64,7 @@ class _PricingPageState extends ConsumerState<PricingPage> {
     {
       'icon': Icons.verified,
       'title': 'نشان تأیید طلایی',
-      'subtitle':
-          'تیک طلایی کنار نام شما در پروفایل، پست‌ها، کامنت‌ها و چت نمایش داده می‌شود.',
+      'subtitle': 'تیک طلایی کنار نام شما در پروفایل، پست‌ها، کامنت‌ها و چت نمایش داده می‌شود.',
     },
     {
       'icon': Icons.timelapse,
@@ -76,8 +84,7 @@ class _PricingPageState extends ConsumerState<PricingPage> {
     {
       'icon': Icons.upload_file,
       'title': 'ارسال فایل تا ۵۰ مگابایت',
-      'subtitle':
-          'در چت می‌توانید تصویر، PDF و فایل صوتی تا ۵۰ مگابایت ارسال کنید (عادی: ۱۰ مگابایت).',
+      'subtitle': 'در چت می‌توانید تصویر، PDF و فایل صوتی تا ۵۰ مگابایت ارسال کنید (عادی: ۱۰ مگابایت).',
     },
     {
       'icon': Icons.video_collection,
@@ -104,7 +111,22 @@ class _PricingPageState extends ConsumerState<PricingPage> {
   @override
   void initState() {
     super.initState();
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 2),
+    )..repeat(reverse: true);
+    
+    _pulseAnimation = Tween<double>(begin: 1.0, end: 1.05).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+    );
+
     _initBazaar();
+  }
+
+  @override
+  void dispose() {
+    _pulseController.dispose();
+    super.dispose();
   }
 
   Future<void> _initBazaar() async {
@@ -130,9 +152,7 @@ class _PricingPageState extends ConsumerState<PricingPage> {
     if (!_isBazaarConnected) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text(
-            'اتصال به کافه‌بازار برقرار نشد. لطفاً اپ بازار را نصب یا به‌روزرسانی کنید.',
-          ),
+          content: Text('اتصال به کافه‌بازار برقرار نشد. لطفاً اپ بازار را نصب یا به‌روزرسانی کنید.'),
         ),
       );
       _initBazaar();
@@ -170,16 +190,18 @@ class _PricingPageState extends ConsumerState<PricingPage> {
         await showDialog<void>(
           context: context,
           builder: (_) => AlertDialog(
-            title: const Text('تبریک!', textAlign: TextAlign.center),
+            backgroundColor: _darkBg,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: const BorderSide(color: _goldStart, width: 1.5)),
+            title: const Text('تبریک!', textAlign: TextAlign.center, style: TextStyle(color: _goldStart, fontWeight: FontWeight.bold)),
             content: Text(
-              'اشتراک ویستا پریمیوم با موفقیت به‌روزرسانی شد.$daysText\n'
-              'تیک طلایی و امکانات ویژه فعال است.',
+              'اشتراک ویستا پریمیوم با موفقیت به‌روزرسانی شد.$daysText\nتیک طلایی و امکانات ویژه فعال است.',
               textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.white70),
             ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context),
-                child: const Text('باشه'),
+                child: const Text('باشه', style: TextStyle(color: _goldStart)),
               ),
             ],
           ),
@@ -203,19 +225,16 @@ class _PricingPageState extends ConsumerState<PricingPage> {
     final isPremium = PremiumSubscriptionUtils.isPremiumActive(profile);
     final selectedPlan = _plans[_selectedPlanIndex];
     final extendHint = isPremium
-        ? PremiumSubscriptionUtils.extendHintForPlan(
-            selectedPlan['title'] as String,
-          )
+        ? PremiumSubscriptionUtils.extendHintForPlan(selectedPlan['title'] as String)
         : null;
     final yearlySavings = (_monthlyAmount * 12) - _yearlyAmount;
-    final savingsPercent =
-        ((yearlySavings / (_monthlyAmount * 12)) * 100).round();
+    final savingsPercent = ((yearlySavings / (_monthlyAmount * 12)) * 100).round();
 
-    final statusBarColor = isDark ? const Color(0xFF1A1A1F) : Colors.white;
+    final statusBarColor = Colors.transparent;
     final systemOverlayStyle = SystemUiOverlayStyle(
       statusBarColor: statusBarColor,
-      statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
-      statusBarBrightness: isDark ? Brightness.dark : Brightness.light,
+      statusBarIconBrightness: Brightness.light,
+      statusBarBrightness: Brightness.dark,
       systemStatusBarContrastEnforced: false,
     );
     SystemChrome.setSystemUIOverlayStyle(systemOverlayStyle);
@@ -224,162 +243,216 @@ class _PricingPageState extends ConsumerState<PricingPage> {
     final busy = _isLoading || _isPurchasing;
 
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF121214) : const Color(0xFFF8F7FC),
+      backgroundColor: isDark ? _darkBg : const Color(0xFF14141A),
       body: Stack(
         children: [
+          // پس‌زمینه انیمیشنی پریمیوم
+          Positioned.fill(
+            child: Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topRight,
+                  end: Alignment.bottomLeft,
+                  colors: [
+                    Color(0xFF2A1B00),
+                    _darkBg,
+                    Color(0xFF110A00),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          // هاله درخشان طلایی بالا
+          Positioned(
+            top: -100,
+            right: -50,
+            child: Container(
+              width: 300,
+              height: 300,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  colors: [
+                    _goldStart.withOpacity(0.15),
+                    Colors.transparent,
+                  ],
+                ),
+              ),
+            ),
+          ),
+          
           CustomScrollView(
+            physics: const BouncingScrollPhysics(),
             slivers: [
               SliverAppBar(
-                expandedHeight: 200,
+                expandedHeight: 280,
                 pinned: true,
-                backgroundColor: isDark ? const Color(0xFF1A1A1F) : Colors.white,
+                backgroundColor: Colors.transparent,
                 systemOverlayStyle: systemOverlayStyle,
+                elevation: 0,
                 leading: IconButton(
-                  icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
+                  icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 22, color: Colors.white),
                   onPressed: () => Navigator.pop(context),
                 ),
                 flexibleSpace: FlexibleSpaceBar(
-                  background: Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          _premiumColor.withValues(alpha: isDark ? 0.35 : 0.2),
-                          isDark
-                              ? const Color(0xFF121214)
-                              : const Color(0xFFF8F7FC),
-                        ],
-                      ),
-                    ),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const SizedBox(height: 36),
-                        Container(
-                          width: 72,
-                          height: 72,
+                  background: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const SizedBox(height: 60),
+                      ScaleTransition(
+                        scale: _pulseAnimation,
+                        child: Container(
+                          width: 85,
+                          height: 85,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             gradient: const LinearGradient(
-                              colors: [Color(0xFF6C5CE7), Color(0xFFA29BFE)],
+                              colors: [_goldStart, _goldEnd],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
                             ),
                             boxShadow: [
                               BoxShadow(
-                                color: _premiumColor.withValues(alpha: 0.45),
-                                blurRadius: 18,
+                                color: _goldStart.withOpacity(0.4),
+                                blurRadius: 25,
+                                spreadRadius: 2,
                               ),
                             ],
                           ),
                           child: const Icon(
-                            Icons.workspace_premium_rounded,
+                            Icons.verified_rounded,
                             color: Colors.white,
-                            size: 38,
+                            size: 45,
                           ),
                         ),
-                        const SizedBox(height: 12),
-                        Text(
+                      ),
+                      const SizedBox(height: 18),
+                      ShaderMask(
+                        shaderCallback: (bounds) => const LinearGradient(
+                          colors: [_goldStart, _goldEnd, Colors.white],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ).createShader(bounds),
+                        child: const Text(
                           'ویستا پریمیوم',
                           style: TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.w800,
-                            color: isDark ? Colors.white : Colors.black87,
+                            fontSize: 28,
+                            fontWeight: FontWeight.w900,
+                            color: Colors.white,
+                            letterSpacing: 1.2,
                           ),
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'همه امکانات ویژه در یک اشتراک',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: isDark ? Colors.grey[400] : Colors.grey[600],
-                          ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'بالاترین سطح تجربه در ویستا',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.white.withOpacity(0.7),
+                          letterSpacing: 0.5,
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
               ),
+              
               if (isPremium)
                 SliverToBoxAdapter(
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
                     child: _ActivePremiumBanner(
-                      isDark: isDark,
                       profile: profile,
                     ),
                   ),
                 ),
+                
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-                  child: Text(
-                    'با پریمیوم چه می‌گیرید؟',
-                    style: TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w700,
-                      color: isDark ? Colors.white : Colors.black87,
-                    ),
+                  padding: const EdgeInsets.fromLTRB(24, 8, 24, 20),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.auto_awesome, color: _goldStart, size: 20),
+                      const SizedBox(width: 8),
+                      Text(
+                        'امکانات انحصاری شما',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white.withOpacity(0.95),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
+              
               SliverList(
                 delegate: SliverChildBuilderDelegate(
                   (context, index) => Padding(
-                    padding: EdgeInsets.fromLTRB(
-                      20,
-                      index == 0 ? 12 : 0,
-                      20,
-                      14,
-                    ),
-                    child: _FeatureTile(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+                    child: _FeatureTileUI(
                       feature: _features[index],
-                      isDark: isDark,
                     ),
                   ),
                   childCount: _features.length,
                 ),
               ),
+              
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 220),
+                  padding: const EdgeInsets.fromLTRB(20, 10, 20, 240),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        'پرداخت امن از کافه‌بازار',
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: isDark ? Colors.grey[500] : Colors.grey[600],
-                        ),
+                      Row(
+                        children: [
+                          Icon(Icons.shield_rounded, size: 16, color: Colors.white.withOpacity(0.5)),
+                          const SizedBox(width: 6),
+                          Text(
+                            'پرداخت امن کافه‌بازار',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.white.withOpacity(0.6),
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 6),
+                      const SizedBox(height: 8),
                       Text(
                         'پس از پرداخت، اشتراک بلافاصله روی حساب شما فعال می‌شود و در پنل مدیریت ثبت می‌گردد.',
                         style: TextStyle(
                           fontSize: 12,
-                          height: 1.5,
-                          color: isDark ? Colors.grey[600] : Colors.grey[500],
+                          height: 1.6,
+                          color: Colors.white.withOpacity(0.5),
                         ),
                       ),
                       if (!isPremium && savingsPercent > 0) ...[
-                        const SizedBox(height: 12),
+                        const SizedBox(height: 14),
                         Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 8,
-                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                           decoration: BoxDecoration(
-                            color: Colors.green.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(10),
+                            color: _goldStart.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: _goldStart.withOpacity(0.3)),
                           ),
-                          child: Text(
-                            'پلن سالانه نسبت به ۱۲ ماه ماهانه حدود $savingsPercent٪ '
-                            '(${_formatToman(yearlySavings)}) صرفه‌جویی دارد.',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: isDark ? Colors.green[300] : Colors.green[800],
-                              fontWeight: FontWeight.w600,
-                            ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.local_offer_rounded, color: _goldStart, size: 18),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'پلن سالانه نسبت به ۱۲ ماه ماهانه حدود $savingsPercent٪ '
+                                  '(${_formatToman(yearlySavings)}) صرفه‌جویی دارد.',
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: _goldStart,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ],
@@ -389,198 +462,197 @@ class _PricingPageState extends ConsumerState<PricingPage> {
               ),
             ],
           ),
+          
+          // بخش پایینی (باکس خرید)
           Positioned(
-              bottom: 0,
-              left: 0,
-              right: 0,
-              child: SafeArea(
-                top: false,
-                child: ClipRRect(
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-                    child: Container(
-                      padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
-                      decoration: BoxDecoration(
-                        color: (isDark ? const Color(0xFF1A1A1F) : Colors.white)
-                            .withValues(alpha: 0.94),
-                        border: Border(
-                          top: BorderSide(
-                            color: Colors.grey.withValues(alpha: 0.2),
-                          ),
-                        ),
+            bottom: 0, left: 0, right: 0,
+            child: ClipRRect(
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                child: Container(
+                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1A1A20).withOpacity(0.85),
+                    border: Border(
+                      top: BorderSide(color: Colors.white.withOpacity(0.1), width: 1),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.4),
+                        blurRadius: 20,
+                        offset: const Offset(0, -5),
                       ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Row(
-                            children: List.generate(_plans.length, (index) {
-                              final plan = _plans[index];
-                              final isSelected = _selectedPlanIndex == index;
-                              final amount = plan['amount'] as int;
-                              return Expanded(
-                                child: GestureDetector(
-                                  onTap: busy
-                                      ? null
-                                      : () => setState(
-                                            () => _selectedPlanIndex = index,
+                    ],
+                  ),
+                  child: SafeArea(
+                    top: false,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Row(
+                          children: List.generate(_plans.length, (index) {
+                            final plan = _plans[index];
+                            final isSelected = _selectedPlanIndex == index;
+                            final amount = plan['amount'] as int;
+                            return Expanded(
+                              child: GestureDetector(
+                                onTap: busy ? null : () => setState(() => _selectedPlanIndex = index),
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 300),
+                                  curve: Curves.easeOutCubic,
+                                  margin: EdgeInsets.only(
+                                    left: index == 0 ? 8 : 0,
+                                    right: index == 1 ? 8 : 0,
+                                  ),
+                                  padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+                                  decoration: BoxDecoration(
+                                    color: isSelected ? _goldStart.withOpacity(0.12) : Colors.white.withOpacity(0.03),
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(
+                                      color: isSelected ? _goldStart : Colors.white.withOpacity(0.1),
+                                      width: isSelected ? 2 : 1,
+                                    ),
+                                    boxShadow: isSelected ? [
+                                      BoxShadow(color: _goldStart.withOpacity(0.15), blurRadius: 12)
+                                    ] : [],
+                                  ),
+                                  child: Column(
+                                    children: [
+                                      if (plan['badge'] != null)
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                          margin: const EdgeInsets.only(bottom: 6),
+                                          decoration: BoxDecoration(
+                                            gradient: const LinearGradient(colors: [_goldStart, _goldEnd]),
+                                            borderRadius: BorderRadius.circular(8),
                                           ),
-                                  child: AnimatedContainer(
-                                    duration: const Duration(milliseconds: 200),
-                                    margin: EdgeInsets.only(
-                                      left: index == 0 ? 6 : 0,
-                                      right: index == 1 ? 6 : 0,
-                                    ),
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 12,
-                                      horizontal: 8,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: isSelected
-                                          ? _premiumColor.withValues(alpha: 0.14)
-                                          : (isDark
-                                              ? Colors.white10
-                                              : Colors.grey.shade100),
-                                      borderRadius: BorderRadius.circular(14),
-                                      border: Border.all(
-                                        color: isSelected
-                                            ? _premiumColor
-                                            : Colors.transparent,
-                                        width: 2,
-                                      ),
-                                    ),
-                                    child: Column(
-                                      children: [
-                                        if (plan['badge'] != null)
-                                          Text(
+                                          child: Text(
                                             plan['badge'] as String,
                                             style: const TextStyle(
-                                              color: _premiumColor,
+                                              color: Colors.black87,
                                               fontSize: 10,
-                                              fontWeight: FontWeight.bold,
+                                              fontWeight: FontWeight.w900,
                                             ),
                                           ),
-                                        Text(
-                                          plan['title'] as String,
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 15,
-                                            color: isSelected
-                                                ? _premiumColor
-                                                : (isDark
-                                                    ? Colors.white
-                                                    : Colors.black87),
-                                          ),
                                         ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          _formatToman(amount),
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: isDark
-                                                ? Colors.grey[400]
-                                                : Colors.grey[600],
-                                          ),
+                                      Text(
+                                        plan['title'] as String,
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w800,
+                                          fontSize: 16,
+                                          color: isSelected ? _goldStart : Colors.white70,
                                         ),
-                                        const SizedBox(height: 2),
-                                        Text(
-                                          plan['desc'] as String,
-                                          textAlign: TextAlign.center,
-                                          style: TextStyle(
-                                            fontSize: 10,
-                                            color: isDark
-                                                ? Colors.grey[500]
-                                                : Colors.grey[500],
-                                          ),
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        _formatToman(amount),
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w600,
+                                          color: isSelected ? Colors.white : Colors.white54,
                                         ),
-                                      ],
-                                    ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        plan['desc'] as String,
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          color: Colors.white.withOpacity(0.4),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                              );
-                            }),
-                          ),
+                              ),
+                            );
+                          }),
+                        ),
                         if (isPremium) ...[
-                          const SizedBox(height: 10),
+                          const SizedBox(height: 16),
                           Text(
                             extendHint ?? '',
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               fontSize: 12,
-                              height: 1.4,
-                              color: isDark ? Colors.grey[400] : Colors.grey[600],
+                              color: Colors.white.withOpacity(0.7),
                             ),
                           ),
-                          const SizedBox(height: 4),
+                          const SizedBox(height: 6),
                           Text(
-                            'با این خرید حدود ${_approxDaysAddedForPlan(_selectedPlanIndex)} روز '
-                            'به اشتراک فعلی شما اضافه می‌شود',
+                            'با این خرید حدود ${_approxDaysAddedForPlan(_selectedPlanIndex)} روز به اشتراک فعلی شما اضافه می‌شود',
                             textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: _premiumColor,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: _goldStart,
                             ),
                           ),
                         ],
-                        const SizedBox(height: 14),
+                        const SizedBox(height: 20),
                         SizedBox(
                           width: double.infinity,
-                          height: 52,
-                          child: ElevatedButton(
-                            onPressed: (busy || !_isBazaarConnected)
-                                ? null
-                                : _onPurchaseTap,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: _premiumColor,
-                              foregroundColor: Colors.white,
-                              disabledBackgroundColor:
-                                  _premiumColor.withValues(alpha: 0.4),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(14),
+                          height: 56,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: busy || !_isBazaarConnected 
+                                    ? [Colors.grey.shade800, Colors.grey.shade900]
+                                    : [_goldStart, _goldEnd],
                               ),
-                              elevation: 0,
+                              borderRadius: BorderRadius.circular(16),
+                              boxShadow: busy || !_isBazaarConnected ? [] : [
+                                BoxShadow(
+                                  color: _goldStart.withOpacity(0.4),
+                                  blurRadius: 16,
+                                  offset: const Offset(0, 4),
+                                )
+                              ],
                             ),
-                            child: busy
-                                ? const SizedBox(
-                                    height: 22,
-                                    width: 22,
-                                    child: CircularProgressIndicator(
-                                      color: Colors.white,
-                                      strokeWidth: 2,
+                            child: ElevatedButton(
+                              onPressed: (busy || !_isBazaarConnected) ? null : _onPurchaseTap,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.transparent,
+                                shadowColor: Colors.transparent,
+                                foregroundColor: Colors.black87,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                              ),
+                              child: busy
+                                  ? const SizedBox(
+                                      height: 24, width: 24,
+                                      child: CircularProgressIndicator(color: Colors.black87, strokeWidth: 2.5),
+                                    )
+                                  : Text(
+                                      _isBazaarConnected
+                                          ? (isPremium
+                                              ? 'تمدید ${selectedPlan['title']} — ${_formatToman(selectedPlan['amount'] as int)}'
+                                              : 'خرید ${selectedPlan['title']} — ${_formatToman(selectedPlan['amount'] as int)}')
+                                          : 'کافه‌بازار در دسترس نیست',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w900,
+                                        color: busy || !_isBazaarConnected ? Colors.white54 : Colors.black87,
+                                      ),
                                     ),
-                                  )
-                                : Text(
-                                    _isBazaarConnected
-                                        ? (isPremium
-                                            ? 'تمدید ${selectedPlan['title']} — ${_formatToman(selectedPlan['amount'] as int)}'
-                                            : 'خرید ${selectedPlan['title']} — ${_formatToman(selectedPlan['amount'] as int)}')
-                                        : 'کافه‌بازار در دسترس نیست',
-                                    style: const TextStyle(
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
+                            ),
                           ),
                         ),
-                          if (!_isBazaarConnected && !_isLoading)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 8),
-                              child: Text(
-                                'برای خرید اشتراک، اپلیکیشن کافه‌بازار باید نصب باشد.',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: Colors.red.shade300,
-                                ),
-                              ),
+                        if (!_isBazaarConnected && !_isLoading)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 12),
+                            child: Text(
+                              'برای خرید اشتراک، اپلیکیشن کافه‌بازار باید نصب باشد.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(fontSize: 12, color: Colors.redAccent.shade200),
                             ),
-                        ],
-                      ),
+                          ),
+                      ],
                     ),
                   ),
                 ),
               ),
             ),
+          ),
         ],
       ),
     );
@@ -588,12 +660,8 @@ class _PricingPageState extends ConsumerState<PricingPage> {
 }
 
 class _ActivePremiumBanner extends StatelessWidget {
-  const _ActivePremiumBanner({
-    required this.isDark,
-    required this.profile,
-  });
+  const _ActivePremiumBanner({required this.profile});
 
-  final bool isDark;
   final Map<String, dynamic>? profile;
 
   @override
@@ -603,122 +671,128 @@ class _ActivePremiumBanner extends StatelessWidget {
     final days = PremiumSubscriptionUtils.daysRemaining(profile);
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            const Color(0xFF8774E1).withValues(alpha: 0.28),
-            const Color(0xFF6C5CE7).withValues(alpha: 0.12),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF8774E1).withValues(alpha: 0.45)),
+        color: const Color(0xFF1E1C18),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFFFD700).withOpacity(0.3), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFFFFD700).withOpacity(0.1),
+            blurRadius: 20,
+            spreadRadius: 1,
+          )
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Icon(Icons.verified, color: Color(0xFFFFD54F), size: 30),
+              const Icon(Icons.stars_rounded, color: Color(0xFFFFD700), size: 32),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
                   remaining,
-                  style: TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w800,
-                    color: isDark ? Colors.white : Colors.black87,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.white,
                   ),
                 ),
               ),
             ],
           ),
           if (days != null && days > 0) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: 16),
             ClipRRect(
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(10),
               child: LinearProgressIndicator(
                 value: (days / 365).clamp(0.05, 1.0),
-                minHeight: 6,
-                backgroundColor: Colors.white.withValues(alpha: 0.15),
-                color: const Color(0xFF8774E1),
+                minHeight: 8,
+                backgroundColor: Colors.white.withOpacity(0.1),
+                valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFFFD700)),
               ),
             ),
           ],
           if (expiry.isNotEmpty) ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
             Text(
-              'تاریخ پایان: $expiry',
-              style: TextStyle(
-                fontSize: 12,
-                color: isDark ? Colors.grey[400] : Colors.grey[600],
-              ),
+              'اعتبار تا: $expiry',
+              style: TextStyle(fontSize: 13, color: Colors.white.withOpacity(0.7), fontWeight: FontWeight.w600),
             ),
           ],
-          const SizedBox(height: 8),
-          Text(
-            'می‌توانید پلن ماهانه یا سالانه بخرید؛ مدت جدید به روزهای باقی‌مانده اضافه می‌شود.',
-            style: TextStyle(
-              fontSize: 12,
-              height: 1.45,
-              color: isDark ? Colors.grey[300] : Colors.grey[700],
-            ),
-          ),
         ],
       ),
     );
   }
 }
 
-class _FeatureTile extends StatelessWidget {
-  const _FeatureTile({required this.feature, required this.isDark});
+class _FeatureTileUI extends StatelessWidget {
+  const _FeatureTileUI({required this.feature});
 
   final Map<String, dynamic> feature;
-  final bool isDark;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: const Color(0xFF8774E1).withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Icon(
-            feature['icon'] as IconData,
-            color: const Color(0xFF8774E1),
-            size: 22,
-          ),
-        ),
-        const SizedBox(width: 14),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                feature['title'] as String,
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  color: isDark ? Colors.white : Colors.black87,
-                ),
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.04),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withOpacity(0.08)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  const Color(0xFFFFD700).withOpacity(0.2),
+                  const Color(0xFFFDB931).withOpacity(0.05),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
               ),
-              const SizedBox(height: 4),
-              Text(
-                feature['subtitle'] as String,
-                style: TextStyle(
-                  fontSize: 13,
-                  height: 1.45,
-                  color: isDark ? Colors.grey[400] : Colors.grey[600],
-                ),
-              ),
-            ],
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: const Color(0xFFFFD700).withOpacity(0.3)),
+            ),
+            child: Icon(
+              feature['icon'] as IconData,
+              color: const Color(0xFFFFD700),
+              size: 24,
+            ),
           ),
-        ),
-      ],
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  feature['title'] as String,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                    letterSpacing: 0.3,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  feature['subtitle'] as String,
+                  style: TextStyle(
+                    fontSize: 13,
+                    height: 1.5,
+                    color: Colors.white.withOpacity(0.6),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

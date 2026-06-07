@@ -27,7 +27,7 @@ class _UserSelectionBottomSheetState
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   bool _isLoading = false;
-  final Set<String> _selectedUsers = {};
+  final Set<String> _selectedConversationIds = {};
   late AnimationController _animationController;
   bool _showInfoBanner = true;
 
@@ -69,7 +69,7 @@ class _UserSelectionBottomSheetState
           _buildSearchBar(theme),
           if (_showInfoBanner) _buildInfoBanner(theme),
           Expanded(child: _buildUsersGrid(theme)),
-          if (_selectedUsers.isNotEmpty) _buildSendButton(theme),
+          if (_selectedConversationIds.isNotEmpty) _buildSendButton(theme),
         ],
       ),
     );
@@ -101,9 +101,9 @@ class _UserSelectionBottomSheetState
             ),
           ),
           const Spacer(),
-          if (_selectedUsers.isNotEmpty)
+          if (_selectedConversationIds.isNotEmpty)
             Text(
-              '${_selectedUsers.length} انتخاب شده',
+              '${_selectedConversationIds.length} انتخاب شده',
               style: TextStyle(
                 fontSize: 14,
                 color: theme.primaryColor,
@@ -180,7 +180,7 @@ class _UserSelectionBottomSheetState
         children: [
           Expanded(
             child: Text(
-              'اکنون می‌توانید با افراد بیشتری پیام ارسال کنید. پیام‌هایی که به افرادی ارسال می‌شوند که شما را دنبال نمی‌کنند، به صورت درخواست ارسال خواهند شد.',
+              'پست را می‌توانید به چت‌های خصوصی و گروه‌ها ارسال کنید. پیام‌هایی که به افراد غیر دنبال‌کننده فرستاده می‌شوند، به صورت درخواست پیام ارسال خواهند شد.',
               style: TextStyle(
                 color: Colors.grey[300],
                 fontSize: 14,
@@ -253,7 +253,7 @@ class _UserSelectionBottomSheetState
 
   Widget _buildInstagramStyleUserCard(
       ThemeData theme, dynamic conversation, int index) {
-    final isSelected = _selectedUsers.contains(conversation.otherUserId);
+    final isSelected = _selectedConversationIds.contains(conversation.id);
 
     return TweenAnimationBuilder<double>(
       duration: Duration(milliseconds: 200 + (index * 50)),
@@ -262,7 +262,7 @@ class _UserSelectionBottomSheetState
         return Transform.scale(
           scale: value,
           child: GestureDetector(
-            onTap: () => _toggleUserSelection(conversation),
+            onTap: () => _toggleConversationSelection(conversation),
             child: Column(
               children: [
                 // دایره آواتار
@@ -472,7 +472,7 @@ class _UserSelectionBottomSheetState
         children: [
           Expanded(
             child: ElevatedButton(
-              onPressed: _isLoading ? null : _sendToSelectedUsers,
+              onPressed: _isLoading ? null : _sendToSelectedConversations,
               style: ElevatedButton.styleFrom(
                 backgroundColor: theme.primaryColor,
                 foregroundColor: Colors.white,
@@ -492,7 +492,7 @@ class _UserSelectionBottomSheetState
                       ),
                     )
                   : Text(
-                      'ارسال به ${_selectedUsers.length} کاربر${_selectedUsers.length > 1 ? '' : ''}',
+                      'ارسال به ${_selectedConversationIds.length} مقصد',
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
@@ -505,18 +505,18 @@ class _UserSelectionBottomSheetState
     );
   }
 
-  void _toggleUserSelection(dynamic conversation) {
+  void _toggleConversationSelection(dynamic conversation) {
     setState(() {
-      if (_selectedUsers.contains(conversation.otherUserId)) {
-        _selectedUsers.remove(conversation.otherUserId);
+      if (_selectedConversationIds.contains(conversation.id)) {
+        _selectedConversationIds.remove(conversation.id);
       } else {
-        _selectedUsers.add(conversation.otherUserId);
+        _selectedConversationIds.add(conversation.id);
       }
     });
   }
 
-  Future<void> _sendToSelectedUsers() async {
-    if (_isLoading || _selectedUsers.isEmpty) return;
+  Future<void> _sendToSelectedConversations() async {
+    if (_isLoading || _selectedConversationIds.isEmpty) return;
 
     setState(() {
       _isLoading = true;
@@ -526,12 +526,8 @@ class _UserSelectionBottomSheetState
       final repo = ref.read(chatRepositoryProvider);
       int successCount = 0;
 
-      for (final userId in _selectedUsers) {
+      for (final conversationId in _selectedConversationIds) {
         try {
-          // ایجاد یا دریافت مکالمه
-          final conversationId =
-              (await repo.createConversation(userId)).data!.id;
-
           // ایجاد محتوای پیام برای پست به صورت JSON
           final postContent = _createPostJsonContent(widget.post);
 
@@ -579,7 +575,7 @@ class _UserSelectionBottomSheetState
           children: [
             const Icon(Icons.check, color: Colors.white, size: 20),
             const SizedBox(width: 12),
-            Text('پست به $count کاربر ارسال شد'),
+            Text('پست به $count مقصد ارسال شد'),
           ],
         ),
         backgroundColor: Colors.green,

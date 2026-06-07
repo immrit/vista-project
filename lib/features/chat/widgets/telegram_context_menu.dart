@@ -1,4 +1,4 @@
-﻿import 'dart:ui';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../theme/chat_theme.dart';
@@ -63,9 +63,8 @@ class TelegramContextMenu extends StatefulWidget {
       opaque: false,
       barrierDismissible: true,
       barrierColor: Colors.transparent,
-      transitionDuration:
-          const Duration(milliseconds: 300), // کمی کندتر برای نرمی انیمیشن
-      reverseTransitionDuration: const Duration(milliseconds: 200),
+      transitionDuration: const Duration(milliseconds: 180),
+      reverseTransitionDuration: const Duration(milliseconds: 120),
       pageBuilder: (context, animation, secondaryAnimation) {
         return TelegramContextMenu(
           messageWidget: messageWidget,
@@ -76,7 +75,7 @@ class TelegramContextMenu extends StatefulWidget {
           isMyMessage: isMyMessage,
           onClose: () {
             Navigator.of(context).pop();
-            Future.delayed(const Duration(milliseconds: 200), onDismiss);
+            Future.delayed(const Duration(milliseconds: 120), onDismiss);
           },
         );
       },
@@ -113,19 +112,19 @@ class _TelegramContextMenuState extends State<TelegramContextMenu>
     HapticFeedback.mediumImpact();
 
     _controller = AnimationController(
-      duration: const Duration(milliseconds: 300),
+      duration: const Duration(milliseconds: 180),
       vsync: this,
     );
 
     _scaleAnimation = CurvedAnimation(
       parent: _controller,
-      curve: Curves.easeOutBack,
-      reverseCurve: Curves.easeIn,
+      curve: Curves.easeOutCubic,
+      reverseCurve: Curves.easeInCubic,
     );
 
     _fadeAnimation = CurvedAnimation(
       parent: _controller,
-      curve: Curves.easeOut,
+      curve: Curves.easeOutCubic,
     );
   }
 
@@ -223,14 +222,14 @@ class _TelegramContextMenuState extends State<TelegramContextMenu>
 
             return Stack(
               children: [
-                // 1. پس‌زمینه بلور
-                // 1. پس‌زمینه (بدون افکت بلور - ساده و سریع مثل ویستا اندروید)
+                // 1. Simple dim background.
                 Positioned.fill(
                   child: FadeTransition(
                     opacity: _fadeAnimation,
                     child: Container(
                       color: Colors.black.withValues(
-                          alpha: 0.6), // تاریکی بیشتر برای تمرکز روی پیام
+                        alpha: 0.34,
+                      ),
                     ),
                   ),
                 ),
@@ -299,18 +298,17 @@ class _TelegramContextMenuState extends State<TelegramContextMenu>
     return Container(
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF252525) : Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.15),
-            blurRadius: 20,
-            spreadRadius: 2,
-            offset: const Offset(0, 8),
+            color: Colors.black.withValues(alpha: 0.14),
+            blurRadius: 14,
+            offset: const Offset(0, 6),
           ),
         ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(12),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: widget.items.map((item) {
@@ -329,21 +327,21 @@ class _TelegramContextMenuState extends State<TelegramContextMenu>
                 onTap: () {
                   HapticFeedback.selectionClick();
                   widget.onClose();
-                  Future.delayed(const Duration(milliseconds: 200), item.onTap);
+                  Future.delayed(const Duration(milliseconds: 90), item.onTap);
                 },
                 overlayColor: WidgetStateProperty.all(isDark
                     ? Colors.white.withValues(alpha: 0.05)
                     : Colors.black.withValues(alpha: 0.03)),
                 child: Padding(
                   padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
                         item.label,
                         style: TextStyle(
-                          fontSize: 15,
+                          fontSize: 14,
                           fontWeight: FontWeight.w400,
                           color: item.color ??
                               (isDark ? Colors.white : Colors.black),
@@ -351,7 +349,7 @@ class _TelegramContextMenuState extends State<TelegramContextMenu>
                       ),
                       Icon(
                         item.icon,
-                        size: 20,
+                        size: 19,
                         color: item.color ??
                             (isDark ? Colors.white70 : Colors.black54),
                       ),
@@ -368,21 +366,21 @@ class _TelegramContextMenuState extends State<TelegramContextMenu>
 
   Widget _buildQuickReactionsBar(ChatTheme theme, bool isDark) {
     return Container(
-      height: 52,
-      constraints: const BoxConstraints(maxWidth: 340),
+      height: 46,
+      constraints: const BoxConstraints(maxWidth: 316),
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF252525) : Colors.white,
-        borderRadius: BorderRadius.circular(26),
+        borderRadius: BorderRadius.circular(23),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.12),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
+            color: Colors.black.withValues(alpha: 0.1),
+            blurRadius: 12,
+            offset: const Offset(0, 5),
           )
         ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(26),
+        borderRadius: BorderRadius.circular(23),
         child: ListView.builder(
           scrollDirection: Axis.horizontal,
           physics: const BouncingScrollPhysics(),
@@ -428,17 +426,17 @@ class _ReactionItemState extends State<_ReactionItem> {
       },
       onTapCancel: () => setState(() => _isPressed = false),
       child: AnimatedScale(
-        scale: _isPressed ? 1.2 : 1.0,
-        duration: const Duration(milliseconds: 100),
+        scale: _isPressed ? 1.08 : 1.0,
+        duration: const Duration(milliseconds: 80),
         child: Container(
           width: 42,
-          height: 52,
+          height: 46,
           alignment: Alignment.center,
           color: Colors.transparent,
           child: Text(
             widget.emoji,
             style: const TextStyle(
-              fontSize: 26,
+              fontSize: 24,
               fontFamily: 'Apple Color Emoji',
               decoration: TextDecoration.none,
             ),

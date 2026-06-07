@@ -13,12 +13,16 @@ import '../../../features/chat/providers/chat_providers.dart';
 import 'ArchivedConversationsScreen.dart';
 // ✅ استفاده از صفحه چت جدید
 import '../../../features/chat/screens/modern_chat_screen.dart';
+import '../../../features/chat/screens/modern_group_profile_screen.dart';
 import '../../../features/chat/screens/new_message_screen.dart';
+import '../../../features/chat/screens/telegram_profile_screen.dart';
 import '../../../DB/database_file_utils.dart';
 import '../../../utils/user_friendly_error_utils.dart';
+import '../../../utils/compat_extensions.dart';
 import '../../../services/system_ui_bar_service.dart';
 import '../../../features/chat/widgets/block_report_bottom_sheet.dart';
 import '../../../features/chat/services/user_moderation_service.dart';
+import '../../../features/chat/services/group_service.dart';
 // ✅ ویجت Swipeable برای آیتم مکالمه
 import 'package:Vista/widgets/swipeable_conversation_item.dart';
 import 'package:Vista/core/theme/app_theme.dart';
@@ -41,9 +45,12 @@ class _ChatConversationsScreenState
   final TextEditingController _searchController = TextEditingController();
   final UserModerationService _moderationService = UserModerationService();
   final Set<String> _requestActionLoading = <String>{};
+  final Set<String> _selectedConversationIds = <String>{};
   late final AnimationController _searchAnimController;
   String _searchQuery = '';
   bool _isSearchVisible = false;
+
+  bool get _isConversationSelectionMode => _selectedConversationIds.isNotEmpty;
 
   @override
   void initState() {
@@ -89,9 +96,12 @@ class _ChatConversationsScreenState
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
-      appBar: _buildAppBar(theme),
+      appBar: _isConversationSelectionMode
+          ? _buildConversationSelectionAppBar(theme)
+          : _buildAppBar(theme),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-      floatingActionButton: _buildComposeFab(theme),
+      floatingActionButton:
+          _isConversationSelectionMode ? null : _buildComposeFab(theme),
       body: Column(
         children: [
           if (_isSearchVisible) _buildSearchSection(theme),
@@ -233,6 +243,106 @@ class _ChatConversationsScreenState
     final overlayStyle = _systemOverlayStyle(theme);
     SystemChrome.setSystemUIOverlayStyle(overlayStyle);
     SystemUiBarService.sync(overlayStyle);
+  }
+
+  PreferredSizeWidget _buildConversationSelectionAppBar(ThemeData theme) {
+    final selected = _selectedConversations();
+    final selectedCount = selected.length;
+    final single = selectedCount == 1 ? selected.first : null;
+    final hasSingleMoreAction = single != null &&
+        (single.isGroup || (single.otherUserId?.isNotEmpty ?? false));
+    final pinTarget = selected.any((c) => !c.isPinned);
+    final muteTarget = selected.any((c) => !c.isMuted);
+    final appBarColor = theme.scaffoldBackgroundColor;
+
+    return AppBar(
+      backgroundColor: appBarColor,
+      surfaceTintColor: appBarColor,
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      systemOverlayStyle: _systemOverlayStyle(theme),
+      leading: IconButton(
+        icon: Icon(Icons.close_rounded, color: theme.iconTheme.color),
+        onPressed: _clearConversationSelection,
+      ),
+      title: Text(
+        '$selectedCount انتخاب شده'.toPersianDigit(),
+        style: theme.textTheme.titleMedium?.copyWith(
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+      actions: [
+        if (single != null)
+          IconButton(
+            tooltip: single.isGroup ? 'مدیریت گروه' : 'جزئیات گفتگو',
+            icon: Icon(
+              single.isGroup
+                  ? Icons.admin_panel_settings_rounded
+                  : Icons.info_outline_rounded,
+            ),
+            onPressed: () => _openSelectedConversationInfo(single),
+          ),
+        IconButton(
+          tooltip: pinTarget ? 'سنجاق کردن' : 'حذف سنجاق',
+          icon: Icon(
+            pinTarget ? Icons.push_pin_rounded : Icons.push_pin_outlined,
+          ),
+          onPressed: selected.isEmpty ? null : _togglePinSelectedConversations,
+        ),
+        IconButton(
+          tooltip: muteTarget ? 'بی‌صدا کردن' : 'فعال کردن صدا',
+          icon: Icon(
+            muteTarget
+                ? Icons.notifications_off_rounded
+                : Icons.notifications_active_rounded,
+          ),
+          onPressed: selected.isEmpty ? null : _toggleMuteSelectedConversations,
+        ),
+        IconButton(
+          tooltip: 'بایگانی',
+          icon: const Icon(Icons.archive_outlined),
+          onPressed: selected.isEmpty ? null : _archiveSelectedConversations,
+        ),
+        IconButton(
+          tooltip: 'حذف',
+          icon: Icon(
+            Icons.delete_outline_rounded,
+            color: theme.colorScheme.error,
+          ),
+          onPressed: selected.isEmpty ? null : _confirmDeleteSelected,
+        ),
+        if (single != null && hasSingleMoreAction)
+          PopupMenuButton<String>(
+            icon: Icon(Icons.more_vert_rounded, color: theme.iconTheme.color),
+            onSelected: (value) => _handleSelectionMoreAction(value, single),
+            itemBuilder: (context) => [
+              if (single.isGroup)
+                const PopupMenuItem(
+                  value: 'copy_group_invite',
+                  child: Row(
+                    children: [
+                      Icon(Icons.link_rounded, size: 20),
+                      SizedBox(width: 12),
+                      Text('کپی لینک دعوت'),
+                    ],
+                  ),
+                ),
+              if (!single.isGroup && (single.otherUserId?.isNotEmpty ?? false))
+                const PopupMenuItem(
+                  value: 'block_user',
+                  child: Row(
+                    children: [
+                      Icon(Icons.block_rounded, color: Colors.red, size: 20),
+                      SizedBox(width: 12),
+                      Text('مسدود/رفع مسدودیت'),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        const SizedBox(width: 4),
+      ],
+    );
   }
 
   Widget _buildSearchToggle(ThemeData theme) {
@@ -635,18 +745,68 @@ class _ChatConversationsScreenState
     required bool isPinnedSection,
   }) {
     final showRequestActions = conversation.isMessageRequest;
+    final isSelected = _selectedConversationIds.contains(conversation.id);
     return Column(
       children: [
-        SwipeableConversationItem(
-          key: ValueKey(conversation.id),
-          conversation: conversation,
-          onTap: () => _navigateToConversation(conversation),
-          onLongPress: () => _showConversationOptions(conversation),
-          onPin: () => _togglePinConversation(conversation),
-          onArchive: () => _archiveConversation(conversation),
-          onDelete: () => _showDeleteConfirmation(conversation),
-          onMute: () => _toggleMuteConversation(conversation),
-          onBlock: () => _handleConversationBlock(conversation),
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          curve: Curves.easeOutCubic,
+          decoration: BoxDecoration(
+            color: isSelected
+                ? theme.primaryColor.withValues(alpha: 0.08)
+                : Colors.transparent,
+            border: isSelected
+                ? BorderDirectional(
+                    start: BorderSide(
+                      color: theme.primaryColor,
+                      width: 3,
+                    ),
+                  )
+                : null,
+          ),
+          child: Stack(
+            children: [
+              SwipeableConversationItem(
+                key: ValueKey(conversation.id),
+                conversation: conversation,
+                onTap: () {
+                  if (_isConversationSelectionMode) {
+                    _toggleConversationSelection(conversation);
+                  } else {
+                    _navigateToConversation(conversation);
+                  }
+                },
+                onLongPress: () => _toggleConversationSelection(conversation),
+                onPin: () => _togglePinConversation(conversation),
+                onArchive: () => _archiveConversation(conversation),
+                onDelete: () => _showDeleteConfirmation(conversation),
+                onMute: () => _toggleMuteConversation(conversation),
+                onBlock: () => _handleConversationBlock(conversation),
+              ),
+              if (isSelected)
+                PositionedDirectional(
+                  end: 18,
+                  top: 18,
+                  child: Container(
+                    width: 24,
+                    height: 24,
+                    decoration: BoxDecoration(
+                      color: theme.primaryColor,
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: theme.scaffoldBackgroundColor,
+                        width: 2,
+                      ),
+                    ),
+                    child: const Icon(
+                      Icons.check_rounded,
+                      color: Colors.white,
+                      size: 16,
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ),
         if (showRequestActions)
           _buildMessageRequestActions(theme, conversation),
@@ -772,12 +932,178 @@ class _ChatConversationsScreenState
     }
   }
 
-  // ✅ نمایش گزینه‌های مکالمه
-  void _showConversationOptions(ConversationModel conversation) {
-    showModalBottomSheet(
+  // Selection helpers
+  List<ConversationModel> _selectedConversations() {
+    final conversations =
+        ref.read(optimizedConversationsProvider).conversations;
+    return conversations
+        .where((conversation) =>
+            _selectedConversationIds.contains(conversation.id))
+        .toList(growable: false);
+  }
+
+  void _toggleConversationSelection(ConversationModel conversation) {
+    HapticFeedback.selectionClick();
+    setState(() {
+      if (_selectedConversationIds.contains(conversation.id)) {
+        _selectedConversationIds.remove(conversation.id);
+      } else {
+        _selectedConversationIds.add(conversation.id);
+      }
+    });
+  }
+
+  void _clearConversationSelection() {
+    if (_selectedConversationIds.isEmpty) return;
+    setState(_selectedConversationIds.clear);
+  }
+
+  Future<void> _openSelectedConversationInfo(
+      ConversationModel conversation) async {
+    _clearConversationSelection();
+    if (conversation.isGroup) {
+      await _openGroupProfile(conversation);
+      return;
+    }
+    final otherUserId = conversation.otherUserId?.trim();
+    if (otherUserId != null && otherUserId.isNotEmpty) {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => VistaChatProfileScreen(
+            conversationId: conversation.id,
+            otherUserId: otherUserId,
+            otherUserName: _conversationDisplayName(conversation),
+            otherUserAvatar: conversation.otherUserAvatar,
+          ),
+        ),
+      );
+      if (mounted) {
+        await ref.read(optimizedConversationsProvider.notifier).refresh();
+      }
+      return;
+    }
+    await _navigateToConversation(conversation);
+  }
+
+  Future<void> _handleSelectionMoreAction(
+      String value, ConversationModel conversation) async {
+    _clearConversationSelection();
+    switch (value) {
+      case 'copy_group_invite':
+        await _copyGroupInviteLink(conversation);
+        break;
+      case 'block_user':
+        await _handleConversationBlock(conversation);
+        break;
+    }
+  }
+
+  Future<void> _togglePinSelectedConversations() async {
+    final selected = _selectedConversations();
+    if (selected.isEmpty) return;
+    final shouldPin = selected.any((conversation) => !conversation.isPinned);
+    final repo = ref.read(chatRepositoryProvider);
+
+    for (final conversation in selected) {
+      if (conversation.isPinned == shouldPin) continue;
+      await repo.togglePinConversation(conversation.id);
+    }
+
+    await ref.read(optimizedConversationsProvider.notifier).refresh();
+    if (!mounted) return;
+    _clearConversationSelection();
+    UserFriendlyErrorUtils.showSuccessSnackBar(
+      context,
+      shouldPin ? 'گفتگوها سنجاق شدند' : 'سنجاق گفتگوها برداشته شد',
+    );
+  }
+
+  Future<void> _toggleMuteSelectedConversations() async {
+    final selected = _selectedConversations();
+    if (selected.isEmpty) return;
+    final shouldMute = selected.any((conversation) => !conversation.isMuted);
+    final repo = ref.read(chatRepositoryProvider);
+
+    for (final conversation in selected) {
+      if (conversation.isMuted == shouldMute) continue;
+      await repo.toggleMuteConversation(conversation.id);
+    }
+
+    await ref.read(optimizedConversationsProvider.notifier).refresh();
+    if (!mounted) return;
+    _clearConversationSelection();
+    UserFriendlyErrorUtils.showSuccessSnackBar(
+      context,
+      shouldMute ? 'اعلان گفتگوها بی‌صدا شد' : 'اعلان گفتگوها فعال شد',
+    );
+  }
+
+  Future<void> _archiveSelectedConversations() async {
+    final selected = _selectedConversations();
+    if (selected.isEmpty) return;
+    final repo = ref.read(chatRepositoryProvider);
+
+    for (final conversation in selected) {
+      await repo.toggleArchiveConversation(conversation.id);
+    }
+
+    await ref.read(optimizedConversationsProvider.notifier).refresh();
+    if (!mounted) return;
+    _clearConversationSelection();
+    UserFriendlyErrorUtils.showSuccessSnackBar(
+      context,
+      'گفتگوهای انتخاب‌شده بایگانی شدند',
+    );
+  }
+
+  Future<void> _confirmDeleteSelected() async {
+    final selected = _selectedConversations();
+    if (selected.isEmpty) return;
+
+    final confirmed = await showDialog<bool>(
       context: context,
-      backgroundColor: Colors.transparent,
-      builder: (context) => _buildConversationOptionsSheet(conversation),
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Icon(Icons.delete_outline_rounded,
+                color: Theme.of(context).colorScheme.error),
+            const SizedBox(width: 8),
+            const Text('حذف گفتگوها'),
+          ],
+        ),
+        content: Text(
+          'آیا از حذف ${selected.length.toString().toPersianDigit()} گفتگوی انتخاب‌شده مطمئن هستید؟ این عمل قابل بازگشت نیست.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('انصراف'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('حذف'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    final repo = ref.read(chatRepositoryProvider);
+    for (final conversation in selected) {
+      await repo.deleteConversation(conversation.id);
+    }
+
+    await ref.read(optimizedConversationsProvider.notifier).refresh();
+    if (!mounted) return;
+    _clearConversationSelection();
+    UserFriendlyErrorUtils.showSuccessSnackBar(
+      context,
+      'گفتگوهای انتخاب‌شده حذف شدند',
     );
   }
 
@@ -1119,165 +1445,6 @@ class _ChatConversationsScreenState
     }
   }
 
-  // ✅ Bottom sheet گزینه‌های مکالمه (ConversationModel-based)
-  Widget _buildConversationOptionsSheet(ConversationModel conversation) {
-    final theme = Theme.of(context);
-    final displayName = _conversationDisplayName(conversation);
-    final canModerateUser = conversation.otherUserId?.isNotEmpty ?? false;
-
-    return Container(
-      decoration: BoxDecoration(
-        color: theme.scaffoldBackgroundColor,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      padding: const EdgeInsets.all(20),
-      child: SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _buildSheetHandle(theme),
-            const SizedBox(height: 20),
-            Text(
-              displayName,
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-                color: theme.textTheme.titleLarge?.color,
-              ),
-            ),
-            const SizedBox(height: 20),
-            _buildOptionTile(
-              theme,
-              icon: conversation.isPinned
-                  ? Icons.push_pin_outlined
-                  : Icons.push_pin_rounded,
-              title:
-                  conversation.isPinned ? 'حذف از سنجاق شده‌ها' : 'سنجاق کردن',
-              onTap: () {
-                Navigator.pop(context);
-                _togglePinConversation(conversation);
-              },
-            ),
-            _buildOptionTile(
-              theme,
-              icon: conversation.isMuted
-                  ? Icons.volume_up_rounded
-                  : Icons.volume_off_rounded,
-              title: conversation.isMuted
-                  ? 'فعال کردن اعلان‌ها'
-                  : 'خاموش کردن اعلان‌ها',
-              onTap: () {
-                Navigator.pop(context);
-                _toggleMuteConversation(conversation);
-              },
-            ),
-            _buildOptionTile(
-              theme,
-              icon: Icons.archive_outlined,
-              title: 'بایگانی کردن',
-              onTap: () {
-                Navigator.pop(context);
-                _archiveConversation(conversation);
-              },
-            ),
-            if (canModerateUser)
-              _buildOptionTile(
-                theme,
-                icon: Icons.block_rounded,
-                title: 'مسدود/رفع مسدودیت',
-                isDestructive: true,
-                onTap: () {
-                  Navigator.pop(context);
-                  _handleConversationBlock(conversation);
-                },
-              ),
-            _buildOptionTile(
-              theme,
-              icon: Icons.delete_outline_rounded,
-              title: 'حذف گفتگو',
-              isDestructive: true,
-              onTap: () {
-                Navigator.pop(context);
-                _deleteConversation(conversation);
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSheetHandle(ThemeData theme) {
-    return Container(
-      width: 40,
-      height: 4,
-      decoration: BoxDecoration(
-        color: theme.hintColor,
-        borderRadius: BorderRadius.circular(2),
-      ),
-    );
-  }
-
-  Widget _buildOptionTile(
-    ThemeData theme, {
-    required IconData icon,
-    required String title,
-    String? subtitle,
-    bool isDestructive = false,
-    required VoidCallback onTap,
-  }) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      decoration: BoxDecoration(
-        color: theme.cardColor,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: theme.dividerColor.withValues(alpha: 0.1),
-          width: 1,
-        ),
-      ),
-      child: ListTile(
-        leading: Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: isDestructive
-                ? theme.colorScheme.error.withValues(alpha: 0.1)
-                : theme.primaryColor.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Icon(
-            icon,
-            color: isDestructive ? theme.colorScheme.error : theme.primaryColor,
-            size: 20,
-          ),
-        ),
-        title: Text(
-          title,
-          style: TextStyle(
-            fontWeight: FontWeight.w600,
-            color: isDestructive
-                ? theme.colorScheme.error
-                : theme.textTheme.titleMedium?.color,
-          ),
-        ),
-        subtitle: subtitle != null
-            ? Text(
-                subtitle,
-                style: TextStyle(
-                  fontSize: 13,
-                  color: theme.hintColor,
-                ),
-              )
-            : null,
-        onTap: onTap,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-      ),
-    );
-  }
-
   // ✅ Action Methods (ConversationModel-based)
   void _togglePinConversation(ConversationModel conversation) async {
     final repo = ref.read(chatRepositoryProvider);
@@ -1352,6 +1519,51 @@ class _ChatConversationsScreenState
   }
 
   void _createNewChannel() {}
+
+  Future<void> _openGroupProfile(ConversationModel conversation) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ModernGroupProfileScreen(
+          conversationId: conversation.id,
+        ),
+      ),
+    );
+    if (mounted) {
+      await ref.read(optimizedConversationsProvider.notifier).refresh();
+    }
+  }
+
+  Future<void> _copyGroupInviteLink(ConversationModel conversation) async {
+    try {
+      final invite = await GroupService().getInvite(conversation.id);
+      if (!mounted) return;
+      final inviteCode = invite['invite_code']?.toString();
+      if (inviteCode == null || inviteCode.trim().isEmpty) {
+        UserFriendlyErrorUtils.showErrorSnackBar(
+          context,
+          'لینک دعوت هنوز ساخته نشده است',
+        );
+        return;
+      }
+      await Clipboard.setData(
+        ClipboardData(text: 'https://cafevista.ir/group/$inviteCode'),
+      );
+      if (mounted) {
+        UserFriendlyErrorUtils.showSuccessSnackBar(
+          context,
+          'لینک دعوت گروه کپی شد',
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        UserFriendlyErrorUtils.showErrorSnackBar(
+          context,
+          'برای دریافت لینک دعوت دسترسی ندارید',
+        );
+      }
+    }
+  }
 
   String _conversationDisplayName(ConversationModel conversation) {
     return resolveConversationDisplayName(conversation.otherUserName);

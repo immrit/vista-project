@@ -423,7 +423,7 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
       decoration: BoxDecoration(
         color: cardColor,
         borderRadius: BorderRadius.circular(16),
@@ -511,30 +511,30 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
           HapticFeedback.lightImpact();
           onTap();
         },
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(10),
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 14),
+          padding: const EdgeInsets.symmetric(vertical: 11),
           decoration: BoxDecoration(
             color: isDark
-                ? Colors.white.withValues(alpha: 0.08)
-                : Colors.grey.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(12),
+                ? Colors.white.withValues(alpha: 0.06)
+                : Colors.grey.withValues(alpha: 0.06),
+            borderRadius: BorderRadius.circular(10),
             border: Border.all(
               color: isDark
-                  ? Colors.white.withValues(alpha: 0.1)
-                  : Colors.grey.withValues(alpha: 0.15),
+                  ? Colors.white.withValues(alpha: 0.08)
+                  : Colors.grey.withValues(alpha: 0.12),
               width: 1,
             ),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, color: color, size: 26),
-              const SizedBox(height: 6),
+              Icon(icon, color: color, size: 23),
+              const SizedBox(height: 5),
               Text(
                 label,
                 style: TextStyle(
-                  fontSize: 12,
+                  fontSize: 11,
                   fontWeight: FontWeight.w500,
                   color: isDark ? Colors.white70 : Colors.grey[700],
                 ),

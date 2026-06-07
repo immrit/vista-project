@@ -56,6 +56,7 @@ import 'package:Vista/features/auth/screens/password_reset_code_screen.dart';
 import 'package:Vista/features/auth/screens/password_reset_sms_screen.dart';
 import 'package:Vista/features/auth/screens/password_recovery_confirm_screen.dart';
 import 'package:Vista/features/auth/screens/password_set_screen.dart';
+import 'package:Vista/features/auth/screens/mandatory_password_screen.dart';
 import 'package:Vista/features/auth/widgets/session_auth_wrapper.dart'; // Import SessionAuthWrapper
 import 'package:Vista/features/onboarding/screens/Onboarding.dart';
 import 'package:Vista/features/profile/screens/editeProfile.dart';
@@ -313,11 +314,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
     try {
       final hasTokenSession = await TokenStorage.hasValidSession();
       if (!hasTokenSession) return;
-      final isValid =
-          await sessionManager.verifyCurrentSession(forceServer: false);
-      if (!isValid) {
-        await _handleUserSignOut();
-      }
+      await sessionManager.verifyCurrentSession(forceServer: false);
     } catch (_) {}
   }
 
@@ -595,6 +592,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
               '/reset-password-confirm': (context) =>
                   const PasswordRecoveryConfirmScreen(),
               '/reset-password-set': (context) => const PasswordSetScreen(),
+              '/mandatory-password': (context) => const MandatoryPasswordScreen(),
               '/biometric-login': (context) => BiometricLoginScreen(
                     onSuccess: () =>
                         Navigator.pushReplacementNamed(context, '/home'),

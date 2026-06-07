@@ -486,6 +486,29 @@ class AuthRepository {
     }
   }
 
+  // ─── ایجاد رمز عبور (2FA Setup) ───
+  Future<void> set2FaPassword({
+    required String password,
+    required String accessToken,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/2fa/setup',
+        data: {'password': password},
+        options: Options(headers: {'Authorization': 'Bearer $accessToken'}),
+      );
+
+      if (response.statusCode != 200) {
+        throw 'خطا در تعیین رمز عبور';
+      }
+    } on DioException catch (e) {
+      throw _handleDioError(e, 'تعیین رمز عبور');
+    } catch (e) {
+      logError('Set 2FA Password Error', error: e);
+      rethrow;
+    }
+  }
+
   Future<SendEmailVerificationResponse> sendEmailVerification({
     required String accessToken,
     required String email,

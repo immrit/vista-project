@@ -227,11 +227,7 @@ class SessionManagerServiceV2 {
   void _syncWithServerInBackground() {
     Future.delayed(const Duration(seconds: 2), () async {
       try {
-        final valid = await _quickSessionCheck();
-        if (!valid) {
-          logInfo('⚠️ Background sync: session invalid, recovering...');
-          _markSessionPendingAndRecover();
-        }
+        await _quickSessionCheck();
       } catch (e) {
         logInfo('⚠️ Background sync failed (ignored): $e');
       }
@@ -330,6 +326,7 @@ class SessionManagerServiceV2 {
       final refreshed = await _refreshSessionWithRetry();
       if (refreshed == RefreshResult.authError) {
         _verificationState = SessionVerificationState.invalid;
+        await _handleSessionTermination();
         return false;
       }
       if (refreshed == RefreshResult.networkError) {
@@ -363,9 +360,23 @@ class SessionManagerServiceV2 {
             'session_token': _sessionToken,
           },
         );
-        if (result is Map && result['valid'] == true) {
-          _verificationState = SessionVerificationState.verified;
-          return true;
+        if (result is Map) {
+          if (result['valid'] == true) {
+            _verificationState = SessionVerificationState.verified;
+            return true;
+          } else {
+            final reason = result['reason'];
+            logInfo('⚠️ Session validation failed: reason=$reason');
+            if (reason == 'inactive' || reason == 'token_mismatch') {
+              _verificationState = SessionVerificationState.invalid;
+              await _handleSessionTermination();
+              return false;
+            } else {
+              // 'not_found' or other recoverable reasons
+              _markSessionPendingAndRecover();
+              return true; // Prevent app_runner from forcefully logging out
+            }
+          }
         }
         _verificationState = SessionVerificationState.invalid;
         return false;

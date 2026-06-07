@@ -104,7 +104,7 @@ import 'package:uuid/uuid.dart';
 
 // ✅ Phase 4: Final Integration
 import 'telegram_profile_screen.dart';
-import 'group_details_screen.dart';
+import 'modern_group_profile_screen.dart';
 import 'document_preview_screen.dart';
 import '../screens/message_info_screen.dart';
 // TODO: Use CompleteDeletionService for delete with undo
@@ -1994,10 +1994,9 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
           child: RepaintBoundary(
             child: EnhancedChatBackground(
               enablePattern: true,
-              forceEnableBlur:
-                  reduceEffects ? false : adaptiveEffects.allowHeavyBlur,
               blurIntensity: adaptiveEffects.blurSigma,
-              allowHeavyEffects: adaptiveEffects.allowHeavyBlur,
+              allowHeavyEffects:
+                  !reduceEffects && adaptiveEffects.allowHeavyBlur,
               child: Container(color: Colors.transparent),
             ),
           ),
@@ -2336,12 +2335,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       return;
     }
 
-    // Tap معمولی فقط برای باز کردن جزئیات/پیش‌نمایش مدیا استفاده می‌شود.
-    final hasAttachment = (message.attachmentUrl?.isNotEmpty ?? false) ||
-        _isSharedPostMessage(message);
-    if (hasAttachment) {
-      _showMessageDetails(message);
-    }
+    // Tap opens the context menu unless multi-select is already active.
+    _showTelegramContextMenu(itemContext, message);
   }
 
   void _handleMessageLongPress(BuildContext itemContext, MessageModel message) {
@@ -2349,8 +2344,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     if (_isSelectionMode) {
       _toggleMessageSelection(message.id);
     } else {
-      // لانگ پرس -> باز شدن کانتکست منو
-      _showTelegramContextMenu(itemContext, message);
+      // Long-press starts multi-select.
+      _enterSelectionMode(message.id);
     }
   }
 
@@ -2584,6 +2579,41 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
           icon: Icon(Icons.more_vert, color: theme.iconColor),
           onSelected: _handleMenuAction,
           itemBuilder: (context) => [
+            if (widget.args.isGroup)
+              PopupMenuItem(
+                value: 'group_manage',
+                child: Row(
+                  children: [
+                    Icon(Icons.admin_panel_settings_rounded,
+                        color: theme.iconColor, size: 20),
+                    const SizedBox(width: 12),
+                    const Text('مدیریت گروه'),
+                  ],
+                ),
+              ),
+            if (widget.args.isGroup)
+              PopupMenuItem(
+                value: 'group_invite',
+                child: Row(
+                  children: [
+                    Icon(Icons.link_rounded, color: theme.iconColor, size: 20),
+                    const SizedBox(width: 12),
+                    const Text('کپی لینک دعوت'),
+                  ],
+                ),
+              ),
+            if (widget.args.isGroup)
+              PopupMenuItem(
+                value: 'group_add_members',
+                child: Row(
+                  children: [
+                    Icon(Icons.person_add_alt_1_rounded,
+                        color: theme.iconColor, size: 20),
+                    const SizedBox(width: 12),
+                    const Text('افزودن عضو'),
+                  ],
+                ),
+              ),
             if (!widget.args.isSecret &&
                 !widget.args.isGroup &&
                 widget.args.otherUserId.isNotEmpty)
@@ -2635,30 +2665,32 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                   Icon(Icons.info_outline_rounded,
                       color: theme.iconColor, size: 20),
                   const SizedBox(width: 12),
-                  const Text('جزئیات چت'),
+                  Text(widget.args.isGroup ? 'اطلاعات گروه' : 'جزئیات چت'),
                 ],
               ),
             ),
-            PopupMenuItem(
-              value: 'block',
-              child: Row(
-                children: [
-                  Icon(Icons.block_rounded, color: Colors.red, size: 20),
-                  const SizedBox(width: 12),
-                  Text('مسدود کردن', style: TextStyle(color: Colors.red)),
-                ],
+            if (!widget.args.isGroup && widget.args.otherUserId.isNotEmpty)
+              PopupMenuItem(
+                value: 'block',
+                child: Row(
+                  children: [
+                    Icon(Icons.block_rounded, color: Colors.red, size: 20),
+                    const SizedBox(width: 12),
+                    Text('مسدود کردن', style: TextStyle(color: Colors.red)),
+                  ],
+                ),
               ),
-            ),
-            PopupMenuItem(
-              value: 'report',
-              child: Row(
-                children: [
-                  Icon(Icons.flag_rounded, color: Colors.orange, size: 20),
-                  const SizedBox(width: 12),
-                  Text('گزارش', style: TextStyle(color: Colors.orange)),
-                ],
+            if (!widget.args.isGroup && widget.args.otherUserId.isNotEmpty)
+              PopupMenuItem(
+                value: 'report',
+                child: Row(
+                  children: [
+                    Icon(Icons.flag_rounded, color: Colors.orange, size: 20),
+                    const SizedBox(width: 12),
+                    Text('گزارش', style: TextStyle(color: Colors.orange)),
+                  ],
+                ),
               ),
-            ),
             PopupMenuItem(
               value: 'clear',
               child: Row(
@@ -2670,6 +2702,18 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                 ],
               ),
             ),
+            if (widget.args.isGroup)
+              const PopupMenuItem(
+                value: 'leave_group',
+                child: Row(
+                  children: [
+                    Icon(Icons.exit_to_app_rounded,
+                        color: Colors.red, size: 20),
+                    SizedBox(width: 12),
+                    Text('خروج از گروه', style: TextStyle(color: Colors.red)),
+                  ],
+                ),
+              ),
           ],
         ),
       ],
@@ -2938,6 +2982,13 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       case 'secret_timer':
         _pickSecretAutoDeleteTimer();
         break;
+      case 'group_manage':
+      case 'group_add_members':
+        _navigateToChatDetails();
+        break;
+      case 'group_invite':
+        _copyGroupInviteLink();
+        break;
       case 'details':
         _navigateToChatDetails();
         break;
@@ -2953,6 +3004,70 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       case 'clear':
         _showClearChatDialog();
         break;
+      case 'leave_group':
+        _leaveGroupFromChat();
+        break;
+    }
+  }
+
+  Future<void> _copyGroupInviteLink() async {
+    if (!widget.args.isGroup) return;
+    try {
+      final invite = await _groupService.getInvite(widget.args.conversationId);
+      final inviteCode = invite['invite_code']?.toString();
+      if (inviteCode == null || inviteCode.trim().isEmpty) {
+        _showErrorSnackBar('لینک دعوت هنوز ساخته نشده است');
+        return;
+      }
+      final inviteLink = 'https://cafevista.ir/group/$inviteCode';
+      await Clipboard.setData(ClipboardData(text: inviteLink));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('لینک دعوت گروه کپی شد')),
+        );
+      }
+    } catch (error) {
+      if (mounted) _showErrorSnackBar('برای دریافت لینک دعوت دسترسی ندارید');
+    }
+  }
+
+  Future<void> _leaveGroupFromChat() async {
+    if (!widget.args.isGroup) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('خروج از گروه'),
+        content: const Text(
+          'بعد از خروج، برای برگشت دوباره باید از طریق لینک دعوت یا ادمین وارد شوید.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('انصراف'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('خروج'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    try {
+      await _groupService.leaveGroup(widget.args.conversationId);
+      await _chatRepository.refreshConversations();
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+    } catch (error) {
+      if (mounted) {
+        _showErrorSnackBar(
+            'خروج از گروه انجام نشد؛ اگر سازنده هستید از مدیریت گروه استفاده کنید');
+      }
     }
   }
 
@@ -3159,14 +3274,10 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                               if (_isSelectionMode) {
                                 _toggleRenderItemSelection(renderItem);
                               } else {
-                                // ✅ حالا itemContext یک RenderBox است (چون دور Row پیچیده شده)
-                                // و دیگر خطای RenderSliverList نمی‌دهد.
-                                _showTelegramContextMenu(
-                                  itemContext,
-                                  message,
-                                  groupedMessagesOverride: renderItem.isAlbum
-                                      ? renderItem.messages
-                                      : null,
+                                // Long-press selects the full render item,
+                                // including every message in an album.
+                                _enterSelectionModeForMessages(
+                                  renderItem.messages.map((m) => m.id),
                                 );
                               }
                             },
@@ -3440,7 +3551,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
           width: 38,
           child: isLastInGroup
               ? Padding(
-                  padding: const EdgeInsetsDirectional.only(start: 4, bottom: 6),
+                  padding:
+                      const EdgeInsetsDirectional.only(start: 4, bottom: 6),
                   child: _buildGroupSenderAvatar(message, senderName, theme),
                 )
               : const SizedBox.shrink(),
@@ -3540,9 +3652,11 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     final memberName = _groupMemberById[message.senderId]?.displayName.trim();
     if (memberName != null && memberName.isNotEmpty) return memberName;
 
-    final cachedProfile = UserProfileService().getCachedProfile(message.senderId);
+    final cachedProfile =
+        UserProfileService().getCachedProfile(message.senderId);
     if (cachedProfile != null) {
-      final name = cachedProfile['username']?.trim() ?? cachedProfile['full_name']?.trim();
+      final name = cachedProfile['username']?.trim() ??
+          cachedProfile['full_name']?.trim();
       if (name != null && name.isNotEmpty) return name;
     }
 
@@ -3556,7 +3670,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     final memberAvatar = _groupMemberById[message.senderId]?.avatarUrl?.trim();
     if (memberAvatar != null && memberAvatar.isNotEmpty) return memberAvatar;
 
-    final cachedProfile = UserProfileService().getCachedProfile(message.senderId);
+    final cachedProfile =
+        UserProfileService().getCachedProfile(message.senderId);
     if (cachedProfile != null) {
       final avatar = cachedProfile['avatar_url']?.trim();
       if (avatar != null && avatar.isNotEmpty) return avatar;
@@ -4868,7 +4983,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     if (widget.args.isGroup || widget.args.otherUserId.isEmpty) {
       Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (context) => GroupDetailsScreen(
+          builder: (context) => ModernGroupProfileScreen(
             conversationId: widget.args.conversationId,
           ),
         ),
@@ -4989,6 +5104,9 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         : const <MessageModel>[];
     final albumHasOnlyImages =
         isAlbumContext && albumImageMessages.length == normalizedGroup.length;
+    final albumItems = albumHasOnlyImages
+        ? _extractAlbumMediaItems(albumImageMessages)
+        : const <_AlbumMediaItem>[];
     final hasAttachmentUrl =
         (message.attachmentUrl?.trim().isNotEmpty ?? false);
     final isDocument = hasAttachmentUrl &&
@@ -5017,13 +5135,16 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     // 4. ساخت آیتم‌های منو
     final items = <TelegramContextMenuItem>[
       // ارسال مجدد (در صورت خطا)
-      if (isMe && message.statusNotifier.value == MessageDeliveryStatus.failed) ...[
+      if (isMe &&
+          message.statusNotifier.value == MessageDeliveryStatus.failed) ...[
         TelegramContextMenuItem(
           icon: Icons.refresh_rounded,
           label: 'ارسال مجدد',
           color: Colors.orange,
           onTap: () {
-            ref.read(chatActionControllerProvider.notifier).resendMessage(message);
+            ref
+                .read(chatActionControllerProvider.notifier)
+                .resendMessage(message);
           },
         ),
         const TelegramContextMenuItem.divider(),
@@ -5068,6 +5189,12 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
       // گزینه‌های مخصوص عکس/آلبوم
       if (albumHasOnlyImages && !widget.args.isSecret) ...[
+        if (albumItems.isNotEmpty)
+          TelegramContextMenuItem(
+            icon: Icons.photo_library_outlined,
+            label: 'مشاهده آلبوم',
+            onTap: () => _openAlbumViewer(albumItems, 0),
+          ),
         TelegramContextMenuItem(
           icon: Icons.collections_rounded,
           label: 'ذخیره آلبوم',
@@ -6195,11 +6322,11 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       final isVerified = postData.isVerified;
       final role = postData.role;
       final hashtags = null; // SharedPostData فعلاً hashtags ندارد
-      void handlePostTap() {
+      void handlePostTap(BuildContext postContext) {
         if (_isSelectionMode) {
           _toggleMessageSelection(message.id);
         } else {
-          _navigateToPostScreen(postId);
+          _showTelegramContextMenu(postContext, message);
         }
       }
 
@@ -6208,80 +6335,82 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         if (_isSelectionMode) {
           _toggleMessageSelection(message.id);
         } else {
-          _showTelegramContextMenu(context, message);
+          _enterSelectionMode(message.id);
         }
       }
 
       // ✅ ساختار جدید برای کنترل کامل کلیک‌ها
-      return Stack(
-        children: [
-          // ویجت پست
-          GestureDetector(
-            // اولویت کلیک با ماست
-            onTap: handlePostTap,
-            onLongPress: handlePostLongPress,
-            child: AbsorbPointer(
-              // اگر در حالت انتخاب هستیم، اجازه نده دکمه‌های داخلی پست (لایک و...) کار کنند
-              absorbing: _isSelectionMode,
-              child: InstagramStylePostCard(
-                postId: postId,
-                authorName: authorName,
-                authorAvatar: authorAvatar,
-                authorUsername: authorUsername,
-                content: postContent,
-                mediaUrls: mediaUrls,
-                likesCount: likesCount,
-                commentsCount: commentsCount,
-                createdAt: postCreatedAt,
-                sentAt: message.createdAt,
-                isMine: isMe,
-                isVerified: isVerified,
-                verificationType: verificationType,
-                role: role,
-                hashtags: hashtags,
-                status: _getMessageStatus(message),
-                // callbacks داخلی را هم به همان هندلرها وصل می‌کنیم تا tap حتماً کار کند
-                onTap: handlePostTap,
-                onLongPress: handlePostLongPress,
-                onShare: () async {
-                  if (!_isSelectionMode) {
-                    final result = await ForwardMessageSheet.show(
-                      context,
-                      messageIds: [message.id],
-                    );
-                    if (result == true) {
-                      _showSuccessSnackBar('پست ارسال شد');
+      return Builder(
+        builder: (postContext) => Stack(
+          children: [
+            // ویجت پست
+            GestureDetector(
+              // اولویت کلیک با ماست
+              onTap: () => handlePostTap(postContext),
+              onLongPress: handlePostLongPress,
+              child: AbsorbPointer(
+                // اگر در حالت انتخاب هستیم، اجازه نده دکمه‌های داخلی پست (لایک و...) کار کنند
+                absorbing: _isSelectionMode,
+                child: InstagramStylePostCard(
+                  postId: postId,
+                  authorName: authorName,
+                  authorAvatar: authorAvatar,
+                  authorUsername: authorUsername,
+                  content: postContent,
+                  mediaUrls: mediaUrls,
+                  likesCount: likesCount,
+                  commentsCount: commentsCount,
+                  createdAt: postCreatedAt,
+                  sentAt: message.createdAt,
+                  isMine: isMe,
+                  isVerified: isVerified,
+                  verificationType: verificationType,
+                  role: role,
+                  hashtags: hashtags,
+                  status: _getMessageStatus(message),
+                  // callbacks داخلی را هم به همان هندلرها وصل می‌کنیم تا tap حتماً کار کند
+                  onTap: () => handlePostTap(postContext),
+                  onLongPress: handlePostLongPress,
+                  onShare: () async {
+                    if (!_isSelectionMode) {
+                      final result = await ForwardMessageSheet.show(
+                        context,
+                        messageIds: [message.id],
+                      );
+                      if (result == true) {
+                        _showSuccessSnackBar('پست ارسال شد');
+                      }
                     }
-                  }
-                },
+                  },
+                ),
               ),
             ),
-          ),
 
-          // ✅ لایه آبی رنگ (Selection Overlay) روی پست
-          if (_selectedMessageIds.contains(message.id))
-            Positioned.fill(
-              child: Container(
-                decoration: BoxDecoration(
-                  color: context.chatTheme.sendButtonColor.withValues(
-                      alpha: 0.3), // کمی پررنگ تر برای دیده شدن روی عکس
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: context.chatTheme.sendButtonColor,
-                    width: 3,
+            // ✅ لایه آبی رنگ (Selection Overlay) روی پست
+            if (_selectedMessageIds.contains(message.id))
+              Positioned.fill(
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: context.chatTheme.sendButtonColor.withValues(
+                        alpha: 0.3), // کمی پررنگ تر برای دیده شدن روی عکس
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: context.chatTheme.sendButtonColor,
+                      width: 3,
+                    ),
                   ),
-                ),
-                child: const Center(
-                  child: Icon(
-                    Icons.check_circle_rounded,
-                    color: Colors.white,
-                    size: 48,
-                    shadows: [Shadow(blurRadius: 5, color: Colors.black45)],
+                  child: const Center(
+                    child: Icon(
+                      Icons.check_circle_rounded,
+                      color: Colors.white,
+                      size: 48,
+                      shadows: [Shadow(blurRadius: 5, color: Colors.black45)],
+                    ),
                   ),
                 ),
               ),
-            ),
-        ],
+          ],
+        ),
       );
     } catch (e) {
       debugPrint('Error parsing post message: $e');
@@ -6493,12 +6622,10 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
           _toggleRenderItemSelection(renderItem);
           return;
         }
-        _openAlbumViewer(
-          albumItems,
-          index,
-          conversationGalleryItems: conversationGalleryItems,
-          conversationGalleryIndexByMessageId:
-              conversationGalleryIndexByMessageId,
+        _showTelegramContextMenu(
+          albumKey.currentContext ?? context,
+          primaryMessage,
+          groupedMessagesOverride: renderItem.messages,
         );
       },
     );

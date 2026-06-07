@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:ui';
@@ -101,7 +100,6 @@ class _EnhancedChatBackgroundState
       ],
     );
   }
-
 }
 
 /// Telegram-style Message Background Pattern

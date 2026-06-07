@@ -107,38 +107,53 @@ const ProfileEntitySchema = CollectionSchema(
       name: r'postsCount',
       type: IsarType.long,
     ),
-    r'role': PropertySchema(
+    r'premiumDaysRemaining': PropertySchema(
       id: 18,
+      name: r'premiumDaysRemaining',
+      type: IsarType.long,
+    ),
+    r'role': PropertySchema(
+      id: 19,
       name: r'role',
       type: IsarType.string,
     ),
     r'showBirthDate': PropertySchema(
-      id: 19,
+      id: 20,
       name: r'showBirthDate',
       type: IsarType.bool,
     ),
     r'showEmail': PropertySchema(
-      id: 20,
+      id: 21,
       name: r'showEmail',
       type: IsarType.bool,
     ),
     r'showGender': PropertySchema(
-      id: 21,
+      id: 22,
       name: r'showGender',
       type: IsarType.bool,
     ),
     r'showMaritalStatus': PropertySchema(
-      id: 22,
+      id: 23,
       name: r'showMaritalStatus',
       type: IsarType.bool,
     ),
+    r'subscriptionExpiresAt': PropertySchema(
+      id: 24,
+      name: r'subscriptionExpiresAt',
+      type: IsarType.dateTime,
+    ),
+    r'subscriptionPlan': PropertySchema(
+      id: 25,
+      name: r'subscriptionPlan',
+      type: IsarType.string,
+    ),
     r'username': PropertySchema(
-      id: 23,
+      id: 26,
       name: r'username',
       type: IsarType.string,
     ),
     r'verificationType': PropertySchema(
-      id: 24,
+      id: 27,
       name: r'verificationType',
       type: IsarType.string,
       enumMap: _ProfileEntityverificationTypeEnumValueMap,
@@ -228,6 +243,12 @@ int _profileEntityEstimateSize(
       bytesCount += 3 + value.length * 3;
     }
   }
+  {
+    final value = object.subscriptionPlan;
+    if (value != null) {
+      bytesCount += 3 + value.length * 3;
+    }
+  }
   bytesCount += 3 + object.username.length * 3;
   bytesCount += 3 + object.verificationType.name.length * 3;
   return bytesCount;
@@ -257,13 +278,16 @@ void _profileEntitySerialize(
   writer.writeString(offsets[15], object.maritalStatus);
   writer.writeString(offsets[16], object.phoneNumber);
   writer.writeLong(offsets[17], object.postsCount);
-  writer.writeString(offsets[18], object.role);
-  writer.writeBool(offsets[19], object.showBirthDate);
-  writer.writeBool(offsets[20], object.showEmail);
-  writer.writeBool(offsets[21], object.showGender);
-  writer.writeBool(offsets[22], object.showMaritalStatus);
-  writer.writeString(offsets[23], object.username);
-  writer.writeString(offsets[24], object.verificationType.name);
+  writer.writeLong(offsets[18], object.premiumDaysRemaining);
+  writer.writeString(offsets[19], object.role);
+  writer.writeBool(offsets[20], object.showBirthDate);
+  writer.writeBool(offsets[21], object.showEmail);
+  writer.writeBool(offsets[22], object.showGender);
+  writer.writeBool(offsets[23], object.showMaritalStatus);
+  writer.writeDateTime(offsets[24], object.subscriptionExpiresAt);
+  writer.writeString(offsets[25], object.subscriptionPlan);
+  writer.writeString(offsets[26], object.username);
+  writer.writeString(offsets[27], object.verificationType.name);
 }
 
 ProfileEntity _profileEntityDeserialize(
@@ -291,14 +315,17 @@ ProfileEntity _profileEntityDeserialize(
   object.maritalStatus = reader.readStringOrNull(offsets[15]);
   object.phoneNumber = reader.readStringOrNull(offsets[16]);
   object.postsCount = reader.readLong(offsets[17]);
-  object.role = reader.readStringOrNull(offsets[18]);
-  object.showBirthDate = reader.readBool(offsets[19]);
-  object.showEmail = reader.readBool(offsets[20]);
-  object.showGender = reader.readBool(offsets[21]);
-  object.showMaritalStatus = reader.readBool(offsets[22]);
-  object.username = reader.readString(offsets[23]);
+  object.premiumDaysRemaining = reader.readLongOrNull(offsets[18]);
+  object.role = reader.readStringOrNull(offsets[19]);
+  object.showBirthDate = reader.readBool(offsets[20]);
+  object.showEmail = reader.readBool(offsets[21]);
+  object.showGender = reader.readBool(offsets[22]);
+  object.showMaritalStatus = reader.readBool(offsets[23]);
+  object.subscriptionExpiresAt = reader.readDateTimeOrNull(offsets[24]);
+  object.subscriptionPlan = reader.readStringOrNull(offsets[25]);
+  object.username = reader.readString(offsets[26]);
   object.verificationType = _ProfileEntityverificationTypeValueEnumMap[
-          reader.readStringOrNull(offsets[24])] ??
+          reader.readStringOrNull(offsets[27])] ??
       VerificationType.none;
   return object;
 }
@@ -347,9 +374,9 @@ P _profileEntityDeserializeProp<P>(
     case 17:
       return (reader.readLong(offset)) as P;
     case 18:
-      return (reader.readStringOrNull(offset)) as P;
+      return (reader.readLongOrNull(offset)) as P;
     case 19:
-      return (reader.readBool(offset)) as P;
+      return (reader.readStringOrNull(offset)) as P;
     case 20:
       return (reader.readBool(offset)) as P;
     case 21:
@@ -357,8 +384,14 @@ P _profileEntityDeserializeProp<P>(
     case 22:
       return (reader.readBool(offset)) as P;
     case 23:
-      return (reader.readString(offset)) as P;
+      return (reader.readBool(offset)) as P;
     case 24:
+      return (reader.readDateTimeOrNull(offset)) as P;
+    case 25:
+      return (reader.readStringOrNull(offset)) as P;
+    case 26:
+      return (reader.readString(offset)) as P;
+    case 27:
       return (_ProfileEntityverificationTypeValueEnumMap[
               reader.readStringOrNull(offset)] ??
           VerificationType.none) as P;
@@ -2378,6 +2411,80 @@ extension ProfileEntityQueryFilter
   }
 
   QueryBuilder<ProfileEntity, ProfileEntity, QAfterFilterCondition>
+      premiumDaysRemainingIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'premiumDaysRemaining',
+      ));
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterFilterCondition>
+      premiumDaysRemainingIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'premiumDaysRemaining',
+      ));
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterFilterCondition>
+      premiumDaysRemainingEqualTo(int? value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'premiumDaysRemaining',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterFilterCondition>
+      premiumDaysRemainingGreaterThan(
+    int? value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'premiumDaysRemaining',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterFilterCondition>
+      premiumDaysRemainingLessThan(
+    int? value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'premiumDaysRemaining',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterFilterCondition>
+      premiumDaysRemainingBetween(
+    int? lower,
+    int? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'premiumDaysRemaining',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+      ));
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterFilterCondition>
       roleIsNull() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(const FilterCondition.isNull(
@@ -2566,6 +2673,234 @@ extension ProfileEntityQueryFilter
       return query.addFilterCondition(FilterCondition.equalTo(
         property: r'showMaritalStatus',
         value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterFilterCondition>
+      subscriptionExpiresAtIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'subscriptionExpiresAt',
+      ));
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterFilterCondition>
+      subscriptionExpiresAtIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'subscriptionExpiresAt',
+      ));
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterFilterCondition>
+      subscriptionExpiresAtEqualTo(DateTime? value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'subscriptionExpiresAt',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterFilterCondition>
+      subscriptionExpiresAtGreaterThan(
+    DateTime? value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'subscriptionExpiresAt',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterFilterCondition>
+      subscriptionExpiresAtLessThan(
+    DateTime? value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'subscriptionExpiresAt',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterFilterCondition>
+      subscriptionExpiresAtBetween(
+    DateTime? lower,
+    DateTime? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'subscriptionExpiresAt',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+      ));
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterFilterCondition>
+      subscriptionPlanIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'subscriptionPlan',
+      ));
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterFilterCondition>
+      subscriptionPlanIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'subscriptionPlan',
+      ));
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterFilterCondition>
+      subscriptionPlanEqualTo(
+    String? value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'subscriptionPlan',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterFilterCondition>
+      subscriptionPlanGreaterThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'subscriptionPlan',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterFilterCondition>
+      subscriptionPlanLessThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'subscriptionPlan',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterFilterCondition>
+      subscriptionPlanBetween(
+    String? lower,
+    String? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'subscriptionPlan',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterFilterCondition>
+      subscriptionPlanStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'subscriptionPlan',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterFilterCondition>
+      subscriptionPlanEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'subscriptionPlan',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterFilterCondition>
+      subscriptionPlanContains(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'subscriptionPlan',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterFilterCondition>
+      subscriptionPlanMatches(String pattern, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'subscriptionPlan',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterFilterCondition>
+      subscriptionPlanIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'subscriptionPlan',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterFilterCondition>
+      subscriptionPlanIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'subscriptionPlan',
+        value: '',
       ));
     });
   }
@@ -3084,6 +3419,20 @@ extension ProfileEntityQuerySortBy
     });
   }
 
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterSortBy>
+      sortByPremiumDaysRemaining() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'premiumDaysRemaining', Sort.asc);
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterSortBy>
+      sortByPremiumDaysRemainingDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'premiumDaysRemaining', Sort.desc);
+    });
+  }
+
   QueryBuilder<ProfileEntity, ProfileEntity, QAfterSortBy> sortByRole() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'role', Sort.asc);
@@ -3147,6 +3496,34 @@ extension ProfileEntityQuerySortBy
       sortByShowMaritalStatusDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'showMaritalStatus', Sort.desc);
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterSortBy>
+      sortBySubscriptionExpiresAt() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'subscriptionExpiresAt', Sort.asc);
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterSortBy>
+      sortBySubscriptionExpiresAtDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'subscriptionExpiresAt', Sort.desc);
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterSortBy>
+      sortBySubscriptionPlan() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'subscriptionPlan', Sort.asc);
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterSortBy>
+      sortBySubscriptionPlanDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'subscriptionPlan', Sort.desc);
     });
   }
 
@@ -3425,6 +3802,20 @@ extension ProfileEntityQuerySortThenBy
     });
   }
 
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterSortBy>
+      thenByPremiumDaysRemaining() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'premiumDaysRemaining', Sort.asc);
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterSortBy>
+      thenByPremiumDaysRemainingDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'premiumDaysRemaining', Sort.desc);
+    });
+  }
+
   QueryBuilder<ProfileEntity, ProfileEntity, QAfterSortBy> thenByRole() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'role', Sort.asc);
@@ -3488,6 +3879,34 @@ extension ProfileEntityQuerySortThenBy
       thenByShowMaritalStatusDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'showMaritalStatus', Sort.desc);
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterSortBy>
+      thenBySubscriptionExpiresAt() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'subscriptionExpiresAt', Sort.asc);
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterSortBy>
+      thenBySubscriptionExpiresAtDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'subscriptionExpiresAt', Sort.desc);
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterSortBy>
+      thenBySubscriptionPlan() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'subscriptionPlan', Sort.asc);
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QAfterSortBy>
+      thenBySubscriptionPlanDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'subscriptionPlan', Sort.desc);
     });
   }
 
@@ -3642,6 +4061,13 @@ extension ProfileEntityQueryWhereDistinct
     });
   }
 
+  QueryBuilder<ProfileEntity, ProfileEntity, QDistinct>
+      distinctByPremiumDaysRemaining() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'premiumDaysRemaining');
+    });
+  }
+
   QueryBuilder<ProfileEntity, ProfileEntity, QDistinct> distinctByRole(
       {bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
@@ -3672,6 +4098,21 @@ extension ProfileEntityQueryWhereDistinct
       distinctByShowMaritalStatus() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'showMaritalStatus');
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QDistinct>
+      distinctBySubscriptionExpiresAt() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'subscriptionExpiresAt');
+    });
+  }
+
+  QueryBuilder<ProfileEntity, ProfileEntity, QDistinct>
+      distinctBySubscriptionPlan({bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'subscriptionPlan',
+          caseSensitive: caseSensitive);
     });
   }
 
@@ -3809,6 +4250,13 @@ extension ProfileEntityQueryProperty
     });
   }
 
+  QueryBuilder<ProfileEntity, int?, QQueryOperations>
+      premiumDaysRemainingProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'premiumDaysRemaining');
+    });
+  }
+
   QueryBuilder<ProfileEntity, String?, QQueryOperations> roleProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'role');
@@ -3837,6 +4285,20 @@ extension ProfileEntityQueryProperty
       showMaritalStatusProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'showMaritalStatus');
+    });
+  }
+
+  QueryBuilder<ProfileEntity, DateTime?, QQueryOperations>
+      subscriptionExpiresAtProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'subscriptionExpiresAt');
+    });
+  }
+
+  QueryBuilder<ProfileEntity, String?, QQueryOperations>
+      subscriptionPlanProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'subscriptionPlan');
     });
   }
 
