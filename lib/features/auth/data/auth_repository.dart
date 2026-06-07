@@ -1,8 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:Vista/utils/env_config.dart';
-import 'dart:io';
-import 'package:device_info_plus/device_info_plus.dart';
 import '../../../security/logging_utility.dart';
 import '../../../services/device_id_service.dart';
 import '../../../services/system_status_service.dart';
@@ -20,6 +18,8 @@ class AuthUserResponse {
   final String? phoneNumber;
   final String accountStatus;
   final bool profileCompleted;
+  final bool hasPassword;
+  final bool passwordRequired;
   final DateTime? phoneVerifiedAt;
   final DateTime? emailVerifiedAt;
   final DateTime createdAt;
@@ -32,6 +32,8 @@ class AuthUserResponse {
     this.phoneNumber,
     required this.accountStatus,
     required this.profileCompleted,
+    this.hasPassword = false,
+    this.passwordRequired = false,
     this.phoneVerifiedAt,
     this.emailVerifiedAt,
     required this.createdAt,
@@ -46,6 +48,8 @@ class AuthUserResponse {
       phoneNumber: json['phone_number'] as String?,
       accountStatus: json['account_status'] as String? ?? 'active',
       profileCompleted: json['profile_completed'] as bool? ?? false,
+      hasPassword: json['has_password'] as bool? ?? false,
+      passwordRequired: json['password_required'] as bool? ?? false,
       phoneVerifiedAt: json['phone_verified_at'] != null
           ? DateTime.tryParse(json['phone_verified_at'] as String)
           : null,
@@ -320,32 +324,10 @@ class AuthRepository {
         SystemFeature.login,
         forceRefresh: true,
       );
-      String? deviceName;
-      String? platformInfo;
-      try {
-        final deviceInfo = DeviceInfoPlugin();
-        if (Platform.isAndroid) {
-          final androidInfo = await deviceInfo.androidInfo;
-          deviceName = '${androidInfo.brand} ${androidInfo.model}';
-          platformInfo = 'Android ${androidInfo.version.release}';
-        } else if (Platform.isIOS) {
-          final iosInfo = await deviceInfo.iosInfo;
-          deviceName = iosInfo.name;
-          platformInfo = 'iOS ${iosInfo.systemVersion}';
-        } else if (Platform.isWindows) {
-          final windowsInfo = await deviceInfo.windowsInfo;
-          deviceName = windowsInfo.computerName;
-          platformInfo = 'Windows';
-        }
-      } catch (e) {
-        logError('Failed to get device info', error: e);
-      }
 
       final response = await _dio.post('/login', data: {
         'identifier': identifier,
         'password': password,
-        if (deviceName != null) 'device_name': deviceName,
-        if (platformInfo != null) 'platform_info': platformInfo,
       });
 
       return AuthResponse.fromJson(response.data as Map<String, dynamic>);
@@ -374,6 +356,10 @@ class AuthRepository {
       }
       if (e.response?.statusCode == 401 || e.response?.statusCode == 403) {
         throw UnauthorizedAuthException('نشست نامعتبر است.');
+      }
+      if (e.response?.statusCode == 429 ||
+          (e.response?.statusCode != null && e.response!.statusCode! >= 500)) {
+        throw NetworkAuthException('سرور موقتاً در دسترس نیست.');
       }
       throw _handleDioError(e, 'تمدید نشست');
     } catch (e) {

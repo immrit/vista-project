@@ -17,6 +17,7 @@ import 'vistaStore/pricing_page.dart';
 import 'package:Vista/l10n/generated/app_localizations.dart';
 import 'package:Vista/utils/premium_subscription_utils.dart';
 import '../../../provider/locale_provider.dart';
+import '../../../utils/directional_navigation.dart';
 
 class Settings extends ConsumerWidget {
   const Settings({super.key});
@@ -72,7 +73,8 @@ class Settings extends ConsumerWidget {
             ),
             _SettingsTile(
               icon: Icons.shield_outlined,
-              title: AppLocalizations.of(context)?.privacySecurity ?? 'حریم خصوصی و امنیت',
+              title: AppLocalizations.of(context)?.privacySecurity ??
+                  'حریم خصوصی و امنیت',
               onTap: () => Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => const PrivacySecurityPage()),
@@ -103,7 +105,8 @@ class Settings extends ConsumerWidget {
             ),
             _SettingsTile(
               icon: Icons.storage_outlined,
-              title: AppLocalizations.of(context)?.dataStorage ?? 'داده و ذخیره‌سازی',
+              title: AppLocalizations.of(context)?.dataStorage ??
+                  'داده و ذخیره‌سازی',
               onTap: () => Navigator.push(
                 context,
                 MaterialPageRoute(
@@ -121,7 +124,8 @@ class Settings extends ConsumerWidget {
             ),
             _SettingsTile(
               icon: Icons.lock_outline,
-              title: AppLocalizations.of(context)?.changePassword ?? 'تغییر گذرواژه',
+              title: AppLocalizations.of(context)?.changePassword ??
+                  'تغییر گذرواژه',
               onTap: () => Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => ChangePasswordWidget()),
@@ -135,7 +139,8 @@ class Settings extends ConsumerWidget {
           children: [
             _SettingsTile(
               icon: Icons.description_outlined,
-              title: AppLocalizations.of(context)?.termsAndConditions ?? 'قوانین و مقررات',
+              title: AppLocalizations.of(context)?.termsAndConditions ??
+                  'قوانین و مقررات',
               onTap: () => Navigator.push(
                 context,
                 MaterialPageRoute(
@@ -264,7 +269,7 @@ class Settings extends ConsumerWidget {
                     ),
                   ),
                   Icon(
-                    Icons.chevron_left,
+                    directionalForwardChevronIcon(context),
                     color: Colors.white.withValues(alpha: 0.85),
                   ),
                 ],
@@ -339,7 +344,7 @@ class Settings extends ConsumerWidget {
           IconButton(
             onPressed: () => Navigator.pushNamed(context, '/editeProfile'),
             icon: Icon(
-              Icons.chevron_left,
+              directionalForwardChevronIcon(context),
               color: isDark ? Colors.grey[500] : Colors.grey[500],
             ),
           ),
@@ -438,8 +443,12 @@ class Settings extends ConsumerWidget {
               const SizedBox(height: 16),
               ListTile(
                 leading: const Icon(Icons.language),
-                trailing: currentLocale.languageCode == 'fa' ? const Icon(Icons.check, color: Colors.blue) : null,
-                title: Text('فارسی', style: TextStyle(color: isDark ? Colors.white : Colors.black)),
+                trailing: currentLocale.languageCode == 'fa'
+                    ? const Icon(Icons.check, color: Colors.blue)
+                    : null,
+                title: Text('فارسی',
+                    style:
+                        TextStyle(color: isDark ? Colors.white : Colors.black)),
                 onTap: () {
                   ref.read(localeProvider.notifier).setLocale('fa');
                   Navigator.pop(context);
@@ -447,8 +456,12 @@ class Settings extends ConsumerWidget {
               ),
               ListTile(
                 leading: const Icon(Icons.language),
-                trailing: currentLocale.languageCode == 'en' ? const Icon(Icons.check, color: Colors.blue) : null,
-                title: Text('English', style: TextStyle(color: isDark ? Colors.white : Colors.black)),
+                trailing: currentLocale.languageCode == 'en'
+                    ? const Icon(Icons.check, color: Colors.blue)
+                    : null,
+                title: Text('English',
+                    style:
+                        TextStyle(color: isDark ? Colors.white : Colors.black)),
                 onTap: () {
                   ref.read(localeProvider.notifier).setLocale('en');
                   Navigator.pop(context);
@@ -456,8 +469,12 @@ class Settings extends ConsumerWidget {
               ),
               ListTile(
                 leading: const Icon(Icons.language),
-                trailing: currentLocale.languageCode == 'ar' ? const Icon(Icons.check, color: Colors.blue) : null,
-                title: Text('العربية', style: TextStyle(color: isDark ? Colors.white : Colors.black)),
+                trailing: currentLocale.languageCode == 'ar'
+                    ? const Icon(Icons.check, color: Colors.blue)
+                    : null,
+                title: Text('العربية',
+                    style:
+                        TextStyle(color: isDark ? Colors.white : Colors.black)),
                 onTap: () {
                   ref.read(localeProvider.notifier).setLocale('ar');
                   Navigator.pop(context);
@@ -508,7 +525,7 @@ class _SettingsTile extends StatelessWidget {
         ),
       ),
       trailing: Icon(
-        Icons.chevron_left,
+        directionalForwardChevronIcon(context),
         color: isDark ? Colors.grey[700] : Colors.grey[400],
         size: 20,
       ),

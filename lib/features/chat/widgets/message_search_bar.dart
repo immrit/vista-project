@@ -12,6 +12,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../utils/directional_navigation.dart';
 import '../services/message_search_service.dart';
 import '../theme/chat_theme.dart';
 
@@ -134,7 +135,7 @@ class _MessageSearchBarState extends ConsumerState<MessageSearchBar>
             IconButton(
               onPressed: _close,
               icon: Icon(
-                Icons.arrow_back_rounded,
+                directionalBackIcon(context),
                 color: theme.iconColor,
               ),
             ),

@@ -7,6 +7,7 @@ import '../../model/publicPostModel.dart';
 import '../../features/posts/data/go_posts_repository.dart';
 import '../../provider/provider.dart';
 import '../../services/smart_share_service.dart';
+import '../../utils/directional_navigation.dart';
 import 'ReelsVideoPlayer.dart';
 
 class ReelsScreen extends ConsumerStatefulWidget {
@@ -254,16 +255,16 @@ class _ReelsScreenState extends ConsumerState<ReelsScreen>
               },
             ),
             // دکمه بازگشت
-            Positioned(
+            LocaleDirectionalPositioned(
               top: MediaQuery.of(context).padding.top + 10,
-              left: 16,
+              start: 16,
               child: Container(
                 decoration: BoxDecoration(
                   color: Colors.black.withValues(alpha: 0.5),
                   shape: BoxShape.circle,
                 ),
                 child: IconButton(
-                  icon: Icon(Icons.arrow_back, color: Colors.white),
+                  icon: Icon(directionalBackIcon(context), color: Colors.white),
                   onPressed: () => Navigator.pop(context),
                 ),
               ),

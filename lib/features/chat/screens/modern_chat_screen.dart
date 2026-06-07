@@ -32,6 +32,7 @@ import '../../../model/ProfileModel.dart';
 import '../../../model/message_model.dart';
 import '../../../utils/compat_extensions.dart';
 import '../../../utils/avatar_asset_utils.dart';
+import '../../../utils/directional_navigation.dart';
 import '../../../utils/time_utils.dart';
 import '../providers/chat_providers.dart';
 import '../repositories/chat_repository.dart';
@@ -2562,7 +2563,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       ),
       leading: IconButton(
         icon: Icon(
-          Icons.arrow_back_ios_new_rounded,
+          directionalBackIcon(context, ios: true),
           color: theme.textColor,
           size: 20,
         ),

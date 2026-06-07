@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:Vista/DB/entities/recent_search_entity.dart';
@@ -14,6 +14,7 @@ import 'package:Vista/model/ProfileModel.dart';
 import 'package:Vista/model/SearchResut.dart';
 import 'package:Vista/model/publicPostModel.dart';
 import 'package:Vista/provider/provider.dart';
+import 'package:Vista/utils/directional_navigation.dart';
 import 'package:Vista/utils/glassmorphism.dart';
 import 'package:Vista/widgets/skeleton_loading.dart';
 import 'package:Vista/widgets/verification_badge_icon.dart';
@@ -967,8 +968,8 @@ class _UserTile extends StatelessWidget {
         ),
         maxLines: 1,
       ),
-      trailing:
-          Icon(Icons.chevron_left_rounded, color: theme.colorScheme.outline),
+      trailing: Icon(directionalForwardChevronIcon(context),
+          color: theme.colorScheme.outline),
       onTap: () {
         onTap();
         Navigator.push(

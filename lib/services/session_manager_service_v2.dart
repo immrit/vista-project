@@ -134,11 +134,13 @@ class SessionManagerServiceV2 {
     final uri = _backendUri(path);
     http.Response response;
     if (method == 'GET') {
-      response = await http.get(uri, headers: mergedHeaders).timeout(_backendTimeout);
+      response =
+          await http.get(uri, headers: mergedHeaders).timeout(_backendTimeout);
     } else {
       response = await http
           .post(uri,
-              headers: mergedHeaders, body: body == null ? null : jsonEncode(body))
+              headers: mergedHeaders,
+              body: body == null ? null : jsonEncode(body))
           .timeout(_backendTimeout);
     }
     if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -518,7 +520,7 @@ class SessionManagerServiceV2 {
         expiresAt: response.session.expiresAt,
         tokenType: response.session.tokenType,
       ));
-      await TokenStorage.saveUserId(response.user.id);
+      await TokenStorage.saveUserAuthState(response.user);
 
       CurrentUserService.setCachedUserId(response.user.id);
       logInfo('✅ Token refreshed successfully');

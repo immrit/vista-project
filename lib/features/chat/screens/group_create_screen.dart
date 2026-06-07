@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../security/logging_utility.dart';
+import '../../../utils/directional_navigation.dart';
 import '../models/group_user_item.dart';
 import '../providers/chat_providers.dart';
 import '../services/group_service.dart';
@@ -234,7 +235,7 @@ class _GroupCreateScreenState extends ConsumerState<GroupCreateScreen> {
         scrolledUnderElevation: 0,
         leading: IconButton(
           icon: Icon(
-            Icons.arrow_back_ios_new_rounded,
+            directionalBackIcon(context, ios: true),
             color: theme.iconTheme.color,
             size: 20,
           ),

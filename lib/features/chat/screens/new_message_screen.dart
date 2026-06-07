@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../utils/directional_navigation.dart';
 import '../models/group_user_item.dart';
 import '../services/group_service.dart';
 import 'group_create_screen.dart';
@@ -163,7 +164,7 @@ class _NewMessageScreenState extends ConsumerState<NewMessageScreen> {
         scrolledUnderElevation: 0,
         leading: IconButton(
           icon: Icon(
-            Icons.arrow_back_ios_new_rounded,
+            directionalBackIcon(context, ios: true),
             color: theme.iconTheme.color,
             size: 20,
           ),
@@ -358,7 +359,7 @@ class _NewMessageScreenState extends ConsumerState<NewMessageScreen> {
             ),
             // فلش
             Icon(
-              Icons.arrow_forward_ios_rounded,
+              directionalForwardChevronIcon(context),
               size: 16,
               color: theme.hintColor,
             ),

@@ -1,5 +1,6 @@
 import 'package:Vista/features/auth/screens/auth_wizard_screen.dart';
 import 'package:Vista/features/auth/data/auth_repository.dart';
+import 'package:Vista/features/auth/screens/mandatory_password_screen.dart';
 import 'package:Vista/features/auth/providers/auth_controller.dart';
 import 'package:Vista/features/home/screens/homeScreen.dart';
 import 'package:Vista/features/profile/screens/profile_setup_wizard_screen.dart';
@@ -23,6 +24,7 @@ class _SessionAuthWrapperState extends ConsumerState<SessionAuthWrapper> {
   bool _isLoading = true;
   bool _isAuthenticated = false;
   bool _requiresProfileSetup = false;
+  bool _requiresPasswordSetup = false;
   bool _isMaintenance = false;
 
   @override
@@ -77,6 +79,7 @@ class _SessionAuthWrapperState extends ConsumerState<SessionAuthWrapper> {
     // ─── Step 2: دریافت اطلاعات کاربر از بک‌اند ────────────────
     // این مرحله اختیاری است — اگر شکست بخورد، کاربر همچنان لاگین در نظر گرفته می‌شود
     bool requiresProfileSetup = false;
+    bool requiresPasswordSetup = false;
     try {
       final accessToken = await TokenStorage.getAccessToken();
       if (accessToken != null && accessToken.isNotEmpty) {
@@ -85,9 +88,10 @@ class _SessionAuthWrapperState extends ConsumerState<SessionAuthWrapper> {
               onTimeout: () => throw Exception('timeout'),
             );
         if (!mounted) return;
-        await TokenStorage.saveUserId(user.id);
+        await TokenStorage.saveUserAuthState(user);
         ref.read(authControllerProvider.notifier).acceptAuthenticatedUser(user);
         requiresProfileSetup = !user.profileCompleted;
+        requiresPasswordSetup = user.passwordRequired;
       }
     } catch (e) {
       debugPrint('⚠️ /me failed (non-fatal): $e — treating token as valid');
@@ -100,7 +104,9 @@ class _SessionAuthWrapperState extends ConsumerState<SessionAuthWrapper> {
       }
       // در غیر این صورت: ادامه با توکن محلی
       final userId = await TokenStorage.getUserId();
+      final passwordRequired = await TokenStorage.getPasswordRequired();
       if (userId != null && userId.isNotEmpty) {
+        requiresPasswordSetup = passwordRequired ?? false;
         if (!mounted) return;
         ref.read(authControllerProvider.notifier).acceptAuthenticatedUser(
               AuthUserResponse(
@@ -108,6 +114,8 @@ class _SessionAuthWrapperState extends ConsumerState<SessionAuthWrapper> {
                 fullName: '',
                 accountStatus: 'active',
                 profileCompleted: true, // فرض: تکمیل است تا loop بی‌نهایت نشود
+                hasPassword: passwordRequired == false,
+                passwordRequired: passwordRequired ?? false,
                 createdAt: DateTime.now(),
               ),
             );
@@ -122,6 +130,7 @@ class _SessionAuthWrapperState extends ConsumerState<SessionAuthWrapper> {
     setState(() {
       _isAuthenticated = true;
       _requiresProfileSetup = requiresProfileSetup;
+      _requiresPasswordSetup = requiresPasswordSetup;
       _isLoading = false;
     });
   }
@@ -163,6 +172,9 @@ class _SessionAuthWrapperState extends ConsumerState<SessionAuthWrapper> {
     }
 
     if (_isAuthenticated) {
+      if (_requiresPasswordSetup) {
+        return const SessionMiddleware(child: MandatoryPasswordScreen());
+      }
       if (_requiresProfileSetup) {
         return const SessionMiddleware(child: ProfileSetupWizardScreen());
       }

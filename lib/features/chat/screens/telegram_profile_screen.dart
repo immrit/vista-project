@@ -38,6 +38,7 @@ import '../widgets/block_report_bottom_sheet.dart';
 import '../../../features/chat/providers/chat_providers.dart';
 import '../../../provider/provider.dart';
 import '../../../utils/avatar_asset_utils.dart';
+import '../../../utils/directional_navigation.dart';
 import '../../../utils/user_friendly_error_utils.dart';
 import '../../posts/screens/profileScreen.dart';
 import '../../posts/screens/PostDetailPage.dart';
@@ -332,9 +333,9 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
           ),
 
           // دکمه بازگشت
-          Positioned(
+          LocaleDirectionalPositioned(
             top: MediaQuery.of(context).padding.top + 8,
-            left: 8,
+            start: 8,
             child: IconButton(
               onPressed: () => Navigator.pop(context),
               icon: Container(
@@ -343,8 +344,8 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
                   color: Colors.black.withValues(alpha: 0.3),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(
-                  Icons.arrow_back,
+                child: Icon(
+                  directionalBackIcon(context),
                   color: Colors.white,
                   size: 22,
                 ),
@@ -353,9 +354,9 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
           ),
 
           // دکمه منو
-          Positioned(
+          LocaleDirectionalPositioned(
             top: MediaQuery.of(context).padding.top + 8,
-            right: 8,
+            end: 8,
             child: IconButton(
               onPressed: () => _showOptionsMenu(context),
               icon: Container(
@@ -1767,7 +1768,7 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
                 IconButton(
                   onPressed: () => Navigator.pop(context),
                   icon: Icon(
-                    Icons.arrow_back,
+                    directionalBackIcon(context),
                     color: isDark ? Colors.white : Colors.black87,
                   ),
                 ),

@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../../../model/ProfileModel.dart';
 import '../../../services/toast_service.dart';
+import '../../../utils/directional_navigation.dart';
 import '../services/upload_policy_service.dart';
 
 enum DocumentType {
@@ -225,7 +226,8 @@ class _DocumentUploadSheetState extends State<DocumentUploadSheet>
                     style: TextStyle(fontWeight: FontWeight.w600),
                   ),
                 ),
-                Icon(Icons.chevron_right_rounded, color: accentColor),
+                Icon(directionalForwardChevronIcon(context),
+                    color: accentColor),
               ],
             ),
           ),

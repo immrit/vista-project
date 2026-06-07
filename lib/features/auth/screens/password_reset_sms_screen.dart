@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:Vista/core/security/input_policy.dart';
 
+import '../../../utils/directional_navigation.dart';
 import '../data/auth_repository.dart';
 
 class PasswordResetSmsScreen extends StatefulWidget {
@@ -228,7 +229,7 @@ class _PasswordResetSmsScreenState extends State<PasswordResetSmsScreen>
                       children: [
                         IconButton(
                           icon: Icon(
-                            Icons.arrow_back_ios_new_rounded,
+                            directionalBackIcon(context, ios: true),
                             color: isDark ? Colors.white : Colors.black87,
                             size: 20.sp,
                           ),

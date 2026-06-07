@@ -318,8 +318,8 @@ class _ImprovedAnimatedMessageBubbleState
   Widget build(BuildContext context) {
     super.build(context);
     final theme = context.chatTheme;
-    // Keep bubbles closer to screen edges while preserving sender separation.
-    const edgeInset = 0.0;
+    // Keep bubbles close to the edge, with a tiny breathing room.
+    const edgeInset = 4.0;
     const oppositeInset = 12.0;
 
     Widget child = RepaintBoundary(
@@ -366,7 +366,8 @@ class _ImprovedAnimatedMessageBubbleState
                         Flexible(
                           child: ConstrainedBox(
                             constraints: BoxConstraints(
-                              maxWidth: MediaQuery.of(context).size.width * 0.82,
+                              maxWidth:
+                                  MediaQuery.of(context).size.width * 0.82,
                             ),
                             child: _buildMessageBubble(theme),
                           ),
@@ -402,7 +403,9 @@ class _ImprovedAnimatedMessageBubbleState
     return Container(
       clipBehavior: isMedia ? Clip.antiAlias : Clip.none,
       decoration: BoxDecoration(
-        color: widget.isMe && theme.myBubbleGradient == null ? theme.myBubbleColor : (widget.isMe ? null : theme.otherBubbleColor),
+        color: widget.isMe && theme.myBubbleGradient == null
+            ? theme.myBubbleColor
+            : (widget.isMe ? null : theme.otherBubbleColor),
         gradient: widget.isMe ? theme.myBubbleGradient : null,
         borderRadius: _getBorderRadius(theme),
       ),
@@ -412,8 +415,7 @@ class _ImprovedAnimatedMessageBubbleState
           if (_shouldShowSenderName())
             _buildSenderName(theme, widget.senderName!.trim()),
           if (widget.isForwarded) _buildForwardHeader(theme),
-          if (storyReply != null)
-            _buildStoryReplySection(theme, storyReply),
+          if (storyReply != null) _buildStoryReplySection(theme, storyReply),
           if (storyReply == null && widget.replyToContent != null)
             _buildReplySection(theme),
           _buildContent(theme),
@@ -504,10 +506,10 @@ class _ImprovedAnimatedMessageBubbleState
     final rawReplyTarget = widget.replyToMessageId?.trim() ?? '';
     final isSyntheticNoteReply = rawReplyTarget.startsWith('note:');
     final isSyntheticStoryReply = rawReplyTarget.startsWith('story:');
-    final isNoteReply = isSyntheticNoteReply ||
-        replySender.trim().startsWith('یادداشت');
-    final isStoryReply = isSyntheticStoryReply ||
-        replySender.trim().startsWith('استوری');
+    final isNoteReply =
+        isSyntheticNoteReply || replySender.trim().startsWith('یادداشت');
+    final isStoryReply =
+        isSyntheticStoryReply || replySender.trim().startsWith('استوری');
     final noteReplyChipColor = widget.isMe
         ? Colors.white.withValues(alpha: 0.18)
         : theme.sendButtonColor.withValues(alpha: 0.14);
@@ -541,8 +543,7 @@ class _ImprovedAnimatedMessageBubbleState
           children: [
             if (isNoteReply || isStoryReply) ...[
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
                   color: noteReplyChipColor,
                   borderRadius: BorderRadius.circular(999),

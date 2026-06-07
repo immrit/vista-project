@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -22,6 +23,8 @@ class TokenStorage {
   static const _refreshTokenKey = 'vista_refresh_token';
   static const _userIdKey = 'vista_user_id';
   static const _expiresAtKey = 'vista_expires_at';
+  static const _hasPasswordKey = 'vista_has_password';
+  static const _passwordRequiredKey = 'vista_password_required';
 
   static Future<void> saveTokens(AuthSessionResponse session) async {
     await Future.wait([
@@ -37,6 +40,23 @@ class TokenStorage {
   static Future<void> saveUserId(String userId) async {
     await _storage.write(key: _userIdKey, value: userId);
     CurrentUserService.setCachedUserId(userId);
+  }
+
+  static Future<void> saveUserAuthState(AuthUserResponse user) async {
+    await Future.wait([
+      saveUserId(user.id),
+      _storage.write(key: _hasPasswordKey, value: user.hasPassword.toString()),
+      _storage.write(
+        key: _passwordRequiredKey,
+        value: user.passwordRequired.toString(),
+      ),
+    ]);
+  }
+
+  static Future<bool?> getPasswordRequired() async {
+    final stored = await _storage.read(key: _passwordRequiredKey);
+    if (stored == null) return null;
+    return stored == 'true';
   }
 
   static Future<String?> getAccessToken() async {
@@ -70,6 +90,18 @@ class TokenStorage {
       if (sub == null || sub.isEmpty) return null;
 
       await saveUserId(sub);
+      final hasPassword = decoded['has_password'];
+      final passwordRequired = decoded['password_required'];
+      if (hasPassword is bool) {
+        await _storage.write(
+            key: _hasPasswordKey, value: hasPassword.toString());
+      }
+      if (passwordRequired is bool) {
+        await _storage.write(
+          key: _passwordRequiredKey,
+          value: passwordRequired.toString(),
+        );
+      }
       return sub;
     } catch (e) {
       debugPrint('Failed to derive user id from access token: $e');
@@ -104,6 +136,8 @@ class TokenStorage {
       _storage.delete(key: _refreshTokenKey),
       _storage.delete(key: _userIdKey),
       _storage.delete(key: _expiresAtKey),
+      _storage.delete(key: _hasPasswordKey),
+      _storage.delete(key: _passwordRequiredKey),
     ]);
     CurrentUserService.clearCache();
   }
@@ -178,6 +212,7 @@ class AuthController extends StateNotifier<AuthState> {
       final hasSession = await TokenStorage.hasValidSession();
       if (hasSession) {
         final userId = await TokenStorage.getUserId();
+        final passwordRequired = await TokenStorage.getPasswordRequired();
         state = state.copyWith(
           isLoggedIn: true,
           currentUser: userId != null
@@ -186,6 +221,8 @@ class AuthController extends StateNotifier<AuthState> {
                   fullName: '',
                   accountStatus: 'active',
                   profileCompleted: false,
+                  hasPassword: passwordRequired == false,
+                  passwordRequired: passwordRequired ?? false,
                   createdAt: DateTime.now(),
                 )
               : null,
@@ -220,7 +257,7 @@ class AuthController extends StateNotifier<AuthState> {
 
       // Ø°Ø®ÛŒØ±Ù‡ ØªÙˆÚ©Ù†â€ŒÙ‡Ø§
       await TokenStorage.saveTokens(response.session);
-      await TokenStorage.saveUserId(response.user.id);
+      await TokenStorage.saveUserAuthState(response.user);
       await SessionManagerServiceV2.instance
           .ensureSessionRegistered(force: true);
 
@@ -252,7 +289,7 @@ class AuthController extends StateNotifier<AuthState> {
 
       // Ø°Ø®ÛŒØ±Ù‡ ØªÙˆÚ©Ù†â€ŒÙ‡Ø§
       await TokenStorage.saveTokens(response.session);
-      await TokenStorage.saveUserId(response.user.id);
+      await TokenStorage.saveUserAuthState(response.user);
       await SessionManagerServiceV2.instance
           .ensureSessionRegistered(force: true);
 
@@ -324,7 +361,7 @@ class AuthController extends StateNotifier<AuthState> {
       if (auth == null) throw Exception('Auth response missing');
 
       await TokenStorage.saveTokens(auth.session);
-      await TokenStorage.saveUserId(auth.user.id);
+      await TokenStorage.saveUserAuthState(auth.user);
       if (!isUpdateMode) {
         await SessionManagerServiceV2.instance
             .ensureSessionRegistered(force: true);
@@ -364,7 +401,7 @@ class AuthController extends StateNotifier<AuthState> {
       );
 
       await TokenStorage.saveTokens(response.session);
-      await TokenStorage.saveUserId(response.user.id);
+      await TokenStorage.saveUserAuthState(response.user);
       await SessionManagerServiceV2.instance
           .ensureSessionRegistered(force: true);
 
@@ -390,7 +427,7 @@ class AuthController extends StateNotifier<AuthState> {
       if (accessToken == null || accessToken.isEmpty) return null;
 
       final user = await _repository.me(accessToken);
-      await TokenStorage.saveUserId(user.id);
+      await TokenStorage.saveUserAuthState(user);
       state = state.copyWith(
         isLoggedIn: true,
         isNewUser: false,
@@ -404,6 +441,7 @@ class AuthController extends StateNotifier<AuthState> {
   }
 
   void acceptAuthenticatedUser(AuthUserResponse user) {
+    unawaited(TokenStorage.saveUserAuthState(user));
     state = state.copyWith(
       isLoading: false,
       isLoggedIn: true,

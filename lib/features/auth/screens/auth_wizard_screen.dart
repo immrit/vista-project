@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pinput/pinput.dart';
 import '../../../provider/provider.dart';
 import '../../../core/security/input_policy.dart';
+import '../../../utils/directional_navigation.dart';
 import '../data/auth_repository.dart';
 import '../providers/auth_controller.dart';
 import '../widgets/ribbon_background.dart';
@@ -60,6 +61,13 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
   bool _isDisabledAccount(String? status) {
     final normalized = status?.trim().toLowerCase();
     return normalized == 'banned' || normalized == 'suspended';
+  }
+
+  bool _isPasswordAccountError(Object error) {
+    final text = error.toString().toLowerCase();
+    return text.contains('auth_has_password') ||
+        text.contains('password') ||
+        text.contains('رمز عبور');
   }
 
   // --- Navigation & State Machine ---
@@ -132,13 +140,6 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
         }
       }
     } catch (e) {
-      if (_isPhoneInput) {
-        setState(() => _isLoading = false);
-        _inputController.text = normalizedPhone!;
-        await _sendOtp(isResend: false);
-        return;
-      }
-
       setState(() => _isLoading = false);
       _showSnack('خطا در بررسی اطلاعات: $e');
     }
@@ -265,6 +266,12 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
       } else {
         final error =
             ref.read(authControllerProvider).error ?? 'خطا در ارسال کد';
+        if (_isPasswordAccountError(error)) {
+          setState(() => _isRegistering = false);
+          _passwordController.clear();
+          _nextPage(1);
+          return;
+        }
         _showSnack(error);
       }
     } catch (e) {
@@ -307,30 +314,31 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
         }
 
         if (_isRegistering) {
-           final password = _passwordController.text;
-           if (password.isNotEmpty) {
-               try {
-                   await ref.read(authControllerProvider.notifier).register(
-                       phoneNumber: phone,
-                       password: password,
-                       fullName: '',
-                   );
-               } catch (e) {
-                   debugPrint('Error setting password during registration: $e');
-               }
-           }
-           _showSnack('خوش آمدید!');
-           final finalAuthState = ref.read(authControllerProvider);
-           if (finalAuthState.isNewUser ||
-               finalAuthState.currentUser?.profileCompleted == false) {
-             Navigator.pushReplacementNamed(context, '/profile-setup');
-           } else {
-             Navigator.pushReplacementNamed(context, '/home');
-           }
+          final password = _passwordController.text;
+          if (password.isNotEmpty) {
+            try {
+              await ref.read(authControllerProvider.notifier).register(
+                    phoneNumber: phone,
+                    password: password,
+                    fullName: '',
+                  );
+            } catch (e) {
+              debugPrint('Error setting password during registration: $e');
+            }
+          }
+          if (!mounted) return;
+          _showSnack('خوش آمدید!');
+          final finalAuthState = ref.read(authControllerProvider);
+          if (finalAuthState.isNewUser ||
+              finalAuthState.currentUser?.profileCompleted == false) {
+            Navigator.pushReplacementNamed(context, '/profile-setup');
+          } else {
+            Navigator.pushReplacementNamed(context, '/home');
+          }
         } else {
-           // User successfully logged in via OTP.
-           // They DO NOT have a password. Force them to set one.
-           Navigator.pushReplacementNamed(context, '/mandatory-password');
+          // User successfully logged in via OTP.
+          // They DO NOT have a password. Force them to set one.
+          Navigator.pushReplacementNamed(context, '/mandatory-password');
         }
       } else {
         setState(() {
@@ -488,9 +496,11 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
         children: [
           const SizedBox(height: 40),
           Align(
-            alignment: Alignment.centerRight,
+            alignment: isLocaleRtl(context)
+                ? Alignment.centerRight
+                : Alignment.centerLeft,
             child: IconButton(
-              icon: const Icon(Icons.arrow_forward),
+              icon: Icon(directionalBackIcon(context)),
               onPressed: () => _pageController.jumpToPage(0),
             ),
           ),
@@ -584,9 +594,11 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
         children: [
           const SizedBox(height: 40),
           Align(
-            alignment: Alignment.centerRight,
+            alignment: isLocaleRtl(context)
+                ? Alignment.centerRight
+                : Alignment.centerLeft,
             child: IconButton(
-              icon: const Icon(Icons.arrow_forward),
+              icon: Icon(directionalBackIcon(context)),
               onPressed: () {
                 // Determine where to go back
                 // Usually back to input slide (0)

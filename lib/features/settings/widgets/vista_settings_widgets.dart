@@ -1,4 +1,6 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
+
+import '../../../utils/directional_navigation.dart';
 
 /// ویجت‌های مشترک تنظیمات ویستا
 /// طراحی مدرن و تمیز با الهام از ویستا
@@ -67,7 +69,7 @@ class VistaSettingsTile extends StatelessWidget {
       trailing: trailing ??
           (showArrow
               ? Icon(
-                  Icons.chevron_left,
+                  directionalForwardChevronIcon(context),
                   color: isDark ? Colors.grey[700] : Colors.grey[400],
                   size: 20,
                 )

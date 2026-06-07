@@ -9,6 +9,7 @@ import '../../../model/publicPostModel.dart';
 import '../../../provider/provider.dart';
 import '../../../provider/optimized_conversations_provider.dart';
 import '../../../DB/profile_cache_service.dart';
+import '../../../utils/directional_navigation.dart';
 import 'package:Vista/widgets/profile_avatar_widget.dart'; // NEW IMPORT
 import '../providers/saved_posts_provider.dart';
 import '../widgets/post_action_buttons.dart';
@@ -196,12 +197,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
       ),
       actions: [
         IconButton(
-          icon: Icon(Icons.more_horiz, color: isDark ? Colors.white : Colors.black),
+          icon: Icon(Icons.more_horiz,
+              color: isDark ? Colors.white : Colors.black),
           onPressed: () => _showOptionsMenu(context, isDark),
         ),
         if (isOwnProfile)
           IconButton(
-            icon: Icon(Icons.settings_outlined, color: isDark ? Colors.white : Colors.black),
+            icon: Icon(Icons.settings_outlined,
+                color: isDark ? Colors.white : Colors.black),
             onPressed: () => Navigator.push(
               context,
               MaterialPageRoute(builder: (_) => const Settings()),
@@ -268,10 +271,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
           data: (posts) {
             if (posts.isEmpty) {
               return _EmptyPlaceholder(
-                title: AppLocalizations.of(context)?.noPostsYet ?? 'هنوز پستی نیست',
+                title: AppLocalizations.of(context)?.noPostsYet ??
+                    'هنوز پستی نیست',
                 subtitle: isCurrentUser
-                    ? (AppLocalizations.of(context)?.shareFirstPost ?? 'اولین پست خود را به اشتراک بگذارید')
-                    : (AppLocalizations.of(context)?.userHasNoPosts ?? 'این کاربر هنوز پستی منتشر نکرده'),
+                    ? (AppLocalizations.of(context)?.shareFirstPost ??
+                        'اولین پست خود را به اشتراک بگذارید')
+                    : (AppLocalizations.of(context)?.userHasNoPosts ??
+                        'این کاربر هنوز پستی منتشر نکرده'),
                 icon: Icons.camera_alt_outlined,
                 isDark: isDark,
               );
@@ -286,13 +292,17 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
           loading: () => Center(
             child: _PostsTabShimmer(isDark: isDark),
           ),
-          error: (_, __) => Center(child: Text(AppLocalizations.of(context)?.errorLoadingPosts ?? 'خطا در بارگذاری پست‌ها')),
+          error: (_, __) => Center(
+              child: Text(AppLocalizations.of(context)?.errorLoadingPosts ??
+                  'خطا در بارگذاری پست‌ها')),
         );
       },
       loading: () => Center(
         child: _PostsTabShimmer(isDark: isDark),
       ),
-      error: (_, __) => Center(child: Text(AppLocalizations.of(context)?.errorLoading ?? 'خطا در بارگذاری')),
+      error: (_, __) => Center(
+          child: Text(
+              AppLocalizations.of(context)?.errorLoading ?? 'خطا در بارگذاری')),
     );
   }
 
@@ -319,10 +329,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
             final reels = posts.where((p) => p.hasVideo).toList();
             if (reels.isEmpty) {
               return _EmptyPlaceholder(
-                title: AppLocalizations.of(context)?.noReelsYet ?? 'هنوز کلیپی نیست',
+                title: AppLocalizations.of(context)?.noReelsYet ??
+                    'هنوز کلیپی نیست',
                 subtitle: isCurrentUser
-                    ? (AppLocalizations.of(context)?.shareFirstReel ?? 'اولین کلیپ خود را به اشتراک بگذارید')
-                    : (AppLocalizations.of(context)?.userHasNoReels ?? 'این کاربر هنوز کلیپی منتشر نکرده'),
+                    ? (AppLocalizations.of(context)?.shareFirstReel ??
+                        'اولین کلیپ خود را به اشتراک بگذارید')
+                    : (AppLocalizations.of(context)?.userHasNoReels ??
+                        'این کاربر هنوز کلیپی منتشر نکرده'),
                 icon: Icons.play_circle_outline,
                 isDark: isDark,
               );
@@ -332,14 +345,17 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
           loading: () => Center(
             child: _ReelsTabShimmer(isDark: isDark),
           ),
-          error: (_, __) =>
-              Center(child: Text(AppLocalizations.of(context)?.errorLoadingReels ?? 'خطا در بارگذاری کلیپ‌ها')),
+          error: (_, __) => Center(
+              child: Text(AppLocalizations.of(context)?.errorLoadingReels ??
+                  'خطا در بارگذاری کلیپ‌ها')),
         );
       },
       loading: () => Center(
         child: _ReelsTabShimmer(isDark: isDark),
       ),
-      error: (_, __) => Center(child: Text(AppLocalizations.of(context)?.errorLoading ?? 'خطا در بارگذاری')),
+      error: (_, __) => Center(
+          child: Text(
+              AppLocalizations.of(context)?.errorLoading ?? 'خطا در بارگذاری')),
     );
   }
 
@@ -369,10 +385,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                 .toList();
             if (musicPosts.isEmpty) {
               return _EmptyPlaceholder(
-                title: AppLocalizations.of(context)?.noMusicYet ?? 'هنوز موزیکی نیست',
+                title: AppLocalizations.of(context)?.noMusicYet ??
+                    'هنوز موزیکی نیست',
                 subtitle: isCurrentUser
-                    ? (AppLocalizations.of(context)?.addMusicToPosts ?? 'برای پست‌هایتان موزیک اضافه کنید')
-                    : (AppLocalizations.of(context)?.userHasNoMusic ?? 'این کاربر هنوز موزیکی منتشر نکرده'),
+                    ? (AppLocalizations.of(context)?.addMusicToPosts ??
+                        'برای پست‌هایتان موزیک اضافه کنید')
+                    : (AppLocalizations.of(context)?.userHasNoMusic ??
+                        'این کاربر هنوز موزیکی منتشر نکرده'),
                 icon: Icons.music_note_outlined,
                 isDark: isDark,
               );
@@ -382,14 +401,17 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
           loading: () => Center(
             child: _MusicTabShimmer(isDark: isDark),
           ),
-          error: (_, __) =>
-              Center(child: Text(AppLocalizations.of(context)?.errorLoadingMusic ?? 'خطا در بارگذاری موزیک‌ها')),
+          error: (_, __) => Center(
+              child: Text(AppLocalizations.of(context)?.errorLoadingMusic ??
+                  'خطا در بارگذاری موزیک‌ها')),
         );
       },
       loading: () => Center(
         child: _MusicTabShimmer(isDark: isDark),
       ),
-      error: (_, __) => Center(child: Text(AppLocalizations.of(context)?.errorLoading ?? 'خطا در بارگذاری')),
+      error: (_, __) => Center(
+          child: Text(
+              AppLocalizations.of(context)?.errorLoading ?? 'خطا در بارگذاری')),
     );
   }
 
@@ -482,7 +504,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                 color: isDark ? Colors.white : Colors.black,
               ),
               title: Text(
-                AppLocalizations.of(context)?.shareProfile ?? 'اشتراک‌گذاری پروفایل',
+                AppLocalizations.of(context)?.shareProfile ??
+                    'اشتراک‌گذاری پروفایل',
                 style: TextStyle(color: isDark ? Colors.white : Colors.black),
               ),
               onTap: () {
@@ -493,7 +516,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                         .trim();
                 if (username.isEmpty) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(AppLocalizations.of(context)?.usernameNotAvailable ?? 'نام کاربری در دسترس نیست')),
+                    SnackBar(
+                        content: Text(AppLocalizations.of(context)
+                                ?.usernameNotAvailable ??
+                            'نام کاربری در دسترس نیست')),
                   );
                   return;
                 }
@@ -506,7 +532,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                 color: isDark ? Colors.white : Colors.black,
               ),
               title: Text(
-                AppLocalizations.of(context)?.copyProfileLink ?? 'کپی لینک پروفایل',
+                AppLocalizations.of(context)?.copyProfileLink ??
+                    'کپی لینک پروفایل',
                 style: TextStyle(color: isDark ? Colors.white : Colors.black),
               ),
               onTap: () {
@@ -524,17 +551,24 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                 final profileUrl = 'https://cafevista.ir/profile/$username';
                 Clipboard.setData(ClipboardData(text: profileUrl));
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(AppLocalizations.of(context)?.profileLinkCopied ?? 'لینک پروفایل کپی شد')),
+                  SnackBar(
+                      content: Text(
+                          AppLocalizations.of(context)?.profileLinkCopied ??
+                              'لینک پروفایل کپی شد')),
                 );
               },
             ),
             ListTile(
               leading: const Icon(Icons.report_outlined, color: Colors.red),
-              title: Text(AppLocalizations.of(context)?.report ?? 'گزارش', style: const TextStyle(color: Colors.red)),
+              title: Text(AppLocalizations.of(context)?.report ?? 'گزارش',
+                  style: const TextStyle(color: Colors.red)),
               onTap: () {
                 Navigator.pop(context);
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(AppLocalizations.of(context)?.userReportSubmitted ?? 'گزارش کاربر ثبت شد')),
+                  SnackBar(
+                      content: Text(
+                          AppLocalizations.of(context)?.userReportSubmitted ??
+                              'گزارش کاربر ثبت شد')),
                 );
               },
             ),
@@ -680,7 +714,8 @@ class _ProfileHeader extends ConsumerWidget {
                           onTap: onFollowersTap,
                           child: _StatItem(
                             count: _formatCount(profile.followersCount),
-                            label: AppLocalizations.of(context)?.followers ?? 'دنبال‌کننده',
+                            label: AppLocalizations.of(context)?.followers ??
+                                'دنبال‌کننده',
                             textColor: textColor,
                             subtitleColor: subtitleColor,
                           ),
@@ -689,7 +724,9 @@ class _ProfileHeader extends ConsumerWidget {
                           onTap: onFollowingTap,
                           child: _StatItem(
                             count: _formatCount(profile.followingCount),
-                            label: AppLocalizations.of(context)?.followingCount ?? 'دنبال‌شونده',
+                            label:
+                                AppLocalizations.of(context)?.followingCount ??
+                                    'دنبال‌شونده',
                             textColor: textColor,
                             subtitleColor: subtitleColor,
                           ),
@@ -736,9 +773,11 @@ class _ProfileHeader extends ConsumerWidget {
               builder: (context) {
                 final text = profile.bio!;
                 final firstChar = text.trim().isNotEmpty ? text.trim()[0] : '';
-                final isPersian = RegExp(r'[\u0600-\u06FF]').hasMatch(firstChar);
+                final isPersian =
+                    RegExp(r'[\u0600-\u06FF]').hasMatch(firstChar);
                 return Directionality(
-                  textDirection: isPersian ? TextDirection.rtl : TextDirection.ltr,
+                  textDirection:
+                      isPersian ? TextDirection.rtl : TextDirection.ltr,
                   child: HashtagRichText(
                     text: text,
                     style: TextStyle(
@@ -756,7 +795,8 @@ class _ProfileHeader extends ConsumerWidget {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) => SearchPage(initialHashtag: '#$tag'),
+                          builder: (context) =>
+                              SearchPage(initialHashtag: '#$tag'),
                         ),
                       );
                     },
@@ -976,7 +1016,7 @@ class _MemberOrderBadge extends StatelessWidget {
           if (onTap != null) ...[
             const SizedBox(width: 4),
             Icon(
-              Icons.chevron_right,
+              directionalForwardChevronIcon(context),
               size: 14,
               color: colors.text.withValues(alpha: 0.6),
             ),
@@ -1591,9 +1631,8 @@ class _ShimmerBox extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         shape: shape,
-        borderRadius: shape == BoxShape.circle
-            ? null
-            : BorderRadius.circular(radius),
+        borderRadius:
+            shape == BoxShape.circle ? null : BorderRadius.circular(radius),
       ),
     );
   }
@@ -1650,9 +1689,11 @@ class _ProfilePageShimmer extends StatelessWidget {
                 const SizedBox(height: 16),
                 const Row(
                   children: [
-                    Expanded(child: _ShimmerBox(width: double.infinity, height: 36)),
+                    Expanded(
+                        child: _ShimmerBox(width: double.infinity, height: 36)),
                     SizedBox(width: 8),
-                    Expanded(child: _ShimmerBox(width: double.infinity, height: 36)),
+                    Expanded(
+                        child: _ShimmerBox(width: double.infinity, height: 36)),
                   ],
                 ),
               ],
@@ -1700,7 +1741,8 @@ class _PostsTabShimmer extends StatelessWidget {
         ? Theme.of(context).brightness == Brightness.dark
         : isDark;
     final baseColor = dark ? const Color(0xFF2A2A2A) : Colors.grey.shade300;
-    final highlightColor = dark ? const Color(0xFF3A3A3A) : Colors.grey.shade100;
+    final highlightColor =
+        dark ? const Color(0xFF3A3A3A) : Colors.grey.shade100;
 
     final rows = List.generate(4, (_) => const SizedBox.shrink());
     final child = scrollable
@@ -1773,7 +1815,8 @@ class _ReelsTabShimmer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final baseColor = isDark ? const Color(0xFF2A2A2A) : Colors.grey.shade300;
-    final highlightColor = isDark ? const Color(0xFF3A3A3A) : Colors.grey.shade100;
+    final highlightColor =
+        isDark ? const Color(0xFF3A3A3A) : Colors.grey.shade100;
 
     return Shimmer.fromColors(
       baseColor: baseColor,
@@ -1806,7 +1849,8 @@ class _MusicTabShimmer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final baseColor = isDark ? const Color(0xFF2A2A2A) : Colors.grey.shade300;
-    final highlightColor = isDark ? const Color(0xFF3A3A3A) : Colors.grey.shade100;
+    final highlightColor =
+        isDark ? const Color(0xFF3A3A3A) : Colors.grey.shade100;
 
     return Shimmer.fromColors(
       baseColor: baseColor,
@@ -2098,7 +2142,8 @@ class _PostListItem extends ConsumerWidget {
                             ),
                             errorWidget: (_, __, ___) => Container(
                               height: 180,
-                              color: isDark ? Colors.grey[800] : Colors.grey[200],
+                              color:
+                                  isDark ? Colors.grey[800] : Colors.grey[200],
                               child: const Icon(Icons.broken_image),
                             ),
                           ),
@@ -2191,7 +2236,8 @@ class _PostListItem extends ConsumerWidget {
                             SmartShareService().showShareOptions(post, context),
                         borderRadius: BorderRadius.circular(12),
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 3),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 3, vertical: 3),
                           child: Image.asset(
                             'lib/utils/images/component/send.png',
                             width: 19,
@@ -2401,7 +2447,8 @@ class _PostListItem extends ConsumerWidget {
                       SizedBox(width: 8),
                       Text('کنترل آمار لایک/کامنت'),
                       Spacer(),
-                      Icon(Icons.workspace_premium, size: 18, color: Colors.amber),
+                      Icon(Icons.workspace_premium,
+                          size: 18, color: Colors.amber),
                     ],
                   ),
                 ));
@@ -2497,14 +2544,15 @@ class _PostListItem extends ConsumerWidget {
               }
 
               try {
-                final hideLike = value == 'toggle_like_count'
-                    ? !post.hideLikeCount
-                    : null;
+                final hideLike =
+                    value == 'toggle_like_count' ? !post.hideLikeCount : null;
                 final hideComment = value == 'toggle_comment_count'
                     ? !post.hideCommentCount
                     : null;
 
-                await ref.read(goPostsRepositoryProvider).updateEngagementVisibility(
+                await ref
+                    .read(goPostsRepositoryProvider)
+                    .updateEngagementVisibility(
                       postId: post.id,
                       hideLikeCount: hideLike,
                       hideCommentCount: hideComment,
@@ -2633,7 +2681,8 @@ class _MusicListView extends StatelessWidget {
             width: 46,
             height: 46,
             decoration: BoxDecoration(
-              color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.08),
+              color: (isDark ? Colors.white : Colors.black)
+                  .withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(12),
             ),
             child: const Icon(Icons.music_note_rounded),

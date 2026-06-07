@@ -62,6 +62,9 @@ class _MandatoryPasswordScreenState
         accessToken: token,
       );
 
+      final user = await AuthRepository().me(token);
+      ref.read(authControllerProvider.notifier).acceptAuthenticatedUser(user);
+
       if (!mounted) return;
       _showSuccess('رمز عبور با موفقیت ثبت شد');
 

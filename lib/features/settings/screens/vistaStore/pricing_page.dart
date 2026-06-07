@@ -1,5 +1,4 @@
 import 'dart:ui';
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -11,6 +10,7 @@ import 'package:Vista/services/BazaarPaymentService.dart';
 import 'package:Vista/services/current_user_service.dart';
 import 'package:Vista/services/sensitive_action_guard.dart';
 import 'package:Vista/services/system_ui_bar_service.dart';
+import 'package:Vista/utils/directional_navigation.dart';
 import 'package:Vista/utils/premium_subscription_utils.dart';
 
 /// صفحه خرید اشتراک ویستا پریمیوم از درگاه کافه‌بازار.
@@ -21,13 +21,12 @@ class PricingPage extends ConsumerStatefulWidget {
   ConsumerState<PricingPage> createState() => _PricingPageState();
 }
 
-class _PricingPageState extends ConsumerState<PricingPage> with SingleTickerProviderStateMixin {
+class _PricingPageState extends ConsumerState<PricingPage>
+    with SingleTickerProviderStateMixin {
   // تم رنگی لاکچری و پریمیوم
   static const Color _goldStart = Color(0xFFFFD700);
   static const Color _goldEnd = Color(0xFFFDB931);
   static const Color _darkBg = Color(0xFF0F0F13);
-  static const Color _glassBgDark = Color(0x1AFFFFFF);
-  static const Color _glassBorderDark = Color(0x33FFFFFF);
 
   final BazaarPaymentService _bazaarService = BazaarPaymentService();
   bool _isBazaarConnected = false;
@@ -64,12 +63,14 @@ class _PricingPageState extends ConsumerState<PricingPage> with SingleTickerProv
     {
       'icon': Icons.verified,
       'title': 'نشان تأیید طلایی',
-      'subtitle': 'تیک طلایی کنار نام شما در پروفایل، پست‌ها، کامنت‌ها و چت نمایش داده می‌شود.',
+      'subtitle':
+          'تیک طلایی کنار نام شما در پروفایل، پست‌ها، کامنت‌ها و چت نمایش داده می‌شود.',
     },
     {
       'icon': Icons.timelapse,
       'title': 'استوری ۴۸ ساعته',
-      'subtitle': 'استوری‌های شما تا ۴۸ ساعت در فید باقی می‌مانند (کاربران عادی: ۲۴ ساعت).',
+      'subtitle':
+          'استوری‌های شما تا ۴۸ ساعت در فید باقی می‌مانند (کاربران عادی: ۲۴ ساعت).',
     },
     {
       'icon': Icons.edit_note,
@@ -84,7 +85,8 @@ class _PricingPageState extends ConsumerState<PricingPage> with SingleTickerProv
     {
       'icon': Icons.upload_file,
       'title': 'ارسال فایل تا ۵۰ مگابایت',
-      'subtitle': 'در چت می‌توانید تصویر، PDF و فایل صوتی تا ۵۰ مگابایت ارسال کنید (عادی: ۱۰ مگابایت).',
+      'subtitle':
+          'در چت می‌توانید تصویر، PDF و فایل صوتی تا ۵۰ مگابایت ارسال کنید (عادی: ۱۰ مگابایت).',
     },
     {
       'icon': Icons.video_collection,
@@ -115,7 +117,7 @@ class _PricingPageState extends ConsumerState<PricingPage> with SingleTickerProv
       vsync: this,
       duration: const Duration(seconds: 2),
     )..repeat(reverse: true);
-    
+
     _pulseAnimation = Tween<double>(begin: 1.0, end: 1.05).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
@@ -152,7 +154,8 @@ class _PricingPageState extends ConsumerState<PricingPage> with SingleTickerProv
     if (!_isBazaarConnected) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('اتصال به کافه‌بازار برقرار نشد. لطفاً اپ بازار را نصب یا به‌روزرسانی کنید.'),
+          content: Text(
+              'اتصال به کافه‌بازار برقرار نشد. لطفاً اپ بازار را نصب یا به‌روزرسانی کنید.'),
         ),
       );
       _initBazaar();
@@ -191,8 +194,13 @@ class _PricingPageState extends ConsumerState<PricingPage> with SingleTickerProv
           context: context,
           builder: (_) => AlertDialog(
             backgroundColor: _darkBg,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: const BorderSide(color: _goldStart, width: 1.5)),
-            title: const Text('تبریک!', textAlign: TextAlign.center, style: TextStyle(color: _goldStart, fontWeight: FontWeight.bold)),
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+                side: const BorderSide(color: _goldStart, width: 1.5)),
+            title: const Text('تبریک!',
+                textAlign: TextAlign.center,
+                style:
+                    TextStyle(color: _goldStart, fontWeight: FontWeight.bold)),
             content: Text(
               'اشتراک ویستا پریمیوم با موفقیت به‌روزرسانی شد.$daysText\nتیک طلایی و امکانات ویژه فعال است.',
               textAlign: TextAlign.center,
@@ -225,10 +233,12 @@ class _PricingPageState extends ConsumerState<PricingPage> with SingleTickerProv
     final isPremium = PremiumSubscriptionUtils.isPremiumActive(profile);
     final selectedPlan = _plans[_selectedPlanIndex];
     final extendHint = isPremium
-        ? PremiumSubscriptionUtils.extendHintForPlan(selectedPlan['title'] as String)
+        ? PremiumSubscriptionUtils.extendHintForPlan(
+            selectedPlan['title'] as String)
         : null;
     final yearlySavings = (_monthlyAmount * 12) - _yearlyAmount;
-    final savingsPercent = ((yearlySavings / (_monthlyAmount * 12)) * 100).round();
+    final savingsPercent =
+        ((yearlySavings / (_monthlyAmount * 12)) * 100).round();
 
     final statusBarColor = Colors.transparent;
     final systemOverlayStyle = SystemUiOverlayStyle(
@@ -280,7 +290,7 @@ class _PricingPageState extends ConsumerState<PricingPage> with SingleTickerProv
               ),
             ),
           ),
-          
+
           CustomScrollView(
             physics: const BouncingScrollPhysics(),
             slivers: [
@@ -291,7 +301,11 @@ class _PricingPageState extends ConsumerState<PricingPage> with SingleTickerProv
                 systemOverlayStyle: systemOverlayStyle,
                 elevation: 0,
                 leading: IconButton(
-                  icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 22, color: Colors.white),
+                  icon: Icon(
+                    directionalBackIcon(context, ios: true),
+                    size: 22,
+                    color: Colors.white,
+                  ),
                   onPressed: () => Navigator.pop(context),
                 ),
                 flexibleSpace: FlexibleSpaceBar(
@@ -356,7 +370,6 @@ class _PricingPageState extends ConsumerState<PricingPage> with SingleTickerProv
                   ),
                 ),
               ),
-              
               if (isPremium)
                 SliverToBoxAdapter(
                   child: Padding(
@@ -366,13 +379,13 @@ class _PricingPageState extends ConsumerState<PricingPage> with SingleTickerProv
                     ),
                   ),
                 ),
-                
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(24, 8, 24, 20),
                   child: Row(
                     children: [
-                      const Icon(Icons.auto_awesome, color: _goldStart, size: 20),
+                      const Icon(Icons.auto_awesome,
+                          color: _goldStart, size: 20),
                       const SizedBox(width: 8),
                       Text(
                         'امکانات انحصاری شما',
@@ -386,7 +399,6 @@ class _PricingPageState extends ConsumerState<PricingPage> with SingleTickerProv
                   ),
                 ),
               ),
-              
               SliverList(
                 delegate: SliverChildBuilderDelegate(
                   (context, index) => Padding(
@@ -398,7 +410,6 @@ class _PricingPageState extends ConsumerState<PricingPage> with SingleTickerProv
                   childCount: _features.length,
                 ),
               ),
-              
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(20, 10, 20, 240),
@@ -407,7 +418,8 @@ class _PricingPageState extends ConsumerState<PricingPage> with SingleTickerProv
                     children: [
                       Row(
                         children: [
-                          Icon(Icons.shield_rounded, size: 16, color: Colors.white.withOpacity(0.5)),
+                          Icon(Icons.shield_rounded,
+                              size: 16, color: Colors.white.withOpacity(0.5)),
                           const SizedBox(width: 6),
                           Text(
                             'پرداخت امن کافه‌بازار',
@@ -431,15 +443,18 @@ class _PricingPageState extends ConsumerState<PricingPage> with SingleTickerProv
                       if (!isPremium && savingsPercent > 0) ...[
                         const SizedBox(height: 14),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 10),
                           decoration: BoxDecoration(
                             color: _goldStart.withOpacity(0.1),
                             borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: _goldStart.withOpacity(0.3)),
+                            border:
+                                Border.all(color: _goldStart.withOpacity(0.3)),
                           ),
                           child: Row(
                             children: [
-                              const Icon(Icons.local_offer_rounded, color: _goldStart, size: 18),
+                              const Icon(Icons.local_offer_rounded,
+                                  color: _goldStart, size: 18),
                               const SizedBox(width: 8),
                               Expanded(
                                 child: Text(
@@ -462,10 +477,12 @@ class _PricingPageState extends ConsumerState<PricingPage> with SingleTickerProv
               ),
             ],
           ),
-          
+
           // بخش پایینی (باکس خرید)
           Positioned(
-            bottom: 0, left: 0, right: 0,
+            bottom: 0,
+            left: 0,
+            right: 0,
             child: ClipRRect(
               child: BackdropFilter(
                 filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
@@ -474,7 +491,8 @@ class _PricingPageState extends ConsumerState<PricingPage> with SingleTickerProv
                   decoration: BoxDecoration(
                     color: const Color(0xFF1A1A20).withOpacity(0.85),
                     border: Border(
-                      top: BorderSide(color: Colors.white.withOpacity(0.1), width: 1),
+                      top: BorderSide(
+                          color: Colors.white.withOpacity(0.1), width: 1),
                     ),
                     boxShadow: [
                       BoxShadow(
@@ -496,7 +514,10 @@ class _PricingPageState extends ConsumerState<PricingPage> with SingleTickerProv
                             final amount = plan['amount'] as int;
                             return Expanded(
                               child: GestureDetector(
-                                onTap: busy ? null : () => setState(() => _selectedPlanIndex = index),
+                                onTap: busy
+                                    ? null
+                                    : () => setState(
+                                        () => _selectedPlanIndex = index),
                                 child: AnimatedContainer(
                                   duration: const Duration(milliseconds: 300),
                                   curve: Curves.easeOutCubic,
@@ -504,27 +525,41 @@ class _PricingPageState extends ConsumerState<PricingPage> with SingleTickerProv
                                     left: index == 0 ? 8 : 0,
                                     right: index == 1 ? 8 : 0,
                                   ),
-                                  padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+                                  padding: const EdgeInsets.symmetric(
+                                      vertical: 14, horizontal: 8),
                                   decoration: BoxDecoration(
-                                    color: isSelected ? _goldStart.withOpacity(0.12) : Colors.white.withOpacity(0.03),
+                                    color: isSelected
+                                        ? _goldStart.withOpacity(0.12)
+                                        : Colors.white.withOpacity(0.03),
                                     borderRadius: BorderRadius.circular(16),
                                     border: Border.all(
-                                      color: isSelected ? _goldStart : Colors.white.withOpacity(0.1),
+                                      color: isSelected
+                                          ? _goldStart
+                                          : Colors.white.withOpacity(0.1),
                                       width: isSelected ? 2 : 1,
                                     ),
-                                    boxShadow: isSelected ? [
-                                      BoxShadow(color: _goldStart.withOpacity(0.15), blurRadius: 12)
-                                    ] : [],
+                                    boxShadow: isSelected
+                                        ? [
+                                            BoxShadow(
+                                                color: _goldStart
+                                                    .withOpacity(0.15),
+                                                blurRadius: 12)
+                                          ]
+                                        : [],
                                   ),
                                   child: Column(
                                     children: [
                                       if (plan['badge'] != null)
                                         Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                          margin: const EdgeInsets.only(bottom: 6),
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 8, vertical: 3),
+                                          margin:
+                                              const EdgeInsets.only(bottom: 6),
                                           decoration: BoxDecoration(
-                                            gradient: const LinearGradient(colors: [_goldStart, _goldEnd]),
-                                            borderRadius: BorderRadius.circular(8),
+                                            gradient: const LinearGradient(
+                                                colors: [_goldStart, _goldEnd]),
+                                            borderRadius:
+                                                BorderRadius.circular(8),
                                           ),
                                           child: Text(
                                             plan['badge'] as String,
@@ -540,7 +575,9 @@ class _PricingPageState extends ConsumerState<PricingPage> with SingleTickerProv
                                         style: TextStyle(
                                           fontWeight: FontWeight.w800,
                                           fontSize: 16,
-                                          color: isSelected ? _goldStart : Colors.white70,
+                                          color: isSelected
+                                              ? _goldStart
+                                              : Colors.white70,
                                         ),
                                       ),
                                       const SizedBox(height: 6),
@@ -549,7 +586,9 @@ class _PricingPageState extends ConsumerState<PricingPage> with SingleTickerProv
                                         style: TextStyle(
                                           fontSize: 13,
                                           fontWeight: FontWeight.w600,
-                                          color: isSelected ? Colors.white : Colors.white54,
+                                          color: isSelected
+                                              ? Colors.white
+                                              : Colors.white54,
                                         ),
                                       ),
                                       const SizedBox(height: 4),
@@ -596,31 +635,42 @@ class _PricingPageState extends ConsumerState<PricingPage> with SingleTickerProv
                           child: Container(
                             decoration: BoxDecoration(
                               gradient: LinearGradient(
-                                colors: busy || !_isBazaarConnected 
-                                    ? [Colors.grey.shade800, Colors.grey.shade900]
+                                colors: busy || !_isBazaarConnected
+                                    ? [
+                                        Colors.grey.shade800,
+                                        Colors.grey.shade900
+                                      ]
                                     : [_goldStart, _goldEnd],
                               ),
                               borderRadius: BorderRadius.circular(16),
-                              boxShadow: busy || !_isBazaarConnected ? [] : [
-                                BoxShadow(
-                                  color: _goldStart.withOpacity(0.4),
-                                  blurRadius: 16,
-                                  offset: const Offset(0, 4),
-                                )
-                              ],
+                              boxShadow: busy || !_isBazaarConnected
+                                  ? []
+                                  : [
+                                      BoxShadow(
+                                        color: _goldStart.withOpacity(0.4),
+                                        blurRadius: 16,
+                                        offset: const Offset(0, 4),
+                                      )
+                                    ],
                             ),
                             child: ElevatedButton(
-                              onPressed: (busy || !_isBazaarConnected) ? null : _onPurchaseTap,
+                              onPressed: (busy || !_isBazaarConnected)
+                                  ? null
+                                  : _onPurchaseTap,
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.transparent,
                                 shadowColor: Colors.transparent,
                                 foregroundColor: Colors.black87,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(16)),
                               ),
                               child: busy
                                   ? const SizedBox(
-                                      height: 24, width: 24,
-                                      child: CircularProgressIndicator(color: Colors.black87, strokeWidth: 2.5),
+                                      height: 24,
+                                      width: 24,
+                                      child: CircularProgressIndicator(
+                                          color: Colors.black87,
+                                          strokeWidth: 2.5),
                                     )
                                   : Text(
                                       _isBazaarConnected
@@ -631,7 +681,9 @@ class _PricingPageState extends ConsumerState<PricingPage> with SingleTickerProv
                                       style: TextStyle(
                                         fontSize: 16,
                                         fontWeight: FontWeight.w900,
-                                        color: busy || !_isBazaarConnected ? Colors.white54 : Colors.black87,
+                                        color: busy || !_isBazaarConnected
+                                            ? Colors.white54
+                                            : Colors.black87,
                                       ),
                                     ),
                             ),
@@ -643,7 +695,9 @@ class _PricingPageState extends ConsumerState<PricingPage> with SingleTickerProv
                             child: Text(
                               'برای خرید اشتراک، اپلیکیشن کافه‌بازار باید نصب باشد.',
                               textAlign: TextAlign.center,
-                              style: TextStyle(fontSize: 12, color: Colors.redAccent.shade200),
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.redAccent.shade200),
                             ),
                           ),
                       ],
@@ -675,7 +729,8 @@ class _ActivePremiumBanner extends StatelessWidget {
       decoration: BoxDecoration(
         color: const Color(0xFF1E1C18),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFFFD700).withOpacity(0.3), width: 1.5),
+        border: Border.all(
+            color: const Color(0xFFFFD700).withOpacity(0.3), width: 1.5),
         boxShadow: [
           BoxShadow(
             color: const Color(0xFFFFD700).withOpacity(0.1),
@@ -689,7 +744,8 @@ class _ActivePremiumBanner extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Icon(Icons.stars_rounded, color: Color(0xFFFFD700), size: 32),
+              const Icon(Icons.stars_rounded,
+                  color: Color(0xFFFFD700), size: 32),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
@@ -711,7 +767,8 @@ class _ActivePremiumBanner extends StatelessWidget {
                 value: (days / 365).clamp(0.05, 1.0),
                 minHeight: 8,
                 backgroundColor: Colors.white.withOpacity(0.1),
-                valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFFFD700)),
+                valueColor:
+                    const AlwaysStoppedAnimation<Color>(Color(0xFFFFD700)),
               ),
             ),
           ],
@@ -719,7 +776,10 @@ class _ActivePremiumBanner extends StatelessWidget {
             const SizedBox(height: 12),
             Text(
               'اعتبار تا: $expiry',
-              style: TextStyle(fontSize: 13, color: Colors.white.withOpacity(0.7), fontWeight: FontWeight.w600),
+              style: TextStyle(
+                  fontSize: 13,
+                  color: Colors.white.withOpacity(0.7),
+                  fontWeight: FontWeight.w600),
             ),
           ],
         ],
@@ -757,7 +817,8 @@ class _FeatureTileUI extends StatelessWidget {
                 end: Alignment.bottomRight,
               ),
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: const Color(0xFFFFD700).withOpacity(0.3)),
+              border:
+                  Border.all(color: const Color(0xFFFFD700).withOpacity(0.3)),
             ),
             child: Icon(
               feature['icon'] as IconData,

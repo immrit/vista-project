@@ -13,6 +13,7 @@ import 'countdown_input_sheet.dart';
 import 'questions_input_sheet.dart';
 import '../../../chat/widgets/gif_picker_widget.dart';
 import '../../domain/entities/story_editor_models.dart';
+import '../../../../utils/directional_navigation.dart';
 import '../../../../utils/user_friendly_error_utils.dart';
 
 /// Bottom Sheet استیکرهای تعاملی با طراحی Glassmorphism و تب‌بندی
@@ -241,7 +242,8 @@ class _StoryStickerSheetState extends State<StoryStickerSheet>
             color: const Color(0xFF1C1C1E).withValues(alpha: 0.85),
             borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
             border: Border(
-              top: BorderSide(color: Colors.white.withValues(alpha: 0.1), width: 1),
+              top: BorderSide(
+                  color: Colors.white.withValues(alpha: 0.1), width: 1),
             ),
           ),
           child: Column(
@@ -616,7 +618,8 @@ class _StoryStickerSheetState extends State<StoryStickerSheet>
                   prefixStyle: const TextStyle(
                       color: Colors.blue, fontWeight: FontWeight.bold),
                   hintText: '\u0645\u062A\u0646 \u0647\u0634\u062A\u06AF...',
-                  hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.3)),
+                  hintStyle:
+                      TextStyle(color: Colors.white.withValues(alpha: 0.3)),
                   filled: true,
                   fillColor: Colors.white.withValues(alpha: 0.05),
                   border: OutlineInputBorder(
@@ -1079,8 +1082,8 @@ class _MusicPickerSheetState extends State<_MusicPickerSheet> {
                             fontFamily: 'Vazir',
                           ),
                         ),
-                        trailing: const Icon(
-                          Icons.chevron_right_rounded,
+                        trailing: Icon(
+                          directionalForwardChevronIcon(context),
                           color: Colors.white54,
                         ),
                       );

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../utils/directional_navigation.dart';
 import '../data/auth_repository.dart';
 import '../widgets/ribbon_background.dart';
 
@@ -109,9 +110,11 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Align(
-                      alignment: Alignment.centerRight,
+                      alignment: isLocaleRtl(context)
+                          ? Alignment.centerRight
+                          : Alignment.centerLeft,
                       child: IconButton(
-                        icon: const Icon(Icons.arrow_forward),
+                        icon: Icon(directionalBackIcon(context)),
                         onPressed:
                             _isLoading ? null : () => Navigator.pop(context),
                       ),

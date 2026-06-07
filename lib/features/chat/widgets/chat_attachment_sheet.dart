@@ -9,6 +9,7 @@ import 'package:path/path.dart' as p;
 import 'package:photo_manager/photo_manager.dart';
 
 import '../../../model/ProfileModel.dart';
+import '../../../utils/directional_navigation.dart';
 import '../../../utils/user_friendly_error_utils.dart';
 import '../theme/chat_theme.dart';
 import 'document_upload_sheet.dart';
@@ -812,7 +813,7 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
         child: Stack(
           alignment: Alignment.center,
           children: [
-            const Icon(Icons.arrow_forward_rounded,
+            Icon(directionalForwardIcon(context),
                 color: Colors.white, size: 24),
             Positioned(
               top: 4,
@@ -1355,8 +1356,8 @@ class _ChatImagePreviewScreenState extends State<_ChatImagePreviewScreen> {
                             height: 70,
                             child: ReorderableListView.builder(
                               scrollDirection: Axis.horizontal,
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 2, vertical: 4),
                               buildDefaultDragHandles: false,
                               onReorder: _reorderPreviewFiles,
                               itemCount: _previewFiles.length,
@@ -1423,8 +1424,8 @@ class _ChatImagePreviewScreenState extends State<_ChatImagePreviewScreen> {
                                                   vertical: 2,
                                                 ),
                                                 decoration: BoxDecoration(
-                                                  color: Colors.black.withValues(
-                                                      alpha: 0.55),
+                                                  color: Colors.black
+                                                      .withValues(alpha: 0.55),
                                                   borderRadius:
                                                       BorderRadius.circular(8),
                                                 ),
@@ -1466,7 +1467,8 @@ class _ChatImagePreviewScreenState extends State<_ChatImagePreviewScreen> {
                                                   height: 18,
                                                   decoration: BoxDecoration(
                                                     color: Colors.black
-                                                        .withValues(alpha: 0.62),
+                                                        .withValues(
+                                                            alpha: 0.62),
                                                     shape: BoxShape.circle,
                                                   ),
                                                   child: const Icon(
@@ -1502,7 +1504,8 @@ class _ChatImagePreviewScreenState extends State<_ChatImagePreviewScreen> {
                                   ),
                                   boxShadow: [
                                     BoxShadow(
-                                      color: Colors.black.withValues(alpha: 0.18),
+                                      color:
+                                          Colors.black.withValues(alpha: 0.18),
                                       blurRadius: 6,
                                       offset: const Offset(0, 2),
                                     ),
@@ -1523,7 +1526,8 @@ class _ChatImagePreviewScreenState extends State<_ChatImagePreviewScreen> {
                                         ? 'نوشتن کپشن برای آلبوم...'
                                         : 'نوشتن کپشن...',
                                     hintStyle: TextStyle(
-                                      color: Colors.white.withValues(alpha: 0.78),
+                                      color:
+                                          Colors.white.withValues(alpha: 0.78),
                                     ),
                                     filled: false,
                                     border: InputBorder.none,

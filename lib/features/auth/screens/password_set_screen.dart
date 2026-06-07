@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:Vista/core/security/input_policy.dart';
 
+import '../../../utils/directional_navigation.dart';
 import '../data/auth_repository.dart';
 import '../widgets/ribbon_background.dart';
 
@@ -108,9 +109,11 @@ class _PasswordSetScreenState extends State<PasswordSetScreen> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Align(
-                      alignment: Alignment.centerRight,
+                      alignment: isLocaleRtl(context)
+                          ? Alignment.centerRight
+                          : Alignment.centerLeft,
                       child: IconButton(
-                        icon: const Icon(Icons.arrow_forward),
+                        icon: Icon(directionalBackIcon(context)),
                         onPressed:
                             _isLoading ? null : () => Navigator.pop(context),
                       ),

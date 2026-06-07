@@ -5,6 +5,7 @@ import '../../../core/security/input_policy.dart';
 import '../../../DB/profile_cache_service.dart';
 import '../../../provider/locale_provider.dart';
 import '../../../utils/birth_date_picker.dart';
+import '../../../utils/directional_navigation.dart';
 import '../../auth/data/auth_repository.dart';
 import '../../auth/providers/auth_controller.dart';
 import '../data/profile_repository.dart';
@@ -286,7 +287,8 @@ class _ProfileSetupWizardScreenState
     final theme = Theme.of(context);
 
     return Directionality(
-      textDirection: TextDirection.rtl,
+      textDirection:
+          isLocaleRtl(context) ? TextDirection.rtl : TextDirection.ltr,
       child: PopScope(
         canPop: false,
         onPopInvokedWithResult: (didPop, _) {
@@ -295,15 +297,14 @@ class _ProfileSetupWizardScreenState
         child: Scaffold(
           appBar: AppBar(
             automaticallyImplyLeading: false,
+            leading: _step > 0
+                ? IconButton(
+                    tooltip: 'مرحله قبل',
+                    onPressed: _isSaving ? null : () => _goToStep(_step - 1),
+                    icon: Icon(directionalBackIcon(context)),
+                  )
+                : null,
             title: const Text('تکمیل ثبت نام'),
-            actions: [
-              if (_step > 0)
-                IconButton(
-                  tooltip: 'مرحله قبل',
-                  onPressed: _isSaving ? null : () => _goToStep(_step - 1),
-                  icon: const Icon(Icons.arrow_forward),
-                ),
-            ],
           ),
           body: SafeArea(
             child: _isLoading

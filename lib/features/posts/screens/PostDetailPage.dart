@@ -15,6 +15,7 @@ import '../../../model/CommentModel.dart';
 import '../../../model/UserModel.dart';
 import '../../../provider/provider.dart';
 import '../../../utils/user_friendly_error_utils.dart';
+import '../../../utils/directional_navigation.dart';
 import 'package:Vista/features/posts/widgets/post_music_bubble.dart';
 import '../../../utils/premium_features_helper.dart';
 import '../../../services/smart_share_service.dart';
@@ -122,7 +123,9 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(8),
                 child: AspectRatio(
-                  aspectRatio: size.width > 0 && size.height > 0 ? size.width / size.height : 1.0,
+                  aspectRatio: size.width > 0 && size.height > 0
+                      ? size.width / size.height
+                      : 1.0,
                   child: SizedBox(
                     width: double.infinity,
                     child: _buildImageWithRetry(post.imageUrl!),
@@ -541,7 +544,8 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
                     } catch (e) {
                       if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('خطا در بروزرسانی تنظیمات پست')),
+                          const SnackBar(
+                              content: Text('خطا در بروزرسانی تنظیمات پست')),
                         );
                       }
                     }
@@ -756,8 +760,9 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
           icon: Icon(
             post.isLiked ? Icons.favorite_rounded : Icons.favorite_border,
             size: 19,
-            color:
-                post.isLiked ? Colors.red : (isDark ? Colors.grey[400] : Colors.grey[700]),
+            color: post.isLiked
+                ? Colors.red
+                : (isDark ? Colors.grey[400] : Colors.grey[700]),
           ),
           onPressed: () async {
             setState(() {
@@ -1575,7 +1580,7 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
             // دکمه بازگشت
             OutlinedButton.icon(
               onPressed: () => Navigator.pop(context),
-              icon: const Icon(Icons.arrow_back),
+              icon: Icon(directionalBackIcon(context)),
               label: const Text('بازگشت'),
               style: OutlinedButton.styleFrom(
                 padding:

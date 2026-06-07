@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../utils/directional_navigation.dart';
+
 /// باتم‌شیت انتخاب نوع محتوا (استوری یا وضعیت)
 class ContentTypePickerSheet extends StatelessWidget {
   /// Callback وقتی استوری انتخاب شد
@@ -186,7 +188,7 @@ class _OptionTile extends StatelessWidget {
               ),
               // Arrow
               Icon(
-                Icons.chevron_right,
+                directionalForwardChevronIcon(context),
                 color: subtitleColor,
                 size: 24,
               ),

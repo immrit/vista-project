@@ -9,6 +9,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../../model/message_model.dart';
 import '../../../utils/avatar_asset_utils.dart';
 import '../../../utils/compat_extensions.dart';
+import '../../../utils/directional_navigation.dart';
 import '../../../utils/user_friendly_error_utils.dart';
 import '../../auth/providers/auth_controller.dart';
 import '../models/group_member_item.dart';
@@ -483,11 +484,8 @@ class _ModernGroupProfileScreenState
                     child: Column(
                       children: [
                         _buildQuickActions(theme),
-                        _buildGroupSnapshot(theme),
-                        _buildInviteSection(theme),
-                        if (_isAdmin) _buildAdminPanel(theme),
+                        _buildGroupInfoSection(theme),
                         _buildTabsSection(theme),
-                        _buildDangerZone(theme),
                         const SizedBox(height: 32),
                       ],
                     ),
@@ -514,249 +512,201 @@ class _ModernGroupProfileScreenState
   Widget _buildHeader(ThemeData theme) {
     final avatarProvider = AvatarAssetUtils.imageProvider(_groupImage);
     final isDark = theme.brightness == Brightness.dark;
-    const titleColor = Colors.white;
-
-    return SliverAppBar(
-      pinned: false,
-      stretch: true,
-      expandedHeight: 340,
-      backgroundColor: isDark ? _darkBg : _lightBg,
-      surfaceTintColor: Colors.transparent,
-      leading: IconButton(
-        onPressed: () => Navigator.of(context).pop(),
-        icon: Container(
-          padding: const EdgeInsets.all(7),
-          decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.3),
-            shape: BoxShape.circle,
-          ),
-          child: const Icon(
-            Icons.arrow_back,
-            color: Colors.white,
-            size: 21,
-          ),
-        ),
-      ),
-      actions: [
-        PopupMenuButton<String>(
-          icon: Container(
-            padding: const EdgeInsets.all(7),
+    return SliverToBoxAdapter(
+      child: Stack(
+        children: [
+          Container(
+            height: 340,
+            width: double.infinity,
             decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.3),
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(
-              Icons.more_vert,
-              color: Colors.white,
-              size: 21,
-            ),
-          ),
-          onSelected: (value) {
-            switch (value) {
-              case 'edit':
-                _editName();
-                break;
-              case 'add':
-                _addMembers();
-                break;
-              case 'copy':
-                _copyInviteLink();
-                break;
-              case 'share':
-                _shareInviteLink();
-                break;
-              case 'clear':
-                _clearHistory();
-                break;
-              case 'leave':
-                _leaveOrDeleteGroup();
-                break;
-            }
-          },
-          itemBuilder: (context) => [
-            if (_isAdmin)
-              const PopupMenuItem(
-                value: 'edit',
-                child: _MenuRow(icon: Icons.edit_rounded, text: 'ویرایش گروه'),
-              ),
-            if (_isAdmin)
-              const PopupMenuItem(
-                value: 'add',
-                child: _MenuRow(
-                  icon: Icons.person_add_alt_1_rounded,
-                  text: 'افزودن عضو',
-                ),
-              ),
-            const PopupMenuItem(
-              value: 'copy',
-              child: _MenuRow(icon: Icons.copy_rounded, text: 'کپی لینک دعوت'),
-            ),
-            const PopupMenuItem(
-              value: 'share',
-              child:
-                  _MenuRow(icon: Icons.ios_share_rounded, text: 'اشتراک لینک'),
-            ),
-            const PopupMenuItem(
-              value: 'clear',
-              child: _MenuRow(
-                icon: Icons.cleaning_services_rounded,
-                text: 'پاک کردن تاریخچه',
-              ),
-            ),
-            PopupMenuItem(
-              value: 'leave',
-              child: _MenuRow(
-                icon: _isCreator
-                    ? Icons.delete_forever_rounded
-                    : Icons.exit_to_app_rounded,
-                text: _isCreator ? 'حذف گروه' : 'خروج از گروه',
-                destructive: true,
-              ),
-            ),
-          ],
-        ),
-      ],
-      flexibleSpace: FlexibleSpaceBar(
-        collapseMode: CollapseMode.parallax,
-        background: Stack(
-          fit: StackFit.expand,
-          children: [
-            if (avatarProvider != null)
-              Stack(
-                fit: StackFit.expand,
-                children: [
-                  Image(image: avatarProvider, fit: BoxFit.cover),
-                  ClipRect(
-                    child: BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
-                      child: ColoredBox(
-                        color: Colors.black.withValues(alpha: 0.2),
-                      ),
-                    ),
-                  ),
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  isDark ? const Color(0xFF2A4157) : const Color(0xFF6C9BCF),
+                  isDark ? _darkBg : _lightBg,
                 ],
-              )
-            else
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      isDark
-                          ? const Color(0xFF2A4157)
-                          : const Color(0xFF6C9BCF),
-                      isDark ? _darkBg : _lightBg,
+              ),
+            ),
+            child: avatarProvider != null
+                ? Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      Image(image: avatarProvider, fit: BoxFit.cover),
+                      ClipRect(
+                        child: BackdropFilter(
+                          filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
+                          child: ColoredBox(
+                            color: Colors.black.withValues(alpha: 0.2),
+                          ),
+                        ),
+                      ),
+                      DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Colors.transparent,
+                              Colors.black.withValues(alpha: 0.22),
+                              Colors.black.withValues(alpha: 0.62),
+                            ],
+                            stops: const [0.0, 0.5, 1.0],
+                          ),
+                        ),
+                      ),
+                    ],
+                  )
+                : null,
+          ),
+          Positioned(
+            bottom: 20,
+            left: 0,
+            right: 0,
+            child: Column(
+              children: [
+                Hero(
+                  tag: 'group_avatar_${widget.conversationId}',
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Container(
+                        width: 110,
+                        height: 110,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: isDark ? _darkBg : Colors.white,
+                            width: 4,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.3),
+                              blurRadius: 15,
+                              offset: const Offset(0, 5),
+                            ),
+                          ],
+                        ),
+                        child: ClipOval(
+                          child: avatarProvider != null
+                              ? AvatarAssetUtils.image(
+                                  source: _groupImage,
+                                  fit: BoxFit.cover,
+                                  fallback: _buildAvatarFallback(theme),
+                                )
+                              : _buildAvatarFallback(theme),
+                        ),
+                      ),
+                      if (_isAdmin)
+                        PositionedDirectional(
+                          end: 0,
+                          bottom: 0,
+                          child: _SmallRoundButton(
+                            icon: Icons.camera_alt_rounded,
+                            onTap: _changeGroupImage,
+                          ),
+                        ),
                     ],
                   ),
                 ),
-              ),
-            DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.transparent,
-                    Colors.black.withValues(alpha: 0.22),
-                    Colors.black.withValues(alpha: 0.62),
-                  ],
-                  stops: const [0.0, 0.5, 1.0],
+                const SizedBox(height: 16),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _groupName,
+                        textAlign: TextAlign.center,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 0,
+                          shadows: [
+                            Shadow(blurRadius: 10, color: Colors.black45),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        '${_memberCount.toString().toPersianDigit()} عضو، ${_adminCount.toString().toPersianDigit()} ادمین',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.82),
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
+              ],
             ),
-            Positioned(
-              bottom: 20,
-              left: 0,
-              right: 0,
-              child: Column(
-                children: [
-                  Hero(
-                    tag: 'group_avatar_${widget.conversationId}',
-                    child: Stack(
-                      clipBehavior: Clip.none,
-                      children: [
-                        Container(
-                          width: 110,
-                          height: 110,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: isDark ? _darkBg : Colors.white,
-                              width: 4,
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.3),
-                                blurRadius: 15,
-                                offset: const Offset(0, 5),
-                              ),
-                            ],
-                          ),
-                          child: ClipOval(
-                            child: avatarProvider != null
-                                ? AvatarAssetUtils.image(
-                                    source: _groupImage,
-                                    fit: BoxFit.cover,
-                                    fallback: _buildAvatarFallback(theme),
-                                  )
-                                : _buildAvatarFallback(theme),
-                          ),
-                        ),
-                        if (_isAdmin)
-                          PositionedDirectional(
-                            end: 0,
-                            bottom: 0,
-                            child: _SmallRoundButton(
-                              icon: Icons.camera_alt_rounded,
-                              onTap: _changeGroupImage,
-                            ),
-                          ),
-                      ],
+          ),
+          LocaleDirectionalPositioned(
+            top: MediaQuery.of(context).padding.top + 8,
+            start: 8,
+            child: IconButton(
+              onPressed: () => Navigator.of(context).pop(),
+              icon: _HeaderCircleIcon(icon: directionalBackIcon(context)),
+            ),
+          ),
+          LocaleDirectionalPositioned(
+            top: MediaQuery.of(context).padding.top + 8,
+            end: 8,
+            child: PopupMenuButton<String>(
+              icon: _HeaderCircleIcon(icon: Icons.more_vert),
+              onSelected: _handleHeaderMenuAction,
+              itemBuilder: (context) => [
+                if (_isAdmin)
+                  const PopupMenuItem(
+                    value: 'edit',
+                    child:
+                        _MenuRow(icon: Icons.edit_rounded, text: 'ویرایش گروه'),
+                  ),
+                if (_isAdmin)
+                  const PopupMenuItem(
+                    value: 'add',
+                    child: _MenuRow(
+                      icon: Icons.person_add_alt_1_rounded,
+                      text: 'افزودن عضو',
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 24),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          _groupName,
-                          textAlign: TextAlign.center,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: titleColor,
-                            fontSize: 24,
-                            fontWeight: FontWeight.bold,
-                            letterSpacing: 0,
-                            shadows: [
-                              Shadow(
-                                blurRadius: 10,
-                                color: Colors.black45,
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          '${_memberCount.toString().toPersianDigit()} عضو، ${_adminCount.toString().toPersianDigit()} ادمین',
-                          style: TextStyle(
-                            color: titleColor.withValues(alpha: 0.82),
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
+                const PopupMenuItem(
+                  value: 'copy',
+                  child:
+                      _MenuRow(icon: Icons.copy_rounded, text: 'کپی لینک دعوت'),
+                ),
+                const PopupMenuItem(
+                  value: 'share',
+                  child: _MenuRow(
+                    icon: Icons.ios_share_rounded,
+                    text: 'اشتراک لینک',
                   ),
-                ],
-              ),
+                ),
+                const PopupMenuItem(
+                  value: 'clear',
+                  child: _MenuRow(
+                    icon: Icons.cleaning_services_rounded,
+                    text: 'پاک کردن تاریخچه',
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'leave',
+                  child: _MenuRow(
+                    icon: _isCreator
+                        ? Icons.delete_forever_rounded
+                        : Icons.exit_to_app_rounded,
+                    text: _isCreator ? 'حذف گروه' : 'خروج از گروه',
+                    destructive: true,
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -787,6 +737,29 @@ class _ModernGroupProfileScreenState
     );
   }
 
+  void _handleHeaderMenuAction(String value) {
+    switch (value) {
+      case 'edit':
+        _editName();
+        break;
+      case 'add':
+        _addMembers();
+        break;
+      case 'copy':
+        _copyInviteLink();
+        break;
+      case 'share':
+        _shareInviteLink();
+        break;
+      case 'clear':
+        _clearHistory();
+        break;
+      case 'leave':
+        _leaveOrDeleteGroup();
+        break;
+    }
+  }
+
   Widget _buildQuickActions(ThemeData theme) {
     return _Section(
       margin: const EdgeInsets.fromLTRB(12, 12, 12, 8),
@@ -805,11 +778,6 @@ class _ModernGroupProfileScreenState
             onTap: _toggleMute,
           ),
           _QuickAction(
-            icon: Icons.link_rounded,
-            label: 'دعوت',
-            onTap: _copyInviteLink,
-          ),
-          _QuickAction(
             icon: Icons.search_rounded,
             label: 'جستجو',
             onTap: () {
@@ -817,19 +785,30 @@ class _ModernGroupProfileScreenState
               FocusScope.of(context).requestFocus(FocusNode());
             },
           ),
-          if (_isAdmin)
-            _QuickAction(
-              icon: Icons.person_add_alt_1_rounded,
-              label: 'افزودن',
-              onTap: _addMembers,
-            ),
+          _QuickAction(
+            icon:
+                _isAdmin ? Icons.person_add_alt_1_rounded : Icons.link_rounded,
+            label: _isAdmin ? 'افزودن' : 'دعوت',
+            onTap: _isAdmin ? _addMembers : _copyInviteLink,
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildGroupSnapshot(ThemeData theme) {
+  Widget _buildGroupInfoSection(ThemeData theme) {
+    final role = _isCreator
+        ? 'سازنده'
+        : _isAdmin
+            ? 'ادمین'
+            : 'عضو';
+    final inviteTitle = _inviteCode == null
+        ? (_isAdmin ? 'ساخت لینک دعوت' : 'لینک دعوت ساخته نشده')
+        : _inviteLink;
+    final inviteSubtitle = _inviteEnabled ? 'لینک دعوت' : 'لینک دعوت غیرفعال';
+
     return _Section(
+      padding: EdgeInsets.zero,
       child: Column(
         children: [
           _InfoRow(
@@ -838,127 +817,113 @@ class _ModernGroupProfileScreenState
             value:
                 '${_memberCount.toString().toPersianDigit()} از ${_maxMembers.toString().toPersianDigit()} عضو',
           ),
+          _sectionDivider(theme),
           _InfoRow(
             icon: Icons.admin_panel_settings_rounded,
             title: 'نقش شما',
-            value: _isCreator
-                ? 'سازنده'
-                : _isAdmin
-                    ? 'ادمین'
-                    : 'عضو',
+            value: role,
           ),
-          if ((_groupDescription ?? '').trim().isNotEmpty)
+          if ((_groupDescription ?? '').trim().isNotEmpty) ...[
+            _sectionDivider(theme),
             _InfoRow(
               icon: Icons.info_outline_rounded,
               title: 'درباره گروه',
               value: _groupDescription!,
               multiLine: true,
             ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildInviteSection(ThemeData theme) {
-    final disabled = !_inviteEnabled || _inviteCode == null;
-    return _Section(
-      title: 'لینک دعوت',
-      trailing: _isAdmin
-          ? Switch(
-              value: _inviteEnabled,
-              onChanged: _toggleInvite,
-            )
-          : null,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.surfaceContainerHighest
-                  .withValues(alpha: 0.55),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Text(
-              _inviteCode == null
-                  ? 'هنوز لینک دعوتی برای این گروه ساخته نشده است'
-                  : _inviteLink,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: disabled
-                    ? theme.disabledColor
-                    : theme.textTheme.bodyMedium?.color,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-          if (!_inviteEnabled)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Text(
-                'لینک دعوت فعلا غیرفعال است.',
-                style: TextStyle(
-                  color: theme.colorScheme.error,
-                  fontSize: 12,
-                ),
-              ),
-            ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              FilledButton.icon(
-                onPressed: _inviteCode == null ? null : _copyInviteLink,
-                icon: const Icon(Icons.copy_rounded, size: 18),
-                label: const Text('کپی'),
-              ),
-              OutlinedButton.icon(
-                onPressed: _inviteCode == null ? null : _shareInviteLink,
-                icon: const Icon(Icons.ios_share_rounded, size: 18),
-                label: const Text('اشتراک'),
-              ),
-              if (_isAdmin)
-                TextButton.icon(
-                  onPressed: _regenerateInvite,
-                  icon: const Icon(Icons.refresh_rounded, size: 18),
-                  label: Text(_inviteCode == null ? 'ساخت لینک' : 'تغییر لینک'),
-                ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAdminPanel(ThemeData theme) {
-    return _Section(
-      title: 'ابزارهای مدیریت',
-      child: Column(
-        children: [
-          _ActionTile(
-            icon: Icons.edit_note_rounded,
-            title: 'ویرایش نام گروه',
-            subtitle: 'نام و هویت گروه را به‌روز کنید',
-            onTap: _editName,
-          ),
-          _ActionTile(
-            icon: Icons.person_add_alt_1_rounded,
-            title: 'افزودن اعضا',
-            subtitle:
-                '${_remainingSlots.toString().toPersianDigit()} جای خالی باقی مانده',
-            onTap: _addMembers,
-          ),
-          _ActionTile(
+          ],
+          _sectionDivider(theme),
+          _InfoRow(
             icon: Icons.link_rounded,
-            title: 'مدیریت لینک دعوت',
-            subtitle: _inviteEnabled ? 'لینک فعال است' : 'لینک غیرفعال است',
-            onTap: _regenerateInvite,
+            title: inviteSubtitle,
+            value: inviteTitle,
+            multiLine: _inviteCode == null,
+            onTap: _inviteCode == null
+                ? (_isAdmin ? _regenerateInvite : null)
+                : _copyInviteLink,
+            trailing: _buildInviteMenu(theme),
           ),
+          if (_isAdmin) ...[
+            _sectionDivider(theme),
+            _InfoRow(
+              icon: Icons.power_settings_new_rounded,
+              title: 'وضعیت دعوت',
+              value: _inviteEnabled ? 'فعال' : 'غیرفعال',
+              trailing: Switch.adaptive(
+                value: _inviteEnabled,
+                onChanged: _toggleInvite,
+              ),
+            ),
+            _sectionDivider(theme),
+            _InfoRow(
+              icon: Icons.edit_note_rounded,
+              title: 'مدیریت گروه',
+              value: 'ویرایش نام و هویت گروه',
+              onTap: _editName,
+              trailing: Icon(directionalForwardChevronIcon(context)),
+            ),
+            _sectionDivider(theme),
+            _InfoRow(
+              icon: Icons.person_add_alt_1_rounded,
+              title: 'افزودن اعضا',
+              value:
+                  '${_remainingSlots.toString().toPersianDigit()} جای خالی باقی مانده',
+              onTap: _addMembers,
+              trailing: Icon(directionalForwardChevronIcon(context)),
+            ),
+          ],
         ],
       ),
+    );
+  }
+
+  Widget _buildInviteMenu(ThemeData theme) {
+    final hasInvite = _inviteCode != null;
+    if (!hasInvite && !_isAdmin) return const SizedBox.shrink();
+    return PopupMenuButton<String>(
+      icon: Icon(Icons.more_horiz_rounded, color: theme.hintColor),
+      onSelected: (value) {
+        switch (value) {
+          case 'copy':
+            _copyInviteLink();
+            break;
+          case 'share':
+            _shareInviteLink();
+            break;
+          case 'regenerate':
+            _regenerateInvite();
+            break;
+        }
+      },
+      itemBuilder: (context) => [
+        if (hasInvite)
+          const PopupMenuItem(
+            value: 'copy',
+            child: _MenuRow(icon: Icons.copy_rounded, text: 'کپی لینک'),
+          ),
+        if (hasInvite)
+          const PopupMenuItem(
+            value: 'share',
+            child: _MenuRow(icon: Icons.ios_share_rounded, text: 'اشتراک لینک'),
+          ),
+        if (_isAdmin)
+          PopupMenuItem(
+            value: 'regenerate',
+            child: _MenuRow(
+              icon: Icons.refresh_rounded,
+              text: hasInvite ? 'تغییر لینک' : 'ساخت لینک',
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _sectionDivider(ThemeData theme) {
+    final isDark = theme.brightness == Brightness.dark;
+    return Divider(
+      height: 1,
+      indent: 56,
+      color: (isDark ? _darkDivider : _lightDivider).withValues(alpha: 0.9),
     );
   }
 
@@ -1196,34 +1161,6 @@ class _ModernGroupProfileScreenState
       error: (error, _) => _EmptyPanel(
         icon: Icons.error_outline_rounded,
         text: _mapGroupError(error),
-      ),
-    );
-  }
-
-  Widget _buildDangerZone(ThemeData theme) {
-    return _Section(
-      title: 'عملیات گروه',
-      child: Column(
-        children: [
-          _ActionTile(
-            icon: Icons.cleaning_services_rounded,
-            title: 'پاک کردن تاریخچه برای من',
-            subtitle: 'پیام‌ها از کش و نمای گفتگوی شما حذف می‌شوند',
-            destructive: true,
-            onTap: _clearHistory,
-          ),
-          _ActionTile(
-            icon: _isCreator
-                ? Icons.delete_forever_rounded
-                : Icons.exit_to_app_rounded,
-            title: _isCreator ? 'حذف کامل گروه' : 'خروج از گروه',
-            subtitle: _isCreator
-                ? 'فقط سازنده می‌تواند گروه را حذف کند'
-                : 'می‌توانید بعدا با لینک دعوت برگردید',
-            destructive: true,
-            onTap: _leaveOrDeleteGroup,
-          ),
-        ],
       ),
     );
   }
@@ -1593,15 +1530,11 @@ class _AddMembersSheetState extends State<_AddMembersSheet> {
 
 class _Section extends StatelessWidget {
   final Widget child;
-  final String? title;
-  final Widget? trailing;
   final EdgeInsetsGeometry margin;
   final EdgeInsetsGeometry padding;
 
   const _Section({
     required this.child,
-    this.title,
-    this.trailing,
     this.margin = const EdgeInsets.fromLTRB(12, 8, 12, 8),
     this.padding = const EdgeInsets.all(12),
   });
@@ -1609,40 +1542,28 @@ class _Section extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     return Container(
       width: double.infinity,
       margin: margin,
       padding: padding,
       decoration: BoxDecoration(
-        color: theme.cardColor,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: theme.dividerColor.withValues(alpha: 0.25),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (title != null) ...[
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    title!,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
+        color: isDark ? _ModernGroupProfileScreenState._darkCard : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: isDark
+            ? null
+            : Border.all(color: theme.dividerColor.withValues(alpha: 0.2)),
+        boxShadow: isDark
+            ? null
+            : [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.04),
+                  blurRadius: 16,
+                  offset: const Offset(0, 8),
                 ),
-                if (trailing != null) trailing!,
               ],
-            ),
-            const SizedBox(height: 10),
-          ],
-          child,
-        ],
       ),
+      child: child,
     );
   }
 }
@@ -1661,24 +1582,38 @@ class _QuickAction extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     return Expanded(
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 4),
+          padding: const EdgeInsets.symmetric(vertical: 11),
+          decoration: BoxDecoration(
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.06)
+                : Colors.grey.withValues(alpha: 0.06),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.08)
+                  : Colors.grey.withValues(alpha: 0.12),
+            ),
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, color: theme.colorScheme.primary),
-              const SizedBox(height: 6),
+              Icon(icon, color: theme.colorScheme.primary, size: 23),
+              const SizedBox(height: 5),
               Text(
                 label,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 12,
+                style: TextStyle(
+                  fontSize: 11,
                   fontWeight: FontWeight.w600,
+                  color: isDark ? Colors.white70 : Colors.grey[700],
                 ),
               ),
             ],
@@ -1694,85 +1629,61 @@ class _InfoRow extends StatelessWidget {
   final String title;
   final String value;
   final bool multiLine;
+  final VoidCallback? onTap;
+  final Widget? trailing;
 
   const _InfoRow({
     required this.icon,
     required this.title,
     required this.value,
     this.multiLine = false,
+    this.onTap,
+    this.trailing,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 7),
+    final isDark = theme.brightness == Brightness.dark;
+    final content = Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       child: Row(
         crossAxisAlignment:
             multiLine ? CrossAxisAlignment.start : CrossAxisAlignment.center,
         children: [
-          Icon(icon, color: theme.colorScheme.primary, size: 21),
-          const SizedBox(width: 12),
+          Icon(icon, color: theme.colorScheme.primary, size: 24),
+          const SizedBox(width: 16),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  title,
+                  value,
+                  maxLines: multiLine ? 4 : 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: theme.hintColor,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
+                    fontSize: 16,
+                    color: isDark ? Colors.white : Colors.black87,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  value,
-                  style: const TextStyle(fontWeight: FontWeight.w600),
+                  title,
+                  style: TextStyle(
+                    color: isDark ? Colors.white60 : Colors.grey[600],
+                    fontSize: 13,
+                  ),
                 ),
               ],
             ),
           ),
+          if (trailing != null) trailing!,
         ],
       ),
     );
-  }
-}
-
-class _ActionTile extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final bool destructive;
-  final VoidCallback onTap;
-
-  const _ActionTile({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.onTap,
-    this.destructive = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final color =
-        destructive ? theme.colorScheme.error : theme.colorScheme.primary;
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      leading: Icon(icon, color: color),
-      title: Text(
-        title,
-        style: TextStyle(
-          color: destructive ? theme.colorScheme.error : null,
-          fontWeight: FontWeight.w700,
-        ),
-      ),
-      subtitle: Text(subtitle),
-      trailing: const Icon(Icons.chevron_right_rounded),
-      onTap: onTap,
-    );
+    if (onTap == null) return content;
+    return InkWell(onTap: onTap, child: content);
   }
 }
 
@@ -1963,6 +1874,24 @@ class _SmallRoundButton extends StatelessWidget {
           child: Icon(icon, color: Colors.white, size: 18),
         ),
       ),
+    );
+  }
+}
+
+class _HeaderCircleIcon extends StatelessWidget {
+  final IconData icon;
+
+  const _HeaderCircleIcon({required this.icon});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.3),
+        shape: BoxShape.circle,
+      ),
+      child: Icon(icon, color: Colors.white, size: 22),
     );
   }
 }

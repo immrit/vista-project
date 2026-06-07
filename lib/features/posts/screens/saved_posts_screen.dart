@@ -10,6 +10,7 @@ import '../../../provider/provider.dart';
 import '../../../services/current_user_service.dart';
 import '../../../services/smart_share_service.dart';
 import '../../../utils/comments_bottom_sheet.dart';
+import '../../../utils/directional_navigation.dart';
 import '../../../utils/user_friendly_error_utils.dart';
 import '../../../utils/premium_features_helper.dart';
 import '../../../widgets/verification_badge_icon.dart';
@@ -88,7 +89,7 @@ class _SavedPostsScreenState extends ConsumerState<SavedPostsScreen> {
         centerTitle: true,
         leading: IconButton(
           icon: Icon(
-            Icons.arrow_back_ios_new_rounded,
+            directionalBackIcon(context, ios: true),
             color: isDark ? Colors.white : Colors.black,
           ),
           onPressed: () => Navigator.pop(context),
@@ -283,9 +284,7 @@ class _SavedPostsScreenState extends ConsumerState<SavedPostsScreen> {
 
 TextDirection _getTextDirection(String text) {
   final persianRegex = RegExp(r'[\u0600-\u06FF]');
-  return persianRegex.hasMatch(text)
-      ? TextDirection.rtl
-      : TextDirection.ltr;
+  return persianRegex.hasMatch(text) ? TextDirection.rtl : TextDirection.ltr;
 }
 
 String _getTimeAgo(DateTime dt) {
@@ -358,8 +357,7 @@ class _SavedPostItem extends ConsumerWidget {
                     child: post.avatarUrl.isEmpty
                         ? Icon(Icons.person,
                             size: 22,
-                            color:
-                                isDark ? Colors.grey[400] : Colors.grey[600])
+                            color: isDark ? Colors.grey[400] : Colors.grey[600])
                         : null,
                   ),
                 ),
@@ -434,8 +432,8 @@ class _SavedPostItem extends ConsumerWidget {
                             style: TextStyle(
                               fontSize: 15,
                               height: 1.4,
-                              color: colorScheme.onSurface
-                                  .withValues(alpha: 0.9),
+                              color:
+                                  colorScheme.onSurface.withValues(alpha: 0.9),
                             ),
                             hashtagStyle: const TextStyle(
                               color: Colors.blue,
@@ -589,7 +587,8 @@ class _SavedPostItem extends ConsumerWidget {
                                 // اگر unsave کرد یه تایید کوتاه نشون بده
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(
-                                    content: const Text('از پست‌های ذخیره‌شده حذف شد'),
+                                    content: const Text(
+                                        'از پست‌های ذخیره‌شده حذف شد'),
                                     behavior: SnackBarBehavior.floating,
                                     margin: const EdgeInsets.all(12),
                                     shape: RoundedRectangleBorder(
@@ -613,8 +612,8 @@ class _SavedPostItem extends ConsumerWidget {
 
                           // اشتراک‌گذاری
                           InkWell(
-                            onTap: () =>
-                                SmartShareService().showShareOptions(post, context),
+                            onTap: () => SmartShareService()
+                                .showShareOptions(post, context),
                             borderRadius: BorderRadius.circular(12),
                             child: Padding(
                               padding: const EdgeInsets.symmetric(
@@ -625,8 +624,9 @@ class _SavedPostItem extends ConsumerWidget {
                                 'lib/utils/images/component/send.png',
                                 width: 19,
                                 height: 19,
-                                color:
-                                    isDark ? Colors.grey[400] : Colors.grey[600],
+                                color: isDark
+                                    ? Colors.grey[400]
+                                    : Colors.grey[600],
                               ),
                             ),
                           ),
@@ -746,8 +746,8 @@ class _SavedPostItem extends ConsumerWidget {
 
             return items;
           },
-          onSelected: (value) => _handleMenuAction(
-              context, ref, value, isDark, isCurrentUserPost),
+          onSelected: (value) =>
+              _handleMenuAction(context, ref, value, isDark, isCurrentUserPost),
         );
       },
       loading: () => const SizedBox(width: 34, height: 34),
@@ -771,8 +771,8 @@ class _SavedPostItem extends ConsumerWidget {
               content: const Text('متن کپی شد'),
               behavior: SnackBarBehavior.floating,
               margin: const EdgeInsets.all(12),
-              shape:
-                  RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
               duration: const Duration(seconds: 2),
             ),
           );
@@ -862,7 +862,8 @@ class _SavedPostItem extends ConsumerWidget {
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text('حذف پست'),
-        content: const Text('آیا مطمئن هستید که می‌خواهید این پست را حذف کنید؟'),
+        content:
+            const Text('آیا مطمئن هستید که می‌خواهید این پست را حذف کنید؟'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
@@ -873,16 +874,15 @@ class _SavedPostItem extends ConsumerWidget {
             onPressed: () async {
               Navigator.pop(ctx);
               try {
-                await ref
-                    .read(goPostsRepositoryProvider)
-                    .deletePost(post.id);
-                ref.read(savedPostsProvider.notifier).removePostLocally(post.id);
+                await ref.read(goPostsRepositoryProvider).deletePost(post.id);
+                ref
+                    .read(savedPostsProvider.notifier)
+                    .removePostLocally(post.id);
                 ref
                     .read(savedPostIdsProvider.notifier)
                     .toggle(post.id, post: post);
                 if (ctx.mounted) {
-                  UserFriendlyErrorUtils.showSuccessSnackBar(
-                      ctx, 'پست حذف شد');
+                  UserFriendlyErrorUtils.showSuccessSnackBar(ctx, 'پست حذف شد');
                 }
               } catch (e) {
                 if (ctx.mounted) {
