@@ -36,6 +36,7 @@ class PublicPostModel {
   final String? moderatorUsername;
   final DateTime? moderatedAt;
   final String? moderationReason;
+  final bool editedByVista;
 
   PublicPostModel({
     required this.id,
@@ -66,6 +67,7 @@ class PublicPostModel {
     this.moderatorUsername,
     this.moderatedAt,
     this.moderationReason,
+    this.editedByVista = false,
   }) : hashtags = hashtags ?? _extractHashtags(content);
 
   // متد استاتیک برای استخراج هشتگ‌ها از متن
@@ -118,6 +120,7 @@ class PublicPostModel {
       moderatorUsername: _parseString(map, 'moderator_username'),
       moderatedAt: _parseDateTime(map, 'moderated_at'),
       moderationReason: _parseString(map, 'moderation_reason'),
+      editedByVista: _parseBool(map, 'edited_by_vista'),
     );
   }
 
@@ -330,6 +333,7 @@ class PublicPostModel {
       'moderator_username': moderatorUsername,
       'moderated_at': moderatedAt?.toIso8601String(),
       'moderation_reason': moderationReason,
+      'edited_by_vista': editedByVista,
     };
   }
 
@@ -367,6 +371,7 @@ class PublicPostModel {
     String? moderatorUsername,
     DateTime? moderatedAt,
     String? moderationReason,
+    bool? editedByVista,
   }) {
     return PublicPostModel(
       id: id ?? this.id,
@@ -396,6 +401,7 @@ class PublicPostModel {
       moderatorUsername: moderatorUsername ?? this.moderatorUsername,
       moderatedAt: moderatedAt ?? this.moderatedAt,
       moderationReason: moderationReason ?? this.moderationReason,
+      editedByVista: editedByVista ?? this.editedByVista,
     );
   }
 

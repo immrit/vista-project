@@ -85,12 +85,14 @@ class NotificationActionResolver {
           type: NotificationActionType.openNotifications,
         );
       case 'suggest_follow':
-        return const NotificationNavigationAction(
+        return NotificationNavigationAction(
           type: NotificationActionType.openSuggestedFollow,
+          userId: notification.followerId ?? notification.senderId,
         );
       case 'suggest_post':
-        return const NotificationNavigationAction(
+        return NotificationNavigationAction(
           type: NotificationActionType.openSuggestedPost,
+          postId: notification.postId,
         );
       case 'daily_suggestion_digest':
         return const NotificationNavigationAction(

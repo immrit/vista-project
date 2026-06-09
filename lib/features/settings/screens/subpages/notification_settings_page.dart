@@ -22,6 +22,7 @@ class NotificationSettingsPage extends ConsumerWidget {
     final messagesEnabled = settings['message_notifications'] as bool? ?? true;
     final mentionsEnabled = settings['mention_notifications'] as bool? ?? true;
     final socialEnabled = _isSocialEnabled(settings);
+    final suggestEnabled = settings['suggest_notifications'] as bool? ?? true;
     final previewEnabled = settings['show_message_preview'] as bool? ?? true;
     final soundEnabled = settings['sound_enabled'] as bool? ?? true;
     final vibrationEnabled = settings['vibration_enabled'] as bool? ?? true;
@@ -100,6 +101,20 @@ class NotificationSettingsPage extends ConsumerWidget {
                                 'follow_notifications': value,
                                 'story_notifications': value,
                               },
+                            )
+                        : null,
+                  ),
+                  VistaSettingsSwitch(
+                    icon: Icons.auto_awesome_outlined,
+                    title: 'پیشنهادها',
+                    subtitle: 'پست‌ها و کاربران پیشنهادی',
+                    value: suggestEnabled,
+                    onChanged: pushEnabled
+                        ? (value) => _updateSettings(
+                              ref,
+                              userId,
+                              settings,
+                              {'suggest_notifications': value},
                             )
                         : null,
                   ),

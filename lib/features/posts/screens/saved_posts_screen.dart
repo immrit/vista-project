@@ -20,6 +20,7 @@ import '../providers/saved_posts_provider.dart';
 import '../widgets/double_tap_like_overlay.dart';
 import '../widgets/hashtag_rich_text.dart';
 import '../widgets/post_action_buttons.dart';
+import '../widgets/post_moderation_banner.dart';
 import '../widgets/standard_edit_post_dialog.dart';
 import 'PostDetailPage.dart';
 import 'profileScreen.dart';
@@ -422,6 +423,8 @@ class _SavedPostItem extends ConsumerWidget {
                       ),
 
                       const SizedBox(height: 6),
+
+                      PostModerationBanner(post: post),
 
                       // متن پست
                       if (post.content.isNotEmpty) ...[

@@ -388,8 +388,49 @@ class NotificationNavigationService {
         return;
       }
 
+      if (uri.scheme == 'vista') {
+        switch (uri.host) {
+          case 'chat':
+            final conversationId = uri.pathSegments.isNotEmpty
+                ? uri.pathSegments.first
+                : uri.queryParameters['conversationId'];
+            if (conversationId != null && conversationId.isNotEmpty) {
+              await _navigateToChatDirectly(
+                context,
+                conversationId,
+                const <String, dynamic>{},
+              );
+              return;
+            }
+            break;
+          case 'post':
+            final postId = uri.pathSegments.isNotEmpty
+                ? uri.pathSegments.first
+                : uri.queryParameters['postId'];
+            if (postId != null && postId.isNotEmpty) {
+              await _navigateToPost(context, postId);
+              return;
+            }
+            break;
+          case 'profile':
+          case 'user':
+            final userId = uri.pathSegments.isNotEmpty
+                ? uri.pathSegments.first
+                : uri.queryParameters['userId'];
+            if (userId != null && userId.isNotEmpty) {
+              await _navigateToProfile(context, userId);
+              return;
+            }
+            break;
+          case 'notifications':
+            await _navigateToNotifications(context);
+            return;
+        }
+      }
+
       if (uri.path.contains('/chat')) {
-        final conversationId = uri.queryParameters['conversationId'];
+        final conversationId = uri.queryParameters['conversationId'] ??
+            (uri.pathSegments.isNotEmpty ? uri.pathSegments.last : null);
         if (conversationId != null && conversationId.isNotEmpty) {
           await _navigateToChatDirectly(
             context,
@@ -401,7 +442,8 @@ class NotificationNavigationService {
       }
 
       if (uri.path.contains('/post')) {
-        final postId = uri.queryParameters['postId'];
+        final postId = uri.queryParameters['postId'] ??
+            (uri.pathSegments.isNotEmpty ? uri.pathSegments.last : null);
         if (postId != null && postId.isNotEmpty) {
           await _navigateToPost(context, postId);
           return;

@@ -13,6 +13,7 @@ import '../../../utils/directional_navigation.dart';
 import 'package:Vista/widgets/profile_avatar_widget.dart'; // NEW IMPORT
 import '../providers/saved_posts_provider.dart';
 import '../widgets/post_action_buttons.dart';
+import '../widgets/post_moderation_banner.dart';
 
 // Imports for existing functionality
 import '../../../features/chat/screens/modern_chat_screen.dart';
@@ -2089,6 +2090,8 @@ class _PostListItem extends ConsumerWidget {
                   ),
 
                   const SizedBox(height: 6),
+
+                  PostModerationBanner(post: post),
 
                   // متن پست
                   if (post.content.isNotEmpty) ...[

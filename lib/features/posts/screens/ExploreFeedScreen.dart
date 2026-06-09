@@ -29,6 +29,7 @@ import 'package:Vista/utils/comments_bottom_sheet.dart';
 import 'package:Vista/services/system_ui_bar_service.dart';
 import '../../../utils/user_friendly_error_utils.dart';
 import '../widgets/post_action_buttons.dart';
+import '../widgets/post_moderation_banner.dart';
 import '../widgets/hashtag_rich_text.dart';
 import '../providers/saved_posts_provider.dart';
 import '../data/go_posts_repository.dart';
@@ -856,6 +857,8 @@ class _ThreadPostItem extends ConsumerWidget {
                       ),
 
                       const SizedBox(height: 6),
+
+                      PostModerationBanner(post: post),
 
                       // متن پست
                       if (post.content.isNotEmpty) ...[

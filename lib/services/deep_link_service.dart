@@ -78,9 +78,19 @@ class DeepLinkService {
         logInfo('Navigating to post via vista scheme');
         _navigateToPost(postId, navigatorKey);
       } else if (host == 'profile' && pathSegments.isNotEmpty) {
-        final username = pathSegments.first;
+        final userOrUsername = pathSegments.first;
         logInfo('Navigating to profile via vista scheme');
-        _navigateToProfile(username, navigatorKey);
+        _navigateToProfile(userOrUsername, navigatorKey, userId: userOrUsername);
+      } else if (host == 'chat' && pathSegments.isNotEmpty) {
+        final conversationId = pathSegments.first;
+        logInfo('Navigating to chat via vista scheme');
+        navigatorKey.currentState?.pushNamed(
+          '/chat-detail',
+          arguments: {'conversationId': conversationId},
+        );
+      } else if (host == 'notifications') {
+        logInfo('Navigating to notifications via vista scheme');
+        navigatorKey.currentState?.pushNamedAndRemoveUntil('/home', (route) => false);
       } else {
         logInfo('Unsupported vista scheme host: $host');
       }
@@ -131,10 +141,16 @@ class DeepLinkService {
 
   // Navigation Ù…Ø´ØªØ±Ú© Ø¨Ø±Ø§ÛŒ Ù¾Ø±ÙˆÙØ§ÛŒÙ„â€ŒÙ‡Ø§
   void _navigateToProfile(
-      String username, GlobalKey<NavigatorState> navigatorKey) {
+    String username,
+    GlobalKey<NavigatorState> navigatorKey, {
+    String? userId,
+  }) {
     navigatorKey.currentState?.pushNamed(
       '/profile',
-      arguments: {'username': username},
+      arguments: {
+        'username': username,
+        if (userId != null && userId.isNotEmpty) 'userId': userId,
+      },
     );
   }
 
