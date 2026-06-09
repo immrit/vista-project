@@ -73,11 +73,15 @@ class _SwipeToReplyWrapperState extends State<SwipeToReplyWrapper>
   @override
   Widget build(BuildContext context) {
     final theme = context.chatTheme;
+    final textDirection = Directionality.of(context);
+    final bubbleOnRight =
+        textDirection == TextDirection.ltr ? widget.isMe : !widget.isMe;
 
     return GestureDetector(
       onHorizontalDragUpdate: (details) {
-        if (widget.isMe && details.primaryDelta! > 0) return;
-        if (!widget.isMe && details.primaryDelta! < 0) return;
+        final delta = details.primaryDelta ?? 0;
+        if (bubbleOnRight && delta > 0) return;
+        if (!bubbleOnRight && delta < 0) return;
         _onHorizontalDragUpdate(details);
       },
       onHorizontalDragEnd: _onHorizontalDragEnd,
@@ -86,8 +90,8 @@ class _SwipeToReplyWrapperState extends State<SwipeToReplyWrapper>
         children: [
           if (_dragOffset.abs() > 10)
             Positioned(
-              right: widget.isMe ? 20 : null,
-              left: !widget.isMe ? 20 : null,
+              right: bubbleOnRight ? 20 : null,
+              left: bubbleOnRight ? null : 20,
               child: AnimatedScale(
                 scale: _thresholdReached ? 1.2 : 1.0,
                 duration: const Duration(milliseconds: 200),

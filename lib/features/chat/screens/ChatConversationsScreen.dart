@@ -363,10 +363,8 @@ class _ChatConversationsScreenState
   }
 
   Widget _buildComposeFab(ThemeData theme) {
-    final bottomInset = MediaQuery.of(context).padding.bottom;
-    final minimumBottomPadding = bottomInset + 64;
-    return SafeArea(
-      minimum: EdgeInsets.only(bottom: minimumBottomPadding),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 80),
       child: Container(
         width: 56,
         height: 56,

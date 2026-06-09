@@ -2,7 +2,7 @@ name: Vista
 description: "vista."
 publish_to: 'none'
 
-version: 2.5.0+4041
+version: 2.5.2+4042
 
 environment:
   sdk: ^3.5.4

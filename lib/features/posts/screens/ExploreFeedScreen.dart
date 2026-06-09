@@ -49,6 +49,17 @@ import '../widgets/dwell_detector.dart';
 final _feedFollowLoadingProvider =
     StateProvider<Set<String>>((ref) => <String>{});
 
+const double _feedContentTopPadding = 8;
+const double _homeBottomNavReservedHeight = 110;
+
+EdgeInsets _feedListPadding(BuildContext context) {
+  return EdgeInsets.only(
+    top: _feedContentTopPadding,
+    bottom: MediaQuery.of(context).viewPadding.bottom +
+        _homeBottomNavReservedHeight,
+  );
+}
+
 class ExploreFeedScreen extends ConsumerStatefulWidget {
   const ExploreFeedScreen({super.key});
 
@@ -266,7 +277,7 @@ class _ForYouTab extends ConsumerWidget {
               ref.read(personalizedFeedProvider.notifier).refreshPosts(),
           child: ListView.builder(
             scrollCacheExtent: ScrollCacheExtent.pixels(1000),
-            padding: const EdgeInsets.symmetric(vertical: 8),
+            padding: _feedListPadding(context),
             itemCount: posts.length + (notifier.hasMorePosts() ? 1 : 0),
             itemBuilder: (context, index) {
               if (index == posts.length) {
@@ -352,7 +363,7 @@ class _FollowingTab extends ConsumerWidget {
               ref.read(fetchFollowingPostsProvider.notifier).refreshPosts(),
           child: ListView.builder(
             scrollCacheExtent: ScrollCacheExtent.pixels(1000),
-            padding: const EdgeInsets.symmetric(vertical: 8),
+            padding: _feedListPadding(context),
             itemCount: posts.length + (notifier.hasMorePosts() ? 1 : 0),
             itemBuilder: (context, index) {
               if (index == posts.length) {
@@ -438,10 +449,7 @@ class _FeedLoadingState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListView.separated(
-      padding: EdgeInsets.only(
-        top: 8,
-        bottom: MediaQuery.of(context).viewPadding.bottom + 110,
-      ),
+      padding: _feedListPadding(context),
       itemBuilder: (_, __) => const PostCardSkeleton(),
       separatorBuilder: (_, __) => const Divider(height: 0.5, thickness: 0.5),
       itemCount: 4,

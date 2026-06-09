@@ -17,6 +17,7 @@ import 'full_screen_image_viewer.dart';
 import '../../../services/telegram_read_receipt_service.dart';
 import '../../../model/message_model.dart';
 import '../utils/story_reply_media_utils.dart';
+import '../utils/chat_text_direction.dart';
 import 'story_reply_thumbnail.dart';
 import '../../../utils/navigation_helper.dart';
 import '../../../utils/user_friendly_error_utils.dart';
@@ -487,6 +488,7 @@ class _ImprovedAnimatedMessageBubbleState
       isMe: widget.isMe,
       isFirstInGroup: widget.isFirstInGroup,
       isLastInGroup: widget.isLastInGroup,
+      textDirection: Directionality.of(context),
     );
   }
 
@@ -520,6 +522,10 @@ class _ImprovedAnimatedMessageBubbleState
             ? theme.myBubbleTextColor.withValues(alpha: 0.96)
             : theme.sendButtonColor)
         : theme.sendButtonColor;
+    final replyContentDirection = resolveChatTextDirection(
+      widget.replyToContent,
+      fallback: Directionality.of(context),
+    );
     return GestureDetector(
       onTap: widget.onReplyTap,
       child: Container(
@@ -594,16 +600,23 @@ class _ImprovedAnimatedMessageBubbleState
               ],
             ),
             const SizedBox(height: 4),
-            Text(
-              widget.replyToContent ?? '',
-              style: TextStyle(
-                color: widget.isMe
-                    ? theme.myBubbleTextColor.withValues(alpha: 0.8)
-                    : theme.otherBubbleTextColor.withValues(alpha: 0.8),
-                fontSize: 13,
+            Directionality(
+              textDirection: replyContentDirection,
+              child: Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: Text(
+                  widget.replyToContent ?? '',
+                  textAlign: TextAlign.start,
+                  style: TextStyle(
+                    color: widget.isMe
+                        ? theme.myBubbleTextColor.withValues(alpha: 0.8)
+                        : theme.otherBubbleTextColor.withValues(alpha: 0.8),
+                    fontSize: 13,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
             ),
           ],
         ),
@@ -866,78 +879,87 @@ class _ImprovedAnimatedMessageBubbleState
       );
     }
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Flexible(
-            child: _isDecrypting
-                ? Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      SizedBox(
-                        width: 14,
-                        height: 14,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            widget.isMe
-                                ? theme.myBubbleTextColor
-                                : theme.otherBubbleTextColor,
+    final contentDirection = resolveChatTextDirection(
+      _currentContent,
+      fallback: Directionality.of(context),
+    );
+
+    return Directionality(
+      textDirection: contentDirection,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Flexible(
+              child: _isDecrypting
+                  ? Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              widget.isMe
+                                  ? theme.myBubbleTextColor
+                                  : theme.otherBubbleTextColor,
+                            ),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        'در حال رمزگشایی...',
-                        style: TextStyle(
-                          color: widget.isMe
-                              ? theme.myBubbleTextColor
-                              : theme.otherBubbleTextColor,
-                          fontSize: 12,
+                        const SizedBox(width: 8),
+                        Text(
+                          'در حال رمزگشایی...',
+                          style: TextStyle(
+                            color: widget.isMe
+                                ? theme.myBubbleTextColor
+                                : theme.otherBubbleTextColor,
+                            fontSize: 12,
+                          ),
                         ),
-                      ),
-                    ],
-                  )
-                : _currentContent.isNotEmpty
-                    ? TelegramEmojiRichText(
-                        text: '$_currentContent\u200F',
-                        useTelegramEmoji:
-                            EmojiRenderPolicy.useTelegramEmojiRenderer(),
-                        textDirection: TextDirection.rtl,
-                        textAlign: TextAlign.right,
-                        baseStyle: TextStyle(
-                          color: widget.isMe
-                              ? theme.myBubbleTextColor
-                              : theme.otherBubbleTextColor,
-                          fontSize: 14.5,
-                          height: 1.5,
-                          fontFamily: 'Vazirmatn',
-                          fontFamilyFallback: const [
-                            'Apple Color Emoji',
-                            'Segoe UI Emoji',
-                            'Noto Color Emoji',
-                          ],
-                        ),
-                        linkColor: theme.sendButtonColor,
-                        mentionColor: theme.sendButtonColor,
-                        hashtagColor: theme.sendButtonColor,
-                        onMentionTap: (username) {
-                          NavigationHelper.navigateToUserProfile(
-                              context, username);
-                        },
-                        onHashtagTap: (tag) {
-                          NavigationHelper.navigateToHashtagPosts(context, tag);
-                        },
-                        onLinkTap: widget.onLinkTap,
-                      )
-                    : const SizedBox.shrink(),
-          ),
-          const SizedBox(width: 8),
-          _buildTimeAndStatus(theme),
-        ],
+                      ],
+                    )
+                  : _currentContent.isNotEmpty
+                      ? TelegramEmojiRichText(
+                          text: _currentContent,
+                          useTelegramEmoji:
+                              EmojiRenderPolicy.useTelegramEmojiRenderer(),
+                          textDirection: contentDirection,
+                          textAlign: TextAlign.start,
+                          baseStyle: TextStyle(
+                            color: widget.isMe
+                                ? theme.myBubbleTextColor
+                                : theme.otherBubbleTextColor,
+                            fontSize: 14.5,
+                            height: 1.5,
+                            fontFamily: 'Vazirmatn',
+                            fontFamilyFallback: const [
+                              'Apple Color Emoji',
+                              'Segoe UI Emoji',
+                              'Noto Color Emoji',
+                            ],
+                          ),
+                          linkColor: theme.sendButtonColor,
+                          mentionColor: theme.sendButtonColor,
+                          hashtagColor: theme.sendButtonColor,
+                          onMentionTap: (username) {
+                            NavigationHelper.navigateToUserProfile(
+                                context, username);
+                          },
+                          onHashtagTap: (tag) {
+                            NavigationHelper.navigateToHashtagPosts(
+                                context, tag);
+                          },
+                          onLinkTap: widget.onLinkTap,
+                        )
+                      : const SizedBox.shrink(),
+            ),
+            const SizedBox(width: 8),
+            _buildTimeAndStatus(theme),
+          ],
+        ),
       ),
     );
   }

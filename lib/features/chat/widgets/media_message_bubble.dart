@@ -21,6 +21,7 @@ import '../../../provider/settings_providers.dart';
 import '../services/chat_transfer_manager.dart';
 import 'telegram_message_status.dart';
 import '../performance/chat_performance_profile.dart';
+import '../utils/chat_text_direction.dart';
 import '../../emoji/domain/emoji_render_policy.dart';
 import '../../emoji/widgets/telegram_emoji_text.dart';
 
@@ -245,7 +246,8 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
           : <GalleryItem>[
               GalleryItem(
                 imageUrl: widget.mediaUrl,
-                cachedFile: (_cachedFile?.existsSync() ?? false) ? _cachedFile : null,
+                cachedFile:
+                    (_cachedFile?.existsSync() ?? false) ? _cachedFile : null,
                 caption: widget.caption,
                 heroTag: heroTag,
               ),
@@ -410,7 +412,9 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
                 if (_isManuallyDownloading && !_isFileCached)
                   _buildLoadingIndicator(),
 
-                if (!widget.isSecretMode && _isNetworkUrl && _transferTask != null)
+                if (!widget.isSecretMode &&
+                    _isNetworkUrl &&
+                    _transferTask != null)
                   Positioned(
                     left: 8,
                     bottom: 8,
@@ -671,49 +675,57 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
   }
 
   Widget _buildCaption(ChatTheme theme) {
+    final captionDirection = resolveChatTextDirection(
+      widget.caption,
+      fallback: Directionality.of(context),
+    );
+
     return Container(
       padding:
           const EdgeInsets.fromLTRB(10, 8, 10, 24), // پدینگ پایین برای جای ساعت
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          TelegramEmojiText(
-            widget.caption!,
-            useTelegramEmoji: EmojiRenderPolicy.useTelegramEmojiRenderer(),
-            textDirection: TextDirection.rtl,
-            textAlign: TextAlign.right,
-            style: TextStyle(
-              color: widget.isMe
-                  ? theme.myBubbleTextColor
-                  : theme.otherBubbleTextColor,
-              fontSize: 15,
-              fontFamily: 'Vazir',
+      child: Directionality(
+        textDirection: captionDirection,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            TelegramEmojiText(
+              widget.caption!,
+              useTelegramEmoji: EmojiRenderPolicy.useTelegramEmojiRenderer(),
+              textDirection: captionDirection,
+              textAlign: TextAlign.start,
+              style: TextStyle(
+                color: widget.isMe
+                    ? theme.myBubbleTextColor
+                    : theme.otherBubbleTextColor,
+                fontSize: 15,
+                fontFamily: 'Vazir',
+              ),
             ),
-          ),
-          Positioned(
-            bottom: -20,
-            right: 0,
-            child: Row(
-              children: [
-                if (widget.isMe) ...[
-                  _buildStatusIcon(widget.isMe
-                      ? theme.myBubbleTextColor.withValues(alpha: 0.6)
-                      : theme.otherBubbleTextColor.withValues(alpha: 0.6)),
-                  const SizedBox(width: 3),
-                ],
-                Text(
-                  _formatTime(widget.time),
-                  style: TextStyle(
-                    color: widget.isMe
+            PositionedDirectional(
+              bottom: -20,
+              end: 0,
+              child: Row(
+                children: [
+                  if (widget.isMe) ...[
+                    _buildStatusIcon(widget.isMe
                         ? theme.myBubbleTextColor.withValues(alpha: 0.6)
-                        : theme.otherBubbleTextColor.withValues(alpha: 0.6),
-                    fontSize: 11,
+                        : theme.otherBubbleTextColor.withValues(alpha: 0.6)),
+                    const SizedBox(width: 3),
+                  ],
+                  Text(
+                    _formatTime(widget.time),
+                    style: TextStyle(
+                      color: widget.isMe
+                          ? theme.myBubbleTextColor.withValues(alpha: 0.6)
+                          : theme.otherBubbleTextColor.withValues(alpha: 0.6),
+                      fontSize: 11,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

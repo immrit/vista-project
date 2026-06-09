@@ -178,6 +178,7 @@ class ChatTheme {
     required bool isMe,
     required bool isFirstInGroup,
     required bool isLastInGroup,
+    required TextDirection textDirection,
   }) {
     final double baseRadius = bubbleRadius;
     final double mergedRadius = bubbleMergedRadius.clamp(0.0, baseRadius);
@@ -185,8 +186,10 @@ class ChatTheme {
     final Radius mr = Radius.circular(mergedRadius);
     final bool topMerged = !isFirstInGroup;
     final bool bottomMerged = !isLastInGroup;
+    final bool bubbleOnRight =
+        textDirection == TextDirection.ltr ? isMe : !isMe;
 
-    if (isMe) {
+    if (bubbleOnRight) {
       return BorderRadius.only(
         topLeft: r,
         topRight: topMerged ? mr : r,
@@ -230,7 +233,8 @@ class ChatTheme {
       myBubbleTextColor: Colors.white,
 
       // حباب پیام دیگران - سفید خالص با سایه ملایم برای تمایز بهتر
-      otherBubbleColor: const Color(0xFFF1F5F9), // Slight gray for better contrast against white background
+      otherBubbleColor: const Color(
+          0xFFF1F5F9), // Slight gray for better contrast against white background
       otherBubbleTextColor: Colors.black,
 
       // وضعیت‌ها
@@ -292,12 +296,13 @@ class ChatTheme {
       myBubbleGradient: LinearGradient(
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
-        colors: [accent, gradientEnd], 
+        colors: [accent, gradientEnd],
       ),
       myBubbleTextColor: Colors.white,
 
       // حباب پیام دیگران - خاکستری روشن‌تر برای کنتراست بهتر
-      otherBubbleColor: const Color(0xFF1E1E1E), // Slightly darker for glass look
+      otherBubbleColor:
+          const Color(0xFF1E1E1E), // Slightly darker for glass look
       otherBubbleTextColor: Colors.white,
 
       // وضعیت‌ها

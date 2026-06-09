@@ -16,6 +16,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
@@ -90,6 +91,7 @@ import '../widgets/block_report_bottom_sheet.dart';
 import '../services/user_moderation_service.dart';
 import '../services/voice_duration_service.dart';
 import '../services/message_reactions_service.dart';
+import '../utils/chat_text_direction.dart';
 import '../../emoji/domain/emoji_render_policy.dart';
 import '../../emoji/widgets/telegram_emoji_text.dart';
 import '../../emoji/widgets/telegram_emoji_text_editing_controller.dart';
@@ -2085,19 +2087,31 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                   left: 0,
                   right: 0,
                   bottom: 0,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                  child: Stack(
+                    alignment: Alignment.bottomCenter,
+                    clipBehavior: Clip.none,
                     children: [
-                      _buildInputArea(theme,
-                          reduceEffects: reduceEffects,
-                          allowHeavyEffects: adaptiveEffects.allowHeavyBlur,
-                          blurSigma: adaptiveEffects.blurSigma),
-                      SizedBox(
-                        height: reservedHeight,
-                        child: _showEmojiPanel && !keyboardVisible
-                            ? _buildEmojiPanel(theme)
-                            : const SizedBox.shrink(),
+                      _buildInputDockHalo(
+                        reservedHeight: reservedHeight,
+                        inputHeight: _inputHeight,
+                        keyboardVisible: keyboardVisible,
+                        reduceEffects: reduceEffects,
+                      ),
+                      Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _buildInputArea(theme,
+                              reduceEffects: reduceEffects,
+                              allowHeavyEffects: adaptiveEffects.allowHeavyBlur,
+                              blurSigma: adaptiveEffects.blurSigma),
+                          SizedBox(
+                            height: reservedHeight,
+                            child: _showEmojiPanel && !keyboardVisible
+                                ? _buildEmojiPanel(theme)
+                                : const SizedBox.shrink(),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -3231,6 +3245,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                       _getMessageGroupPosition(
                     messages,
                     renderItem.primaryIndex,
+                    spanLength: renderItem.messages.length,
                   );
 
                   // Date Divider - منطق صحیح برای لیست reverse:
@@ -3392,6 +3407,10 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                                                       renderItem,
                                                       isMe,
                                                       adaptiveEffects,
+                                                      isFirstInGroup:
+                                                          isFirstInGroup,
+                                                      isLastInGroup:
+                                                          isLastInGroup,
                                                       conversationGalleryItems:
                                                           conversationImageGallery
                                                               .items,
@@ -3499,31 +3518,38 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   /// پیام‌های متوالی از یک فرستنده گروه‌بندی میشن
   /// Returns: (isFirstInGroup, isLastInGroup)
   (bool, bool) _getMessageGroupPosition(
-      List<MessageModel> messages, int index) {
-    final currentMessage = messages[index];
+    List<MessageModel> messages,
+    int index, {
+    int spanLength = 1,
+  }) {
+    final currentNewestMessage = messages[index];
+    final endIndex =
+        (index + spanLength - 1).clamp(index, messages.length - 1).toInt();
+    final currentOldestMessage = messages[endIndex];
 
     // چون لیست reverse است:
     // - index کمتر = پیام جدیدتر (پایین صفحه)
     // - index بیشتر = پیام قدیمی‌تر (بالای صفحه)
     final hasBelow = index > 0;
     final belowMessage = hasBelow ? messages[index - 1] : null;
-    final hasAbove = index < messages.length - 1;
-    final aboveMessage = hasAbove ? messages[index + 1] : null;
+    final aboveIndex = endIndex + 1;
+    final hasAbove = aboveIndex < messages.length;
+    final aboveMessage = hasAbove ? messages[aboveIndex] : null;
 
     final bool sameAsAbove = hasAbove &&
         TimeUtils.isInSameGroup(
-          currentMessage.createdAt,
+          currentOldestMessage.createdAt,
           aboveMessage!.createdAt,
-          currentMessage.senderId,
+          currentOldestMessage.senderId,
           aboveMessage.senderId,
         );
 
     final bool sameAsBelow = hasBelow &&
         TimeUtils.isInSameGroup(
           belowMessage!.createdAt,
-          currentMessage.createdAt,
+          currentNewestMessage.createdAt,
           belowMessage.senderId,
-          currentMessage.senderId,
+          currentNewestMessage.senderId,
         );
 
     final isFirstInGroup = !sameAsAbove;
@@ -3942,6 +3968,59 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   // ═══════════════════════════════════════════════════════════════════════════
   // 🖊️ INPUT AREA
   // ═══════════════════════════════════════════════════════════════════════════
+
+  Widget _buildInputDockHalo({
+    required double reservedHeight,
+    required double inputHeight,
+    required bool keyboardVisible,
+    required bool reduceEffects,
+  }) {
+    final materialTheme = Theme.of(context);
+    final isDark = materialTheme.brightness == Brightness.dark;
+    final haloColor = isDark
+        ? Color.lerp(materialTheme.scaffoldBackgroundColor, Colors.white, 0.08)!
+        : Colors.white;
+    final haloHeight =
+        (reservedHeight + (inputHeight * 0.54)).clamp(48.0, 420.0).toDouble();
+    final blurSigma = keyboardVisible ? 0.0 : (reduceEffects ? 2.0 : 5.5);
+    final gradientAlphas =
+        isDark ? const [0.0, 0.08, 0.16, 0.24] : const [0.0, 0.14, 0.24, 0.36];
+    final haloDecoration = BoxDecoration(
+      gradient: LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [
+          haloColor.withValues(alpha: gradientAlphas[0]),
+          haloColor.withValues(alpha: gradientAlphas[1]),
+          haloColor.withValues(alpha: gradientAlphas[2]),
+          haloColor.withValues(alpha: gradientAlphas[3]),
+        ],
+        stops: const [0.0, 0.38, 0.72, 1.0],
+      ),
+    );
+
+    return Positioned(
+      left: 0,
+      right: 0,
+      bottom: 0,
+      height: haloHeight,
+      child: IgnorePointer(
+        child: RepaintBoundary(
+          child: ClipRect(
+            child: blurSigma <= 0.0
+                ? DecoratedBox(decoration: haloDecoration)
+                : BackdropFilter(
+                    filter: ui.ImageFilter.blur(
+                      sigmaX: blurSigma,
+                      sigmaY: blurSigma,
+                    ),
+                    child: DecoratedBox(decoration: haloDecoration),
+                  ),
+          ),
+        ),
+      ),
+    );
+  }
 
   Widget _buildInputArea(
     ChatTheme theme, {
@@ -6579,6 +6658,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     _ChatRenderItem renderItem,
     bool isMe,
     AdaptiveEffectsState adaptiveEffects, {
+    required bool isFirstInGroup,
+    required bool isLastInGroup,
     List<GalleryItem>? conversationGalleryItems,
     Map<String, int>? conversationGalleryIndexByMessageId,
   }) {
@@ -6589,8 +6670,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         primaryMessage,
         isMe,
         renderItem.primaryIndex,
-        true,
-        true,
+        isFirstInGroup,
+        isLastInGroup,
         adaptiveEffects,
         conversationGalleryItems: conversationGalleryItems,
         conversationGalleryIndexByMessageId:
@@ -6933,6 +7014,10 @@ class _ChatMediaAlbumBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = context.chatTheme;
     final hasCaption = caption != null && caption!.trim().isNotEmpty;
+    final captionDirection = resolveChatTextDirection(
+      caption,
+      fallback: Directionality.of(context),
+    );
 
     return ConstrainedBox(
       constraints: BoxConstraints(
@@ -6968,31 +7053,34 @@ class _ChatMediaAlbumBubble extends StatelessWidget {
                 color: isMe ? theme.myBubbleColor : theme.otherBubbleColor,
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Expanded(
-                    child: TelegramEmojiText(
-                      caption!.trim(),
-                      maxLines: 4,
-                      overflow: TextOverflow.ellipsis,
-                      textDirection: TextDirection.rtl,
-                      textAlign: TextAlign.right,
-                      useTelegramEmoji:
-                          EmojiRenderPolicy.useTelegramEmojiRenderer(),
-                      style: TextStyle(
-                        color: isMe
-                            ? theme.myBubbleTextColor
-                            : theme.otherBubbleTextColor,
-                        fontSize: 14,
-                        height: 1.35,
-                        fontFamily: 'Vazir',
+              child: Directionality(
+                textDirection: captionDirection,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Expanded(
+                      child: TelegramEmojiText(
+                        caption!.trim(),
+                        maxLines: 4,
+                        overflow: TextOverflow.ellipsis,
+                        textDirection: captionDirection,
+                        textAlign: TextAlign.start,
+                        useTelegramEmoji:
+                            EmojiRenderPolicy.useTelegramEmojiRenderer(),
+                        style: TextStyle(
+                          color: isMe
+                              ? theme.myBubbleTextColor
+                              : theme.otherBubbleTextColor,
+                          fontSize: 14,
+                          height: 1.35,
+                          fontFamily: 'Vazir',
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  _buildTimeAndStatus(theme),
-                ],
+                    const SizedBox(width: 8),
+                    _buildTimeAndStatus(theme),
+                  ],
+                ),
               ),
             ),
           ],

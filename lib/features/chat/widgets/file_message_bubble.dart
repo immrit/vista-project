@@ -9,6 +9,7 @@ import '../../emoji/domain/emoji_render_policy.dart';
 import '../../emoji/widgets/telegram_emoji_text.dart';
 import '../services/chat_transfer_manager.dart';
 import '../theme/chat_theme.dart';
+import '../utils/chat_text_direction.dart';
 
 class FileMessageBubble extends StatefulWidget {
   final String messageId;
@@ -146,6 +147,10 @@ class _FileMessageBubbleState extends State<FileMessageBubble> {
     final primaryForeground = widget.isMe
         ? (isLightOutgoing ? const Color(0xFF1E293B) : Colors.white)
         : theme.textColor;
+    final captionDirection = resolveChatTextDirection(
+      widget.caption,
+      fallback: Directionality.of(context),
+    );
 
     return Container(
       constraints: const BoxConstraints(maxWidth: 285, minWidth: 220),
@@ -193,18 +198,22 @@ class _FileMessageBubbleState extends State<FileMessageBubble> {
           ),
           if (widget.caption != null && widget.caption!.trim().isNotEmpty) ...[
             const SizedBox(height: 8),
-            Align(
-              alignment: Alignment.centerRight,
-              child: TelegramEmojiText(
-                widget.caption!,
-                useTelegramEmoji: EmojiRenderPolicy.useTelegramEmojiRenderer(),
-                textDirection: TextDirection.rtl,
-                textAlign: TextAlign.right,
-                style: TextStyle(
-                  color: primaryForeground,
-                  fontSize: 14,
-                  height: 1.35,
-                  fontFamily: 'Vazir',
+            Directionality(
+              textDirection: captionDirection,
+              child: Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: TelegramEmojiText(
+                  widget.caption!,
+                  useTelegramEmoji:
+                      EmojiRenderPolicy.useTelegramEmojiRenderer(),
+                  textDirection: captionDirection,
+                  textAlign: TextAlign.start,
+                  style: TextStyle(
+                    color: primaryForeground,
+                    fontSize: 14,
+                    height: 1.35,
+                    fontFamily: 'Vazir',
+                  ),
                 ),
               ),
             ),

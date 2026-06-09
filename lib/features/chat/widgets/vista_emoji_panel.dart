@@ -128,21 +128,47 @@ class _VistaEmojiPanelState extends State<VistaEmojiPanel> {
 
   void _onSearchChanged() {
     if (!mounted) return;
+    final query = _searchController.text.trim().toLowerCase();
     setState(() {
-      _searchQuery = _searchController.text.trim().toLowerCase();
+      _searchQuery = query;
     });
+    if (query.isEmpty) {
+      _syncPageControllerToSelectedCategory();
+    }
   }
 
   void _onCategoryTap(int index) {
     HapticFeedback.lightImpact();
     setState(() => _selectedCategoryIndex = index);
-    if (!_useTelegramPanel) {
+    if (_searchQuery.isEmpty && _pageController.hasClients) {
       _pageController.animateToPage(
         index,
         duration: const Duration(milliseconds: 200),
         curve: Curves.easeInOut,
       );
     }
+  }
+
+  void _syncPageControllerToSelectedCategory() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_pageController.hasClients) return;
+      _pageController.jumpToPage(_selectedCategoryIndex);
+    });
+  }
+
+  void _onTelegramCategorySwipe(DragEndDetails details) {
+    if (_searchQuery.isNotEmpty) return;
+    final velocity = details.primaryVelocity ?? 0;
+    if (velocity.abs() < 220) return;
+
+    final offset = velocity < 0 ? 1 : -1;
+    final nextIndex = (_selectedCategoryIndex + offset)
+        .clamp(0, _categories.length - 1)
+        .toInt();
+    if (nextIndex == _selectedCategoryIndex) return;
+
+    HapticFeedback.selectionClick();
+    setState(() => _selectedCategoryIndex = nextIndex);
   }
 
   void _insertEmoji(String emojiText) {
@@ -165,8 +191,6 @@ class _VistaEmojiPanelState extends State<VistaEmojiPanel> {
   }
 
   List<Emoji> _currentTelegramEmojis() {
-    final selectedCategory = _categories[_selectedCategoryIndex].category;
-
     if (_searchQuery.isNotEmpty) {
       final all = _emojiByCategory.values.expand((e) => e);
       return all
@@ -177,6 +201,12 @@ class _VistaEmojiPanelState extends State<VistaEmojiPanel> {
           )
           .toList(growable: false);
     }
+
+    return _telegramEmojisForCategory(_selectedCategoryIndex);
+  }
+
+  List<Emoji> _telegramEmojisForCategory(int index) {
+    final selectedCategory = _categories[index].category;
 
     if (selectedCategory == Category.RECENT) {
       if (_recentEmojis.isEmpty) {
@@ -375,41 +405,46 @@ class _VistaEmojiPanelState extends State<VistaEmojiPanel> {
           ),
         ),
         Expanded(
-          child: emojis.isEmpty
-              ? Center(
-                  child: Text(
-                    'ایموجی پیدا نشد',
-                    style: TextStyle(color: hintColor, fontSize: 13),
-                  ),
-                )
-              : GridView.builder(
-                  padding: const EdgeInsets.fromLTRB(8, 2, 8, 8),
-                  physics: const BouncingScrollPhysics(),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 8,
-                    mainAxisSpacing: 2,
-                    crossAxisSpacing: 2,
-                  ),
-                  itemCount: emojis.length,
-                  itemBuilder: (context, index) {
-                    final emojiText = emojis[index].emoji;
-                    return GestureDetector(
-                      onTap: () => _insertEmoji(emojiText),
-                      child: Container(
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: bgColor,
-                          borderRadius: BorderRadius.circular(8),
+          child: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onHorizontalDragEnd: _onTelegramCategorySwipe,
+            child: emojis.isEmpty
+                ? Center(
+                    child: Text(
+                      'ایموجی پیدا نشد',
+                      style: TextStyle(color: hintColor, fontSize: 13),
+                    ),
+                  )
+                : GridView.builder(
+                    padding: const EdgeInsets.fromLTRB(8, 2, 8, 8),
+                    physics: const BouncingScrollPhysics(),
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 8,
+                      mainAxisSpacing: 2,
+                      crossAxisSpacing: 2,
+                    ),
+                    itemCount: emojis.length,
+                    itemBuilder: (context, index) {
+                      final emojiText = emojis[index].emoji;
+                      return GestureDetector(
+                        onTap: () => _insertEmoji(emojiText),
+                        child: Container(
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: bgColor,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: TelegramEmojiInline(
+                            emoji: emojiText,
+                            size: 29,
+                            fallbackStyle: const TextStyle(fontSize: 26),
+                          ),
                         ),
-                        child: TelegramEmojiInline(
-                          emoji: emojiText,
-                          size: 29,
-                          fallbackStyle: const TextStyle(fontSize: 26),
-                        ),
-                      ),
-                    );
-                  },
-                ),
+                      );
+                    },
+                  ),
+          ),
         ),
       ],
     );
