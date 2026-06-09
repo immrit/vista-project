@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../model/publicPostModel.dart';
 import '../../../services/device_id_service.dart';
+import '../../../services/orphaned_media_cleanup_service.dart';
 import '../../../services/system_status_service.dart';
 import '../../auth/providers/auth_controller.dart';
 
@@ -377,10 +378,27 @@ class GoPostsRepository {
   }
 
   Future<void> deletePost(String postId) async {
+    PublicPostModel? existingPost;
+    try {
+      existingPost = await getPost(postId);
+    } catch (_) {}
+
     await _dio.delete(
       '/posts/$postId',
       options: await _authOptions(),
     );
+
+    if (existingPost != null) {
+      await OrphanedMediaCleanupService.enqueueUrls(
+        [
+          existingPost.imageUrl,
+          existingPost.videoUrl,
+          existingPost.musicUrl,
+        ],
+        source: 'post_delete',
+        reason: 'post_deleted',
+      );
+    }
   }
 
   Future<Options> _authOptions() async {

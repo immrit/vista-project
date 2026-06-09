@@ -21,6 +21,7 @@ import '../../../DB/isar_database_manager.dart';
 import '../../../DB/entities/deletion_task_entity.dart';
 import '../../auth/providers/auth_controller.dart';
 import '../../../services/device_id_service.dart';
+import '../../../services/orphaned_media_cleanup_service.dart';
 import '../../../services/session_manager_service_v2.dart';
 import '../../../services/system_status_service.dart';
 import '../data/datasources/chat_local_datasource_isar.dart';
@@ -595,8 +596,16 @@ class ChatRepositoryImpl implements ChatRepository {
     String messageId, {
     bool forEveryone = false,
   }) async {
+    final uid = await _userId();
+    final existing =
+        uid == null ? null : await _local.getMessage(messageId, uid);
+
     // optimistic local
     await _local.deleteMessage(messageId);
+    unawaited(_queueDeletedMessageMediaCleanup(
+      existing,
+      deleteForEveryone: forEveryone,
+    ));
 
     final opts = await _authOptions();
     if (opts == null) return ChatResult.success(null);
@@ -611,6 +620,27 @@ class ChatRepositoryImpl implements ChatRepository {
     } on DioException catch (e) {
       return ChatResult.failure(_dioError(e));
     }
+  }
+
+  Future<void> _queueDeletedMessageMediaCleanup(
+    MessageModel? message, {
+    required bool deleteForEveryone,
+  }) async {
+    if (message == null) return;
+    final isLocalOnly = message.isPending ||
+        message.isUploading ||
+        message.isFailed == true ||
+        message.id.startsWith('temp_');
+    if (!deleteForEveryone && !isLocalOnly) return;
+
+    await OrphanedMediaCleanupService.enqueueUrls(
+      [message.attachmentUrl, message.audioUrl],
+      source: 'chat_repository_delete',
+      reason: deleteForEveryone
+          ? 'message_deleted_for_everyone'
+          : 'local_failed_message_discarded',
+      conversationId: message.conversationId,
+    );
   }
 
   @override

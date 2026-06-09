@@ -400,6 +400,8 @@ class _ImprovedAnimatedMessageBubbleState
     final isMedia = (canonicalType == 'image' || canonicalType == 'video') &&
         widget.attachmentUrl != null;
     final storyReply = _effectiveStoryReplyData();
+    final sharedPostReply =
+        storyReply == null ? _effectiveSharedPostReplyData() : null;
 
     return Container(
       clipBehavior: isMedia ? Clip.antiAlias : Clip.none,
@@ -417,7 +419,11 @@ class _ImprovedAnimatedMessageBubbleState
             _buildSenderName(theme, widget.senderName!.trim()),
           if (widget.isForwarded) _buildForwardHeader(theme),
           if (storyReply != null) _buildStoryReplySection(theme, storyReply),
-          if (storyReply == null && widget.replyToContent != null)
+          if (sharedPostReply != null)
+            _buildSharedPostReplySection(theme, sharedPostReply),
+          if (storyReply == null &&
+              sharedPostReply == null &&
+              widget.replyToContent != null)
             _buildReplySection(theme),
           _buildContent(theme),
           if (widget.reactions.isNotEmpty) _buildReactionsSection(theme),
@@ -501,6 +507,10 @@ class _ImprovedAnimatedMessageBubbleState
       replyToContent: widget.replyToContent,
       replyToSenderName: widget.replyToSenderName,
     );
+  }
+
+  SharedPostData? _effectiveSharedPostReplyData() {
+    return SharedPostData.tryParse(widget.replyToContent);
   }
 
   Widget _buildReplySection(ChatTheme theme) {
@@ -620,6 +630,168 @@ class _ImprovedAnimatedMessageBubbleState
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildSharedPostReplySection(
+      ChatTheme theme, SharedPostData postData) {
+    final author = postData.postAuthorName.trim().isNotEmpty
+        ? postData.postAuthorName.trim()
+        : (postData.postAuthorUsername.trim().isNotEmpty
+            ? postData.postAuthorUsername.trim()
+            : 'کاربر');
+    final content = postData.postContent.trim();
+    final secondaryText = content.isNotEmpty ? content : 'پست ارسالی';
+    final textDirection = resolveChatTextDirection(
+      secondaryText,
+      fallback: Directionality.of(context),
+    );
+
+    return GestureDetector(
+      onTap: widget.onReplyTap,
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(8, 8, 8, 4),
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: widget.isMe
+              ? Colors.white.withValues(alpha: 0.12)
+              : Colors.black.withValues(alpha: 0.05),
+          borderRadius: BorderRadius.circular(10),
+          border: BorderDirectional(
+            start: BorderSide(
+              color: theme.sendButtonColor,
+              width: 3,
+            ),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildSharedPostReplyThumbnail(theme, postData),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.dynamic_feed_rounded,
+                        size: 13,
+                        color: theme.sendButtonColor,
+                      ),
+                      const SizedBox(width: 4),
+                      Flexible(
+                        child: Text(
+                          'پست ارسالی',
+                          textDirection: TextDirection.rtl,
+                          style: TextStyle(
+                            color: theme.sendButtonColor,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    author,
+                    textDirection: TextDirection.rtl,
+                    style: TextStyle(
+                      color: widget.isMe
+                          ? theme.myBubbleTextColor.withValues(alpha: 0.78)
+                          : theme.otherBubbleTextColor.withValues(alpha: 0.78),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  Directionality(
+                    textDirection: textDirection,
+                    child: Text(
+                      secondaryText,
+                      textAlign: TextAlign.start,
+                      style: TextStyle(
+                        color: widget.isMe
+                            ? theme.myBubbleTextColor.withValues(alpha: 0.72)
+                            : theme.otherBubbleTextColor
+                                .withValues(alpha: 0.72),
+                        fontSize: 11,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSharedPostReplyThumbnail(
+    ChatTheme theme,
+    SharedPostData postData,
+  ) {
+    final imageUrl = postData.postImageUrl?.trim() ?? '';
+    final hasVideo = postData.postVideoUrl?.trim().isNotEmpty ?? false;
+    final placeholder = Container(
+      width: 48,
+      height: 48,
+      decoration: BoxDecoration(
+        color: theme.dividerColor.withValues(alpha: 0.18),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Icon(
+        hasVideo ? Icons.play_arrow_rounded : Icons.dynamic_feed_rounded,
+        color: theme.sendButtonColor.withValues(alpha: 0.8),
+        size: 22,
+      ),
+    );
+
+    if (imageUrl.isEmpty) return placeholder;
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Image.network(
+            imageUrl,
+            width: 48,
+            height: 48,
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => placeholder,
+            loadingBuilder: (context, child, progress) {
+              if (progress == null) return child;
+              return placeholder;
+            },
+          ),
+          if (hasVideo)
+            Container(
+              width: 24,
+              height: 24,
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.45),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.play_arrow_rounded,
+                color: Colors.white,
+                size: 18,
+              ),
+            ),
+        ],
       ),
     );
   }

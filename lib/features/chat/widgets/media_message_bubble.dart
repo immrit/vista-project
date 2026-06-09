@@ -681,53 +681,52 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
     );
 
     return Container(
-      padding:
-          const EdgeInsets.fromLTRB(10, 8, 10, 24), // پدینگ پایین برای جای ساعت
-      child: Directionality(
-        textDirection: captionDirection,
-        child: Stack(
-          clipBehavior: Clip.none,
-          children: [
-            TelegramEmojiText(
-              widget.caption!,
-              useTelegramEmoji: EmojiRenderPolicy.useTelegramEmojiRenderer(),
-              textDirection: captionDirection,
-              textAlign: TextAlign.start,
-              style: TextStyle(
-                color: widget.isMe
-                    ? theme.myBubbleTextColor
-                    : theme.otherBubbleTextColor,
-                fontSize: 15,
-                fontFamily: 'Vazir',
+        padding: const EdgeInsets.fromLTRB(
+            10, 8, 10, 24), // پدینگ پایین برای جای ساعت
+        child: Directionality(
+          textDirection: captionDirection,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              TelegramEmojiText(
+                widget.caption!,
+                useTelegramEmoji: EmojiRenderPolicy.useTelegramEmojiRenderer(),
+                textDirection: captionDirection,
+                textAlign: TextAlign.start,
+                style: TextStyle(
+                  color: widget.isMe
+                      ? theme.myBubbleTextColor
+                      : theme.otherBubbleTextColor,
+                  fontSize: 15,
+                  fontFamily: 'Vazir',
+                ),
               ),
-            ),
-            PositionedDirectional(
-              bottom: -20,
-              end: 0,
-              child: Row(
-                children: [
-                  if (widget.isMe) ...[
-                    _buildStatusIcon(widget.isMe
-                        ? theme.myBubbleTextColor.withValues(alpha: 0.6)
-                        : theme.otherBubbleTextColor.withValues(alpha: 0.6)),
-                    const SizedBox(width: 3),
-                  ],
-                  Text(
-                    _formatTime(widget.time),
-                    style: TextStyle(
-                      color: widget.isMe
+              PositionedDirectional(
+                bottom: -20,
+                end: 0,
+                child: Row(
+                  children: [
+                    if (widget.isMe) ...[
+                      _buildStatusIcon(widget.isMe
                           ? theme.myBubbleTextColor.withValues(alpha: 0.6)
-                          : theme.otherBubbleTextColor.withValues(alpha: 0.6),
-                      fontSize: 11,
+                          : theme.otherBubbleTextColor.withValues(alpha: 0.6)),
+                      const SizedBox(width: 3),
+                    ],
+                    Text(
+                      _formatTime(widget.time),
+                      style: TextStyle(
+                        color: widget.isMe
+                            ? theme.myBubbleTextColor.withValues(alpha: 0.6)
+                            : theme.otherBubbleTextColor.withValues(alpha: 0.6),
+                        fontSize: 11,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ],
-        ),
-      ),
-    );
+            ],
+          ),
+        ));
   }
 
   Widget _buildStatusIcon(Color color) {

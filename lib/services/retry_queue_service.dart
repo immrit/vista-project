@@ -1,10 +1,13 @@
 import 'dart:async';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:isar/isar.dart';
 import '../DB/isar_database_manager.dart';
 import '../DB/entities/retry_queue_entity.dart';
 import '../model/retry_queue_item.dart';
+import 'backend_upload_service.dart';
+import 'orphaned_media_cleanup_service.dart';
 
 class RetryQueueService {
   static final RetryQueueService _instance = RetryQueueService._internal();
@@ -49,8 +52,7 @@ class RetryQueueService {
   }
 
   Future<void> enqueue(RetryQueueItem item) async {
-    final isar = _isar;
-    if (isar == null) return;
+    final isar = await _ensureIsar();
 
     final entity = RetryQueueEntity.fromModel(item);
     await isar.writeTxn(() async {
@@ -59,18 +61,26 @@ class RetryQueueService {
 
     debugPrint('📥 Enqueued offline task: ${item.typeText} (${item.id})');
 
-    if (_isOnline) {
-      _processQueue();
-    }
+    unawaited(_processQueue(force: !_isOnline));
   }
 
-  Future<void> _processQueue() async {
-    if (_isProcessing || !_isOnline) return;
+  Future<void> processNow() => _processQueue(force: true);
+
+  Future<Isar> _ensureIsar() async {
+    final existing = _isar;
+    if (existing != null && existing.isOpen) return existing;
+
+    final opened = await IsarDatabaseManager().instance;
+    _isar = opened;
+    return opened;
+  }
+
+  Future<void> _processQueue({bool force = false}) async {
+    if (_isProcessing || (!_isOnline && !force)) return;
     _isProcessing = true;
 
     try {
-      final isar = _isar;
-      if (isar == null) return;
+      final isar = await _ensureIsar();
 
       // Get all pending/failed items ordered by priority and date
       final pendingEntities = await isar.retryQueueEntitys
@@ -130,6 +140,10 @@ class RetryQueueService {
       // Simulate network sync delay
       await Future.delayed(const Duration(seconds: 1));
 
+      if (item.payload['operation'] == OrphanedMediaCleanupService.operation) {
+        return _deleteMediaObject(item);
+      }
+
       switch (item.type) {
         case RetryOperationType.sendMessage:
           debugPrint('Syncing Message: ${item.payload['content']}');
@@ -153,10 +167,38 @@ class RetryQueueService {
     }
   }
 
+  Future<bool> _deleteMediaObject(RetryQueueItem item) async {
+    final objectKey = item.payload['object_key']?.toString().trim() ?? '';
+    final url = item.payload['url']?.toString().trim() ?? '';
+
+    if (objectKey.isEmpty && url.isEmpty) return true;
+
+    try {
+      final deleted = objectKey.isNotEmpty
+          ? await BackendUploadService.deleteObject(objectKey)
+          : await BackendUploadService.deleteByUrl(url);
+      if (deleted) {
+        debugPrint(
+            'Deleted orphaned media: ${objectKey.isNotEmpty ? objectKey : url}');
+      }
+      return deleted;
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404) {
+        debugPrint(
+            'Orphaned media already gone: ${objectKey.isNotEmpty ? objectKey : url}');
+        return true;
+      }
+      debugPrint('Media cleanup failed: ${e.message}');
+      return false;
+    } catch (e) {
+      debugPrint('Media cleanup failed: $e');
+      return false;
+    }
+  }
+
   Future<void> _updateStatus(String itemId, RetryItemStatus status,
       {int? attempts, String? error}) async {
-    final isar = _isar;
-    if (isar == null) return;
+    final isar = await _ensureIsar();
 
     await isar.writeTxn(() async {
       final entity = await isar.retryQueueEntitys.getByItemId(itemId);
@@ -175,8 +217,7 @@ class RetryQueueService {
   }
 
   Future<void> _deleteItem(String itemId) async {
-    final isar = _isar;
-    if (isar == null) return;
+    final isar = await _ensureIsar();
 
     await isar.writeTxn(() async {
       final entity = await isar.retryQueueEntitys.getByItemId(itemId);

@@ -33,8 +33,6 @@ class PremiumSubscriptionUtils {
     final days = daysRemaining(profile);
     if (days != null && days > 0) return true;
 
-    // legacy: premium بدون تاریخ انقضا
-    if (parseExpiresAt(profile) == null) return hasBadge;
     return false;
   }
 
@@ -58,7 +56,9 @@ class PremiumSubscriptionUtils {
     final y = expires.year;
     final m = expires.month.toString().padLeft(2, '0');
     final d = expires.day.toString().padLeft(2, '0');
-    return '$y/$m/$d';
+    final hh = expires.hour.toString().padLeft(2, '0');
+    final mm = expires.minute.toString().padLeft(2, '0');
+    return '$y/$m/$d $hh:$mm';
   }
 
   static String _faDigits(int n) {

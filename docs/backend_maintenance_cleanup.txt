@@ -1,0 +1,75 @@
+Backend Maintenance Cleanup
+===========================
+
+This project currently contains the Flutter client only. The cleanup rules below
+must be implemented in the Go backend that owns the auth/session database and
+Arvan S3 credentials.
+
+Daily Schedule
+--------------
+
+Run one maintenance job every day at 00:00 server-local time. If the server uses
+UTC, make the timezone explicit in deployment config.
+
+Recommended cron expression:
+
+    0 0 * * *
+
+Also run the same cleanup once at backend startup so existing stale rows are
+removed without waiting for the next midnight.
+
+OTP And Verification Codes
+--------------------------
+
+One-time codes should be removed after expiry because they must not be reused.
+
+Delete every row whose expires_at <= now() from all one-time-code tables, for
+example:
+
+    DELETE FROM otp_codes
+    WHERE expires_at <= NOW();
+
+    DELETE FROM email_verification_codes
+    WHERE expires_at <= NOW();
+
+    DELETE FROM password_recovery_codes
+    WHERE expires_at <= NOW();
+
+If the schema stores only created_at and ttl_seconds, use:
+
+    DELETE FROM otp_codes
+    WHERE created_at + (ttl_seconds * INTERVAL '1 second') <= NOW();
+
+Inactive Sessions
+-----------------
+
+Remove sessions that have not touched the backend for more than 10 days. This
+should include sessions that already exist at deployment time.
+
+    DELETE FROM sessions
+    WHERE COALESCE(last_activity_at, updated_at, created_at) < NOW() - INTERVAL '10 days';
+
+If terminated sessions are retained for audit, apply the 10-day rule only to
+active sessions and add a separate longer audit retention for terminated ones.
+
+Zombie Media In Arvan Storage
+-----------------------------
+
+The backend should be authoritative for storage cleanup. The Flutter client now
+queues cleanup for obvious client-side orphan cases, but the backend still needs
+a periodic reconciliation job.
+
+1. List object keys under managed roots:
+   chat/, posts/, videos/, music/, stories/, avatars/.
+2. Build a reference set from database columns that can point to storage:
+   chat_messages.media_url, posts.image_url, posts.video_url, posts.music_url,
+   stories.media_url, stories.thumbnail_url, profiles.avatar_url, plus any
+   equivalent columns in the current schema.
+3. Convert each URL to an object key using the same parsing rules as
+   BackendUploadService.objectKeyFromUrl.
+4. Delete any storage object that is older than a grace period, for example
+   24 hours, and is not in the reference set.
+5. Treat S3 NoSuchKey/404 as success so the job remains idempotent.
+
+Never delete objects outside managed roots, and log deleted keys/counts for
+audit.

@@ -68,23 +68,102 @@ class SharedPostData {
   });
 
   factory SharedPostData.fromJson(Map<String, dynamic> json) {
+    int parseInt(dynamic value) {
+      if (value is int) return value;
+      if (value is num) return value.toInt();
+      return int.tryParse(value?.toString() ?? '') ?? 0;
+    }
+
+    bool parseBool(dynamic value) {
+      if (value is bool) return value;
+      final normalized = value?.toString().toLowerCase().trim();
+      return normalized == 'true' ||
+          normalized == '1' ||
+          normalized == 'yes' ||
+          normalized == 'on';
+    }
+
+    DateTime parseDate(dynamic value) {
+      if (value is DateTime) return value;
+      final parsed = DateTime.tryParse(value?.toString() ?? '');
+      return parsed ?? DateTime.now();
+    }
+
+    final mediaUrls = <dynamic>[];
+    final rawMediaUrls = json['mediaUrls'] ?? json['media_urls'];
+    if (rawMediaUrls is List) {
+      mediaUrls.addAll(rawMediaUrls);
+    }
+
     return SharedPostData(
-      postId: json['post_id'] ?? '',
-      postContent: json['post_content'] ?? '',
-      postImageUrl: _parseMediaUrl(json['post_image_url']),
-      postVideoUrl: _parseMediaUrl(json['post_video_url']),
-      postAuthorName: json['post_author_name'] ?? '',
-      postAuthorUsername: json['post_author_username'] ?? '',
-      postAuthorAvatar: json['post_author_avatar'],
-      postCreatedAt: json['post_created_at'] != null
-          ? DateTime.parse(json['post_created_at'])
-          : DateTime.now(),
-      likeCount: json['like_count'] ?? 0,
-      commentCount: json['comment_count'] ?? 0,
-      isVerified: json['is_verified'] ?? false,
-      verificationType: json['verification_type'] ?? 'none',
+      postId:
+          (json['post_id'] ?? json['postId'] ?? json['id'] ?? '').toString(),
+      postContent:
+          (json['post_content'] ?? json['postContent'] ?? json['content'] ?? '')
+              .toString(),
+      postImageUrl: _parseMediaUrl(
+        json['post_image_url'] ??
+            json['postImageUrl'] ??
+            json['imageUrl'] ??
+            json['thumbnailUrl'] ??
+            (mediaUrls.isNotEmpty ? mediaUrls.first : null),
+      ),
+      postVideoUrl:
+          _parseMediaUrl(json['post_video_url'] ?? json['postVideoUrl']),
+      postAuthorName: (json['post_author_name'] ??
+              json['postAuthorName'] ??
+              json['authorName'] ??
+              '')
+          .toString(),
+      postAuthorUsername: (json['post_author_username'] ??
+              json['postAuthorUsername'] ??
+              json['authorUsername'] ??
+              '')
+          .toString(),
+      postAuthorAvatar: (json['post_author_avatar'] ??
+              json['postAuthorAvatar'] ??
+              json['authorAvatar'])
+          ?.toString(),
+      postCreatedAt: parseDate(
+        json['post_created_at'] ?? json['postCreatedAt'] ?? json['createdAt'],
+      ),
+      likeCount: parseInt(
+          json['like_count'] ?? json['likeCount'] ?? json['likesCount']),
+      commentCount: parseInt(json['comment_count'] ??
+          json['commentCount'] ??
+          json['commentsCount']),
+      isVerified: parseBool(json['is_verified'] ?? json['isVerified']),
+      verificationType:
+          (json['verification_type'] ?? json['verificationType'] ?? 'none')
+              .toString(),
       role: json['role']?.toString(),
     );
+  }
+
+  static SharedPostData? tryParse(dynamic value) {
+    if (value == null) return null;
+
+    try {
+      final Map<String, dynamic> data;
+      if (value is String) {
+        final trimmed = value.trim();
+        if (!trimmed.startsWith('{')) return null;
+        final decoded = json.decode(trimmed);
+        if (decoded is! Map) return null;
+        data = decoded.map((key, value) => MapEntry(key.toString(), value));
+      } else if (value is Map<String, dynamic>) {
+        data = value;
+      } else if (value is Map) {
+        data = value.map((key, value) => MapEntry(key.toString(), value));
+      } else {
+        return null;
+      }
+
+      final parsed = SharedPostData.fromJson(data);
+      return parsed.postId.trim().isEmpty ? null : parsed;
+    } catch (_) {
+      return null;
+    }
   }
 
   Map<String, dynamic> toJson() {
@@ -238,9 +317,8 @@ class StoryReplyData {
       storyThumbnailUrl: '',
       storyMediaType: 'image',
       storyCreatedAt: DateTime.now(),
-      storyCaption: content.isNotEmpty && !content.startsWith('{')
-          ? content
-          : null,
+      storyCaption:
+          content.isNotEmpty && !content.startsWith('{') ? content : null,
     );
   }
 }
@@ -404,25 +482,7 @@ class MessageModel {
 
   // پارس کردن shared post data از JSON
   static SharedPostData? _parseSharedPostData(dynamic sharedPostJson) {
-    if (sharedPostJson == null) return null;
-
-    try {
-      Map<String, dynamic> data;
-
-      if (sharedPostJson is String) {
-        // اگر به صورت JSON string ذخیره شده باشد
-        data = json.decode(sharedPostJson);
-      } else if (sharedPostJson is Map<String, dynamic>) {
-        data = sharedPostJson;
-      } else {
-        return null;
-      }
-
-      return SharedPostData.fromJson(data);
-    } catch (e) {
-      print('خطا در پارس کردن shared post data: $e');
-      return null;
-    }
+    return SharedPostData.tryParse(sharedPostJson);
   }
 
   // پارس کردن story reply data از JSON

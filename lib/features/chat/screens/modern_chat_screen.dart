@@ -85,6 +85,7 @@ import '../services/message_tombstone_service.dart';
 import '../services/group_service.dart';
 import '../../../services/typing_service.dart'; // ✅ سرویس تایپینگ
 import '../../../services/current_chat_tracker.dart';
+import '../../../services/orphaned_media_cleanup_service.dart';
 import '../../../services/PushNotificationService.dart';
 import '../../../services/instant_message_deletion.dart';
 import '../widgets/block_report_bottom_sheet.dart';
@@ -409,20 +410,76 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     });
   }
 
-  String? get _activeReplyContent =>
-      _replyToMessage?.content ?? _pendingReplyContext?.content;
+  String? get _activeReplyContent => _resolveReplyContentForSend(
+        replyTo: _replyToMessage,
+        pendingReply: _pendingReplyContext,
+      );
 
-  String? get _activeReplySenderName {
-    if (_replyToMessage != null) {
-      return _replyToMessage!.senderId == _currentUserId
-          ? 'شما'
-          : widget.args.otherUserName;
+  String? get _activeReplySenderName => _resolveReplySenderNameForSend(
+        replyTo: _replyToMessage,
+        pendingReply: _pendingReplyContext,
+      );
+
+  String? _resolveReplyContentForSend({
+    MessageModel? replyTo,
+    _PendingReplyContext? pendingReply,
+  }) {
+    if (replyTo != null) return _replyPreviewContent(replyTo);
+    return pendingReply?.content;
+  }
+
+  String? _resolveReplySenderNameForSend({
+    MessageModel? replyTo,
+    _PendingReplyContext? pendingReply,
+  }) {
+    if (replyTo != null) return _replySenderDisplayName(replyTo);
+    if (pendingReply == null) return null;
+    if (pendingReply.fromNote) return 'یادداشت ${pendingReply.senderName}';
+    return pendingReply.senderName;
+  }
+
+  String _replySenderDisplayName(MessageModel message) {
+    if (message.senderId == _currentUserId) return 'شما';
+
+    final resolved = _resolveMessageSenderName(message).trim();
+    if (resolved.isNotEmpty && resolved != 'کاربر') return resolved;
+
+    return widget.args.isGroup ? 'کاربر' : widget.args.otherUserName;
+  }
+
+  String _replyPreviewContent(MessageModel message) => message.content;
+
+  ({String? content, String? senderName}) _resolveReplyPreviewForMessage(
+    MessageModel message,
+    Map<String, MessageModel> messagesById,
+  ) {
+    final replyToMessageId = message.replyToMessageId?.trim();
+    if (replyToMessageId == null || replyToMessageId.isEmpty) {
+      return (
+        content: message.replyToContent,
+        senderName: message.replyToSenderName
+      );
     }
-    if (_pendingReplyContext == null) return null;
-    if (_pendingReplyContext!.fromNote) {
-      return 'یادداشت ${_pendingReplyContext!.senderName}';
+    if (_isSyntheticNoteReplyId(replyToMessageId) ||
+        replyToMessageId.startsWith('story:')) {
+      return (
+        content: message.replyToContent,
+        senderName: message.replyToSenderName
+      );
     }
-    return _pendingReplyContext!.senderName;
+
+    final liveReplyTarget = messagesById[replyToMessageId];
+    if (liveReplyTarget == null) {
+      return (
+        content: message.replyToContent,
+        senderName: message.replyToSenderName
+      );
+    }
+
+    return (
+      content: _replyPreviewContent(liveReplyTarget),
+      senderName: _replySenderDisplayName(liveReplyTarget),
+    );
   }
 
   String? _resolveReplyToMessageId({
@@ -2464,12 +2521,17 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
   Future<void> _persistDeleteAfterAnimation({
     required List<String> messageIds,
+    required List<MessageModel> messages,
     required bool deleteForEveryone,
   }) async {
     try {
       await _tombstoneService.markDeletedLocallyBatch(
         messageIds: messageIds,
         conversationId: widget.args.conversationId,
+        deleteForEveryone: deleteForEveryone,
+      );
+      await _enqueueDeletedMessageMediaCleanup(
+        messages,
         deleteForEveryone: deleteForEveryone,
       );
     } catch (e, s) {
@@ -2521,6 +2583,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       _pendingDeleteTimers.remove(batchId);
       unawaited(_persistDeleteAfterAnimation(
         messageIds: messageIds,
+        messages: normalizedMessages,
         deleteForEveryone: result.deleteForEveryone,
       ));
       if (mounted) {
@@ -2554,6 +2617,40 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         ),
       );
     }
+  }
+
+  Future<void> _enqueueDeletedMessageMediaCleanup(
+    List<MessageModel> messages, {
+    required bool deleteForEveryone,
+  }) async {
+    final urls = <String>[];
+    for (final message in messages) {
+      final isLocalOnly = message.isPending ||
+          message.isUploading ||
+          message.isFailed == true ||
+          message.id.startsWith('temp_');
+      if (!deleteForEveryone && !isLocalOnly) continue;
+
+      final attachmentUrl = message.attachmentUrl?.trim();
+      if (attachmentUrl != null && attachmentUrl.isNotEmpty) {
+        urls.add(attachmentUrl);
+      }
+
+      final audioUrl = message.audioUrl?.trim();
+      if (audioUrl != null && audioUrl.isNotEmpty) {
+        urls.add(audioUrl);
+      }
+    }
+
+    if (urls.isEmpty) return;
+    await OrphanedMediaCleanupService.enqueueUrls(
+      urls,
+      source: 'chat_delete',
+      reason: deleteForEveryone
+          ? 'message_deleted_for_everyone'
+          : 'local_failed_message_discarded',
+      conversationId: widget.args.conversationId,
+    );
   }
 
   PreferredSizeWidget _buildAppBar(ChatTheme theme) {
@@ -3204,6 +3301,10 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
         // Isar query is already sorted (newest first).
         final messages = uiMessages;
+        final messagesById = <String, MessageModel>{
+          for (final message in messages)
+            if (message.id.trim().isNotEmpty) message.id: message,
+        };
         final renderItems = _buildRenderItems(messages);
         final conversationImageGallery =
             _buildConversationImageGallery(messages);
@@ -3390,6 +3491,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                                                     conversationGalleryIndexByMessageId:
                                                         conversationImageGallery
                                                             .indexByMessageId,
+                                                    messagesById: messagesById,
                                                   ),
                                                 ),
                                               )
@@ -3417,6 +3519,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                                                       conversationGalleryIndexByMessageId:
                                                           conversationImageGallery
                                                               .indexByMessageId,
+                                                      messagesById:
+                                                          messagesById,
                                                     ),
                                                   )
                                                 : _buildGroupSenderFrame(
@@ -3440,6 +3544,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                                                       conversationGalleryIndexByMessageId:
                                                           conversationImageGallery
                                                               .indexByMessageId,
+                                                      messagesById:
+                                                          messagesById,
                                                     ),
                                                   )),
                                       ),
@@ -3980,9 +4086,12 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     final haloColor = isDark
         ? Color.lerp(materialTheme.scaffoldBackgroundColor, Colors.white, 0.08)!
         : Colors.white;
-    final haloHeight =
-        (reservedHeight + (inputHeight * 0.54)).clamp(48.0, 420.0).toDouble();
-    final blurSigma = keyboardVisible ? 0.0 : (reduceEffects ? 2.0 : 5.5);
+    final visibleReservedHeight = keyboardVisible ? 0.0 : reservedHeight;
+    final haloBottom = keyboardVisible ? reservedHeight : 0.0;
+    final haloHeight = (visibleReservedHeight + (inputHeight * 0.56))
+        .clamp(48.0, 420.0)
+        .toDouble();
+    final blurSigma = keyboardVisible ? 1.6 : (reduceEffects ? 2.0 : 5.5);
     final gradientAlphas =
         isDark ? const [0.0, 0.08, 0.16, 0.24] : const [0.0, 0.14, 0.24, 0.36];
     final haloDecoration = BoxDecoration(
@@ -4002,7 +4111,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     return Positioned(
       left: 0,
       right: 0,
-      bottom: 0,
+      bottom: haloBottom,
       height: haloHeight,
       child: IgnorePointer(
         child: RepaintBoundary(
@@ -4206,12 +4315,14 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         attachmentType: 'gif', // نوع attachment
         replyToMessageId: _resolveReplyToMessageId(
             replyTo: replyTo, pendingReply: pendingReply),
-        replyToContent: replyTo?.content ?? pendingReply?.content,
-        replyToSenderName: replyTo != null
-            ? (replyTo.senderId == _currentUserId
-                ? 'شما'
-                : widget.args.otherUserName)
-            : pendingReply?.senderName,
+        replyToContent: _resolveReplyContentForSend(
+          replyTo: replyTo,
+          pendingReply: pendingReply,
+        ),
+        replyToSenderName: _resolveReplySenderNameForSend(
+          replyTo: replyTo,
+          pendingReply: pendingReply,
+        ),
         replyToKind:
             _resolveReplyToKind(replyTo: replyTo, pendingReply: pendingReply),
         recipientPublicKey:
@@ -4355,12 +4466,14 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                     replyTo: replyTo,
                     pendingReply: pendingReply,
                   ),
-                  replyToContent: replyTo?.content ?? pendingReply?.content,
-                  replyToSenderName: replyTo != null
-                      ? (replyTo.senderId == _currentUserId
-                          ? 'شما'
-                          : widget.args.otherUserName)
-                      : pendingReply?.senderName,
+                  replyToContent: _resolveReplyContentForSend(
+                    replyTo: replyTo,
+                    pendingReply: pendingReply,
+                  ),
+                  replyToSenderName: _resolveReplySenderNameForSend(
+                    replyTo: replyTo,
+                    pendingReply: pendingReply,
+                  ),
                   replyToKind: _resolveReplyToKind(
                     replyTo: replyTo,
                     pendingReply: pendingReply,
@@ -4446,12 +4559,14 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         content: content,
         replyToMessageId: _resolveReplyToMessageId(
             replyTo: replyTo, pendingReply: pendingReply),
-        replyToContent: replyTo?.content ?? pendingReply?.content,
-        replyToSenderName: replyTo != null
-            ? (replyTo.senderId == _currentUserId
-                ? 'شما'
-                : widget.args.otherUserName)
-            : pendingReply?.senderName,
+        replyToContent: _resolveReplyContentForSend(
+          replyTo: replyTo,
+          pendingReply: pendingReply,
+        ),
+        replyToSenderName: _resolveReplySenderNameForSend(
+          replyTo: replyTo,
+          pendingReply: pendingReply,
+        ),
         replyToKind:
             _resolveReplyToKind(replyTo: replyTo, pendingReply: pendingReply),
         recipientPublicKey:
@@ -6564,6 +6679,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     bool isFirstInGroup,
     bool isLastInGroup,
     AdaptiveEffectsState adaptiveEffects, {
+    required Map<String, MessageModel> messagesById,
     List<GalleryItem>? conversationGalleryItems,
     Map<String, int>? conversationGalleryIndexByMessageId,
   }) {
@@ -6578,6 +6694,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       ChatEntryAnimationMode.minimal => index < 2 && !_isNearTop,
       ChatEntryAnimationMode.full => index < 5 && !_isNearTop,
     };
+    final replyPreview = _resolveReplyPreviewForMessage(message, messagesById);
 
     final bubbleContent = _isSharedPostMessage(message)
         ? Builder(
@@ -6605,8 +6722,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                 attachmentUrl: message.attachmentUrl,
                 attachmentType: message.attachmentType,
                 attachmentFileName: message.attachmentFileName,
-                replyToContent: message.replyToContent,
-                replyToSenderName: message.replyToSenderName,
+                replyToContent: replyPreview.content,
+                replyToSenderName: replyPreview.senderName,
                 replyToMessageId: message.replyToMessageId,
                 onReplyTap: _isSyntheticNoteReplyId(message.replyToMessageId)
                     ? null
@@ -6660,6 +6777,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     AdaptiveEffectsState adaptiveEffects, {
     required bool isFirstInGroup,
     required bool isLastInGroup,
+    required Map<String, MessageModel> messagesById,
     List<GalleryItem>? conversationGalleryItems,
     Map<String, int>? conversationGalleryIndexByMessageId,
   }) {
@@ -6673,6 +6791,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         isFirstInGroup,
         isLastInGroup,
         adaptiveEffects,
+        messagesById: messagesById,
         conversationGalleryItems: conversationGalleryItems,
         conversationGalleryIndexByMessageId:
             conversationGalleryIndexByMessageId,

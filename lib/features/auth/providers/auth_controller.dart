@@ -27,12 +27,14 @@ class TokenStorage {
   static const _passwordRequiredKey = 'vista_password_required';
 
   static Future<void> saveTokens(AuthSessionResponse session) async {
+    final expiresAt =
+        _accessTokenExpiresAt(session.accessToken) ?? session.expiresAt;
     await Future.wait([
       _storage.write(key: _accessTokenKey, value: session.accessToken),
       _storage.write(key: _refreshTokenKey, value: session.refreshToken),
       _storage.write(
         key: _expiresAtKey,
-        value: session.expiresAt.toIso8601String(),
+        value: expiresAt.toUtc().toIso8601String(),
       ),
     ]);
   }
@@ -113,16 +115,16 @@ class TokenStorage {
     final token = await _storage.read(key: _accessTokenKey);
     if (token == null || token.isEmpty) return false;
 
-    final expiresAtStr = await _storage.read(key: _expiresAtKey);
-    if (expiresAtStr == null) {
-      return false;
-    }
-
-    final expiresAt = DateTime.tryParse(expiresAtStr);
+    final storedExpiresAt = await _storage.read(key: _expiresAtKey);
+    final expiresAt = _accessTokenExpiresAt(token) ??
+        (storedExpiresAt == null ? null : DateTime.tryParse(storedExpiresAt));
     if (expiresAt == null) return false;
 
-    // Ø§Ú¯Ø± Ú©Ù…ØªØ± Ø§Ø² Ûµ Ø¯Ù‚ÛŒÙ‚Ù‡ ØªØ§ Ø§Ù†Ù‚Ø¶Ø§ Ù…Ø§Ù†Ø¯Ù‡ØŒ Ù†Ø´Ø³Øª Ù†Ø§Ù…Ø¹ØªØ¨Ø± Ø§Ø³Øª
-    return expiresAt.isAfter(DateTime.now().add(const Duration(minutes: 5)));
+    // Keep a small clock-skew buffer without forcing short-lived tokens into
+    // a refresh loop immediately after login.
+    return expiresAt
+        .toUtc()
+        .isAfter(DateTime.now().toUtc().add(const Duration(seconds: 30)));
   }
 
   static Future<bool> hasRefreshToken() async {
@@ -140,6 +142,35 @@ class TokenStorage {
       _storage.delete(key: _passwordRequiredKey),
     ]);
     CurrentUserService.clearCache();
+  }
+
+  static DateTime? _accessTokenExpiresAt(String token) {
+    try {
+      final parts = token.split('.');
+      if (parts.length != 3) return null;
+
+      final payload =
+          utf8.decode(base64Url.decode(base64Url.normalize(parts[1])));
+      final decoded = jsonDecode(payload);
+      if (decoded is! Map<String, dynamic>) return null;
+
+      final exp = decoded['exp'];
+      if (exp is num) {
+        return DateTime.fromMillisecondsSinceEpoch(
+          exp.toInt() * 1000,
+          isUtc: true,
+        );
+      }
+      if (exp is String) {
+        final seconds = int.tryParse(exp);
+        if (seconds == null) return null;
+        return DateTime.fromMillisecondsSinceEpoch(
+          seconds * 1000,
+          isUtc: true,
+        );
+      }
+    } catch (_) {}
+    return null;
   }
 }
 

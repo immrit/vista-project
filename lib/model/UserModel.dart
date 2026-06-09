@@ -19,6 +19,9 @@ class UserModel extends Equatable {
   final String? email;
   final String? role;
   final DateTime? createdAt;
+  final String? subscriptionPlan;
+  final DateTime? subscriptionExpiresAt;
+  final int? premiumDaysRemaining;
   final bool isVerified;
   final VerificationType verificationType; // اضافه کردن verificationType
 
@@ -29,6 +32,9 @@ class UserModel extends Equatable {
     this.email,
     this.role,
     this.createdAt,
+    this.subscriptionPlan,
+    this.subscriptionExpiresAt,
+    this.premiumDaysRemaining,
     this.isVerified = false,
     this.verificationType = VerificationType.none, // مقدار پیش‌فرض none
   });
@@ -54,6 +60,13 @@ class UserModel extends Equatable {
       role: map['role']?.toString(),
       createdAt: map['created_at'] != null
           ? DateTime.tryParse(map['created_at'] as String)
+          : null,
+      subscriptionPlan: map['subscription_plan']?.toString(),
+      subscriptionExpiresAt: map['subscription_expires_at'] != null
+          ? DateTime.tryParse(map['subscription_expires_at'].toString())
+          : null,
+      premiumDaysRemaining: map['premium_days_remaining'] != null
+          ? int.tryParse(map['premium_days_remaining'].toString())
           : null,
       isVerified: isVerified,
       verificationType: _mapResolvedType(resolvedType),
@@ -81,6 +94,11 @@ class UserModel extends Equatable {
         'email': email,
         'role': role,
         'created_at': createdAt?.toIso8601String(),
+        'subscription_plan': subscriptionPlan,
+        'subscription_expires_at':
+            subscriptionExpiresAt?.toUtc().toIso8601String(),
+        if (premiumDaysRemaining != null)
+          'premium_days_remaining': premiumDaysRemaining,
         'is_verified': isVerified,
         'verification_type':
             verificationType.name, // اضافه کردن verification_type
@@ -97,6 +115,9 @@ class UserModel extends Equatable {
     String? email,
     String? role,
     DateTime? createdAt,
+    String? subscriptionPlan,
+    DateTime? subscriptionExpiresAt,
+    int? premiumDaysRemaining,
     bool? isVerified,
     VerificationType? verificationType, // اضافه کردن verificationType
   }) {
@@ -107,6 +128,10 @@ class UserModel extends Equatable {
       email: email ?? this.email,
       role: role ?? this.role,
       createdAt: createdAt ?? this.createdAt,
+      subscriptionPlan: subscriptionPlan ?? this.subscriptionPlan,
+      subscriptionExpiresAt:
+          subscriptionExpiresAt ?? this.subscriptionExpiresAt,
+      premiumDaysRemaining: premiumDaysRemaining ?? this.premiumDaysRemaining,
       isVerified: isVerified ?? this.isVerified,
       verificationType: verificationType ??
           this.verificationType, // پیاده‌سازی verificationType
@@ -127,8 +152,19 @@ class UserModel extends Equatable {
 
   // Equatable برای مقایسه‌های دقیق
   @override
-  List<Object?> get props =>
-      [id, username, avatarUrl, email, role, isVerified, verificationType];
+  List<Object?> get props => [
+        id,
+        username,
+        avatarUrl,
+        email,
+        role,
+        createdAt,
+        subscriptionPlan,
+        subscriptionExpiresAt,
+        premiumDaysRemaining,
+        isVerified,
+        verificationType,
+      ];
 
   // متدهای اضافی برای بررسی وضعیت
   bool get hasAvatar => avatarUrl != null && avatarUrl!.isNotEmpty;
@@ -141,7 +177,13 @@ class UserModel extends Equatable {
       isVerified && verificationType == VerificationType.blackTick;
   bool get hasAnyBadge =>
       isVerified && verificationType != VerificationType.none;
-  bool get isPremiumUser => role == 'premium';
+  bool get isPremiumUser {
+    if (role != 'premium') return false;
+    if (premiumDaysRemaining != null) return premiumDaysRemaining! > 0;
+    final expiresAt = subscriptionExpiresAt;
+    return expiresAt != null && expiresAt.isAfter(DateTime.now());
+  }
+
   bool get hasUnlimitedPrivileges => hasBlueBadge;
   bool get hasPremiumPrivileges =>
       hasUnlimitedPrivileges || hasGoldBadge || hasBlackBadge || isPremiumUser;

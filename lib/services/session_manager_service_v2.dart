@@ -24,6 +24,21 @@ enum SessionVerificationState { verified, pendingVerification, invalid }
 
 enum RefreshResult { success, authError, networkError }
 
+class _BackendRequestException implements Exception {
+  final int statusCode;
+  final String message;
+  final String body;
+
+  const _BackendRequestException({
+    required this.statusCode,
+    required this.message,
+    required this.body,
+  });
+
+  @override
+  String toString() => 'HTTP $statusCode: $message';
+}
+
 /// 🚀 Session Manager V2 — Go Backend Edition
 ///
 /// Auth tokens are managed via TokenStorage (flutter_secure_storage).
@@ -147,12 +162,19 @@ class SessionManagerServiceV2 {
       final payload = _decodeBody(response.body);
       logInfo(
           '❌ Backend request failed: HTTP ${response.statusCode} ${response.request?.url} - Response: ${response.body}');
+      String message;
       if (payload is Map) {
-        throw payload['message']?.toString() ??
+        message = payload['message']?.toString() ??
             payload['error']?.toString() ??
-            'HTTP ${response.statusCode}: ${response.body}';
+            response.body;
+      } else {
+        message = response.body;
       }
-      throw 'HTTP ${response.statusCode}: ${response.body}';
+      throw _BackendRequestException(
+        statusCode: response.statusCode,
+        message: message,
+        body: response.body,
+      );
     }
     logInfo('✅ Backend request success: $method $path');
     return _decodeBody(response.body);
@@ -256,7 +278,7 @@ class SessionManagerServiceV2 {
         return null;
       }
 
-      _sessionToken = const Uuid().v4();
+      final sessionToken = const Uuid().v4();
       final sessionId = const Uuid().v4();
       SessionDeviceInfo? deviceInfo;
       try {
@@ -277,7 +299,7 @@ class SessionManagerServiceV2 {
           path: '/v1/sessions/register',
           body: {
             'session_id': sessionId,
-            'session_token': _sessionToken,
+            'session_token': sessionToken,
             'app_version': packageInfo.version,
             if (snapshot?.city != null) 'location_city': snapshot!.city,
             if (snapshot?.country != null)
@@ -297,6 +319,7 @@ class SessionManagerServiceV2 {
       }
 
       _currentSessionId = sessionId;
+      _sessionToken = sessionToken;
       await _saveSession();
       _verificationState = SessionVerificationState.verified;
       _startActivityTracking();
@@ -398,6 +421,9 @@ class SessionManagerServiceV2 {
   }
 
   bool _isRecoverableValidationError(Object error) {
+    if (error is _BackendRequestException) {
+      return error.statusCode == 429 || error.statusCode >= 500;
+    }
     final text = error.toString().toLowerCase();
     if (text.contains('http 429') ||
         text.contains('http 500') ||
@@ -720,15 +746,19 @@ class SessionManagerServiceV2 {
   // ═══════════════════════════════════════════════════════════
 
   Future<void> ensureSessionRegistered({bool force = false}) async {
-    if (force ||
-        !isSessionActive ||
-        _verificationState != SessionVerificationState.verified) {
-      final sessionId = await registerSession(force: force);
-      if (sessionId == null) {
-        throw Exception(
-            'Session registration failed or was rejected by backend.');
-      }
+    if (!force && _currentSessionId != null && _sessionToken != null) {
+      final validOrRecovering = await _quickSessionCheck();
+      if (validOrRecovering) return;
     }
+
+    if (force || !isSessionActive || _sessionToken == null) {
+      final sessionId = await registerSession(force: force);
+      if (sessionId != null) return;
+    } else if (_verificationState == SessionVerificationState.verified) {
+      return;
+    }
+
+    throw Exception('Session registration failed or was rejected by backend.');
   }
 
   Future<bool> verifyCurrentSession({bool forceServer = false}) async {

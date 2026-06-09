@@ -37,9 +37,10 @@ class _PricingPageState extends ConsumerState<PricingPage>
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
 
-  /// مبالغ هم‌خوان با بک‌اند
-  static const int _monthlyAmount = 49000;
-  static const int _yearlyAmount = 399000;
+  /// مبالغ هم‌خوان با محصول‌های تعریف‌شده در بازار.
+  static const int _monthlyAmount = 100;
+  static const int _threeMonthlyAmount = 280;
+  static const int _yearlyAmount = 1000000;
 
   final List<Map<String, dynamic>> _plans = [
     {
@@ -47,15 +48,25 @@ class _PricingPageState extends ConsumerState<PricingPage>
       'productId': 'vista_premium_monthly',
       'title': 'ماهانه',
       'amount': _monthlyAmount,
+      'durationDays': 30,
       'desc': 'انعطاف‌پذیر برای شروع',
+    },
+    {
+      'id': 'three_monthly',
+      'productId': 'vista_premium_3monthly',
+      'title': 'سه‌ماهه',
+      'amount': _threeMonthlyAmount,
+      'durationDays': 90,
+      'desc': 'سه ماه پریمیوم پیوسته',
+      'badge': 'پیشنهاد ویستا',
     },
     {
       'id': 'yearly',
       'productId': 'vista_premium_yearly',
       'title': 'سالانه',
       'amount': _yearlyAmount,
-      'desc': 'به‌صرفه‌ترین انتخاب',
-      'badge': 'پیشنهاد ویستا',
+      'durationDays': 365,
+      'desc': 'یک سال کامل پریمیوم',
     },
   ];
 
@@ -147,7 +158,7 @@ class _PricingPageState extends ConsumerState<PricingPage>
   }
 
   int _approxDaysAddedForPlan(int planIndex) {
-    return _plans[planIndex]['id'] == 'yearly' ? 365 : 30;
+    return _plans[planIndex]['durationDays'] as int;
   }
 
   Future<void> _onPurchaseTap() async {
@@ -521,10 +532,8 @@ class _PricingPageState extends ConsumerState<PricingPage>
                                 child: AnimatedContainer(
                                   duration: const Duration(milliseconds: 300),
                                   curve: Curves.easeOutCubic,
-                                  margin: EdgeInsets.only(
-                                    left: index == 0 ? 8 : 0,
-                                    right: index == 1 ? 8 : 0,
-                                  ),
+                                  margin:
+                                      const EdgeInsets.symmetric(horizontal: 4),
                                   padding: const EdgeInsets.symmetric(
                                       vertical: 14, horizontal: 8),
                                   decoration: BoxDecoration(

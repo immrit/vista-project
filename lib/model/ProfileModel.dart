@@ -233,7 +233,8 @@ class ProfileModel extends Equatable {
       'username_changes_count': usernameChangesCount,
       'registration_country': registrationCountry,
       'subscription_plan': subscriptionPlan,
-      'subscription_expires_at': subscriptionExpiresAt?.toUtc().toIso8601String(),
+      'subscription_expires_at':
+          subscriptionExpiresAt?.toUtc().toIso8601String(),
       if (premiumDaysRemaining != null)
         'premium_days_remaining': premiumDaysRemaining,
     };
@@ -312,8 +313,7 @@ class ProfileModel extends Equatable {
       subscriptionPlan: subscriptionPlan ?? this.subscriptionPlan,
       subscriptionExpiresAt:
           subscriptionExpiresAt ?? this.subscriptionExpiresAt,
-      premiumDaysRemaining:
-          premiumDaysRemaining ?? this.premiumDaysRemaining,
+      premiumDaysRemaining: premiumDaysRemaining ?? this.premiumDaysRemaining,
     );
   }
 
@@ -365,7 +365,13 @@ class ProfileModel extends Equatable {
   bool get isModerator => role == 'moderator';
   bool get isAdminOrModerator => role == 'admin' || role == 'moderator';
   bool get isNormalUser => role == 'normal' || role == null;
-  bool get isPremiumUser => role == 'premium';
+  bool get isPremiumUser {
+    if (role != 'premium') return false;
+    if (premiumDaysRemaining != null) return premiumDaysRemaining! > 0;
+    final expiresAt = subscriptionExpiresAt;
+    return expiresAt != null && expiresAt.isAfter(DateTime.now());
+  }
+
   bool get hasUnlimitedPrivileges => hasBlueBadge;
   bool get hasPremiumPrivileges =>
       hasUnlimitedPrivileges || hasGoldBadge || hasBlackBadge || isPremiumUser;

@@ -80,9 +80,40 @@ class AuthSessionResponse {
       accessToken: json['access_token'] as String? ?? '',
       refreshToken: json['refresh_token'] as String? ?? '',
       tokenType: json['token_type'] as String? ?? 'Bearer',
-      expiresAt: DateTime.tryParse(json['expires_at'] as String? ?? '') ??
-          DateTime.now().add(const Duration(minutes: 15)),
+      expiresAt: _parseExpiresAt(json),
     );
+  }
+
+  static DateTime _parseExpiresAt(Map<String, dynamic> json) {
+    final expiresAt =
+        _parseBackendDate(json['expires_at'] ?? json['expiresAt']);
+    if (expiresAt != null) return expiresAt;
+
+    final expiresIn = json['expires_in'] ?? json['expiresIn'];
+    if (expiresIn is num) {
+      return DateTime.now().toUtc().add(Duration(seconds: expiresIn.toInt()));
+    }
+    if (expiresIn is String) {
+      final seconds = int.tryParse(expiresIn);
+      if (seconds != null) {
+        return DateTime.now().toUtc().add(Duration(seconds: seconds));
+      }
+    }
+
+    return DateTime.now().toUtc().add(const Duration(minutes: 15));
+  }
+
+  static DateTime? _parseBackendDate(Object? value) {
+    final text = value?.toString().trim();
+    if (text == null || text.isEmpty) return null;
+
+    final hasTimeZone = RegExp(
+      r'(z|[+-]\d{2}:?\d{2})$',
+      caseSensitive: false,
+    ).hasMatch(text);
+    final normalized = hasTimeZone ? text : '${text}Z';
+    return DateTime.tryParse(normalized)?.toUtc() ??
+        DateTime.tryParse(text)?.toUtc();
   }
 }
 

@@ -4,6 +4,7 @@ import 'package:Vista/utils/env_config.dart';
 import '../../../security/logging_utility.dart';
 import '../../../model/ProfileModel.dart';
 import '../../auth/providers/auth_controller.dart';
+import '../../../services/session_manager_service_v2.dart';
 
 class ProfileRepository {
   static String get _backendUrl => EnvConfig.apiBaseUrl;
@@ -24,6 +25,11 @@ class ProfileRepository {
   }
 
   Future<Options> _authOptions() async {
+    final sessionReady =
+        await SessionManagerServiceV2.instance.ensureValidAuthSession();
+    if (!sessionReady) {
+      throw 'User is not logged in';
+    }
     final token = await TokenStorage.getAccessToken();
     if (token == null || token.isEmpty) {
       throw 'User is not logged in';
@@ -34,7 +40,12 @@ class ProfileRepository {
   Future<Options?> _optionalAuthOptions() async {
     final token = await TokenStorage.getAccessToken();
     if (token == null || token.isEmpty) return null;
-    return Options(headers: {'Authorization': 'Bearer $token'});
+    final sessionReady =
+        await SessionManagerServiceV2.instance.ensureValidAuthSession();
+    if (!sessionReady) return null;
+    final freshToken = await TokenStorage.getAccessToken();
+    if (freshToken == null || freshToken.isEmpty) return null;
+    return Options(headers: {'Authorization': 'Bearer $freshToken'});
   }
 
   Future<Map<String, dynamic>?> fetchProfile(String userId) async {

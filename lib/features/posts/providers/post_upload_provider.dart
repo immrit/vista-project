@@ -5,6 +5,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../services/PostImageUploadService.dart';
 import '../../../../services/local_notification_center.dart';
+import '../../../../services/orphaned_media_cleanup_service.dart';
 import '../../auth/providers/auth_controller.dart';
 import '../data/go_posts_repository.dart';
 import '../../../../services/user_friendly_error_handler.dart';
@@ -124,7 +125,8 @@ class PostUploadNotifier extends StateNotifier<List<UploadTask>> {
 
       await _notif.show(
         id: id + 1,
-        title: success ? '$label با موفقیت ارسال شد ✓' : 'ارسال $label ناموفق بود',
+        title:
+            success ? '$label با موفقیت ارسال شد ✓' : 'ارسال $label ناموفق بود',
         body: success
             ? 'پست شما در فید ویستا منتشر شد'
             : (errorMessage ?? 'لطفاً دوباره تلاش کنید'),
@@ -133,7 +135,8 @@ class PostUploadNotifier extends StateNotifier<List<UploadTask>> {
             _socialChannelId,
             'فعالیت‌های اجتماعی',
             channelDescription: 'اعلان‌های اجتماعی ویستا',
-            importance: success ? Importance.defaultImportance : Importance.high,
+            importance:
+                success ? Importance.defaultImportance : Importance.high,
             priority: success ? Priority.defaultPriority : Priority.high,
             icon: '@mipmap/ic_launcher',
             enableVibration: success,
@@ -221,6 +224,7 @@ class PostUploadNotifier extends StateNotifier<List<UploadTask>> {
     unawaited(_showProgressNotification(taskId, kind, 0));
 
     unawaited(() async {
+      final uploadedUrls = <String>[];
       try {
         double completedWeight = 0.0;
         void updateStageProgress(double stageProgress, double stageWeight) {
@@ -243,6 +247,9 @@ class PostUploadNotifier extends StateNotifier<List<UploadTask>> {
             imageName,
             onProgress: (p) => updateStageProgress(p, perMediaWeight),
           );
+          if (imageUrl != null && imageUrl.isNotEmpty) {
+            uploadedUrls.add(imageUrl);
+          }
           completedWeight += perMediaWeight;
           _updateTaskProgress(taskId, completedWeight.clamp(0.0, 0.99));
         } else if (image != null) {
@@ -250,6 +257,9 @@ class PostUploadNotifier extends StateNotifier<List<UploadTask>> {
             image,
             onProgress: (p) => updateStageProgress(p, perMediaWeight),
           );
+          if (imageUrl != null && imageUrl.isNotEmpty) {
+            uploadedUrls.add(imageUrl);
+          }
           completedWeight += perMediaWeight;
           _updateTaskProgress(taskId, completedWeight.clamp(0.0, 0.99));
         } else if (videoThumbnail != null && !kIsWeb) {
@@ -257,6 +267,9 @@ class PostUploadNotifier extends StateNotifier<List<UploadTask>> {
             videoThumbnail,
             onProgress: (p) => updateStageProgress(p, perMediaWeight),
           );
+          if (imageUrl != null && imageUrl.isNotEmpty) {
+            uploadedUrls.add(imageUrl);
+          }
           completedWeight += perMediaWeight;
           _updateTaskProgress(taskId, completedWeight.clamp(0.0, 0.99));
         }
@@ -268,6 +281,9 @@ class PostUploadNotifier extends StateNotifier<List<UploadTask>> {
             videoName,
             onProgress: (p) => updateStageProgress(p, perMediaWeight),
           );
+          if (videoUrl != null && videoUrl.isNotEmpty) {
+            uploadedUrls.add(videoUrl);
+          }
           completedWeight += perMediaWeight;
           _updateTaskProgress(taskId, completedWeight.clamp(0.0, 0.99));
         } else if (video != null) {
@@ -275,6 +291,9 @@ class PostUploadNotifier extends StateNotifier<List<UploadTask>> {
             video,
             onProgress: (p) => updateStageProgress(p, perMediaWeight),
           );
+          if (videoUrl != null && videoUrl.isNotEmpty) {
+            uploadedUrls.add(videoUrl);
+          }
           completedWeight += perMediaWeight;
           _updateTaskProgress(taskId, completedWeight.clamp(0.0, 0.99));
         }
@@ -285,6 +304,9 @@ class PostUploadNotifier extends StateNotifier<List<UploadTask>> {
             music,
             onProgress: (p) => updateStageProgress(p, perMediaWeight),
           );
+          if (musicUrl.isNotEmpty) {
+            uploadedUrls.add(musicUrl);
+          }
           completedWeight += perMediaWeight;
           _updateTaskProgress(taskId, completedWeight.clamp(0.0, 0.99));
         }
@@ -316,7 +338,13 @@ class PostUploadNotifier extends StateNotifier<List<UploadTask>> {
         state = state.where((t) => t.id != taskId).toList();
       } catch (e) {
         debugPrint('Upload failed: $e');
-        final errMsg = UserFriendlyErrorHandler.getFriendlyMessage(e, context: 'post_upload');
+        unawaited(OrphanedMediaCleanupService.enqueueUrls(
+          uploadedUrls,
+          source: 'post_upload',
+          reason: 'create_post_failed',
+        ));
+        final errMsg = UserFriendlyErrorHandler.getFriendlyMessage(e,
+            context: 'post_upload');
         _updateTaskStatus(taskId, 'failed', errorMessage: errMsg);
         _lastNotifiedProgress.remove(taskId);
         unawaited(_showCompletionNotification(
