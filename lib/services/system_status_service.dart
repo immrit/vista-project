@@ -70,6 +70,7 @@ class SystemStatus {
   final List<SystemAlert> alerts;
   final int schemaVersion;
   final DateTime? generatedAt;
+  final int fcmResyncEpoch;
 
   const SystemStatus({
     required this.maintenance,
@@ -77,6 +78,7 @@ class SystemStatus {
     this.alerts = const [],
     this.schemaVersion = 1,
     this.generatedAt,
+    this.fcmResyncEpoch = 0,
   });
 
   factory SystemStatus.fromJson(Map<String, dynamic> json) {
@@ -143,6 +145,7 @@ class SystemStatus {
       alerts: _readAlerts(root),
       schemaVersion: _readInt(root['schema_version']) ?? 1,
       generatedAt: DateTime.tryParse('${root['generated_at'] ?? ''}'),
+      fcmResyncEpoch: _readInt(root['fcm_resync_epoch']) ?? 0,
     );
   }
 }

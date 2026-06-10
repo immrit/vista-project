@@ -95,6 +95,7 @@ Future<void> notificationResponseHandler(NotificationResponse response) async {
 
 class AppRunner {
   static void run() {
+    PushNotificationService.wireSessionHooks();
     runApp(ProviderScope(child: const RootApp()));
   }
 }
@@ -249,14 +250,14 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    _wireFcmSyncHooks();
     unawaited(TelegramEmojiLookup.instance.load());
     WidgetsBinding.instance.addObserver(this);
     _appLinks = AppLinks();
     _setupDeepLinkHandling();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _initializePushServiceOnce();
+      unawaited(_bootstrapAppServices());
     });
-    unawaited(_bootstrapAuthenticatedUser());
 
     _startSessionMonitoring();
     _startSystemStatusMonitoring();
@@ -264,12 +265,23 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
     _setupSessionTerminationHandler();
   }
 
+  void _wireFcmSyncHooks() {
+    PushNotificationService.wireSessionHooks();
+  }
+
+  Future<void> _bootstrapAppServices() async {
+    await _bootstrapAuthenticatedUser();
+    await _initializePushServiceOnce();
+  }
+
   Future<void> _initializePushServiceOnce() async {
     if (!mounted || _pushServiceInitialized) return;
     _pushServiceInitialized = true;
     try {
       await ref.read(pushNotificationServiceProvider).init(context);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('Push notification init failed: $e');
+    }
   }
 
   Future<void> _bootstrapAuthenticatedUser() async {
@@ -321,13 +333,10 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
   Future<void> _setupFCMTokenForUser() async {
     try {
       if (Firebase.apps.isEmpty) return;
-      await FirebaseMessaging.instance.requestPermission();
-      await FirebaseMessaging.instance.getAPNSToken();
-      final token = await FirebaseMessaging.instance.getToken();
-      if (token != null) {
-        await ref.read(pushNotificationServiceProvider).saveToken(token: token);
-      }
-    } catch (_) {}
+      unawaited(PushNotificationService.syncIfNeeded(afterAuth: true));
+    } catch (e) {
+      debugPrint('FCM token setup failed: $e');
+    }
   }
 
   void _startSessionMonitoring() {
@@ -358,6 +367,11 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
       final status = await SystemStatusService.instance.fetchStatus(
         force: force,
       );
+      if (status != null && status.fcmResyncEpoch > 0) {
+        unawaited(
+          PushNotificationService.handleSystemResyncEpoch(status.fcmResyncEpoch),
+        );
+      }
       if (status?.maintenance == true) {
         final context = navigatorKey.currentContext;
         if (context != null && context.mounted) {
@@ -379,6 +393,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
           Future.delayed(const Duration(seconds: 2), () {
             try {
               SessionManagerServiceV2().onNetworkRestored();
+              unawaited(PushNotificationService.syncIfNeeded(afterAuth: true));
               // یک بار هم بررسی نشست بلافاصله انجام شود
               _handlePotentialSessionExpiry();
             } catch (_) {}

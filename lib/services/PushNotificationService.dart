@@ -40,6 +40,13 @@ class PushNotificationService {
 
   static const String _pendingActionsPrefsKey =
       'pending_notification_actions_v1';
+  static const String _fcmSyncEpochAckKey = 'fcm_sync_epoch_ack';
+  static const String _fcmLastSyncOkMsKey = 'fcm_last_sync_ok_ms';
+  static const String _fcmLastSyncedTokenKey = 'fcm_last_synced_token';
+  static const Duration _fcmMinRetryInterval = Duration(minutes: 5);
+  static DateTime? _lastFcmAttemptAt;
+  static int? _lastSeenSystemEpoch;
+  static Future<bool>? _syncInFlight;
   static const int _maxPendingActions = 30;
   static const Uuid _uuid = Uuid();
   static String get _backendUrl =>
@@ -361,7 +368,7 @@ class PushNotificationService {
       // ✅ Initialize کردن پلاگین (یکپارچه برای foreground و background)
       await _ensureInitialized();
 
-      await saveToken();
+      unawaited(syncIfNeeded(afterAuth: true));
       await _processPendingNotificationActions();
 
       if (_listenersBound) {
@@ -372,7 +379,7 @@ class PushNotificationService {
       _tokenRefreshSubscription = _firebaseMessaging.onTokenRefresh.listen((
         newToken,
       ) {
-        saveToken(token: newToken);
+        unawaited(syncIfNeeded(tokenHint: newToken, tokenChanged: true));
       });
 
       _onMessageSubscription = FirebaseMessaging.onMessage.listen((
@@ -762,35 +769,227 @@ class PushNotificationService {
 
   // -----------------------------------------------------------------------------
 
-  Future<void> saveToken({String? token}) async {
+  /// Sync FCM token to backend after auth/session is ready.
+  static Future<bool> syncTokenToBackend({String? token}) async {
+    return syncIfNeeded(tokenHint: token, afterAuth: true);
+  }
+
+  /// Connect session lifecycle to automatic FCM registration.
+  static void wireSessionHooks() {
+    final sessionManager = SessionManagerServiceV2.instance;
+    sessionManager.fcmSyncEpochAckProvider = getAckEpoch;
+    sessionManager.onSessionTouchResult = handleTouchSyncHints;
+    sessionManager.onSessionReadyForFcm = () => syncIfNeeded(afterAuth: true);
+  }
+
+  static Future<int> getAckEpoch() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(_fcmSyncEpochAckKey) ?? 0;
+  }
+
+  static Future<void> setAckEpoch(int epoch) async {
+    if (epoch <= 0) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_fcmSyncEpochAckKey, epoch);
+  }
+
+  static Future<String?> _getLastSyncedToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString(_fcmLastSyncedTokenKey)?.trim();
+    if (token == null || token.isEmpty) return null;
+    return token;
+  }
+
+  static Future<bool> _hasSuccessfulSync() async {
+    final prefs = await SharedPreferences.getInstance();
+    return (prefs.getInt(_fcmLastSyncOkMsKey) ?? 0) > 0;
+  }
+
+  static Future<void> _markSyncSuccess({
+    required String token,
+    int? serverEpoch,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_fcmLastSyncedTokenKey, token);
+    await prefs.setInt(
+      _fcmLastSyncOkMsKey,
+      DateTime.now().millisecondsSinceEpoch,
+    );
+    if (serverEpoch != null && serverEpoch > 0) {
+      await setAckEpoch(serverEpoch);
+    }
+  }
+
+  /// Telegram-style: sync only when token changed, after auth, or server epoch bump.
+  static Future<bool> syncIfNeeded({
+    String? tokenHint,
+    bool afterAuth = false,
+    bool tokenChanged = false,
+    int? serverEpoch,
+    bool serverRequested = false,
+  }) async {
+    final inFlight = _syncInFlight;
+    if (inFlight != null) return inFlight;
+
+    final future = _syncIfNeededInternal(
+      tokenHint: tokenHint,
+      afterAuth: afterAuth,
+      tokenChanged: tokenChanged,
+      serverEpoch: serverEpoch,
+      serverRequested: serverRequested,
+    );
+    _syncInFlight = future;
+    try {
+      return await future;
+    } finally {
+      if (identical(_syncInFlight, future)) {
+        _syncInFlight = null;
+      }
+    }
+  }
+
+  @Deprecated('Use syncIfNeeded instead')
+  static Future<bool> ensureRegistered({
+    bool force = false,
+    int? serverEpoch,
+    bool requireSync = false,
+  }) {
+    return syncIfNeeded(
+      afterAuth: force,
+      serverEpoch: serverEpoch,
+      serverRequested: requireSync || force,
+      tokenChanged: force,
+    );
+  }
+
+  static Future<bool> _syncIfNeededInternal({
+    String? tokenHint,
+    bool afterAuth = false,
+    bool tokenChanged = false,
+    int? serverEpoch,
+    bool serverRequested = false,
+  }) async {
     try {
       final hasSession = await TokenStorage.hasValidSession();
-      if (!hasSession) {
-        logInfo('Skipping FCM token sync: user is not logged in.');
-        return;
-      }
-      if (Firebase.apps.isEmpty) {
-        logInfo('Firebase not initialized, skipping FCM token save');
-        return;
+      if (!hasSession) return false;
+      if (Firebase.apps.isEmpty) return false;
+
+      final ack = await getAckEpoch();
+      final epochBump =
+          serverRequested || (serverEpoch != null && serverEpoch > ack);
+
+      if (!tokenChanged && !epochBump) {
+        if (await _hasSuccessfulSync()) {
+          final lastSynced = await _getLastSyncedToken();
+          if (lastSynced != null && lastSynced.isNotEmpty) {
+            if (tokenHint != null && tokenHint == lastSynced) {
+              return true;
+            }
+            if (tokenHint == null && !afterAuth) {
+              return true;
+            }
+          } else if (!afterAuth) {
+            return true;
+          }
+        } else if (!afterAuth &&
+            _lastFcmAttemptAt != null &&
+            DateTime.now().difference(_lastFcmAttemptAt!) <
+                _fcmMinRetryInterval) {
+          return false;
+        }
       }
 
-      final fcmToken = token ?? await _firebaseMessaging.getToken();
+      final service = PushNotificationService(null);
+      final fcmToken = tokenHint ?? await service._firebaseMessaging.getToken();
       if (fcmToken == null || fcmToken.isEmpty) {
-        logInfo('FCM token is null');
-        return;
+        logInfo('FCM token is null or empty from Firebase');
+        return false;
       }
 
-      final synced = await SessionManagerServiceV2.instance.updateFcmToken(
-        fcmToken,
-      );
-      if (synced) {
-        logInfo('FCM token synced with Go backend session.');
-      } else {
-        logInfo('FCM token sync skipped: no active backend session.');
+      if (!tokenChanged && !epochBump) {
+        final lastSynced = await _getLastSyncedToken();
+        if (lastSynced == fcmToken && await _hasSuccessfulSync()) {
+          return true;
+        }
       }
+
+      _lastFcmAttemptAt = DateTime.now();
+      for (var attempt = 1; attempt <= 3; attempt++) {
+        final synced = await SessionManagerServiceV2.instance.updateFcmToken(
+          fcmToken,
+        );
+        if (synced) {
+          logInfo('FCM token synced with Go backend session.');
+          await _markSyncSuccess(token: fcmToken, serverEpoch: serverEpoch);
+          return true;
+        }
+        if (attempt < 3) {
+          logInfo('FCM token sync retry $attempt/3');
+          await Future.delayed(Duration(seconds: attempt * 2));
+        }
+      }
+
+      logInfo('FCM token sync failed: backend session touch did not accept token');
+      return false;
     } catch (e) {
       logInfo('Error syncing FCM token with backend: $e');
+      return false;
     }
+  }
+
+  static Future<void> handleTouchSyncHints(Map<String, dynamic> result) async {
+    if (result['require_fcm_sync'] == true) {
+      final epoch = _readEpoch(result['fcm_resync_epoch']);
+      final ack = await getAckEpoch();
+      if (epoch != null && epoch <= ack) return;
+
+      unawaited(
+        syncIfNeeded(
+          serverEpoch: epoch,
+          serverRequested: true,
+          tokenChanged: true,
+        ),
+      );
+      return;
+    }
+
+    // Never synced yet: one lightweight client-side retry (no extra server DB work).
+    if (!(await _hasSuccessfulSync())) {
+      unawaited(syncIfNeeded(afterAuth: true));
+    }
+  }
+
+  static Future<void> handleSystemResyncEpoch(int? epoch) async {
+    if (epoch == null || epoch <= 0) return;
+    if (_lastSeenSystemEpoch == epoch) return;
+    _lastSeenSystemEpoch = epoch;
+
+    final ack = await getAckEpoch();
+    if (epoch <= ack) return;
+
+    unawaited(
+      syncIfNeeded(
+        serverEpoch: epoch,
+        serverRequested: true,
+        tokenChanged: true,
+      ),
+    );
+  }
+
+  static int? _readEpoch(Object? value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    if (value is String) return int.tryParse(value.trim());
+    return null;
+  }
+
+  Future<bool> saveToken({String? token, int? serverEpoch}) async {
+    return syncIfNeeded(
+      tokenHint: token,
+      afterAuth: true,
+      serverEpoch: serverEpoch,
+      serverRequested: serverEpoch != null,
+    );
   }
 
   void dispose() {

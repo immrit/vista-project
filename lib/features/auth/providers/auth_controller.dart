@@ -8,6 +8,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../data/auth_repository.dart';
 import '../../../services/current_user_service.dart';
 import '../../../services/session_manager_service_v2.dart';
+import '../../../services/PushNotificationService.dart';
 
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // Ø°Ø®ÛŒØ±Ù‡â€ŒØ³Ø§Ø²ÛŒ Ø§Ù…Ù† ØªÙˆÚ©Ù† â€” Ø¬Ø§ÛŒÚ¯Ø²ÛŒÙ† legacy auth
@@ -237,6 +238,10 @@ class AuthController extends StateNotifier<AuthState> {
 
   AuthController(this._repository) : super(AuthState());
 
+  Future<void> _syncFcmTokenAfterAuth() async {
+    await PushNotificationService.syncIfNeeded(afterAuth: true);
+  }
+
   // â”€â”€â”€ Ø¨Ø±Ø±Ø³ÛŒ Ù†Ø´Ø³Øª Ø°Ø®ÛŒØ±Ù‡ Ø´Ø¯Ù‡ Ù‡Ù†Ú¯Ø§Ù… Ø´Ø±ÙˆØ¹ Ø§Ù¾Ù„ÛŒÚ©ÛŒØ´Ù† â”€â”€â”€
   Future<void> checkSavedSession() async {
     try {
@@ -291,6 +296,7 @@ class AuthController extends StateNotifier<AuthState> {
       await TokenStorage.saveUserAuthState(response.user);
       await SessionManagerServiceV2.instance
           .ensureSessionRegistered(force: true);
+      await _syncFcmTokenAfterAuth();
 
       state = state.copyWith(
         isLoading: false,
@@ -323,6 +329,7 @@ class AuthController extends StateNotifier<AuthState> {
       await TokenStorage.saveUserAuthState(response.user);
       await SessionManagerServiceV2.instance
           .ensureSessionRegistered(force: true);
+      await _syncFcmTokenAfterAuth();
 
       state = state.copyWith(
         isLoading: false,
@@ -396,6 +403,7 @@ class AuthController extends StateNotifier<AuthState> {
       if (!isUpdateMode) {
         await SessionManagerServiceV2.instance
             .ensureSessionRegistered(force: true);
+        await _syncFcmTokenAfterAuth();
       }
 
       if (!isUpdateMode) {
@@ -435,6 +443,7 @@ class AuthController extends StateNotifier<AuthState> {
       await TokenStorage.saveUserAuthState(response.user);
       await SessionManagerServiceV2.instance
           .ensureSessionRegistered(force: true);
+      await _syncFcmTokenAfterAuth();
 
       state = state.copyWith(
         isLoading: false,

@@ -92,6 +92,9 @@ class SessionManagerServiceV2 {
 
   // ─── Callbacks ───────────────────────────────────────────────
   Function()? onSessionTerminated;
+  Future<int> Function()? fcmSyncEpochAckProvider;
+  Future<void> Function(Map<String, dynamic> result)? onSessionTouchResult;
+  Future<void> Function()? onSessionReadyForFcm;
 
   // ─── Public Getters ──────────────────────────────────────────
   String? get currentSessionId => _currentSessionId;
@@ -231,6 +234,7 @@ class SessionManagerServiceV2 {
         _startHealthCheck();
         _setupRealtimeListener();
         _syncWithServerInBackground();
+        unawaited(onSessionReadyForFcm?.call());
         return;
       }
 
@@ -326,6 +330,7 @@ class SessionManagerServiceV2 {
       _startHealthCheck();
       _setupRealtimeListener();
       _isRegistering = false;
+      unawaited(onSessionReadyForFcm?.call());
       return _currentSessionId;
     } catch (e) {
       logInfo('❌ Error in registerSession: $e');
@@ -450,6 +455,23 @@ class SessionManagerServiceV2 {
     });
   }
 
+  Future<int> _currentFcmSyncEpochAck() async {
+    try {
+      return await fcmSyncEpochAckProvider?.call() ?? 0;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  Future<void> _emitTouchResult(dynamic result) async {
+    if (result is! Map) return;
+    try {
+      await onSessionTouchResult?.call(Map<String, dynamic>.from(result));
+    } catch (e) {
+      logInfo('FCM touch hint handler failed: $e');
+    }
+  }
+
   Future<void> _updateActivity() async {
     if (_currentSessionId == null || _sessionToken == null) return;
     if (_isInBackground) return;
@@ -471,6 +493,7 @@ class SessionManagerServiceV2 {
         body: {
           'session_id': _currentSessionId,
           'session_token': _sessionToken,
+          'fcm_sync_epoch': await _currentFcmSyncEpochAck(),
           if (snapshot?.city != null) 'location_city': snapshot!.city,
           if (snapshot?.country != null) 'location_country': snapshot!.country,
           if (snapshot?.region != null) 'location_region': snapshot!.region,
@@ -480,6 +503,7 @@ class SessionManagerServiceV2 {
       if (result is Map && result['valid'] == true) {
         _verificationState = SessionVerificationState.verified;
       }
+      await _emitTouchResult(result);
     } catch (e) {
       logInfo('⚠️ Activity update failed (non-critical): $e');
     }
@@ -791,6 +815,7 @@ class SessionManagerServiceV2 {
           'session_id': _currentSessionId,
           'session_token': _sessionToken,
           'fcm_token': token,
+          'fcm_sync_epoch': await _currentFcmSyncEpochAck(),
           if (snapshot?.city != null) 'location_city': snapshot!.city,
           if (snapshot?.country != null) 'location_country': snapshot!.country,
           if (snapshot?.region != null) 'location_region': snapshot!.region,
@@ -799,8 +824,11 @@ class SessionManagerServiceV2 {
       );
       if (result is Map && result['valid'] == true) {
         _verificationState = SessionVerificationState.verified;
+        await _emitTouchResult(result);
         return true;
       }
+      logInfo('FCM token touch rejected: session_id=$_currentSessionId valid=${result is Map ? result['valid'] : result}');
+      await _emitTouchResult(result);
     } catch (e) {
       logInfo('FCM token sync failed: $e');
     }

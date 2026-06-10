@@ -1,6 +1,7 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
+import '../../../../services/video_autoplay_service.dart';
 import '../../widgets/vista_settings_widgets.dart';
 
 /// صفحه تنظیمات داده و ذخیره‌سازی - طراحی مشابه ویستا
@@ -21,6 +22,10 @@ class _DataStorageSettingsPageState extends State<DataStorageSettingsPage> {
 
   // کیفیت آپلود
   String _uploadQuality = 'high'; // high, standard, data_saver
+
+  // پخش ویدیو در فید
+  bool _videoAutoPlay = false;
+  bool _videoDataSaver = false;
 
   // وضعیت پاکسازی کش
   bool _isClearing = false;
@@ -46,6 +51,8 @@ class _DataStorageSettingsPageState extends State<DataStorageSettingsPage> {
       _wifiPhotos = prefs.getBool(_keyWifiPhotos) ?? true;
       _wifiVideos = prefs.getBool(_keyWifiVideos) ?? true;
       _uploadQuality = prefs.getString(_keyUploadQuality) ?? 'high';
+      _videoAutoPlay = prefs.getBool('video_auto_play') ?? false;
+      _videoDataSaver = prefs.getBool('video_data_saver') ?? false;
     });
   }
 
@@ -139,6 +146,35 @@ class _DataStorageSettingsPageState extends State<DataStorageSettingsPage> {
                   onChanged: (value) {
                     setState(() => _wifiVideos = value);
                     _saveBoolSetting(_keyWifiVideos, value);
+                  },
+                ),
+              ],
+            ),
+
+            // بخش پخش ویدیو در فید
+            const VistaSettingsSection(title: 'پخش ویدیو در فید'),
+            VistaSettingsGroup(
+              children: [
+                VistaSettingsSwitch(
+                  icon: Icons.play_circle_outline,
+                  title: 'پخش خودکار ویدیو',
+                  subtitle:
+                      'ویدیوهای فید و پروفایل با اسکرول به‌صورت خودکار پخش شوند',
+                  value: _videoAutoPlay,
+                  onChanged: (value) async {
+                    setState(() => _videoAutoPlay = value);
+                    await VideoAutoplayService().setAutoPlay(value);
+                  },
+                ),
+                VistaSettingsSwitch(
+                  icon: Icons.data_usage_outlined,
+                  title: 'صرفه‌جویی در اینترنت (ویدیو)',
+                  subtitle:
+                      'کیفیت پایین‌تر برای ویدیوها و پیش‌نمایش سبک‌تر',
+                  value: _videoDataSaver,
+                  onChanged: (value) async {
+                    setState(() => _videoDataSaver = value);
+                    await VideoAutoplayService().setDataSaver(value);
                   },
                 ),
               ],

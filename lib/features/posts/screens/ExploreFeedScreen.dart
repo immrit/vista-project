@@ -30,6 +30,8 @@ import 'package:Vista/services/system_ui_bar_service.dart';
 import '../../../utils/user_friendly_error_utils.dart';
 import '../widgets/post_action_buttons.dart';
 import '../widgets/post_moderation_banner.dart';
+import '../widgets/post_feed_video.dart';
+import '../services/reels_viewer_launcher.dart';
 import '../widgets/hashtag_rich_text.dart';
 import '../providers/saved_posts_provider.dart';
 import '../data/go_posts_repository.dart';
@@ -614,6 +616,7 @@ class _ThreadPostItem extends ConsumerWidget {
     final isDark = theme.brightness == Brightness.dark;
     final colorScheme = theme.colorScheme;
     final hasImage = post.imageUrl != null && post.imageUrl!.isNotEmpty;
+    final hasVideo = post.hasVideo;
     final isLiked = ref.watch(likeStateProvider)[post.id] ?? post.isLiked;
     final likeCount =
         post.likeCount + (isLiked != post.isLiked ? (isLiked ? 1 : -1) : 0);
@@ -634,6 +637,12 @@ class _ThreadPostItem extends ConsumerWidget {
       data: (ids) => ids.contains(post.id),
       orElse: () => false,
     );
+    final feedPosts = isForYou
+        ? ref.watch(personalizedFeedProvider).value ??
+            const <PublicPostModel>[]
+        : ref.watch(fetchFollowingPostsProvider).value ??
+            const <PublicPostModel>[];
+    final reelsPlaylist = ReelsViewerLauncher.videoPlaylist(feedPosts);
 
     // استفاده از GestureDetector به جای InkWell برای حذف افکت ریپل از کل پست
     return GestureDetector(
@@ -904,57 +913,109 @@ class _ThreadPostItem extends ConsumerWidget {
             ),
           ),
 
-          // ── تصویر تمام‌عرض ──────────────────────────────────────
+          // ── تصویر (هم‌سبک پروفایل) ─────────────────────────────
           if (hasImage) ...[
             const SizedBox(height: 10),
-            DoubleTapLikeOverlay(
-              isAlreadyLiked: isLiked,
-              onDoubleTap: () async {
-                if (isLiked) return;
-                ref
-                    .read(likeStateProvider.notifier)
-                    .updateLikeState(post.id, true);
-                try {
-                  await ref
-                      .read(postActionsServiceProvider)
-                      .toggleLike(
-                        postId: post.id,
-                        ownerId: post.userId,
-                        ref: ref,
-                      );
-                  unawaited(ref.read(goPostsRepositoryProvider).trackFeedEvent(
-                        postId: post.id,
-                        eventType: 'like',
-                      ));
-                } catch (_) {
-                  if (context.mounted) {
-                    ref
-                        .read(likeStateProvider.notifier)
-                        .updateLikeState(post.id, false);
-                  }
-                }
-              },
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxHeight: 420),
-                child: CachedNetworkImage(
-                  imageUrl: post.imageUrl!,
-                  width: double.infinity,
-                  fit: BoxFit.cover,
-                  placeholder: (_, __) => Container(
-                    height: 260,
-                    color: isDark ? Colors.grey[800] : Colors.grey[200],
-                    child: const Center(
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: AppColors.primary,
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(14),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(
+                    maxHeight: 280,
+                    minWidth: double.infinity,
+                  ),
+                  child: DoubleTapLikeOverlay(
+                    isAlreadyLiked: isLiked,
+                    onDoubleTap: () async {
+                      if (isLiked) return;
+                      ref
+                          .read(likeStateProvider.notifier)
+                          .updateLikeState(post.id, true);
+                      try {
+                        await ref
+                            .read(postActionsServiceProvider)
+                            .toggleLike(
+                              postId: post.id,
+                              ownerId: post.userId,
+                              ref: ref,
+                            );
+                        unawaited(
+                            ref.read(goPostsRepositoryProvider).trackFeedEvent(
+                                  postId: post.id,
+                                  eventType: 'like',
+                                ));
+                      } catch (_) {
+                        if (context.mounted) {
+                          ref
+                              .read(likeStateProvider.notifier)
+                              .updateLikeState(post.id, false);
+                        }
+                      }
+                    },
+                    child: CachedNetworkImage(
+                      imageUrl: post.imageUrl!,
+                      width: double.infinity,
+                      fit: BoxFit.cover,
+                      placeholder: (_, __) => Container(
+                        height: 180,
+                        color: isDark ? Colors.grey[800] : Colors.grey[200],
+                        child: const Center(
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: AppColors.primary,
+                          ),
+                        ),
+                      ),
+                      errorWidget: (_, __, ___) => Container(
+                        height: 180,
+                        color: isDark ? Colors.grey[800] : Colors.grey[200],
+                        child: const Icon(Icons.broken_image),
                       ),
                     ),
                   ),
-                  errorWidget: (_, __, ___) => Container(
-                    height: 180,
-                    color: isDark ? Colors.grey[800] : Colors.grey[200],
-                    child: const Icon(Icons.broken_image),
-                  ),
+                ),
+              ),
+            ),
+          ],
+
+          // ── ویدیو (هم‌سبک پروفایل) ─────────────────────────────
+          if (hasVideo && !hasImage) ...[
+            const SizedBox(height: 10),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: DoubleTapLikeOverlay(
+                isAlreadyLiked: isLiked,
+                onDoubleTap: () async {
+                  if (isLiked) return;
+                  ref
+                      .read(likeStateProvider.notifier)
+                      .updateLikeState(post.id, true);
+                  try {
+                    await ref
+                        .read(postActionsServiceProvider)
+                        .toggleLike(
+                          postId: post.id,
+                          ownerId: post.userId,
+                          ref: ref,
+                        );
+                    unawaited(ref.read(goPostsRepositoryProvider).trackFeedEvent(
+                          postId: post.id,
+                          eventType: 'like',
+                        ));
+                  } catch (_) {
+                    if (context.mounted) {
+                      ref
+                          .read(likeStateProvider.notifier)
+                          .updateLikeState(post.id, false);
+                    }
+                  }
+                },
+                child: PostFeedVideo(
+                  post: post,
+                  maxHeight: 280,
+                  borderRadius: BorderRadius.circular(14),
+                  reelsPlaylist: reelsPlaylist,
                 ),
               ),
             ),
@@ -962,7 +1023,7 @@ class _ThreadPostItem extends ConsumerWidget {
 
           // ── دکمه‌های اکشن ─────────────────────────────────────
           Padding(
-            padding: const EdgeInsets.fromLTRB(12, 4, 12, 10),
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
             child: Row(
               children: [
                 PostLikeButton(

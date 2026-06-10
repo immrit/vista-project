@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
@@ -13,6 +14,8 @@ import '../../services/video_preload_service.dart';
 class CustomVideoPlayer extends ConsumerStatefulWidget {
   final String videoUrl;
   final String? thumbnailUrl;
+  final Uint8List? thumbnailBytes;
+  final bool loadingThumbnail;
   final bool autoplay;
   final bool muted;
   final VoidCallback? onTap;
@@ -39,6 +42,8 @@ class CustomVideoPlayer extends ConsumerStatefulWidget {
     super.key,
     required this.videoUrl,
     this.thumbnailUrl,
+    this.thumbnailBytes,
+    this.loadingThumbnail = false,
     this.autoplay = true,
     this.muted = true,
     this.onTap,
@@ -363,23 +368,43 @@ class _CustomVideoPlayerState extends ConsumerState<CustomVideoPlayer>
   }
 
   Widget _buildNormalPlayer() {
+    final aspectRatio = _isPlayerInitialized &&
+            _isInitialized &&
+            _controller != null &&
+            _controller!.value.aspectRatio > 0
+        ? _controller!.value.aspectRatio
+        : 9 / 16;
+
     return VisibilityDetector(
       key: ValueKey('video-${widget.videoUrl}-${widget.postId ?? ""}'),
       onVisibilityChanged: (visibilityInfo) {
         final visibleFraction = visibilityInfo.visibleFraction;
         final newIsVisible = visibleFraction > 0.5;
+        final videoAutoplayService = VideoAutoplayService();
+        final shouldAutoPlay =
+            widget.autoplay && videoAutoplayService.shouldAutoPlay();
 
         if (newIsVisible != _isVisible && mounted) {
           setState(() {
             _isVisible = newIsVisible;
           });
 
-          // Do not autoplay if player hasn't been manually initialized
-          if (!_isPlayerInitialized) return;
+          if (newIsVisible &&
+              shouldAutoPlay &&
+              !_isPlayerInitialized &&
+              mounted) {
+            setState(() {
+              _isPlayerInitialized = true;
+            });
+            _initializePlayer().then((_) {
+              if (mounted && _isInitialized) {
+                _playVideo();
+              }
+            });
+            return;
+          }
 
-          final videoAutoplayService = VideoAutoplayService();
-          final shouldAutoPlay =
-              widget.autoplay && videoAutoplayService.shouldAutoPlay();
+          if (!_isPlayerInitialized) return;
 
           if (newIsVisible && shouldAutoPlay && _isInitialized) {
             _playVideo();
@@ -388,218 +413,239 @@ class _CustomVideoPlayerState extends ConsumerState<CustomVideoPlayer>
           }
         }
       },
-      child: GestureDetector(
-        onTap: () {
-          if (!_isPlayerInitialized) {
-            // In lazy load mode, tap is disabled until play is pressed.
-            return;
-          }
-          if (widget.onTap != null) {
-            if (widget.onVideoPositionTap != null) {
-              widget.onVideoPositionTap!(_currentPosition);
-            }
-            widget.onTap!();
-          } else {
-            _togglePlay();
-          }
-        },
-        onDoubleTap: _showLikeAnimation,
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            if (!_isPlayerInitialized) ...[
-              if (widget.thumbnailUrl != null &&
-                  widget.thumbnailUrl!.isNotEmpty)
-                CachedNetworkImage(
-                  imageUrl: widget.thumbnailUrl!,
-                  fit: BoxFit.cover,
-                  width: double.infinity,
-                  height: double.infinity,
-                  placeholder: (context, url) {
-                    return const Center(child: CircularProgressIndicator());
-                  },
-                  errorWidget: (context, url, error) {
-                    return const Center(
-                        child: Icon(Icons.error, color: Colors.white));
-                  },
-                )
-              else
-                AspectRatio(
-                  aspectRatio: 16 / 9, // نسبت تصویر استاندارد برای ویدیو
-                  child: Container(
-                    width: double.infinity,
-                    decoration: BoxDecoration(
-                      color: Colors
-                          .grey[900], // رنگ پس‌زمینه کمی روشن‌تر از مشکی مطلق
-                      borderRadius: BorderRadius.circular(
-                          12), // گرد کردن گوشه‌ها اگر نیاز باشد
-                    ),
-                    child: const Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.videocam_off,
-                              color: Colors.white24, size: 50),
-                          SizedBox(height: 8),
-                          Text(
-                            "پیش‌نمایش در دسترس نیست",
-                            style:
-                                TextStyle(color: Colors.white24, fontSize: 10),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final fallbackWidth = MediaQuery.sizeOf(context).width;
+          final maxWidth = constraints.maxWidth.isFinite
+              ? constraints.maxWidth
+              : fallbackWidth;
+          final maxHeight = widget.maxHeight ??
+              (constraints.maxHeight.isFinite
+                  ? constraints.maxHeight
+                  : maxWidth * 16 / 9);
+
+          final width = maxWidth;
+          final height = (width / aspectRatio).clamp(0.0, maxHeight);
+
+          return SizedBox(
+            width: width,
+            height: height,
+            child: GestureDetector(
+                  onTap: _handlePrimaryTap,
+                  onDoubleTap: _showLikeAnimation,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    alignment: Alignment.center,
+                    children: [
+                      if (!_isPlayerInitialized) ...[
+                        _buildPreviewBackground(),
+                        Center(
+                          child: IconButton(
+                            icon: const Icon(Icons.play_circle_fill),
+                            color: Colors.white.withValues(alpha: 0.9),
+                            iconSize: 60,
+                            onPressed: _handlePrimaryTap,
+                          ),
+                        ),
+                      ] else ...[
+                        if (_isInitialized && _controller != null)
+                          FittedBox(
+                            fit: BoxFit.cover,
+                            clipBehavior: Clip.hardEdge,
+                            child: SizedBox(
+                              width: _controller!.value.size.width,
+                              height: _controller!.value.size.height,
+                              child: VideoPlayer(_controller!),
+                            ),
                           )
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              Center(
-                child: IconButton(
-                  icon: const Icon(Icons.play_circle_fill),
-                  color: Colors.white.withValues(alpha: 0.9),
-                  iconSize: 60,
-                  onPressed: () {
-                    if (!mounted) return;
-                    setState(() {
-                      _isPlayerInitialized = true;
-                    });
-                    _initializePlayer().then((_) {
-                      if (mounted && _isInitialized) {
-                        _playVideo();
-                      }
-                    });
-                  },
-                ),
-              ),
-            ] else ...[
-              // ویدیو پلیر
-              _isInitialized
-                  ? AspectRatio(
-                      aspectRatio: _controller!.value.aspectRatio,
-                      child: VideoPlayer(_controller!),
-                    )
-                  : Container(
-                      color: Colors.black,
-                      height: 250,
-                      child: const Center(
-                        child: CircularProgressIndicator(),
-                      ),
-                    ),
-
-              // نشانگر بافرینگ
-              if (_isBuffering)
-                const Center(
-                  child: CircularProgressIndicator(color: Colors.white),
-                ),
-
-              // دکمه پخش در صورتی که ویدیو در حال پخش نیست و در حال بافرینگ هم نیست
-              if (!_isPlaying && !_isBuffering && _isInitialized)
-                AbsorbPointer(
-                  absorbing: false, // رویدادها را جذب نمی‌کند
-                  child: GestureDetector(
-                    onTap: () {
-                      // فقط پخش ویدیو بدون رفتن به صفحه ریلز
-                      _togglePlay();
-                    },
-                    child: Center(
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.3),
-                          shape: BoxShape.circle,
+                        else
+                          ColoredBox(
+                            color: Colors.grey[900]!,
+                            child: const Center(
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        if (_isBuffering)
+                          const Center(
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                            ),
+                          ),
+                        if (!_isPlaying && !_isBuffering && _isInitialized)
+                          AbsorbPointer(
+                            absorbing: false,
+                            child: GestureDetector(
+                              onTap: _handlePrimaryTap,
+                              child: Center(
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withValues(alpha: 0.3),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  padding: const EdgeInsets.all(16),
+                                  child: Icon(
+                                    Icons.play_arrow,
+                                    color: Colors.white.withValues(alpha: 0.9),
+                                    size: 48,
+                                    semanticLabel: 'پخش ویدیو',
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        if (_showLikeAnim)
+                          Center(
+                            child: TweenAnimationBuilder<double>(
+                              tween: Tween<double>(begin: 0.5, end: 1.2),
+                              duration: const Duration(milliseconds: 400),
+                              curve: Curves.elasticOut,
+                              builder: (context, value, child) {
+                                return Transform.scale(
+                                  scale: value,
+                                  child: Icon(
+                                    Icons.favorite,
+                                    color: Colors.red.withValues(alpha: 0.9),
+                                    size: 100,
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        if (_isAnimating)
+                          AnimatedOpacity(
+                            opacity: _isAnimating ? 0.7 : 0.0,
+                            duration: const Duration(milliseconds: 200),
+                            child: Container(
+                              padding: const EdgeInsets.all(20),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withValues(alpha: 0.4),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                _isPlaying ? Icons.pause : Icons.play_arrow,
+                                color: Colors.white,
+                                size: 40,
+                              ),
+                            ),
+                          ),
+                        Positioned(
+                          top: 8,
+                          right: 8,
+                          child: GestureDetector(
+                            onTap: _toggleMute,
+                            child: Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withValues(alpha: 0.6),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Icon(
+                                _isMuted ? Icons.volume_off : Icons.volume_up,
+                                color: Colors.white,
+                                size: 20,
+                              ),
+                            ),
+                          ),
                         ),
-                        padding: const EdgeInsets.all(16),
-                        child: Icon(
-                          Icons.play_arrow,
-                          color: Colors.white.withValues(alpha: 0.9),
-                          size: 48,
-                          semanticLabel: 'پخش ویدیو',
-                        ),
-                      ),
-                    ),
+                        if (widget.showProgress && _isInitialized)
+                          Positioned(
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            child: SizedBox(
+                              height: 3,
+                              child: LinearProgressIndicator(
+                                value: _videoDuration.inMilliseconds > 0
+                                    ? _currentPosition.inMilliseconds /
+                                        _videoDuration.inMilliseconds
+                                    : 0.0,
+                                backgroundColor:
+                                    Colors.white.withValues(alpha: 0.3),
+                                valueColor: const AlwaysStoppedAnimation<Color>(
+                                  Colors.white,
+                                ),
+                                minHeight: 3,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ],
                   ),
                 ),
+          );
+        },
+      ),
+    );
+  }
 
-              // انیمیشن لایک
-              if (_showLikeAnim)
-                Center(
-                  child: TweenAnimationBuilder<double>(
-                    tween: Tween<double>(begin: 0.5, end: 1.2),
-                    duration: const Duration(milliseconds: 400),
-                    curve: Curves.elasticOut,
-                    builder: (context, value, child) {
-                      return Transform.scale(
-                        scale: value,
-                        child: Icon(
-                          Icons.favorite,
-                          color: Colors.red.withValues(alpha: 0.9),
-                          size: 100,
-                        ),
-                      );
-                    },
-                  ),
-                ),
+  void _handlePrimaryTap() {
+    if (widget.onVideoPositionTap != null) {
+      if (_isPlaying) {
+        _pauseVideo();
+      }
+      widget.onVideoPositionTap!(_currentPosition);
+      return;
+    }
 
-              // آیکون پخش/مکث در وسط صفحه (موقع تپ)
-              if (_isAnimating)
-                AnimatedOpacity(
-                  opacity: _isAnimating ? 0.7 : 0.0,
-                  duration: const Duration(milliseconds: 200),
-                  child: Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.4),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      _isPlaying ? Icons.pause : Icons.play_arrow,
-                      color: Colors.white,
-                      size: 40,
-                    ),
-                  ),
-                ),
+    if (widget.onTap != null) {
+      widget.onTap!();
+      return;
+    }
 
-              // دکمه خاموش/روشن کردن صدا
-              Positioned(
-                top: 8,
-                right: 8,
-                child: GestureDetector(
-                  onTap: _toggleMute,
-                  child: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.6),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Icon(
-                      _isMuted ? Icons.volume_off : Icons.volume_up,
-                      color: Colors.white,
-                      size: 20,
-                    ),
-                  ),
-                ),
-              ),
+    if (!_isPlayerInitialized) {
+      _startPlayback();
+      return;
+    }
 
-              // نوار پیشرفت پایین (در صورت نیاز)
-              if (widget.showProgress && _isInitialized)
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  child: SizedBox(
-                    height: 3,
-                    child: LinearProgressIndicator(
-                      value: _videoDuration.inMilliseconds > 0
-                          ? _currentPosition.inMilliseconds /
-                              _videoDuration.inMilliseconds
-                          : 0.0,
-                      backgroundColor: Colors.white.withValues(alpha: 0.3),
-                      valueColor:
-                          const AlwaysStoppedAnimation<Color>(Colors.white),
-                      minHeight: 3,
-                    ),
-                  ),
-                ),
-            ]
-          ],
-        ),
+    _togglePlay();
+  }
+
+  void _startPlayback() {
+    if (!mounted) return;
+    setState(() {
+      _isPlayerInitialized = true;
+    });
+    _initializePlayer().then((_) {
+      if (mounted && _isInitialized) {
+        _playVideo();
+      }
+    });
+  }
+
+  Widget _buildPreviewBackground() {
+    if (widget.thumbnailUrl != null && widget.thumbnailUrl!.isNotEmpty) {
+      return CachedNetworkImage(
+        imageUrl: widget.thumbnailUrl!,
+        fit: BoxFit.cover,
+        width: double.infinity,
+        height: double.infinity,
+        placeholder: (_, __) => _buildPreviewPlaceholder(showSpinner: true),
+        errorWidget: (_, __, ___) => _buildPreviewPlaceholder(),
+      );
+    }
+
+    if (widget.thumbnailBytes != null && widget.thumbnailBytes!.isNotEmpty) {
+      return Image.memory(
+        widget.thumbnailBytes!,
+        fit: BoxFit.cover,
+        width: double.infinity,
+        height: double.infinity,
+        gaplessPlayback: true,
+      );
+    }
+
+    return _buildPreviewPlaceholder(showSpinner: widget.loadingThumbnail);
+  }
+
+  Widget _buildPreviewPlaceholder({bool showSpinner = false}) {
+    return ColoredBox(
+      color: Colors.grey[900]!,
+      child: Center(
+        child: showSpinner
+            ? const CircularProgressIndicator(color: Colors.white54)
+            : const Icon(Icons.videocam_outlined, color: Colors.white24, size: 48),
       ),
     );
   }

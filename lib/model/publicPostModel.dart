@@ -116,10 +116,10 @@ class PublicPostModel {
       authorFollowStatus:
           _parseString(map, 'author_follow_status', defaultValue: 'unknown') ??
               'unknown',
-      moderatorId: _parseString(map, 'moderator_id'),
-      moderatorUsername: _parseString(map, 'moderator_username'),
+      moderatorId: _nullableString(map, 'moderator_id'),
+      moderatorUsername: _nullableString(map, 'moderator_username'),
       moderatedAt: _parseDateTime(map, 'moderated_at'),
-      moderationReason: _parseString(map, 'moderation_reason'),
+      moderationReason: _nullableString(map, 'moderation_reason'),
       editedByVista: _parseBool(map, 'edited_by_vista'),
     );
   }
@@ -134,6 +134,12 @@ class PublicPostModel {
   }
 
   // متدهای کمکی برای parse کردن
+  static String? _nullableString(Map<String, dynamic> map, String key) {
+    final value = _parseString(map, key, defaultValue: null);
+    if (value == null || value.isEmpty) return null;
+    return value;
+  }
+
   static String? _parseString(Map<String, dynamic> map, String key,
       {String? defaultValue = ''}) {
     final value = map[key];

@@ -14,6 +14,8 @@ import 'package:Vista/widgets/profile_avatar_widget.dart'; // NEW IMPORT
 import '../providers/saved_posts_provider.dart';
 import '../widgets/post_action_buttons.dart';
 import '../widgets/post_moderation_banner.dart';
+import '../widgets/post_feed_video.dart';
+import '../services/reels_viewer_launcher.dart';
 
 // Imports for existing functionality
 import '../../../features/chat/screens/modern_chat_screen.dart';
@@ -49,7 +51,6 @@ import 'package:Vista/features/search/screens/searchPage.dart';
 import 'package:Vista/features/posts/widgets/hashtag_rich_text.dart';
 import 'package:Vista/features/posts/widgets/post_music_bubble.dart';
 import 'package:Vista/widgets/verification_badge_icon.dart';
-import 'package:Vista/widgets/ReelsScreen.dart';
 import 'package:Vista/features/profile/screens/account_details_screen.dart';
 import 'package:get_thumbnail_video/video_thumbnail.dart';
 import 'package:Vista/l10n/generated/app_localizations.dart';
@@ -2019,12 +2020,17 @@ class _PostListItem extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final hasImage = post.imageUrl != null && post.imageUrl!.isNotEmpty;
+    final hasVideo = post.hasVideo;
     final hasMusic = post.musicUrl != null && post.musicUrl!.trim().isNotEmpty;
     final savedPostIdsAsync = ref.watch(savedPostIdsProvider);
     final isSaved = savedPostIdsAsync.maybeWhen(
       data: (ids) => ids.contains(post.id),
       orElse: () => false,
     );
+    final profilePosts =
+        ref.watch(profilePostsProvider(post.userId)).value ??
+            const <PublicPostModel>[];
+    final reelsPlaylist = ReelsViewerLauncher.videoPlaylist(profilePosts);
 
     return InkWell(
       onTap: () => Navigator.push(
@@ -2033,228 +2039,231 @@ class _PostListItem extends ConsumerWidget {
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // آواتار کاربر
-            CircleAvatar(
-              radius: 22,
-              backgroundColor: isDark ? Colors.grey[800] : Colors.grey[200],
-              backgroundImage: post.avatarUrl.isNotEmpty
-                  ? CachedNetworkImageProvider(post.avatarUrl)
-                  : null,
-              child: post.avatarUrl.isEmpty
-                  ? Icon(Icons.person,
-                      size: 22,
-                      color: isDark ? Colors.grey[400] : Colors.grey[600])
-                  : null,
-            ),
-            const SizedBox(width: 12),
-            // محتوای پست
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // هدر: نام کاربر و زمان
-                  Row(
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                CircleAvatar(
+                  radius: 22,
+                  backgroundColor: isDark ? Colors.grey[800] : Colors.grey[200],
+                  backgroundImage: post.avatarUrl.isNotEmpty
+                      ? CachedNetworkImageProvider(post.avatarUrl)
+                      : null,
+                  child: post.avatarUrl.isEmpty
+                      ? Icon(Icons.person,
+                          size: 22,
+                          color: isDark ? Colors.grey[400] : Colors.grey[600])
+                      : null,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Flexible(
-                        child: Text(
-                          post.username,
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 15,
-                            color: isDark ? Colors.white : Colors.black,
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              post.username,
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 15,
+                                color: isDark ? Colors.white : Colors.black,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
+                          if (_shouldShowVerificationBadge()) ...[
+                            const SizedBox(width: 4),
+                            VerificationBadgeIcon(
+                              isVerified: true,
+                              verificationType: post.verificationType,
+                              role: post.profiles?['role']?.toString(),
+                              size: 15,
+                            ),
+                          ],
+                          const SizedBox(width: 6),
+                          Text(
+                            '• ${_getTimeAgo(post.createdAt)}',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color:
+                                  isDark ? Colors.grey[400] : Colors.grey[600],
+                            ),
+                          ),
+                        ],
                       ),
-                      if (_shouldShowVerificationBadge()) ...[
-                        const SizedBox(width: 4),
-                        VerificationBadgeIcon(
-                          isVerified: true,
-                          verificationType: post.verificationType,
-                          role: post.profiles?['role']?.toString(),
-                          size: 15,
+                      const SizedBox(height: 6),
+                      PostModerationBanner(post: post),
+                      if (post.content.isNotEmpty) ...[
+                        Directionality(
+                          textDirection: _getTextDirection(post.content),
+                          child: HashtagRichText(
+                            text: post.content,
+                            style: TextStyle(
+                              fontSize: 15,
+                              height: 1.4,
+                              color: isDark ? Colors.white70 : Colors.black87,
+                            ),
+                            hashtagStyle: const TextStyle(
+                              color: Colors.blue,
+                              fontWeight: FontWeight.w700,
+                            ),
+                            maxLines: 6,
+                            overflow: TextOverflow.ellipsis,
+                            onHashtagTap: (tag) {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) =>
+                                      SearchPage(initialHashtag: '#$tag'),
+                                ),
+                              );
+                            },
+                          ),
                         ),
                       ],
-                      const SizedBox(width: 6),
-                      Text(
-                        '• ${_getTimeAgo(post.createdAt)}',
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: isDark ? Colors.grey[400] : Colors.grey[600],
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 6),
-
-                  PostModerationBanner(post: post),
-
-                  // متن پست
-                  if (post.content.isNotEmpty) ...[
-                    Directionality(
-                      textDirection: _getTextDirection(post.content),
-                      child: HashtagRichText(
-                        text: post.content,
-                        style: TextStyle(
-                          fontSize: 15,
-                          height: 1.4,
-                          color: isDark ? Colors.white70 : Colors.black87,
-                        ),
-                        hashtagStyle: const TextStyle(
-                          color: Colors.blue,
-                          fontWeight: FontWeight.w700,
-                        ),
-                        maxLines: 6,
-                        overflow: TextOverflow.ellipsis,
-                        onHashtagTap: (tag) {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) =>
-                                  SearchPage(initialHashtag: '#$tag'),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                  ],
-
-                  // تصویر پست
-                  if (hasImage)
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(14),
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(
-                          maxHeight: 280,
-                          minWidth: double.infinity,
-                        ),
-                        child: Hero(
-                          tag: 'post_image_${post.id}',
-                          child: CachedNetworkImage(
-                            imageUrl: post.imageUrl!,
-                            fit: BoxFit.cover,
-                            placeholder: (_, __) => _MediaShimmer(
-                              isDark: isDark,
-                              height: 180,
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                            errorWidget: (_, __, ___) => Container(
-                              height: 180,
-                              color:
-                                  isDark ? Colors.grey[800] : Colors.grey[200],
-                              child: const Icon(Icons.broken_image),
-                            ),
+                      if (hasMusic)
+                        PostMusicBubble(
+                          postId: post.id,
+                          musicUrl: post.musicUrl!,
+                          createdAt: post.createdAt,
+                          title: _resolveMusicTitle(),
+                          artist: post.username,
+                          avatarUrl: post.avatarUrl,
+                          margin: EdgeInsets.only(
+                            top: post.content.isNotEmpty ? 10 : 0,
+                            bottom: 2,
                           ),
                         ),
-                      ),
-                    ),
-
-                  if (hasMusic)
-                    PostMusicBubble(
-                      postId: post.id,
-                      musicUrl: post.musicUrl!,
-                      createdAt: post.createdAt,
-                      title: _resolveMusicTitle(),
-                      artist: post.username,
-                      avatarUrl: post.avatarUrl,
-                      margin: const EdgeInsets.only(top: 10, bottom: 2),
-                    ),
-
-                  const SizedBox(height: 12),
-
-                  // دکمه‌های اکشن
-                  Row(
-                    children: [
-                      Consumer(
-                        builder: (context, ref, child) {
-                          final isLiked =
-                              ref.watch(likeStateProvider)[post.id] ??
-                                  post.isLiked;
-                          final likeCount = post.likeCount +
-                              (isLiked != post.isLiked
-                                  ? (isLiked ? 1 : -1)
-                                  : 0);
-
-                          return PostLikeButton(
-                            isLiked: isLiked,
-                            likeCount: likeCount,
-                            showCount: !post.hideLikeCount,
-                            iconSize: 19,
-                            gap: 4,
-                            onTap: () async {
-                              final willLike = !isLiked;
-                              ref
-                                  .read(likeStateProvider.notifier)
-                                  .updateLikeState(post.id, willLike);
-                              try {
-                                await ref
-                                    .read(postActionsServiceProvider)
-                                    .toggleLike(
-                                      postId: post.id,
-                                      ownerId: post.userId,
-                                      ref: ref,
-                                    );
-                              } catch (e) {
-                                if (context.mounted) {
-                                  ref
-                                      .read(likeStateProvider.notifier)
-                                      .updateLikeState(post.id, isLiked);
-                                }
-                              }
-                            },
-                          );
-                        },
-                      ),
-                      const SizedBox(width: 14),
-                      PostCommentButton(
-                        commentCount: post.commentCount,
-                        showCount: !post.hideCommentCount,
-                        iconSize: 19,
-                        gap: 4,
-                        onTap: () => _showCommentsSheet(context, ref),
-                      ),
-                      const SizedBox(width: 14),
-                      PostSaveButton(
-                        isSaved: isSaved,
-                        iconSize: 19,
-                        onTap: () async {
-                          final ok = await ref
-                              .read(savedPostIdsProvider.notifier)
-                              .toggle(post.id, post: post);
-                          if (!ok && context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('خطا در ذخیره پست')),
-                            );
-                          }
-                        },
-                      ),
-                      const SizedBox(width: 14),
-                      InkWell(
-                        onTap: () =>
-                            SmartShareService().showShareOptions(post, context),
-                        borderRadius: BorderRadius.circular(12),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 3, vertical: 3),
-                          child: Image.asset(
-                            'lib/utils/images/component/send.png',
-                            width: 19,
-                            height: 19,
-                            color: isDark ? Colors.grey[400] : Colors.grey[600],
-                          ),
-                        ),
-                      ),
-                      const Spacer(),
-                      _buildPostMenu(context, ref),
                     ],
                   ),
-                ],
+                ),
+              ],
+            ),
+            if (hasImage) ...[
+              const SizedBox(height: 10),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(14),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(
+                    maxHeight: 280,
+                    minWidth: double.infinity,
+                  ),
+                  child: Hero(
+                    tag: 'post_image_${post.id}',
+                    child: CachedNetworkImage(
+                      imageUrl: post.imageUrl!,
+                      fit: BoxFit.cover,
+                      width: double.infinity,
+                      placeholder: (_, __) => _MediaShimmer(
+                        isDark: isDark,
+                        height: 180,
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      errorWidget: (_, __, ___) => Container(
+                        height: 180,
+                        color: isDark ? Colors.grey[800] : Colors.grey[200],
+                        child: const Icon(Icons.broken_image),
+                      ),
+                    ),
+                  ),
+                ),
               ),
+            ],
+            if (hasVideo && !hasImage) ...[
+              const SizedBox(height: 10),
+              PostFeedVideo(
+                post: post,
+                maxHeight: 280,
+                borderRadius: BorderRadius.circular(14),
+                reelsPlaylist: reelsPlaylist,
+              ),
+            ],
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Consumer(
+                  builder: (context, ref, child) {
+                    final isLiked =
+                        ref.watch(likeStateProvider)[post.id] ?? post.isLiked;
+                    final likeCount = post.likeCount +
+                        (isLiked != post.isLiked ? (isLiked ? 1 : -1) : 0);
+
+                    return PostLikeButton(
+                      isLiked: isLiked,
+                      likeCount: likeCount,
+                      showCount: !post.hideLikeCount,
+                      iconSize: 19,
+                      gap: 4,
+                      onTap: () async {
+                        final willLike = !isLiked;
+                        ref
+                            .read(likeStateProvider.notifier)
+                            .updateLikeState(post.id, willLike);
+                        try {
+                          await ref
+                              .read(postActionsServiceProvider)
+                              .toggleLike(
+                                postId: post.id,
+                                ownerId: post.userId,
+                                ref: ref,
+                              );
+                        } catch (e) {
+                          if (context.mounted) {
+                            ref
+                                .read(likeStateProvider.notifier)
+                                .updateLikeState(post.id, isLiked);
+                          }
+                        }
+                      },
+                    );
+                  },
+                ),
+                const SizedBox(width: 14),
+                PostCommentButton(
+                  commentCount: post.commentCount,
+                  showCount: !post.hideCommentCount,
+                  iconSize: 19,
+                  gap: 4,
+                  onTap: () => _showCommentsSheet(context, ref),
+                ),
+                const SizedBox(width: 14),
+                PostSaveButton(
+                  isSaved: isSaved,
+                  iconSize: 19,
+                  onTap: () async {
+                    final ok = await ref
+                        .read(savedPostIdsProvider.notifier)
+                        .toggle(post.id, post: post);
+                    if (!ok && context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('خطا در ذخیره پست')),
+                      );
+                    }
+                  },
+                ),
+                const SizedBox(width: 14),
+                InkWell(
+                  onTap: () =>
+                      SmartShareService().showShareOptions(post, context),
+                  borderRadius: BorderRadius.circular(12),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 3, vertical: 3),
+                    child: Image.asset(
+                      'lib/utils/images/component/send.png',
+                      width: 19,
+                      height: 19,
+                      color: isDark ? Colors.grey[400] : Colors.grey[600],
+                    ),
+                  ),
+                ),
+                const Spacer(),
+                _buildPostMenu(context, ref),
+              ],
             ),
           ],
         ),
@@ -2771,7 +2780,7 @@ class _ReelsGridView extends StatelessWidget {
 }
 
 /// آیتم گرید کلیپ
-class _ReelGridItem extends StatelessWidget {
+class _ReelGridItem extends ConsumerWidget {
   final PublicPostModel reel;
   final List<PublicPostModel> reels;
   final bool isDark;
@@ -2783,25 +2792,14 @@ class _ReelGridItem extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return GestureDetector(
       onTap: () {
-        final playableReels =
-            reels.where((item) => item.videoUrl?.isNotEmpty == true).toList();
-        if (playableReels.isEmpty) return;
-
-        final selectedIndex =
-            playableReels.indexWhere((item) => item.id == reel.id);
-        if (selectedIndex < 0) return;
-
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => ReelsScreen(
-              posts: List<PublicPostModel>.from(playableReels),
-              initialIndex: selectedIndex,
-            ),
-          ),
+        ReelsViewerLauncher.open(
+          context: context,
+          ref: ref,
+          post: reel,
+          playlist: reels,
         );
       },
       child: Stack(

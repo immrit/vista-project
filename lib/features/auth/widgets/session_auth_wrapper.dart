@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:Vista/features/auth/screens/auth_wizard_screen.dart';
 import 'package:Vista/features/auth/data/auth_repository.dart';
 import 'package:Vista/features/auth/screens/mandatory_password_screen.dart';
@@ -7,6 +9,7 @@ import 'package:Vista/features/profile/screens/profile_setup_wizard_screen.dart'
 import 'package:Vista/middleware/session_middleware.dart';
 import 'package:Vista/screens/maintenance_screen.dart';
 import 'package:Vista/services/session_manager_service_v2.dart';
+import 'package:Vista/services/PushNotificationService.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:loading_animation_widget/loading_animation_widget.dart';
@@ -125,6 +128,7 @@ class _SessionAuthWrapperState extends ConsumerState<SessionAuthWrapper> {
     // ─── Step 3: راه‌اندازی Session Manager در پس‌زمینه ─────────
     // این مرحله در پس‌زمینه انجام می‌شود و کاربر را منتظر نمی‌گذارد
     SessionManagerServiceV2.instance.initInBackground();
+    unawaited(PushNotificationService.syncIfNeeded(afterAuth: true));
 
     if (!mounted) return;
     setState(() {

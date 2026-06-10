@@ -89,7 +89,7 @@ class VideoAutoplayService {
 
   /// بررسی آیا ویدیو باید خودکار پخش شود
   bool shouldAutoPlay() {
-    return _autoPlayEnabled && !_batterySaverMode && !_dataSaverEnabled;
+    return _autoPlayEnabled && !_batterySaverMode;
   }
 
   /// دریافت کیفیت ویدیو بر اساس تنظیمات

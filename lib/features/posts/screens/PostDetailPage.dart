@@ -24,6 +24,7 @@ import '../../profile/data/profile_repository.dart';
 import '../providers/saved_posts_provider.dart';
 import '../data/go_posts_repository.dart';
 import '../widgets/standard_edit_post_dialog.dart';
+import '../widgets/post_feed_video.dart';
 import 'package:Vista/widgets/verification_badge_icon.dart';
 
 class PostDetailsPage extends ConsumerStatefulWidget {
@@ -294,7 +295,19 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
                     .toList(growable: false),
               ),
             ],
-            _buildPostImages(post),
+            if (post.hasVideo &&
+                (post.imageUrl == null || post.imageUrl!.isEmpty))
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                child: PostFeedVideo(
+                  post: post,
+                  maxHeight: 400,
+                  borderRadius: BorderRadius.circular(8),
+                  reelsPlaylist: [post],
+                ),
+              )
+            else
+              _buildPostImages(post),
             const SizedBox(height: 10),
             _buildLikeRow(post),
             if (post.musicUrl != null && post.musicUrl!.isNotEmpty)

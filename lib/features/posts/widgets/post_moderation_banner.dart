@@ -6,10 +6,7 @@ class PostModerationBanner extends StatelessWidget {
 
   const PostModerationBanner({super.key, required this.post});
 
-  bool get _isModerated =>
-      post.editedByVista ||
-      post.moderatorId != null ||
-      post.moderatedAt != null;
+  bool get _isModerated => post.editedByVista;
 
   @override
   Widget build(BuildContext context) {
