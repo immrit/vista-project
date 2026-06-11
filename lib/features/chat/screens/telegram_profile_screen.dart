@@ -485,6 +485,7 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
 
           const SizedBox(width: 8),
 
+
           // دکمه جستجو
           _buildActionButton(
             icon: Icons.search,

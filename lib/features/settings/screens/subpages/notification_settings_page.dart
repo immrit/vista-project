@@ -4,6 +4,7 @@ import '../../../../features/auth/providers/auth_controller.dart';
 import '../../../../provider/settings_providers.dart';
 import '../../../../services/current_user_service.dart';
 import '../../widgets/vista_settings_widgets.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class NotificationSettingsPage extends ConsumerWidget {
   const NotificationSettingsPage({super.key});
@@ -24,6 +25,7 @@ class NotificationSettingsPage extends ConsumerWidget {
     final socialEnabled = _isSocialEnabled(settings);
     final suggestEnabled = settings['suggest_notifications'] as bool? ?? true;
     final previewEnabled = settings['show_message_preview'] as bool? ?? true;
+    final chatSoundEnabled = settings['in_app_chat_sounds'] as bool? ?? true;
     final soundEnabled = settings['sound_enabled'] as bool? ?? true;
     final vibrationEnabled = settings['vibration_enabled'] as bool? ?? true;
     final quietHoursEnabled = settings['quiet_hours_enabled'] as bool? ?? false;
@@ -136,6 +138,23 @@ class NotificationSettingsPage extends ConsumerWidget {
               const VistaSettingsSection(title: 'صدا'),
               VistaSettingsGroup(
                 children: [
+                  VistaSettingsSwitch(
+                    icon: Icons.chat_bubble_outline,
+                    title: 'صدای پیام درون برنامه',
+                    value: chatSoundEnabled,
+                    onChanged: (value) async {
+                      final prefs = await SharedPreferences.getInstance();
+                      await prefs.setBool('in_app_chat_sounds', value);
+                      if (context.mounted) {
+                        _updateSettings(
+                          ref,
+                          userId,
+                          settings,
+                          {'in_app_chat_sounds': value},
+                        );
+                      }
+                    },
+                  ),
                   VistaSettingsSwitch(
                     icon: Icons.volume_up_outlined,
                     title: 'صدای اعلان',

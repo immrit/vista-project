@@ -167,6 +167,7 @@ flutter:
     - assets/images/telegram_bg.jpg
     - assets/images/vista_custom_bg.png
     - assets/images/vista_custom_bg_dark.png
+    - assets/sounds/
   fonts:
     - family: Vazirmatn
       fonts:

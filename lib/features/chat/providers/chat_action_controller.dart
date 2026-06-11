@@ -5,6 +5,7 @@ import 'package:Vista/security/logging_utility.dart';
 import 'package:Vista/features/chat/services/message_actions_service.dart';
 import 'package:Vista/features/chat/domain/message_payload.dart';
 import 'package:Vista/services/session_manager_service_v2.dart';
+import 'package:Vista/services/notification_sound_service.dart';
 
 part 'chat_action_controller.g.dart';
 
@@ -112,6 +113,7 @@ class ChatActionController extends _$ChatActionController {
       return result.fold(
         (success) {
           state = const ChatActionState(); // Reset state on success
+          NotificationSoundService.instance.playMessageSentSound();
           return const ActionResult.success();
         },
         (failure) {

@@ -12,6 +12,7 @@ import 'package:cryptography/cryptography.dart';
 import 'package:Vista/core/data/cache/cache_repository.dart';
 import 'package:Vista/features/auth/providers/auth_controller.dart';
 import 'dart:convert';
+import 'package:Vista/services/notification_sound_service.dart';
 
 part 'chat_messages_provider.g.dart';
 
@@ -38,6 +39,19 @@ class ChatMessages extends _$ChatMessages {
     // This is the SINGLE SOURCE OF TRUTH.
     _realtimeSubscription = repository.watchMessages(conversationId).listen(
       (messages) async {
+        final currentMessages = state.valueOrNull ?? [];
+        if (currentMessages.isNotEmpty && messages.isNotEmpty) {
+           final newestMessage = messages.first;
+           final oldNewestMessage = currentMessages.first;
+           
+           if (newestMessage.id != oldNewestMessage.id || (newestMessage.createdAt.isAfter(oldNewestMessage.createdAt) && newestMessage.id == oldNewestMessage.id && currentMessages.length < messages.length)) {
+              final currentUserId = await TokenStorage.getUserId();
+              if (newestMessage.senderId != currentUserId) {
+                 NotificationSoundService.instance.playMessageReceivedSound();
+              }
+           }
+        }
+
         // ✅ تلاش برای رمزگشایی اگر چت از نوع سکرت باشد
         final conversation = CacheRepository().getConversationSync(conversationId);
         if (conversation != null && conversation.isSecret) {
