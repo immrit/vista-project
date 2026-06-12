@@ -64,7 +64,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '450490963024',
     projectId: 'vista-project-6496a',
     storageBucket: 'vista-project-6496a.firebasestorage.app',
-    iosBundleId: 'com.example.vistaNotes2',
+    iosBundleId: 'ir.coffevista.vista',
   );
 
   static const FirebaseOptions macos = FirebaseOptions(
@@ -73,7 +73,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '450490963024',
     projectId: 'vista-project-6496a',
     storageBucket: 'vista-project-6496a.firebasestorage.app',
-    iosBundleId: 'com.example.vistaNotes2',
+    iosBundleId: 'ir.coffevista.vista',
   );
 
   static const FirebaseOptions windows = FirebaseOptions(

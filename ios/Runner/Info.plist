@@ -48,6 +48,8 @@
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>
+		<string>fetch</string>
+		<string>remote-notification</string>
 	</array>
 	
 	<!-- Enable Impeller rendering engine for better performance -->

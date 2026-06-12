@@ -154,7 +154,8 @@ class ChatRepositoryImpl implements ChatRepository {
       final type = event['type'] as String?;
       if (type == 'new_message' ||
           type == 'conversation_updated' ||
-          type == 'conversation_cleared') {
+          type == 'conversation_cleared' ||
+          type == 'message_deleted') {
         unawaited(_syncConversations(uid));
       }
     });
@@ -368,6 +369,9 @@ class ChatRepositoryImpl implements ChatRepository {
         final data = event['data'] as Map<String, dynamic>?;
         final convId = data?['conversation_id']?.toString();
         if (convId == conversationId) {
+          if (type == 'message_deleted' && data?['message_id'] != null) {
+            unawaited(_local.deleteMessage(data!['message_id'].toString()));
+          }
           unawaited(_syncMessages(conversationId, uid));
         }
       } else if (type == 'conversation_cleared') {

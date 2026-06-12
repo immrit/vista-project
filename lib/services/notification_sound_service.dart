@@ -21,6 +21,25 @@ class NotificationSoundService {
   Future<void> init() async {
     if (_initialized) return;
     try {
+      final audioContext = AudioContext(
+        android: AudioContextAndroid(
+          isSpeakerphoneOn: false,
+          stayAwake: false,
+          contentType: AndroidContentType.sonification,
+          usageType: AndroidUsageType.notificationEvent,
+          audioFocus: AndroidAudioFocus.gainTransientMayDuck,
+        ),
+        iOS: AudioContextIOS(
+          category: AVAudioSessionCategory.ambient,
+          options: {
+            AVAudioSessionOptions.mixWithOthers
+          },
+        ),
+      );
+      
+      await _sentPlayer.setAudioContext(audioContext);
+      await _receivedPlayer.setAudioContext(audioContext);
+      
       await _sentPlayer.setSourceAsset('sounds/message-sent.mp3');
       await _receivedPlayer.setSourceAsset('sounds/message-recive.mp3');
       // Pre-load logic if needed, but setSourceAsset is enough for quick playback usually.

@@ -27,16 +27,18 @@ import 'package:Vista/services/crash_reporting_service.dart';
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  // FIX: Prevent duplicate initialization in background isolate.
+  // MUST initialize Flutter bindings before using any plugins in a background isolate!
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  // Prevent duplicate initialization in background isolate.
   if (Firebase.apps.isEmpty) {
     await Firebase.initializeApp(
         options: DefaultFirebaseOptions.currentPlatform);
   }
-  debugPrint("Handling a background message: ${message.messageId}");
-  if (message.data['type'] == 'chat_message') {
-    final notificationService = PushNotificationService(null);
-    await notificationService.showBackgroundNotification(message);
-  }
+  debugPrint("Handling a background message: ${message.messageId} type=${message.data['type']}");
+  // Handle all notification types in background — not just chat_message.
+  final notificationService = PushNotificationService(null);
+  await notificationService.showBackgroundNotification(message);
 }
 
 @pragma('vm:entry-point')

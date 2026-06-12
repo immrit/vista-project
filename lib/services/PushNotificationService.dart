@@ -24,10 +24,15 @@ import '../features/auth/providers/auth_controller.dart' show TokenStorage;
 import '../model/message_model.dart';
 
 @pragma('vm:entry-point')
-void notificationTapBackground(NotificationResponse notificationResponse) {
-  PushNotificationService.enqueueBackgroundNotificationAction(
-    notificationResponse,
-  );
+void notificationTapBackground(NotificationResponse details) async {
+  await PushNotificationService.enqueueBackgroundNotificationAction(details);
+  // Attempt to process immediately in the background isolate
+  try {
+    final service = PushNotificationService(null);
+    await service._processPendingNotificationActions();
+  } catch (e) {
+    debugPrint('Background processing failed: $e');
+  }
 }
 
 final pushNotificationServiceProvider = Provider<PushNotificationService>(
@@ -229,7 +234,8 @@ class PushNotificationService {
   Future<void> _ensureInitialized() async {
     if (_isInitialized) return; // جلوگیری از initialize چندگانه
 
-    const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
+    // تنظیمات Android برای Local Notification
+    const androidInit = AndroidInitializationSettings('@drawable/ic_notification');
     final iOSInit = DarwinInitializationSettings(
       notificationCategories: <DarwinNotificationCategory>[
         DarwinNotificationCategory(
@@ -325,6 +331,19 @@ class PushNotificationService {
         sound: true,
         provisional: false,
       );
+
+      // پاک کردن اجباری توکن قدیمی برای جلوگیری از خطای SenderId Mismatch
+      // در آپدیت‌های جدید که کلید فایربیس تغییر کرده است.
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        if (prefs.getBool('fcm_cleared_for_vista_v1') != true) {
+          logInfo('⚠️ Clearing old FCM token to force project sync...');
+          await _firebaseMessaging.deleteToken();
+          await prefs.setBool('fcm_cleared_for_vista_v1', true);
+        }
+      } catch (e) {
+        logInfo('Error checking token clear status: $e');
+      }
 
       // Keep one foreground rendering path (local notifications) and prevent
       // native foreground FCM banners from duplicating the same event.
@@ -428,22 +447,34 @@ class PushNotificationService {
       logInfo('⚠️ Duplicate background FCM ignored');
       return;
     }
-    // When system notification payload exists, avoid showing a second local one.
-    if (message.notification != null) {
-      logInfo('ℹ️ Skipping local background notification (system handled)');
-      return;
-    }
-    if (!_shouldShowBackgroundLocalNotification(message)) {
-      logInfo(
-        'ℹ️ Background local notification disabled by single-path policy',
-      );
-      if (message.data['type']?.toString() == 'chat_message') {
-        // Keep offline fallback so incoming chat message appears in local cache.
+
+    final type = message.data['type']?.toString() ?? '';
+    final isChatMessage = _isChatMessageType(type);
+
+    // پیام‌های چت: data-only هستند، باید local notification نمایش دهیم
+    if (isChatMessage) {
+      // اگر system notification وجود دارد (غیرمعمول)، از آن استفاده می‌شود
+      if (message.notification != null) {
+        logInfo('ℹ️ Skipping local chat notification (system handled)');
         await _saveMessageToLocalDB(message.data);
+        return;
       }
+      if (!_shouldShowBackgroundLocalNotification(message)) {
+        logInfo('ℹ️ Background local notification disabled by policy');
+        await _saveMessageToLocalDB(message.data);
+        return;
+      }
+      await _showNotification(message);
       return;
     }
-    await _showNotification(message);
+
+    // سایر نوتیف‌ها (social): backend یک notification payload می‌فرستد
+    // که توسط سیستم مستقیماً نمایش می‌یابد.
+    // اگر به هر دلیلی notification null بود، local نمایش می‌دهیم
+    if (message.notification == null) {
+      logInfo('ℹ️ Social notification without system payload — showing local');
+      await _showStandardNotification(message);
+    }
   }
 
   Future<void> _showNotification(RemoteMessage message) async {
@@ -921,6 +952,8 @@ class PushNotificationService {
         if (synced) {
           logInfo('FCM token synced with Go backend session.');
           await _markSyncSuccess(token: fcmToken, serverEpoch: serverEpoch);
+          // اطمینان از ثبت در user_devices با استفاده از endpoint اختصاصی
+          unawaited(_registerFcmTokenDirect(fcmToken));
           return true;
         }
         if (attempt < 3) {
@@ -929,10 +962,58 @@ class PushNotificationService {
         }
       }
 
-      logInfo('FCM token sync failed: backend session touch did not accept token');
+      // در صورت شکست session touch، مستقیم با endpoint اختصاصی تلاش کن
+      logInfo('FCM session touch failed, attempting direct token registration...');
+      final directOk = await _registerFcmTokenDirect(fcmToken);
+      if (directOk) {
+        logInfo('FCM token registered via direct endpoint.');
+        await _markSyncSuccess(token: fcmToken, serverEpoch: serverEpoch);
+        return true;
+      }
+
+      logInfo('FCM token sync failed: all attempts exhausted.');
       return false;
     } catch (e) {
       logInfo('Error syncing FCM token with backend: $e');
+      return false;
+    }
+  }
+
+  /// ثبت مستقیم token از طریق endpoint اختصاصی FCM (POST /v1/fcm/token)
+  /// این مستقل از session state بوده و token را مستقیماً در user_devices ذخیره می‌کند
+  static Future<bool> _registerFcmTokenDirect(String fcmToken) async {
+    try {
+      final accessToken = await TokenStorage.getAccessToken();
+      if (accessToken == null || accessToken.isEmpty) return false;
+
+      final platform = Platform.isAndroid
+          ? 'android'
+          : Platform.isIOS
+              ? 'ios'
+              : 'unknown';
+
+      final uri = Uri.parse('${EnvConfig.apiBaseUrl}/v1/fcm/token');
+      final response = await http.post(
+        uri,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $accessToken',
+        },
+        body: jsonEncode({
+          'token': fcmToken,
+          'platform': platform,
+          'device_type': 'mobile',
+        }),
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        logInfo('✅ FCM token registered via /v1/fcm/token');
+        return true;
+      }
+      logInfo('⚠️ FCM direct registration failed: HTTP ${response.statusCode}');
+      return false;
+    } catch (e) {
+      logInfo('⚠️ FCM direct registration error: $e');
       return false;
     }
   }
