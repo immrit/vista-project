@@ -1,10 +1,16 @@
-import 'package:flutter/material.dart';
 import 'dart:math' as math;
-import 'package:cached_network_image/cached_network_image.dart';
-import '../../model/publicPostModel.dart';
-import 'verification_badge_icon.dart';
+import 'dart:typed_data';
 
-/// ویجت قالب استوری Vista
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/material.dart';
+
+import '../../model/publicPostModel.dart';
+import '../../utils/avatar_asset_utils.dart';
+import '../../services/vista_story_image_preloader.dart';
+import 'verification_badge_icon.dart';
+import 'vista_story_share_theme.dart';
+
+/// ویجت قالب استوری Vista — طراحی شبیه X / Threads
 class VistaStoryTemplateWidget extends StatelessWidget {
   final PublicPostModel post;
   final String? customBackgroundText;
@@ -13,6 +19,10 @@ class VistaStoryTemplateWidget extends StatelessWidget {
   final String? customPostText;
   final String? customImageUrl;
   final GlobalKey? repaintBoundaryKey;
+  final VistaStoryShareTheme theme;
+  final Uint8List? avatarBytes;
+  final Uint8List? postImageBytes;
+  final Uint8List? videoThumbnailBytes;
 
   const VistaStoryTemplateWidget({
     super.key,
@@ -23,369 +33,640 @@ class VistaStoryTemplateWidget extends StatelessWidget {
     this.customPostText,
     this.customImageUrl,
     this.repaintBoundaryKey,
+    this.theme = VistaStoryShareTheme.dark,
+    this.avatarBytes,
+    this.postImageBytes,
+    this.videoThumbnailBytes,
   });
+
+  static const _cardWidth = 860.0;
+  static const _cardRadius = 28.0;
 
   @override
   Widget build(BuildContext context) {
     return RepaintBoundary(
       key: repaintBoundaryKey,
-      child: Container(
-        width: 1080, // ابعاد استاندارد ویستا
-        height: 1920, // نسبت 9:16 استاندارد
-        color: backgroundColor ?? Colors.white,
+      child: SizedBox(
+        width: 1080,
+        height: 1920,
         child: Stack(
           children: [
-            // پس‌زمینه با نوشته VISTA بزرگ
-            _buildBackgroundText(),
-
-            // کارت پست در وسط
-            Center(child: _buildPostCard()),
+            _buildBackground(),
+            Align(
+              alignment: const Alignment(0, -0.08),
+              child: _buildPostCard(),
+            ),
           ],
         ),
       ),
     );
   }
 
-  /// ساخت پس‌زمینه با نوشته VISTA
-  Widget _buildBackgroundText() {
+  Widget _buildBackground() {
     return CustomPaint(
       size: const Size(1080, 1920),
-      painter: VistavistaStylePainter(
-        textColor: textColor ?? Colors.black,
-      ),
+      painter: VistaStoryBackgroundPainter(theme: theme),
     );
   }
 
-  /// ساخت کارت پست
   Widget _buildPostCard() {
+    final displayText = customPostText ?? post.content;
+    final imageUrl = customImageUrl ?? post.imageUrl ?? '';
+    final isRtl = _isPersianText(displayText);
+    final hasImage = post.hasImage || postImageBytes != null;
+    final hasVideo = post.hasVideo && !hasImage;
+    final hasMusic = post.hasMusic;
+    final hasMedia = hasImage || hasVideo;
+    final cardShadowColor = switch (theme) {
+      VistaStoryShareTheme.dark => Colors.black.withValues(alpha: 0.45),
+      VistaStoryShareTheme.light => Colors.black.withValues(alpha: 0.16),
+      VistaStoryShareTheme.vista => Colors.black.withValues(alpha: 0.14),
+    };
+
     return Container(
-      width: 950, // اندازه خیلی بزرگ‌تر
-      margin: const EdgeInsets.symmetric(horizontal: 20),
+      width: _cardWidth,
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(_cardRadius),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.08),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-            spreadRadius: 0,
+            color: cardShadowColor,
+            blurRadius: 80,
+            offset: const Offset(0, 32),
+            spreadRadius: -8,
           ),
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 40,
-            offset: const Offset(0, 16),
-            spreadRadius: 0,
+            color: Colors.black.withValues(alpha: 0.12),
+            blurRadius: 24,
+            offset: const Offset(0, 8),
           ),
         ],
-        border: Border.all(color: Colors.grey.withValues(alpha: 0.1), width: 1),
       ),
+      clipBehavior: Clip.antiAlias,
       child: Column(
         mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // هدر پست (پروفایل کاربر)
-          _buildPostHeader(),
-
-          // متن پست
-          _buildPostContent(),
-
-          // تصویر پست
-          _buildPostImage(),
-
-          // فوتر پست (لایک، کامنت، تاریخ)
-          _buildPostFooter(),
-        ],
-      ),
-    );
-  }
-
-  /// ساخت هدر پست
-  Widget _buildPostHeader() {
-    return Container(
-      padding: const EdgeInsets.all(20), // پدینگ بیشتر
-      decoration: BoxDecoration(
-        color: Colors.grey.withValues(alpha: 0.02),
-        borderRadius: const BorderRadius.only(
-          topLeft: Radius.circular(16),
-          topRight: Radius.circular(16),
-        ),
-      ),
-      child: Row(
-        children: [
-          // آواتار کاربر
-          Container(
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: Colors.grey.withValues(alpha: 0.2),
-                width: 2, // ضخامت بیشتر
-              ),
-            ),
-            child: CircleAvatar(
-              radius: 50, // اندازه خیلی بزرگ‌تر
-              backgroundColor: Colors.grey[300],
-              backgroundImage: post.avatarUrl.isNotEmpty
-                  ? CachedNetworkImageProvider(post.avatarUrl)
-                  : null,
-              child: post.avatarUrl.isEmpty
-                  ? Text(
-                      post.fullName.isNotEmpty
-                          ? post.fullName[0].toUpperCase()
-                          : 'U',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                        fontSize: 40, // اندازه خیلی بزرگ‌تر
-                      ),
-                    )
-                  : null,
-            ),
-          ),
-
-          const SizedBox(width: 15), // فاصله بیشتر
-          // نام کاربر و تیک تأیید
-          Expanded(
+          Padding(
+            padding: const EdgeInsets.fromLTRB(36, 32, 36, 0),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      post.username,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 40, // اندازه خیلی بزرگ‌تر
-                        color: Colors.black,
-                      ),
-                    ),
-                    if (post.isVerified) ...[
-                      const SizedBox(width: 8),
-                      VerificationBadgeIcon(
-                        isVerified: post.isVerified,
-                        verificationType: post.verificationType,
-                        role: post.profiles?['role']?.toString(),
-                        size: 30,
-                      ),
-                    ],
-                  ],
-                ),
+                _buildBrandMark(),
+                const SizedBox(height: 28),
+                _buildAuthorRow(displayText: displayText),
+                if (displayText.isNotEmpty) ...[
+                  const SizedBox(height: 28),
+                  _buildPostContent(displayText, isRtl: isRtl),
+                ],
+                if (hasMusic) ...[
+                  const SizedBox(height: 24),
+                  _buildMusicSection(isRtl: isRtl),
+                ],
               ],
             ),
           ),
-
-          // لوگوی برنامه
-          Container(
-            padding: const EdgeInsets.all(8), // پدینگ بیشتر
-            decoration: BoxDecoration(
-              color: Colors.grey.withValues(alpha: 0.1),
-              shape: BoxShape.circle,
-            ),
-            child: Image.asset(
-              'lib/utils/images/logo/black-logo.png',
-              width: 60, // اندازه خیلی بزرگ‌تر
-              height: 60,
-              errorBuilder: (context, error, stackTrace) {
-                return Icon(
-                  Icons.more_horiz,
-                  color: Colors.grey[600],
-                  size: 45, // اندازه خیلی بزرگ‌تر
-                );
-              },
-            ),
-          ),
+          if (hasImage) ...[
+            const SizedBox(height: 28),
+            _buildPostImage(imageUrl),
+          ] else if (hasVideo) ...[
+            const SizedBox(height: 28),
+            _buildVideoSection(),
+          ],
+          _buildPostFooter(isRtl: isRtl, compact: hasMedia || hasMusic),
+          _buildBrandFooter(),
         ],
       ),
     );
   }
 
-  /// ساخت محتوای پست
-  Widget _buildPostContent() {
-    final String displayText = customPostText ?? post.content;
-
-    if (displayText.isEmpty) {
-      return const SizedBox.shrink();
-    }
-
-    // محدود کردن متن برای جلوگیری از overflow
-    final String limitedText = displayText.length > 150
-        ? '${displayText.substring(0, 150)}...'
-        : displayText;
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      child: Text(
-        limitedText,
-        style: const TextStyle(
-          fontSize: 36, // اندازه خیلی بزرگ‌تر
+  Widget _buildBrandMark() {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Image.asset(
+        'lib/utils/images/logo/black-logo.png',
+        width: 36,
+        height: 36,
+        errorBuilder: (_, __, ___) => const Icon(
+          Icons.bolt_rounded,
           color: Colors.black,
-          height: 1.2,
+          size: 32,
         ),
-        textAlign:
-            _isPersianText(limitedText) ? TextAlign.right : TextAlign.left,
-        maxLines: 6,
-        overflow: TextOverflow.ellipsis,
       ),
     );
   }
 
-  /// ساخت تصویر پست
-  Widget _buildPostImage() {
-    final String imageUrl = customImageUrl ?? post.imageUrl ?? '';
+  StoryPostAuthor get _author => StoryPostAuthor.fromPost(post);
+
+  bool _isRtlLayout(String text) {
+    return _isPersianText(text);
+  }
+
+  Widget _buildAuthorRow({required String displayText}) {
+    final author = _author;
+    final isRtl = _isRtlLayout('$displayText ${author.username} ${author.fullName}');
+
+    return Align(
+      alignment: isRtl ? Alignment.centerRight : Alignment.centerLeft,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        textDirection: isRtl ? TextDirection.rtl : TextDirection.ltr,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          _buildAvatar(author: author),
+          const SizedBox(width: 20),
+          _buildAuthorInfo(author: author, isRtl: isRtl),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAvatar({required StoryPostAuthor author}) {
+    const radius = 34.0;
+    const size = radius * 2;
+    final avatarUrl = author.avatarUrl;
+
+    Widget child;
+    if (avatarBytes != null && avatarBytes!.isNotEmpty) {
+      child = Image.memory(
+        avatarBytes!,
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        gaplessPlayback: true,
+        filterQuality: FilterQuality.high,
+      );
+    } else {
+      final assetPath = AvatarAssetUtils.assetPathFrom(avatarUrl);
+      if (assetPath != null) {
+        child = Image.asset(
+          assetPath,
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+        );
+      } else if (avatarUrl.isNotEmpty) {
+        child = Image.network(
+          avatarUrl,
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          filterQuality: FilterQuality.high,
+          errorBuilder: (_, __, ___) => _buildAvatarFallback(author: author),
+          loadingBuilder: (_, child, progress) {
+            if (progress == null) return child;
+            return const ColoredBox(
+              color: Color(0xFFEFEFEF),
+              child: Center(
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            );
+          },
+        );
+      } else {
+        child = Center(child: _buildAvatarFallback(author: author));
+      }
+    }
+
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: const Color(0xFFE8E8E8),
+          width: 2,
+        ),
+        color: const Color(0xFFEFEFEF),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: child,
+    );
+  }
+
+  Widget _buildAvatarFallback({StoryPostAuthor? author}) {
+    final resolved = author ?? _author;
+    final initial = resolved.fullName.isNotEmpty
+        ? resolved.fullName[0].toUpperCase()
+        : resolved.username.isNotEmpty
+            ? resolved.username[0].toUpperCase()
+            : 'U';
+
+    return Text(
+      initial,
+      style: const TextStyle(
+        fontWeight: FontWeight.w700,
+        color: Color(0xFF666666),
+        fontSize: 28,
+      ),
+    );
+  }
+
+  Widget _buildAuthorInfo({
+    required StoryPostAuthor author,
+    required bool isRtl,
+  }) {
+    final hasDistinctName = author.fullName.isNotEmpty &&
+        author.fullName.toLowerCase() != author.username.toLowerCase();
+    final primaryText =
+        hasDistinctName ? author.fullName : author.username;
+
+    return Column(
+      crossAxisAlignment:
+          isRtl ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          textDirection: isRtl ? TextDirection.rtl : TextDirection.ltr,
+          children: [
+            Flexible(
+              child: Text(
+                primaryText,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 30,
+                  color: Color(0xFF0F0F0F),
+                  height: 1.1,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            if (post.isVerified) ...[
+              const SizedBox(width: 8),
+              VerificationBadgeIcon(
+                isVerified: post.isVerified,
+                verificationType: post.verificationType,
+                role: post.profiles?['role']?.toString(),
+                size: 24,
+              ),
+            ],
+          ],
+        ),
+        if (hasDistinctName) ...[
+          const SizedBox(height: 4),
+          Text(
+            author.username,
+            style: const TextStyle(
+              fontSize: 24,
+              color: Color(0xFF737373),
+              fontWeight: FontWeight.w500,
+              height: 1.2,
+            ),
+            textAlign: isRtl ? TextAlign.right : TextAlign.left,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildPostContent(String displayText, {required bool isRtl}) {
+    final limitedText = displayText.length > 280
+        ? '${displayText.substring(0, 280)}…'
+        : displayText;
+
+    return Text(
+      limitedText,
+      style: const TextStyle(
+        fontSize: 34,
+        color: Color(0xFF141414),
+        height: 1.45,
+        fontWeight: FontWeight.w400,
+        letterSpacing: -0.2,
+      ),
+      textAlign: isRtl ? TextAlign.right : TextAlign.left,
+      textDirection: isRtl ? TextDirection.rtl : TextDirection.ltr,
+      maxLines: 10,
+      overflow: TextOverflow.ellipsis,
+    );
+  }
+
+  Widget _buildPostImage(String imageUrl) {
+    if (postImageBytes != null && postImageBytes!.isNotEmpty) {
+      return AspectRatio(
+        aspectRatio: 16 / 10,
+        child: Image.memory(
+          postImageBytes!,
+          fit: BoxFit.cover,
+          gaplessPlayback: true,
+        ),
+      );
+    }
 
     if (imageUrl.isEmpty) {
       return const SizedBox.shrink();
     }
 
-    return Container(
-      width: double.infinity,
-      height: 500, // اندازه خیلی بزرگ‌تر
-      margin: const EdgeInsets.symmetric(horizontal: 40, vertical: 30),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(8),
-        color: Colors.grey[200],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(8),
-        child: CachedNetworkImage(
-          imageUrl: imageUrl,
-          fit: BoxFit.cover,
-          errorWidget: (context, url, error) {
-            return Container(
-              color: Colors.grey[300],
-              child: const Icon(
-                Icons.image,
-                size: 80, // اندازه بزرگ‌تر
-                color: Colors.grey,
-              ),
-            );
-          },
-          placeholder: (context, url) {
-            return Container(
-              color: Colors.grey[200],
-              child: const Center(
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-            );
-          },
-        ),
+    return AspectRatio(
+      aspectRatio: 16 / 10,
+      child: CachedNetworkImage(
+        imageUrl: imageUrl,
+        fit: BoxFit.cover,
+        errorWidget: (_, __, ___) => _buildImageFallback(),
+        placeholder: (_, __) => _buildImageFallback(showSpinner: true),
       ),
     );
   }
 
-  /// ساخت فوتر پست
-  Widget _buildPostFooter() {
-    return Padding(
-      padding: const EdgeInsets.all(10),
-      child: Column(
-        children: [
-          // آیکون‌های تعامل با تعداد واقعی
-          Row(
-            children: [
-              Row(
-                children: [
-                  Icon(
-                    post.isLiked ? Icons.favorite : Icons.favorite_border,
-                    size: 40, // اندازه خیلی بزرگ‌تر
-                    color: post.isLiked ? Colors.red : Colors.grey[600],
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
-                    _formatNumber(post.likeCount),
-                    style: TextStyle(
-                      fontSize: 28, // اندازه خیلی بزرگ‌تر
-                      color: Colors.grey[600],
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
+  Widget _buildImageFallback({bool showSpinner = false}) {
+    return Container(
+      color: const Color(0xFFF0F0F0),
+      child: Center(
+        child: showSpinner
+            ? const SizedBox(
+                width: 32,
+                height: 32,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(
+                Icons.image_outlined,
+                size: 64,
+                color: Color(0xFFBDBDBD),
               ),
-              const SizedBox(width: 12),
-              Row(
-                children: [
-                  Image.asset(
-                    'lib/utils/images/component/comment.png',
-                    width: 40, // اندازه خیلی بزرگ‌تر
-                    height: 40,
-                    color: Colors.grey[600],
-                    errorBuilder: (context, error, stackTrace) {
-                      return Icon(
-                        Icons.chat_bubble_outline,
-                        size: 40, // اندازه خیلی بزرگ‌تر
-                        color: Colors.grey[600],
-                      );
-                    },
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
-                    _formatNumber(post.commentCount),
-                    style: TextStyle(
-                      fontSize: 28, // اندازه خیلی بزرگ‌تر
-                      color: Colors.grey[600],
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
-              const Spacer(),
-              Text(
-                _formatDate(post.createdAt),
-                style: TextStyle(
-                  fontSize: 28, // اندازه خیلی بزرگ‌تر
-                  color: Colors.grey[500],
-                ),
-              ),
-            ],
-          ),
+      ),
+    );
+  }
 
-          if (post.commentCount > 0) ...[
-            const SizedBox(height: 6),
-            // لینک مشاهده همه کامنت‌ها
-            Row(
-              children: [
-                Text(
-                  'view all ${_formatNumber(post.commentCount)} comments',
-                  style: TextStyle(
-                    fontSize: 28, // اندازه خیلی بزرگ‌تر
-                    color: Colors.grey[500],
-                  ),
+  Widget _buildVideoSection() {
+    return AspectRatio(
+      aspectRatio: 16 / 10,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          if (videoThumbnailBytes != null && videoThumbnailBytes!.isNotEmpty)
+            Image.memory(
+              videoThumbnailBytes!,
+              fit: BoxFit.cover,
+              gaplessPlayback: true,
+            )
+          else
+            Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFF1A1A1A), Color(0xFF3A3A3A)],
                 ),
-              ],
+              ),
+              child: const Icon(
+                Icons.videocam_outlined,
+                size: 72,
+                color: Color(0x66FFFFFF),
+              ),
             ),
-          ],
+          Container(color: Colors.black.withValues(alpha: 0.18)),
+          Center(child: _buildPlayButton()),
         ],
       ),
     );
   }
 
-  /// فرمت کردن تاریخ
-  String _formatDate(DateTime date) {
-    final now = DateTime.now();
-    final difference = now.difference(date);
-
-    if (difference.inDays > 0) {
-      return '${difference.inDays}d';
-    } else if (difference.inHours > 0) {
-      return '${difference.inHours}h';
-    } else if (difference.inMinutes > 0) {
-      return '${difference.inMinutes}m';
-    } else {
-      return 'now';
-    }
+  Widget _buildPlayButton() {
+    return Container(
+      width: 96,
+      height: 96,
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.55),
+        shape: BoxShape.circle,
+        border: Border.all(color: Colors.white.withValues(alpha: 0.85), width: 3),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.35),
+            blurRadius: 24,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: const Icon(
+        Icons.play_arrow_rounded,
+        color: Colors.white,
+        size: 56,
+      ),
+    );
   }
 
-  /// فرمت کردن اعداد (K, M)
+  Widget _buildMusicSection({required bool isRtl}) {
+    final title = _resolveMusicTitle();
+    final artist = _author.username;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+          colors: [Color(0xFF1DB954), Color(0xFF169C46)],
+        ),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Row(
+        textDirection: isRtl ? TextDirection.rtl : TextDirection.ltr,
+        children: [
+          Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(
+              Icons.music_note_rounded,
+              color: Colors.white,
+              size: 30,
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment:
+                  isRtl ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 28,
+                    fontWeight: FontWeight.w700,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: isRtl ? TextAlign.right : TextAlign.left,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  artist,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.85),
+                    fontSize: 22,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: isRtl ? TextAlign.right : TextAlign.left,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Icon(
+            Icons.graphic_eq_rounded,
+            color: Colors.white.withValues(alpha: 0.9),
+            size: 32,
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _resolveMusicTitle() {
+    final direct = post.title?.trim();
+    if (direct != null && direct.isNotEmpty) return direct;
+
+    final url = post.musicUrl?.trim() ?? '';
+    if (url.isEmpty) return 'موزیک';
+
+    final uri = Uri.tryParse(url);
+    final lastSegment = (uri?.pathSegments.isNotEmpty ?? false)
+        ? uri!.pathSegments.last
+        : url.split('/').last;
+    final withoutExtension =
+        lastSegment.replaceFirst(RegExp(r'\.[^.]+$'), '');
+    final normalized = withoutExtension
+        .replaceFirst(RegExp(r'^[^_]+_[0-9]+_'), '')
+        .replaceAll('_', ' ')
+        .trim();
+
+    return normalized.isEmpty ? 'موزیک' : normalized;
+  }
+
+  Widget _buildPostFooter({required bool isRtl, required bool compact}) {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(36, 28, 36, compact ? 24 : 28),
+      child: Row(
+        textDirection: isRtl ? TextDirection.rtl : TextDirection.ltr,
+        children: [
+          _buildStat(
+            icon: post.isLiked
+                ? Icons.favorite_rounded
+                : Icons.favorite_border_rounded,
+            count: post.hideLikeCount ? null : post.likeCount,
+            color: post.isLiked
+                ? const Color(0xFFE0245E)
+                : const Color(0xFF737373),
+          ),
+          const SizedBox(width: 28),
+          _buildStat(
+            icon: Icons.chat_bubble_outline_rounded,
+            count: post.hideCommentCount ? null : post.commentCount,
+          ),
+          const Spacer(),
+          Text(
+            _formatDate(post.createdAt),
+            style: const TextStyle(
+              fontSize: 24,
+              color: Color(0xFF999999),
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStat({
+    required IconData icon,
+    int? count,
+    Color color = const Color(0xFF737373),
+  }) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 30, color: color),
+        if (count != null) ...[
+          const SizedBox(width: 8),
+          Text(
+            _formatNumber(count),
+            style: TextStyle(
+              fontSize: 26,
+              color: color,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildBrandFooter() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 36, vertical: 22),
+      decoration: const BoxDecoration(
+        border: Border(
+          top: BorderSide(color: Color(0xFFF0F0F0), width: 1),
+        ),
+      ),
+      child: Row(
+        children: [
+          Image.asset(
+            'lib/utils/images/logo/black-logo.png',
+            width: 22,
+            height: 22,
+            errorBuilder: (_, __, ___) => const Icon(
+              Icons.bolt_rounded,
+              size: 20,
+              color: Color(0xFF737373),
+            ),
+          ),
+          const SizedBox(width: 10),
+          const Text(
+            'Vista',
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF737373),
+              letterSpacing: -0.3,
+            ),
+          ),
+          const Spacer(),
+          const Text(
+            'cafevista.ir',
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w500,
+              color: Color(0xFFAAAAAA),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatDate(DateTime date) {
+    final difference = DateTime.now().difference(date);
+
+    if (difference.inDays > 0) {
+      return '${difference.inDays} روز';
+    } else if (difference.inHours > 0) {
+      return '${difference.inHours} ساعت';
+    } else if (difference.inMinutes > 0) {
+      return '${difference.inMinutes} دقیقه';
+    }
+    return 'اکنون';
+  }
+
   String _formatNumber(int number) {
     if (number >= 1000000) {
       return '${(number / 1000000).toStringAsFixed(1)}M';
     } else if (number >= 1000) {
       return '${(number / 1000).toStringAsFixed(1)}K';
-    } else {
-      return number.toString();
     }
+    return number.toString();
   }
 
-  /// دریافت رنگ تیک تأیید بر اساس نوع
   bool _isPersianText(String text) {
     final persianRegex = RegExp(
       r'[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]',
@@ -394,86 +675,195 @@ class VistaStoryTemplateWidget extends StatelessWidget {
   }
 }
 
-/// CustomPainter برای ایجاد پس‌زمینه زیبا و ساده
-class VistavistaStylePainter extends CustomPainter {
-  final Color textColor;
+class VistaStoryBackgroundPainter extends CustomPainter {
+  final VistaStoryShareTheme theme;
 
-  VistavistaStylePainter({required this.textColor});
+  VistaStoryBackgroundPainter({required this.theme});
 
   @override
   void paint(Canvas canvas, Size size) {
-    // پس‌زمینه سفید
+    switch (theme) {
+      case VistaStoryShareTheme.dark:
+        _paintDark(canvas, size);
+      case VistaStoryShareTheme.light:
+        _paintLight(canvas, size);
+      case VistaStoryShareTheme.vista:
+        _paintVista(canvas, size);
+    }
+  }
+
+  void _paintDark(Canvas canvas, Size size) {
+    final rect = Rect.fromLTWH(0, 0, size.width, size.height);
+    canvas.drawRect(
+      rect,
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color(0xFF030303),
+            Color(0xFF0D0D0D),
+            Color(0xFF060606),
+            Color(0xFF101010),
+          ],
+          stops: [0.0, 0.35, 0.7, 1.0],
+        ).createShader(rect),
+    );
+
+    _drawGlow(
+      canvas,
+      size,
+      center: Offset(size.width * 0.5, size.height * 0.38),
+      color: Colors.white.withValues(alpha: 0.09),
+      radiusFactor: 0.5,
+    );
+    _drawGlow(
+      canvas,
+      size,
+      center: Offset(size.width * 0.18, size.height * 0.2),
+      color: const Color(0xFF4A6FA5).withValues(alpha: 0.06),
+      radiusFactor: 0.28,
+    );
+    _drawGlow(
+      canvas,
+      size,
+      center: Offset(size.width * 0.82, size.height * 0.72),
+      color: const Color(0xFF8B5CF6).withValues(alpha: 0.05),
+      radiusFactor: 0.32,
+    );
+
+    _drawRings(
+      canvas,
+      size,
+      color: Colors.white.withValues(alpha: 0.05),
+      strokeWidth: 1.5,
+    );
+    _drawRing(
+      canvas,
+      Offset(size.width * 0.5, size.height * 0.82),
+      size.width * 0.55,
+      Colors.white.withValues(alpha: 0.025),
+      1,
+    );
+    _drawDotGrid(canvas, size, color: Colors.white.withValues(alpha: 0.018));
+    _drawVignette(canvas, size);
+    _drawWatermark(
+      canvas,
+      size,
+      color: Colors.white.withValues(alpha: 0.02),
+      fontSize: 140,
+      centerY: size.height * 0.9,
+      rotation: -math.pi / 14,
+    );
+  }
+
+  void _paintLight(Canvas canvas, Size size) {
+    final rect = Rect.fromLTWH(0, 0, size.width, size.height);
+    canvas.drawRect(
+      rect,
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color(0xFFF7F2EC),
+            Color(0xFFEDE6DE),
+            Color(0xFFE4DDD6),
+          ],
+          stops: [0.0, 0.55, 1.0],
+        ).createShader(rect),
+    );
+
+    _drawColorBlob(
+      canvas,
+      center: Offset(size.width * 0.85, size.height * 0.15),
+      radius: size.width * 0.45,
+      color: const Color(0xFFFFB4A2).withValues(alpha: 0.22),
+    );
+    _drawColorBlob(
+      canvas,
+      center: Offset(size.width * 0.12, size.height * 0.78),
+      radius: size.width * 0.4,
+      color: const Color(0xFFB4C5FF).withValues(alpha: 0.18),
+    );
+    _drawColorBlob(
+      canvas,
+      center: Offset(size.width * 0.55, size.height * 0.55),
+      radius: size.width * 0.35,
+      color: const Color(0xFFFFD6A5).withValues(alpha: 0.12),
+    );
+    _drawDotGrid(canvas, size, color: Colors.black.withValues(alpha: 0.04));
+  }
+
+  void _paintVista(Canvas canvas, Size size) {
     canvas.drawRect(
       Rect.fromLTWH(0, 0, size.width, size.height),
       Paint()..color = Colors.white,
     );
 
-    // رسم سه دایره بزرگ و زیبا
-    _drawCircles(canvas, size);
-  }
-
-  void _drawCircles(Canvas canvas, Size size) {
-    final paint = Paint()
+    final ringPaint = Paint()
       ..color = Colors.black
       ..style = PaintingStyle.stroke
       ..strokeWidth = 120;
 
-    // دایره اول - بالا چپ (نصفش توی صفحه)
     canvas.drawCircle(
       Offset(size.width * 0.1, size.height * 0.1),
       size.width * 0.4,
-      paint,
+      ringPaint,
     );
-
-    // دایره دوم - وسط راست (نصفش توی صفحه)
     canvas.drawCircle(
       Offset(size.width * 0.9, size.height * 0.5),
       size.width * 0.35,
-      paint,
+      ringPaint,
     );
-
-    // دایره سوم - پایین چپ (نصفش توی صفحه)
     canvas.drawCircle(
       Offset(size.width * 0.2, size.height * 0.9),
       size.width * 0.45,
-      paint,
+      ringPaint,
     );
 
-    // رسم متن VISTA روی دایره‌ها
-    _drawTextOnCircles(canvas, size);
+    _drawVistaRingText(
+      canvas,
+      size.width * 0.1,
+      size.height * 0.1,
+      size.width * 0.4,
+    );
+    _drawVistaRingText(
+      canvas,
+      size.width * 0.9,
+      size.height * 0.5,
+      size.width * 0.35,
+    );
+    _drawVistaRingText(
+      canvas,
+      size.width * 0.2,
+      size.height * 0.9,
+      size.width * 0.45,
+    );
   }
 
-  void _drawTextOnCircles(Canvas canvas, Size size) {
-    final textStyle = TextStyle(
-      fontSize: 80,
-      fontWeight: FontWeight.w900,
-      color: Colors.white,
-      letterSpacing: 6,
-    );
-
+  void _drawVistaRingText(
+    Canvas canvas,
+    double centerX,
+    double centerY,
+    double radius,
+  ) {
     final textPainter = TextPainter(
-      text: TextSpan(text: 'VISTA', style: textStyle),
+      text: const TextSpan(
+        text: 'VISTA',
+        style: TextStyle(
+          fontSize: 80,
+          fontWeight: FontWeight.w900,
+          color: Colors.white,
+          letterSpacing: 6,
+        ),
+      ),
       textDirection: TextDirection.ltr,
-    );
-    textPainter.layout();
+    )..layout();
 
-    // متن روی دایره اول
-    _drawTextOnCircle(canvas, size.width * 0.1, size.height * 0.1,
-        size.width * 0.4, textPainter);
-
-    // متن روی دایره دوم
-    _drawTextOnCircle(canvas, size.width * 0.9, size.height * 0.5,
-        size.width * 0.35, textPainter);
-
-    // متن روی دایره سوم
-    _drawTextOnCircle(canvas, size.width * 0.2, size.height * 0.9,
-        size.width * 0.45, textPainter);
-  }
-
-  void _drawTextOnCircle(Canvas canvas, double centerX, double centerY,
-      double radius, TextPainter textPainter) {
     final circumference = 2 * math.pi * radius;
-    final repetitions = (circumference / textPainter.width * 0.8).floor();
+    final repetitions =
+        (circumference / (textPainter.width * 1.05)).floor().clamp(4, 18);
 
     for (int i = 0; i < repetitions; i++) {
       final angle = (i / repetitions) * 2 * math.pi;
@@ -491,8 +881,141 @@ class VistavistaStylePainter extends CustomPainter {
     }
   }
 
+  void _drawRing(
+    Canvas canvas,
+    Offset center,
+    double radius,
+    Color color,
+    double strokeWidth,
+  ) {
+    canvas.drawCircle(
+      center,
+      radius,
+      Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = strokeWidth,
+    );
+  }
+
+  void _drawVignette(Canvas canvas, Size size) {
+    final center = Offset(size.width * 0.5, size.height * 0.45);
+    canvas.drawRect(
+      Rect.fromLTWH(0, 0, size.width, size.height),
+      Paint()
+        ..shader = RadialGradient(
+          colors: [
+            Colors.transparent,
+            Colors.black.withValues(alpha: 0.45),
+          ],
+          stops: const [0.55, 1.0],
+        ).createShader(Rect.fromCircle(center: center, radius: size.width * 0.75)),
+    );
+  }
+
+  void _drawColorBlob(
+    Canvas canvas, {
+    required Offset center,
+    required double radius,
+    required Color color,
+  }) {
+    canvas.drawCircle(
+      center,
+      radius,
+      Paint()
+        ..shader = RadialGradient(
+          colors: [color, color.withValues(alpha: 0)],
+        ).createShader(Rect.fromCircle(center: center, radius: radius)),
+    );
+  }
+
+  void _drawDotGrid(Canvas canvas, Size size, {required Color color}) {
+    const spacing = 48.0;
+    final paint = Paint()..color = color;
+
+    for (double y = spacing; y < size.height; y += spacing) {
+      for (double x = spacing; x < size.width; x += spacing) {
+        canvas.drawCircle(Offset(x, y), 1.2, paint);
+      }
+    }
+  }
+
+  void _drawGlow(
+    Canvas canvas,
+    Size size, {
+    required Offset center,
+    required Color color,
+    double radiusFactor = 0.55,
+  }) {
+    final radius = size.width * radiusFactor;
+    canvas.drawCircle(
+      center,
+      radius,
+      Paint()
+        ..shader = RadialGradient(
+          colors: [color, Colors.transparent],
+        ).createShader(Rect.fromCircle(center: center, radius: radius)),
+    );
+  }
+
+  void _drawRings(
+    Canvas canvas,
+    Size size, {
+    required Color color,
+    required double strokeWidth,
+  }) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth;
+
+    canvas.drawCircle(
+      Offset(size.width * 0.12, size.height * 0.18),
+      size.width * 0.42,
+      paint,
+    );
+    canvas.drawCircle(
+      Offset(size.width * 0.88, size.height * 0.72),
+      size.width * 0.38,
+      paint,
+    );
+  }
+
+  void _drawWatermark(
+    Canvas canvas,
+    Size size, {
+    required Color color,
+    double fontSize = 120,
+    double? centerY,
+    double rotation = -math.pi / 12,
+  }) {
+    final textPainter = TextPainter(
+      text: TextSpan(
+        text: 'VISTA',
+        style: TextStyle(
+          fontSize: fontSize,
+          fontWeight: FontWeight.w900,
+          color: color,
+          letterSpacing: fontSize * 0.15,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+
+    canvas.save();
+    canvas.translate(size.width * 0.5, centerY ?? size.height * 0.88);
+    if (rotation != 0) {
+      canvas.rotate(rotation);
+    }
+    textPainter.paint(
+      canvas,
+      Offset(-textPainter.width / 2, -textPainter.height / 2),
+    );
+    canvas.restore();
+  }
+
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) {
-    return oldDelegate != this;
+  bool shouldRepaint(covariant VistaStoryBackgroundPainter oldDelegate) {
+    return oldDelegate.theme != theme;
   }
 }

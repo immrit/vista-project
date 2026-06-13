@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:equatable/equatable.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import '../utils/avatar_asset_utils.dart';
 import '../utils/verification_badge_utils.dart';
 
 enum VerificationType { none, blueTick, goldTick, blackTick }
@@ -264,7 +265,9 @@ class NotificationModel extends Equatable {
         'کاربر';
 
     final fullName = data['full_name'] as String? ?? username;
-    final avatarUrl = data['avatar_url'] as String?;
+    final avatarUrl = AvatarAssetUtils.resolveUrl(
+      data['avatar_url'] as String? ?? data['actor_avatar'] as String?,
+    );
 
     // استخراج ID های مرتبط
     final postId = data['post_id'] as String?;
@@ -362,7 +365,7 @@ class NotificationModel extends Equatable {
       username: username,
       fullName: fullName,
       userIsVerified: userIsVerified,
-      avatarUrl: avatarUrl ?? data['actor_avatar'] as String?,
+      avatarUrl: avatarUrl,
       postId: postId,
       commentId: commentId,
       parentCommentId: data['parent_comment_id'] as String?,
@@ -462,7 +465,9 @@ class NotificationModel extends Equatable {
       username: json['username'] ?? '',
       fullName: json['full_name'] ?? '',
       userIsVerified: _isTruthy(json['is_verified']),
-      avatarUrl: json['avatar_url'],
+      avatarUrl: AvatarAssetUtils.resolveUrl(
+        json['avatar_url'] ?? json['actor_avatar'],
+      ),
       postId: json['post_id'],
       commentId: json['comment_id'],
       parentCommentId: json['parent_comment_id'],
@@ -512,7 +517,7 @@ class NotificationModel extends Equatable {
       username: sender?['username'] as String? ?? '',
       fullName: sender?['full_name'] as String? ?? '',
       userIsVerified: userIsVerified,
-      avatarUrl: sender?['avatar_url'] as String?,
+      avatarUrl: AvatarAssetUtils.resolveUrl(sender?['avatar_url']),
       postId: map['post_id'] as String?,
       commentId: map['comment_id'] as String?,
       parentCommentId: map['parent_comment_id'] as String?,

@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 
 class VistaMotion {
-  // Telegram-like snappy curves
+  // Modern-like snappy curves
   static const Curve snappy = Curves.easeOutQuint;
   static const Curve springy = Curves.easeOutBack;
   static const Curve smooth = Curves.easeInOutCubic;
 
-  // Telegram-like durations
+  // Modern-like durations
   static const Duration durationFast = Duration(milliseconds: 150);
   static const Duration durationMedium = Duration(milliseconds: 250);
   static const Duration durationSlow = Duration(milliseconds: 400);

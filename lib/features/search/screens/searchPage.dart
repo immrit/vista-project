@@ -6,8 +6,7 @@ import 'package:Vista/DB/isar_database_manager.dart';
 import 'package:Vista/core/theme/app_theme.dart';
 import 'package:Vista/features/chat/widgets/message_search_bar.dart';
 import 'package:Vista/features/posts/data/go_posts_repository.dart';
-import 'package:Vista/features/posts/screens/PostDetailPage.dart';
-import 'package:Vista/features/posts/screens/profileScreen.dart';
+import 'package:Vista/features/posts/navigation/content_routes.dart';
 import 'package:Vista/features/search/screens/VistaQRScanner.dart';
 import 'package:Vista/l10n/generated/app_localizations.dart';
 import 'package:Vista/model/ProfileModel.dart';
@@ -49,7 +48,6 @@ class _SearchPageState extends ConsumerState<SearchPage>
   Timer? _suggestionDebounceTimer;
 
   Isar? _isar;
-  bool _isInitialized = false;
   bool _hasQuery = false;
   bool _didOpenWorkspaceFromLauncher = false;
 
@@ -63,10 +61,20 @@ class _SearchPageState extends ConsumerState<SearchPage>
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
     _searchController.addListener(_onSearchChanged);
-    _initializeApp();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _handleInitialHashtag();
+      if (widget.openAsWorkspace &&
+          widget.autofocus &&
+          (widget.initialHashtag == null ||
+              widget.initialHashtag!.trim().isEmpty)) {
+        _requestSearchFocus();
+      }
+      unawaited(_bootstrapBackgroundData());
+    });
   }
 
-  Future<void> _initializeApp() async {
+  Future<void> _bootstrapBackgroundData() async {
     try {
       _isar = await IsarDatabaseManager().instance;
     } catch (e) {
@@ -75,14 +83,8 @@ class _SearchPageState extends ConsumerState<SearchPage>
 
     await _loadTrendingHashtags();
 
-    if (!mounted) return;
-    setState(() => _isInitialized = true);
-    _handleInitialHashtag();
-    if (widget.openAsWorkspace &&
-        widget.autofocus &&
-        (widget.initialHashtag == null ||
-            widget.initialHashtag!.trim().isEmpty)) {
-      _requestSearchFocus();
+    if (mounted) {
+      setState(() {});
     }
   }
 
@@ -346,10 +348,6 @@ class _SearchPageState extends ConsumerState<SearchPage>
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context)!;
 
-    if (!_isInitialized) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
-
     if (!widget.openAsWorkspace) {
       return Scaffold(
         backgroundColor: theme.scaffoldBackgroundColor,
@@ -589,33 +587,42 @@ class _SearchPageState extends ConsumerState<SearchPage>
               padding: EdgeInsets.all(12),
               child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
             )
-          : ListView.separated(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: _hashtagSuggestions.length.clamp(0, 6),
-              separatorBuilder: (_, __) => Divider(
-                  height: 1, color: theme.dividerColor.withValues(alpha: 0.35)),
-              itemBuilder: (context, index) {
-                final item = _hashtagSuggestions[index];
-                return ListTile(
-                  dense: true,
-                  leading: const CircleAvatar(
-                    radius: 16,
-                    backgroundColor: AppColors.primary,
-                    child: Text('#', style: TextStyle(color: Colors.white)),
+          : Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (var index = 0;
+                    index < _hashtagSuggestions.length.clamp(0, 6);
+                    index++) ...[
+                  if (index > 0)
+                    Divider(
+                      height: 1,
+                      color: theme.dividerColor.withValues(alpha: 0.35),
+                    ),
+                  Builder(
+                    builder: (context) {
+                      final item = _hashtagSuggestions[index];
+                      return ListTile(
+                        dense: true,
+                        leading: const CircleAvatar(
+                          radius: 16,
+                          backgroundColor: AppColors.primary,
+                          child: Text('#', style: TextStyle(color: Colors.white)),
+                        ),
+                        title: Text('#${item.tag}'),
+                        subtitle: Text('${item.usageCount} پست'),
+                        onTap: () {
+                          HapticFeedback.selectionClick();
+                          _saveRecentSelection(
+                            query: '#${item.tag}',
+                            searchType: SearchType.hashtag,
+                          );
+                          _applyQuery('#${item.tag}', fromSubmit: true);
+                        },
+                      );
+                    },
                   ),
-                  title: Text('#${item.tag}'),
-                  subtitle: Text('${item.usageCount} پست'),
-                  onTap: () {
-                    HapticFeedback.selectionClick();
-                    _saveRecentSelection(
-                      query: '#${item.tag}',
-                      searchType: SearchType.hashtag,
-                    );
-                    _applyQuery('#${item.tag}', fromSubmit: true);
-                  },
-                );
-              },
+                ],
+              ],
             ),
     );
   }
@@ -762,29 +769,42 @@ class _SearchPageState extends ConsumerState<SearchPage>
     List<PublicPostModel> posts, {
     required String currentQuery,
   }) {
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      itemCount: posts.length,
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
-        crossAxisSpacing: 2,
-        mainAxisSpacing: 2,
-        childAspectRatio: 1,
+    if (posts.isEmpty) return const SizedBox.shrink();
+
+    const crossAxisCount = 3;
+    const spacing = 2.0;
+    final rows = (posts.length / crossAxisCount).ceil();
+    final gridWidth = MediaQuery.sizeOf(context).width - 32;
+    final cellWidth =
+        (gridWidth - spacing * (crossAxisCount - 1)) / crossAxisCount;
+    final gridHeight =
+        rows * cellWidth + (rows > 1 ? (rows - 1) * spacing : 0.0);
+
+    return SizedBox(
+      height: gridHeight,
+      child: GridView.builder(
+        physics: const NeverScrollableScrollPhysics(),
+        itemCount: posts.length,
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: crossAxisCount,
+          crossAxisSpacing: spacing,
+          mainAxisSpacing: spacing,
+          childAspectRatio: 1,
+        ),
+        itemBuilder: (context, index) {
+          return _PostGridItem(
+            post: posts[index],
+            onTap: () {
+              if (currentQuery.startsWith('#')) {
+                _saveRecentSelection(
+                  query: currentQuery,
+                  searchType: SearchType.hashtag,
+                );
+              }
+            },
+          );
+        },
       ),
-      itemBuilder: (context, index) {
-        return _PostGridItem(
-          post: posts[index],
-          onTap: () {
-            if (currentQuery.startsWith('#')) {
-              _saveRecentSelection(
-                query: currentQuery,
-                searchType: SearchType.hashtag,
-              );
-            }
-          },
-        );
-      },
     );
   }
 
@@ -972,12 +992,10 @@ class _UserTile extends StatelessWidget {
           color: theme.colorScheme.outline),
       onTap: () {
         onTap();
-        Navigator.push(
+        ContentNavigation.pushProfile(
           context,
-          MaterialPageRoute(
-            builder: (_) =>
-                ProfileScreen(userId: user.id, username: user.username),
-          ),
+          userId: user.id,
+          username: user.username,
         );
       },
     );
@@ -996,12 +1014,7 @@ class _PostGridItem extends StatelessWidget {
     return GestureDetector(
       onTap: () {
         onTap?.call();
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => PostDetailsPage(postId: post.id),
-          ),
-        );
+        ContentNavigation.pushPostDetail(context, postId: post.id);
       },
       child: DecoratedBox(
         decoration: BoxDecoration(

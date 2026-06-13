@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/chat_theme.dart';
 
-class TelegramVoiceRecorderBar extends StatelessWidget {
+class ModernVoiceRecorderBar extends StatelessWidget {
   final ChatTheme theme;
   final bool isLocked;
   final bool isCanceling;
@@ -17,7 +17,7 @@ class TelegramVoiceRecorderBar extends StatelessWidget {
   final VoidCallback onSend;
   final VoidCallback onStopUnlocked;
 
-  const TelegramVoiceRecorderBar({
+  const ModernVoiceRecorderBar({
     super.key,
     required this.theme,
     required this.isLocked,

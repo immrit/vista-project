@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../features/profile/data/profile_repository.dart';
+import '../features/posts/navigation/content_routes.dart';
 import '../features/posts/screens/hashtag_posts_screen.dart';
-import '../features/posts/screens/profileScreen.dart';
 import 'user_friendly_error_utils.dart';
 
 class NavigationHelper {
@@ -27,16 +27,12 @@ class NavigationHelper {
 
       if (!context.mounted) return;
       Navigator.of(context).pop();
-      Navigator.push(
+      ContentNavigation.pushProfile(
         context,
-        MaterialPageRoute(
-          builder: (_) => ProfileScreen(
-            userId: response['id']?.toString() ??
-                response['user_id']?.toString() ??
-                '',
-            username: response['username']?.toString() ?? cleanUsername,
-          ),
-        ),
+        userId: response['id']?.toString() ??
+            response['user_id']?.toString() ??
+            '',
+        username: response['username']?.toString() ?? cleanUsername,
       );
     } catch (error) {
       if (!context.mounted) return;

@@ -10,6 +10,7 @@ import 'package:shamsi_date/shamsi_date.dart';
 
 /// صفحه جزییات اکانت — مشابه X (توییتر)
 import 'package:dio/dio.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../data/profile_repository.dart';
 
 class AccountDetailsScreen extends StatefulWidget {
@@ -28,33 +29,6 @@ class _AccountDetailsScreenState extends State<AccountDetailsScreen> {
   void initState() {
     super.initState();
     _profile = widget.profile;
-    _checkAndFetchLocation();
-  }
-
-  Future<void> _checkAndFetchLocation() async {
-    final loc = _profile.location?.trim() ?? '';
-    if (loc.isEmpty) {
-      try {
-        final response = await Dio().get('http://ip-api.com/json/');
-        if (response.statusCode == 200) {
-          final data = response.data;
-          final city = data['city'];
-          final country = data['country'];
-          if (city != null && country != null) {
-            final newLocation = '$city, $country';
-            await ProfileRepository()
-                .updateProfile(_profile.id, {'location': newLocation});
-            if (mounted) {
-              setState(() {
-                _profile = _profile.copyWith(location: newLocation);
-              });
-            }
-          }
-        }
-      } catch (e) {
-        // Ignore errors
-      }
-    }
   }
 
   @override
@@ -521,6 +495,19 @@ class _AdditionalAccountDetailsCard extends StatelessWidget {
         value: _websiteDisplay(profile.websiteUrl),
         iconBgColor: iconBgColor,
         iconColor: iconColor,
+        valueColor:
+            profile.websiteUrl?.trim().isNotEmpty == true ? Colors.blue : null,
+        onTap: profile.websiteUrl?.trim().isNotEmpty == true
+            ? () async {
+                final urlString = profile.websiteUrl!.trim();
+                final uri = Uri.tryParse(urlString.startsWith('http')
+                    ? urlString
+                    : 'https://$urlString');
+                if (uri != null && await canLaunchUrl(uri)) {
+                  await launchUrl(uri, mode: LaunchMode.externalApplication);
+                }
+              }
+            : null,
       ),
     ]);
 
@@ -818,6 +805,7 @@ class _InfoRowData {
   final Color? valueColor;
   final Color iconBgColor;
   final Color iconColor;
+  final VoidCallback? onTap;
 
   const _InfoRowData({
     required this.icon,
@@ -826,6 +814,7 @@ class _InfoRowData {
     required this.iconBgColor,
     required this.iconColor,
     this.valueColor,
+    this.onTap,
   });
 }
 
@@ -845,47 +834,56 @@ class _InfoRow extends StatelessWidget {
     final textColor = isDark ? Colors.white : Colors.black;
     final subColor = isDark ? Colors.grey[500]! : Colors.grey[500]!;
 
+    Widget content = Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+      child: Row(
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: data.iconBgColor,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(data.icon, size: 18, color: data.iconColor),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  data.label,
+                  style: TextStyle(fontSize: 11.5, color: subColor),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  data.value,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: data.valueColor ?? textColor,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (data.onTap != null) {
+      content = InkWell(
+        onTap: data.onTap,
+        child: content,
+      );
+    }
+
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-          child: Row(
-            children: [
-              Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: data.iconBgColor,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(data.icon, size: 18, color: data.iconColor),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      data.label,
-                      style: TextStyle(fontSize: 11.5, color: subColor),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      data.value,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: data.valueColor ?? textColor,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
+        content,
         if (showDivider)
           Divider(
             height: 1,

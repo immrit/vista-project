@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../model/ProfileModel.dart';
 import '../../../../provider/provider.dart';
-import '../profileScreen.dart';
+import 'package:Vista/features/posts/navigation/content_routes.dart';
 
 class FollowersScreen extends ConsumerWidget {
   final String userId;
@@ -84,13 +84,10 @@ class FollowerTile extends StatelessWidget {
           : null,
       onTap: () {
         // انتقال به صفحه پروفایل دنبال‌کننده
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => ProfileScreen(
-              userId: follower.id,
-              username: follower.username,
-            ),
-          ),
+        ContentNavigation.pushProfile(
+          context,
+          userId: follower.id,
+          username: follower.username,
         );
       },
     );

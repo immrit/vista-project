@@ -112,11 +112,12 @@ class GifMessageBubble extends StatelessWidget {
                   if (message.isMe) ...[
                     const SizedBox(width: 4),
                     Icon(
-                      message.isSeen
+                      message.isReadByPeer
                           ? Icons.done_all
                           : (message.isDelivered ? Icons.done_all : Icons.done),
                       size: 12,
-                      color: message.isSeen ? Colors.blueAccent : Colors.white,
+                      color:
+                          message.isReadByPeer ? Colors.blueAccent : Colors.white,
                     ),
                   ],
                 ],

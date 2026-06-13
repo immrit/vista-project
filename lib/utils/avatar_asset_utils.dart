@@ -1,6 +1,8 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
+import 'env_config.dart';
+
 class AvatarAssetUtils {
   static const String vistaServiceAvatar = 'lib/utils/images/vistalogo-new.png';
   static const String vistaSupportAvatar = 'lib/utils/images/support_icon.png';
@@ -24,14 +26,40 @@ class AvatarAssetUtils {
 
   static bool isAssetSource(String? source) => assetPathFrom(source) != null;
 
-  static ImageProvider? imageProvider(String? source) {
+  /// Converts relative storage paths to absolute CDN URLs.
+  static String? resolveUrl(String? source) {
     final value = source?.trim();
     if (value == null || value.isEmpty) return null;
+    if (isAssetSource(value)) return value;
 
-    final assetPath = assetPathFrom(value);
+    if (value.startsWith('http://') || value.startsWith('https://')) {
+      return value;
+    }
+    if (value.startsWith('//')) {
+      return 'https:$value';
+    }
+
+    final baseUrl = EnvConfig.apiBaseUrl.replaceFirst('api.', 's3.');
+    final cleanPath = value.startsWith('/') ? value.substring(1) : value;
+    return '$baseUrl/$cleanPath';
+  }
+
+  static String? firstResolvedUrl(Object? primary, [Object? secondary]) {
+    for (final candidate in [primary, secondary]) {
+      final resolved = resolveUrl(candidate?.toString());
+      if (resolved != null && resolved.isNotEmpty) return resolved;
+    }
+    return null;
+  }
+
+  static ImageProvider? imageProvider(String? source) {
+    final resolved = resolveUrl(source);
+    if (resolved == null) return null;
+
+    final assetPath = assetPathFrom(resolved);
     if (assetPath != null) return AssetImage(assetPath);
 
-    return CachedNetworkImageProvider(value);
+    return CachedNetworkImageProvider(resolved);
   }
 
   static Widget image({
@@ -43,11 +71,11 @@ class AvatarAssetUtils {
     int? memCacheHeight,
     VoidCallback? onLoaded,
   }) {
-    final value = source?.trim();
+    final resolved = resolveUrl(source);
     final fallbackWidget = fallback ?? const SizedBox.shrink();
-    if (value == null || value.isEmpty) return fallbackWidget;
+    if (resolved == null) return fallbackWidget;
 
-    final assetPath = assetPathFrom(value);
+    final assetPath = assetPathFrom(resolved);
     if (assetPath != null) {
       _notifyLoaded(onLoaded);
       return Image.asset(
@@ -58,10 +86,13 @@ class AvatarAssetUtils {
     }
 
     return CachedNetworkImage(
-      imageUrl: value,
+      imageUrl: resolved,
+      cacheKey: resolved,
       fit: fit,
       memCacheWidth: memCacheWidth,
       memCacheHeight: memCacheHeight,
+      fadeInDuration: const Duration(milliseconds: 120),
+      fadeOutDuration: const Duration(milliseconds: 80),
       placeholder: (_, __) => placeholder ?? fallbackWidget,
       errorWidget: (_, __, ___) => fallbackWidget,
       imageBuilder: (context, imageProvider) {

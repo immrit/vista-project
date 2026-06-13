@@ -596,7 +596,7 @@ class _FullScreenImageViewerState extends State<FullScreenImageViewer>
               },
             ),
 
-            // App Bar بالا (با انیمیشن Fade) - Telegram Style
+            // App Bar بالا (با انیمیشن Fade) - Modern Style
             AnimatedBuilder(
               animation: _fadeAnimation,
               builder: (context, child) {

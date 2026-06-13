@@ -3,7 +3,7 @@ import 'package:Vista/DB/advanced_settings_service.dart';
 class EmojiRenderPolicy {
   const EmojiRenderPolicy._();
 
-  static bool useTelegramEmojiPanel() {
+  static bool useModernEmojiPanel() {
     final service = AdvancedSettingsService();
     final app = service.getAdvancedAppSettings();
     final performance = service.getPerformanceSettings();
@@ -14,12 +14,12 @@ class EmojiRenderPolicy {
     final featureFlags =
         performance['feature_flags'] as Map<String, dynamic>? ?? {};
     final panelEnabled =
-        featureFlags['telegram_emoji_panel_v1'] as bool? ?? true;
+        featureFlags['modern_emoji_panel_v1'] as bool? ?? true;
 
     return panelEnabled && style != 'system';
   }
 
-  static bool useTelegramEmojiRenderer() {
+  static bool useModernEmojiRenderer() {
     final service = AdvancedSettingsService();
     final app = service.getAdvancedAppSettings();
     final performance = service.getPerformanceSettings();

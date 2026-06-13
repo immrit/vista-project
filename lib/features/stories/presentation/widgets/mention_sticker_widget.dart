@@ -57,7 +57,7 @@ class MentionStickerWidget extends StatelessWidget {
           colors: [
             Color(0xFFFE8C00),
             Color(0xFFF83600)
-          ], // Instagram-ish Orange/Red
+          ], // Social-ish Orange/Red
           begin: Alignment.bottomLeft,
           end: Alignment.topRight,
         ),

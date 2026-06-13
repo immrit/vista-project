@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../security/logging_utility.dart';
 import '../model/conversation_model.dart';
-import '../services/telegram_read_receipt_service.dart';
+import '../services/modern_read_receipt_service.dart';
 import '../features/chat/utils/conversation_name_utils.dart';
 
 import '../features/auth/providers/auth_controller.dart' show TokenStorage;

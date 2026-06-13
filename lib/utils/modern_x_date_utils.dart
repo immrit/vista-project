@@ -1,21 +1,21 @@
-// Trimmed duplicate content removed. File contains a single implementation of the TelegramX date utilities (Persian+English).
-// lib/utils/telegram_x_date_utils.dart
+// Trimmed duplicate content removed. File contains a single implementation of the ModernX date utilities (Persian+English).
+// lib/utils/modern_x_date_utils.dart
 //
-// 🎯 پیاده‌سازی دقیق سیستم تاریخ Telegram-X
-// مرجع: https://github.com/TGX-Android/Telegram-X
+// 🎯 پیاده‌سازی دقیق سیستم تاریخ Modern-X
+// مرجع: https://github.com/TGX-Android/Modern-X
 //
 // ویژگی‌ها:
 // ✅ نمایش دقیق زمان (ساعت:دقیقه)
 // ✅ نمایش تاریخ با فرمت‌های مختلف
 // ✅ تبدیل خودکار به تاریخ نسبی
 // ✅ پشتیبانی کامل از فارسی و انگلیسی
-// ✅ Floating Date Header مثل Telegram-X
+// ✅ Floating Date Header مثل Modern-X
 
 import 'package:intl/intl.dart';
 import 'package:shamsi_date/shamsi_date.dart';
 
 /// نوع فرمت تاریخ
-enum TelegramXDateFormat {
+enum ModernXDateFormat {
   /// فقط زمان: "14:30"
   timeOnly,
 
@@ -44,9 +44,9 @@ enum TelegramXDateFormat {
   monthYear,
 }
 
-/// کلاس اصلی برای مدیریت تاریخ و زمان مثل Telegram-X
-class TelegramXDateUtils {
-  TelegramXDateUtils._();
+/// کلاس اصلی برای مدیریت تاریخ و زمان مثل Modern-X
+class ModernXDateUtils {
+  ModernXDateUtils._();
 
   // ═══════════════════════════════════════════════════════════════════════════
   // 🌐 تنظیمات زبان
@@ -68,7 +68,7 @@ class TelegramXDateUtils {
   // ═══════════════════════════════════════════════════════════════════════════
 
   /// نمایش زمان دقیق (ساعت:دقیقه)
-  /// مثل Telegram-X: "14:30" یا "2:30 PM"
+  /// مثل Modern-X: "14:30" یا "2:30 PM"
   static String formatTime(DateTime date) {
     if (_use24HourFormat) {
       return DateFormat('HH:mm').format(date);
@@ -142,10 +142,10 @@ class TelegramXDateUtils {
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // 🎯 فرمت‌های ترکیبی (Combined Formats) - مثل Telegram-X
+  // 🎯 فرمت‌های ترکیبی (Combined Formats) - مثل Modern-X
   // ═══════════════════════════════════════════════════════════════════════════
 
-  /// فرمت اصلی Telegram-X برای نمایش تاریخ در پیام‌ها
+  /// فرمت اصلی Modern-X برای نمایش تاریخ در پیام‌ها
   ///
   /// منطق:
   /// - اگر امروز باشه: "14:30"
@@ -199,7 +199,7 @@ class TelegramXDateUtils {
 
   /// فرمت Floating Date Header (تاریخ شناور بالای لیست)
   ///
-  /// مثل Telegram-X:
+  /// مثل Modern-X:
   /// - امروز: "Today"
   /// - دیروز: "Yesterday"
   /// - تا ۷ روز پیش: "Monday, 15 May"
@@ -232,7 +232,7 @@ class TelegramXDateUtils {
 
   /// فرمت Date Divider (جداکننده تاریخ بین پیام‌ها)
   ///
-  /// مثل Telegram-X:
+  /// مثل Modern-X:
   /// - امروز: "Today"
   /// - دیروز: "Yesterday"
   /// - این هفته: "Monday"
@@ -271,7 +271,7 @@ class TelegramXDateUtils {
 
   /// فرمت Last Seen (آخرین بازدید)
   ///
-  /// مثل Telegram-X:
+  /// مثل Modern-X:
   /// - کمتر از ۱ دقیقه: "just now"
   /// - کمتر از ۱ ساعت: "5 minutes ago"
   /// - امروز: "today at 14:30"
@@ -333,7 +333,7 @@ class TelegramXDateUtils {
 
   /// فرمت Relative Time کوتاه (برای لیست چت‌ها)
   ///
-  /// مثل Telegram-X:
+  /// مثل Modern-X:
   /// - "5m" (۵ دقیقه پیش)
   /// - "2h" (۲ ساعت پیش)
   /// - "Yesterday" (دیروز)
@@ -489,29 +489,29 @@ class TelegramXDateUtils {
 }
 
 /// Extension برای راحتی استفاده
-extension TelegramXDateExtension on DateTime {
-  /// نمایش تاریخ در پیام (مثل Telegram-X)
-  String toTelegramMessageFormat() =>
-      TelegramXDateUtils.formatMessageTimestamp(this);
+extension ModernXDateExtension on DateTime {
+  /// نمایش تاریخ در پیام (مثل Modern-X)
+  String toModernMessageFormat() =>
+      ModernXDateUtils.formatMessageTimestamp(this);
 
   /// نمایش در Floating Header
   String toFloatingHeaderFormat() =>
-      TelegramXDateUtils.formatFloatingDateHeader(this);
+      ModernXDateUtils.formatFloatingDateHeader(this);
 
   /// نمایش در Date Divider
-  String toDateDividerFormat() => TelegramXDateUtils.formatDateDivider(this);
+  String toDateDividerFormat() => ModernXDateUtils.formatDateDivider(this);
 
   /// نمایش Last Seen
-  String toLastSeenFormat() => TelegramXDateUtils.formatLastSeen(this);
+  String toLastSeenFormat() => ModernXDateUtils.formatLastSeen(this);
 
   /// نمایش کوتاه Relative
   String toShortRelativeFormat() =>
-      TelegramXDateUtils.formatShortRelativeTime(this);
+      ModernXDateUtils.formatShortRelativeTime(this);
 
   /// فقط زمان
-  String toTimeFormat() => TelegramXDateUtils.formatTime(this);
+  String toTimeFormat() => ModernXDateUtils.formatTime(this);
 
   /// چک کردن Divider
   bool shouldShowDividerFrom(DateTime? previousDate) =>
-      TelegramXDateUtils.shouldShowDateDivider(this, previousDate);
+      ModernXDateUtils.shouldShowDateDivider(this, previousDate);
 }

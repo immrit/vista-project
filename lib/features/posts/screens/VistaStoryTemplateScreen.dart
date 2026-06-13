@@ -163,7 +163,7 @@ class _VistaStoryTemplateScreenState extends State<VistaStoryTemplateScreen> {
       );
 
       if (imageFile != null) {
-        await _generator.shareToInstagramStory(imageFile);
+        await _generator.shareToSocialStory(imageFile);
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(

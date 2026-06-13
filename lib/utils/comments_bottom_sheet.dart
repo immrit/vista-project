@@ -3,7 +3,7 @@ import 'package:Vista/provider/comment_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../model/CommentModel.dart';
-import 'package:Vista/features/posts/screens/profileScreen.dart';
+import 'package:Vista/features/posts/navigation/content_routes.dart';
 import 'package:Vista/features/auth/providers/auth_controller.dart';
 import 'package:Vista/widgets/verification_badge_icon.dart';
 
@@ -860,14 +860,10 @@ class _CommentItemState extends ConsumerState<CommentItem>
                   // آواتار
                   GestureDetector(
                     onTap: () {
-                      Navigator.push(
+                      ContentNavigation.pushProfile(
                         context,
-                        MaterialPageRoute(
-                          builder: (context) => ProfileScreen(
-                            userId: widget.comment.userId,
-                            username: widget.comment.username,
-                          ),
-                        ),
+                        userId: widget.comment.userId,
+                        username: widget.comment.username,
                       );
                     },
                     child: CircleAvatar(
@@ -893,14 +889,10 @@ class _CommentItemState extends ConsumerState<CommentItem>
                               child: GestureDetector(
                                 // GestureDetector فرزند Flexible است
                                 onTap: () {
-                                  Navigator.push(
+                                  ContentNavigation.pushProfile(
                                     context,
-                                    MaterialPageRoute(
-                                      builder: (context) => ProfileScreen(
-                                        userId: widget.comment.userId,
-                                        username: widget.comment.username,
-                                      ),
-                                    ),
+                                    userId: widget.comment.userId,
+                                    username: widget.comment.username,
                                   );
                                 },
                                 child: Text(

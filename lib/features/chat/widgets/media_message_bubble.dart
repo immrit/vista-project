@@ -13,17 +13,16 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:path/path.dart' as p;
 
 import 'full_screen_image_viewer.dart';
-import '../../../services/telegram_read_receipt_service.dart';
 import '../theme/chat_theme.dart';
 import '../../../model/message_model.dart';
 import '../../../services/network_status_service.dart';
 import '../../../provider/settings_providers.dart';
 import '../services/chat_transfer_manager.dart';
-import 'telegram_message_status.dart';
+import 'modern_message_status.dart';
 import '../performance/chat_performance_profile.dart';
 import '../utils/chat_text_direction.dart';
 import '../../emoji/domain/emoji_render_policy.dart';
-import '../../emoji/widgets/telegram_emoji_text.dart';
+import '../../emoji/widgets/modern_emoji_text.dart';
 
 enum MediaType { image, video, gif }
 
@@ -688,9 +687,9 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
           child: Stack(
             clipBehavior: Clip.none,
             children: [
-              TelegramEmojiText(
+              ModernEmojiText(
                 widget.caption!,
-                useTelegramEmoji: EmojiRenderPolicy.useTelegramEmojiRenderer(),
+                useModernEmoji: EmojiRenderPolicy.useModernEmojiRenderer(),
                 textDirection: captionDirection,
                 textAlign: TextAlign.start,
                 style: TextStyle(
@@ -730,13 +729,11 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
   }
 
   Widget _buildStatusIcon(Color color) {
-    if (widget.message != null) {
-      return ValueListenableBuilder<MessageDeliveryStatus>(
-        valueListenable: widget.message!.statusNotifier,
-        builder: (context, status, _) {
-          return TelegramMessageStatus(
-              status: status, size: 14, customColor: color);
-        },
+    if (widget.message != null && widget.message!.isMe) {
+      return ModernMessageStatus(
+        status: widget.message!.resolvedDeliveryStatus,
+        size: 14,
+        customColor: color,
       );
     }
     return Icon(Icons.access_time, size: 12, color: color);

@@ -67,7 +67,7 @@ import 'package:Vista/features/settings/screens/vistaStore/pricing_page.dart';
 import 'package:Vista/features/posts/screens/ExploreFeedScreen.dart';
 import 'package:Vista/features/posts/screens/PostDetailPage.dart';
 import 'package:Vista/features/posts/screens/profileScreen.dart';
-import 'package:Vista/features/emoji/domain/telegram_emoji_lookup.dart';
+import 'package:Vista/features/emoji/domain/modern_emoji_lookup.dart';
 
 // Stories Module
 import 'package:Vista/features/stories/stories.dart';
@@ -131,7 +131,7 @@ class _RootAppState extends State<RootApp> {
   Future<void> _precacheCriticalAssets() async {
     if (!mounted) return;
     final criticalAssets = <String>[
-      'assets/images/telegram_bg.jpg',
+      'assets/images/modern_bg.jpg',
       'assets/images/vista_custom_bg.png',
       'assets/images/vista_custom_bg_dark.png',
     ];
@@ -251,7 +251,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     _wireFcmSyncHooks();
-    unawaited(TelegramEmojiLookup.instance.load());
+    unawaited(ModernEmojiLookup.instance.load());
     WidgetsBinding.instance.addObserver(this);
     _appLinks = AppLinks();
     _setupDeepLinkHandling();
@@ -634,10 +634,18 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
                 return const Scaffold();
               },
               '/profile': (context) {
-                final args = ModalRoute.of(context)?.settings.arguments
-                    as Map<String, dynamic>?;
-                final userId = (args?['userId'] ?? '').toString().trim();
-                final username = (args?['username'] ?? '').toString().trim();
+                final rawArgs = ModalRoute.of(context)?.settings.arguments;
+                String userId = '';
+                String username = '';
+                if (rawArgs is String) {
+                  userId = rawArgs.trim();
+                } else if (rawArgs is Map<String, dynamic>) {
+                  userId = (rawArgs['userId'] ?? '').toString().trim();
+                  username = (rawArgs['username'] ?? '').toString().trim();
+                } else if (rawArgs is Map) {
+                  userId = (rawArgs['userId'] ?? '').toString().trim();
+                  username = (rawArgs['username'] ?? '').toString().trim();
+                }
                 if (userId.isNotEmpty) {
                   return SessionMiddleware(
                     child: ProfileScreen(

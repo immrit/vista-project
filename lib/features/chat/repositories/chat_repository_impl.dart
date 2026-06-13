@@ -372,6 +372,18 @@ class ChatRepositoryImpl implements ChatRepository {
           if (type == 'message_deleted' && data?['message_id'] != null) {
             unawaited(_local.deleteMessage(data!['message_id'].toString()));
           }
+          if (type == 'read_receipt') {
+            final readerId = data?['user_id']?.toString() ?? '';
+            final readAtRaw = data?['read_at']?.toString() ?? '';
+            final readAt = DateTime.tryParse(readAtRaw);
+            if (readerId.isNotEmpty &&
+                readerId != uid &&
+                readAt != null) {
+              unawaited(
+                _local.markOwnMessagesReadUpTo(conversationId, readAt),
+              );
+            }
+          }
           unawaited(_syncMessages(conversationId, uid));
         }
       } else if (type == 'conversation_cleared') {
@@ -1431,7 +1443,7 @@ class ChatRepositoryImpl implements ChatRepository {
       'original_message_id': j['original_message_id'],
       'forwarded_from_sender_name': j['forwarded_from_sender_name'],
       'is_sent': j['is_sent'] ?? true,
-      'is_delivered': j['is_delivered'] ?? true,
+      'is_delivered': j['is_delivered'] ?? false,
       'is_read': j['is_read'] ?? false,
       'is_seen': j['is_seen'] ?? false,
       'is_edited': j['is_edited'] ?? false,

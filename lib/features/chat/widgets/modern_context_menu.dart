@@ -2,16 +2,16 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../theme/chat_theme.dart';
-import 'telegram_reaction_picker.dart';
+import 'modern_reaction_picker.dart';
 
-class TelegramContextMenuItem {
+class ModernContextMenuItem {
   final IconData icon;
   final String label;
   final VoidCallback onTap;
   final Color? color;
   final bool isDivider;
 
-  const TelegramContextMenuItem({
+  const ModernContextMenuItem({
     required this.icon,
     required this.label,
     required this.onTap,
@@ -19,7 +19,7 @@ class TelegramContextMenuItem {
     this.isDivider = false,
   });
 
-  const TelegramContextMenuItem.divider()
+  const ModernContextMenuItem.divider()
       : icon = Icons.remove,
         label = '',
         onTap = _emptyCallback,
@@ -29,16 +29,19 @@ class TelegramContextMenuItem {
   static void _emptyCallback() {}
 }
 
-class TelegramContextMenu extends StatefulWidget {
+class ModernContextMenu extends StatefulWidget {
   final Widget messageWidget;
   final Rect messageRect;
-  final List<TelegramContextMenuItem> items;
+  final List<ModernContextMenuItem> items;
   final List<String>? quickReactions;
   final ValueChanged<String>? onReactionSelected;
   final VoidCallback onClose;
   final bool isMyMessage;
+  final bool showReactions;
+  final bool showAnchorPreview;
+  final bool openAboveAnchor;
 
-  const TelegramContextMenu({
+  const ModernContextMenu({
     super.key,
     required this.messageWidget,
     required this.messageRect,
@@ -47,17 +50,23 @@ class TelegramContextMenu extends StatefulWidget {
     this.onReactionSelected,
     required this.onClose,
     required this.isMyMessage,
+    this.showReactions = true,
+    this.showAnchorPreview = true,
+    this.openAboveAnchor = false,
   });
 
   static void show({
     required BuildContext context,
     required Widget messageWidget,
     required Rect messageRect,
-    required List<TelegramContextMenuItem> items,
+    required List<ModernContextMenuItem> items,
     List<String>? quickReactions,
     ValueChanged<String>? onReactionSelected,
     required bool isMyMessage,
     required VoidCallback onDismiss,
+    bool showReactions = true,
+    bool showAnchorPreview = true,
+    bool openAboveAnchor = false,
   }) {
     Navigator.of(context).push(PageRouteBuilder(
       opaque: false,
@@ -66,13 +75,16 @@ class TelegramContextMenu extends StatefulWidget {
       transitionDuration: const Duration(milliseconds: 180),
       reverseTransitionDuration: const Duration(milliseconds: 120),
       pageBuilder: (context, animation, secondaryAnimation) {
-        return TelegramContextMenu(
+        return ModernContextMenu(
           messageWidget: messageWidget,
           messageRect: messageRect,
           items: items,
           quickReactions: quickReactions,
           onReactionSelected: onReactionSelected,
           isMyMessage: isMyMessage,
+          showReactions: showReactions,
+          showAnchorPreview: showAnchorPreview,
+          openAboveAnchor: openAboveAnchor,
           onClose: () {
             Navigator.of(context).pop();
             Future.delayed(const Duration(milliseconds: 120), onDismiss);
@@ -83,10 +95,10 @@ class TelegramContextMenu extends StatefulWidget {
   }
 
   @override
-  State<TelegramContextMenu> createState() => _TelegramContextMenuState();
+  State<ModernContextMenu> createState() => _ModernContextMenuState();
 }
 
-class _TelegramContextMenuState extends State<TelegramContextMenu>
+class _ModernContextMenuState extends State<ModernContextMenu>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _scaleAnimation;
@@ -96,6 +108,8 @@ class _TelegramContextMenuState extends State<TelegramContextMenu>
   late double _targetMessageTop;
   late double _targetMessageHeight;
   late bool _isScrollable;
+  late double _menuTop;
+  late double _menuLeft;
 
   // ✅ Cache heavy widgets
   Widget? _cachedMenu;
@@ -146,11 +160,32 @@ class _TelegramContextMenuState extends State<TelegramContextMenu>
   void _calculateLayout() {
     final screenSize = MediaQuery.of(context).size;
     final padding = MediaQuery.of(context).padding;
+    const menuWidth = 250.0;
+
+    if (!widget.showAnchorPreview) {
+      _targetMessageTop = widget.messageRect.top;
+      _targetMessageHeight = widget.messageRect.height;
+      _isScrollable = false;
+
+      final menuHeight = _estimateMenuHeight();
+      final centeredLeft = widget.messageRect.center.dx - (menuWidth / 2);
+      _menuLeft = centeredLeft.clamp(16.0, screenSize.width - menuWidth - 16);
+
+      if (widget.openAboveAnchor) {
+        _menuTop = widget.messageRect.top - menuHeight - 12;
+        if (_menuTop < padding.top + 8) {
+          _menuTop = widget.messageRect.bottom + 12;
+        }
+      } else {
+        _menuTop = widget.messageRect.bottom + 12;
+      }
+      return;
+    }
 
     // ارتفاع حدودی منو و ری‌اکشن‌ها
     const menuHeight = 280.0;
-    const reactionHeight = 60.0;
-    const totalMenuSpace = menuHeight + reactionHeight + 20;
+    final reactionHeight = widget.showReactions ? 60.0 : 0.0;
+    final totalMenuSpace = menuHeight + reactionHeight + 20;
 
     // حداکثر ارتفاعی که پیام می‌تواند داشته باشد (تا روی منو نیفتد)
     final maxAvailableHeight =
@@ -184,6 +219,17 @@ class _TelegramContextMenuState extends State<TelegramContextMenu>
       // جا هست، پیام سر جایش بماند
       _targetMessageTop = widget.messageRect.top;
     }
+
+    _menuLeft = 16.0;
+    _menuTop = _targetMessageTop + _targetMessageHeight + 16;
+  }
+
+  double _estimateMenuHeight() {
+    var height = 0.0;
+    for (final item in widget.items) {
+      height += item.isDivider ? 1 : 44;
+    }
+    return height;
   }
 
   @override
@@ -194,15 +240,7 @@ class _TelegramContextMenuState extends State<TelegramContextMenu>
 
   @override
   Widget build(BuildContext context) {
-    // تنظیمات منو (گوشه سمت چپ/راست)
     const menuWidth = 250.0;
-
-    // منو همیشه سعی می‌کند در سمت مخالف پیام باز شود یا فیکس در یک سمت
-    // طبق درخواست شما: گوشه سمت چپ (برای فارسی که RTL است شاید سمت راست بهتر باشد، اما اینجا چپ می‌گذاریم)
-    final menuLeft = 16.0;
-
-    // موقعیت عمودی منو: همیشه زیر پیام (چون پیام را می‌بریم بالا اگر جا نباشد)
-    // ما از انیمیشن استفاده می‌کنیم تا موقعیت نهایی منو را تعیین کنیم
 
     return RepaintBoundary(
       child: GestureDetector(
@@ -210,6 +248,36 @@ class _TelegramContextMenuState extends State<TelegramContextMenu>
         child: AnimatedBuilder(
           animation: _controller,
           builder: (context, child) {
+            if (!widget.showAnchorPreview) {
+              return Stack(
+                children: [
+                  Positioned.fill(
+                    child: FadeTransition(
+                      opacity: _fadeAnimation,
+                      child: Container(
+                        color: Colors.black.withValues(alpha: 0.34),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    top: _menuTop,
+                    left: _menuLeft,
+                    width: menuWidth,
+                    child: Transform.scale(
+                      scale: _scaleAnimation.value,
+                      alignment: widget.openAboveAnchor
+                          ? Alignment.bottomCenter
+                          : Alignment.topCenter,
+                      child: Opacity(
+                        opacity: _fadeAnimation.value,
+                        child: _cachedMenu,
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            }
+
             // محاسبه انیمیشن پوزیشن پیام (Tween بین جای اولیه و جای نهایی)
             final currentTop = lerpDouble(
                 widget.messageRect.top, _targetMessageTop, _controller.value)!;
@@ -258,7 +326,7 @@ class _TelegramContextMenuState extends State<TelegramContextMenu>
                 // 3. منوی گزینه‌ها
                 Positioned(
                   top: menuTop,
-                  left: menuLeft, // منو سمت چپ فیکس شده
+                  left: _menuLeft,
                   width: menuWidth,
                   child: Transform.scale(
                     scale: _scaleAnimation.value,
@@ -271,21 +339,22 @@ class _TelegramContextMenuState extends State<TelegramContextMenu>
                 ),
 
                 // 4. نوار ری‌اکشن‌ها (بالای پیام یا بالای منو)
-                Positioned(
-                  top: currentTop - 60, // همیشه بالای پیام حرکت می‌کند
-                  left: 16,
-                  right: 16,
-                  child: Transform.scale(
-                    scale: _scaleAnimation.value,
-                    alignment: Alignment.bottomCenter,
-                    child: Opacity(
-                      opacity: _fadeAnimation.value,
-                      child: Center(
-                        child: _cachedReactions, // ✅ استفاده از نسخه کش شده
+                if (widget.showReactions)
+                  Positioned(
+                    top: currentTop - 60,
+                    left: 16,
+                    right: 16,
+                    child: Transform.scale(
+                      scale: _scaleAnimation.value,
+                      alignment: Alignment.bottomCenter,
+                      child: Opacity(
+                        opacity: _fadeAnimation.value,
+                        child: Center(
+                          child: _cachedReactions,
+                        ),
                       ),
                     ),
                   ),
-                ),
               ],
             );
           },

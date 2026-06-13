@@ -53,7 +53,7 @@ class _HashtagAutocompleteFieldState extends State<HashtagAutocompleteField> {
     super.initState();
     widget.controller.addListener(_onTextChanged);
     _focusNode.addListener(_onFocusChanged);
-    // Warm cache for fast "just typed #" suggestions (Instagram-like).
+    // Warm cache for fast "just typed #" suggestions (Social-like).
     unawaited(_loadTrendingTags());
   }
 

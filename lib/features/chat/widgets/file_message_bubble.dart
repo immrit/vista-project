@@ -6,7 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:open_filex/open_filex.dart';
 
 import '../../emoji/domain/emoji_render_policy.dart';
-import '../../emoji/widgets/telegram_emoji_text.dart';
+import '../../emoji/widgets/modern_emoji_text.dart';
 import '../services/chat_transfer_manager.dart';
 import '../theme/chat_theme.dart';
 import '../utils/chat_text_direction.dart';
@@ -202,10 +202,10 @@ class _FileMessageBubbleState extends State<FileMessageBubble> {
               textDirection: captionDirection,
               child: Align(
                 alignment: AlignmentDirectional.centerStart,
-                child: TelegramEmojiText(
+                child: ModernEmojiText(
                   widget.caption!,
-                  useTelegramEmoji:
-                      EmojiRenderPolicy.useTelegramEmojiRenderer(),
+                  useModernEmoji:
+                      EmojiRenderPolicy.useModernEmojiRenderer(),
                   textDirection: captionDirection,
                   textAlign: TextAlign.start,
                   style: TextStyle(

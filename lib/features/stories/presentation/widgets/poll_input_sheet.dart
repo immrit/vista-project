@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../../domain/entities/story_editor_models.dart';
 import 'glass_layer.dart';
 
-/// Premium Poll Input Sheet (Instagram-style)
+/// Premium Poll Input Sheet (Social-style)
 class PollInputSheet extends StatefulWidget {
   final Function(StoryInteractionType, Map<String, dynamic>) onPollCreated;
 

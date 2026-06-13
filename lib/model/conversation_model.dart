@@ -1,6 +1,6 @@
 import 'dart:convert'; // ✅ اضافه شد برای jsonDecode
 import '../security/logging_utility.dart';
-import '../services/telegram_read_receipt_service.dart';
+import '../services/modern_read_receipt_service.dart';
 
 class ConversationModel {
   final String id;

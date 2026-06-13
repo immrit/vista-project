@@ -10,6 +10,7 @@ import '../../../provider/provider.dart';
 import '../../../provider/optimized_conversations_provider.dart';
 import '../../../DB/profile_cache_service.dart';
 import '../../../utils/directional_navigation.dart';
+import '../../../utils/profile_zoom_policy.dart';
 import 'package:Vista/widgets/profile_avatar_widget.dart'; // NEW IMPORT
 import '../providers/saved_posts_provider.dart';
 import '../widgets/post_action_buttons.dart';
@@ -45,7 +46,8 @@ import 'package:flutter/services.dart';
 import 'package:Vista/utils/premium_features_helper.dart';
 import '../../../utils/user_friendly_error_utils.dart';
 import 'package:Vista/features/posts/widgets/standard_edit_post_dialog.dart';
-import 'package:Vista/features/posts/screens/PostDetailPage.dart';
+import 'package:Vista/features/posts/widgets/profile_lazy_tab_gate.dart';
+import 'package:Vista/features/posts/navigation/content_routes.dart';
 import 'package:Vista/features/posts/data/go_posts_repository.dart';
 import 'package:Vista/features/search/screens/searchPage.dart';
 import 'package:Vista/features/posts/widgets/hashtag_rich_text.dart';
@@ -55,7 +57,7 @@ import 'package:Vista/features/profile/screens/account_details_screen.dart';
 import 'package:get_thumbnail_video/video_thumbnail.dart';
 import 'package:Vista/l10n/generated/app_localizations.dart';
 
-/// صفحه پروفایل ویستا - طراحی مدرن Instagram/Threads
+/// صفحه پروفایل ویستا - طراحی مدرن Social/Threads
 class ProfileScreen extends ConsumerStatefulWidget {
   final String userId;
   final String username;
@@ -107,11 +109,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
   @override
   Widget build(BuildContext context) {
     final profileState = ref.watch(userProfileProvider(widget.userId));
-    final currentUser = ref.watch(authProvider);
+    final currentUserId =
+        ref.watch(authProvider.select((user) => user?.id)) ?? _currentUserId;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    final isCurrentUserProfile = profileState != null &&
-        profileState.id == (currentUser?.id ?? _currentUserId);
+    final isCurrentUserProfile =
+        profileState != null && profileState.id == currentUserId;
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -161,9 +164,33 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                 body: TabBarView(
                   controller: _tabController,
                   children: [
-                    _buildPostsGrid(profileState, isCurrentUserProfile, isDark),
-                    _buildReelsGrid(profileState, isCurrentUserProfile, isDark),
-                    _buildMusicTab(profileState, isCurrentUserProfile, isDark),
+                    ProfileLazyTabGate(
+                      tabController: _tabController,
+                      tabIndex: 0,
+                      child: _buildPostsGrid(
+                        profileState,
+                        isCurrentUserProfile,
+                        isDark,
+                      ),
+                    ),
+                    ProfileLazyTabGate(
+                      tabController: _tabController,
+                      tabIndex: 1,
+                      child: _buildReelsGrid(
+                        profileState,
+                        isCurrentUserProfile,
+                        isDark,
+                      ),
+                    ),
+                    ProfileLazyTabGate(
+                      tabController: _tabController,
+                      tabIndex: 2,
+                      child: _buildMusicTab(
+                        profileState,
+                        isCurrentUserProfile,
+                        isDark,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -608,7 +635,6 @@ class _ProfileHeader extends ConsumerWidget {
     final textColor = isDark ? Colors.white : Colors.black;
     final subtitleColor = isDark ? Colors.grey[400] : Colors.grey[600];
     final isRtl = Directionality.of(context) == TextDirection.rtl;
-    final conversationsState = ref.watch(optimizedConversationsProvider);
 
     // Watch profile note for this user
     final noteAsync = ref.watch(profileNoteProvider(profile.id));
@@ -646,7 +672,8 @@ class _ProfileHeader extends ConsumerWidget {
                               context: context,
                               ref: ref,
                               note: note,
-                              conversationsState: conversationsState,
+                              conversationsState:
+                                  ref.read(optimizedConversationsProvider),
                             );
                           }
                         },
@@ -670,6 +697,18 @@ class _ProfileHeader extends ConsumerWidget {
                         size: 84,
                         imageUrl: profile.avatarUrl,
                         showOnlineStatus: false,
+                        onTap: profile.avatarUrl != null &&
+                                profile.avatarUrl!.isNotEmpty
+                            ? () {
+                                ProfileZoomPolicy.openEnlargedAvatar(
+                                  context: context,
+                                  ref: ref,
+                                  targetUserId: profile.id,
+                                  avatarUrl: profile.avatarUrl,
+                                  viewerUserId: ref.read(authProvider)?.id,
+                                );
+                              }
+                            : null,
                       ),
                       if (isCurrentUser)
                         PositionedDirectional(
@@ -1206,33 +1245,17 @@ class _ProfileActionBar extends ConsumerWidget {
   Widget _buildOtherUserButtons(
       BuildContext context, WidgetRef ref, bool isDark) {
     final isFollowed = profile.isFollowed;
-    final pendingAsync = ref.watch(followRequestPendingProvider(profile.id));
+    final isPending = ref.watch(
+      followRequestPendingProvider(profile.id).select(
+        (async) => async.maybeWhen(
+          data: (pending) => pending,
+          orElse: () => null,
+        ),
+      ),
+    );
 
-    return pendingAsync.when(
-      data: (isPending) {
-        return Row(
-          children: [
-            Expanded(
-              child: _FollowButton(
-                isFollowed: isFollowed,
-                isPending: isPending,
-                isDark: isDark,
-                onTap: onFollowTap,
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: _ActionButton(
-                label: 'پیام',
-                isDark: isDark,
-                icon: Icons.mail_outline,
-                onTap: onMessageTap,
-              ),
-            ),
-          ],
-        );
-      },
-      loading: () => Row(
+    if (isPending == null) {
+      return Row(
         children: [
           Expanded(
             child: _ActionButton(
@@ -1251,28 +1274,29 @@ class _ProfileActionBar extends ConsumerWidget {
             ),
           ),
         ],
-      ),
-      error: (_, __) => Row(
-        children: [
-          Expanded(
-            child: _FollowButton(
-              isFollowed: false,
-              isPending: false,
-              isDark: isDark,
-              onTap: onFollowTap,
-            ),
+      );
+    }
+
+    return Row(
+      children: [
+        Expanded(
+          child: _FollowButton(
+            isFollowed: isFollowed,
+            isPending: isPending,
+            isDark: isDark,
+            onTap: onFollowTap,
           ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: _ActionButton(
-              label: 'پیام',
-              isDark: isDark,
-              icon: Icons.mail_outline,
-              onTap: onMessageTap,
-            ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _ActionButton(
+            label: 'پیام',
+            isDark: isDark,
+            icon: Icons.mail_outline,
+            onTap: onMessageTap,
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -1967,6 +1991,7 @@ class _PostsGridViewState extends ConsumerState<_PostsGridView> {
     final notifier = ref.read(profilePostsProvider(widget.profileId).notifier);
     final hasMore = notifier.hasMore;
     final isLoading = notifier.isLoading;
+    final reelsPlaylist = ReelsViewerLauncher.videoPlaylist(widget.posts);
 
     return ListView.separated(
       controller: _scrollController,
@@ -2004,7 +2029,14 @@ class _PostsGridViewState extends ConsumerState<_PostsGridView> {
           return const SizedBox.shrink();
         }
         final post = widget.posts[index];
-        return _PostListItem(post: post, isDark: widget.isDark);
+        return KeyedSubtree(
+          key: ValueKey<String>(post.id),
+          child: _PostListItem(
+            post: post,
+            isDark: widget.isDark,
+            reelsPlaylist: reelsPlaylist,
+          ),
+        );
       },
     );
   }
@@ -2014,28 +2046,32 @@ class _PostsGridViewState extends ConsumerState<_PostsGridView> {
 class _PostListItem extends ConsumerWidget {
   final PublicPostModel post;
   final bool isDark;
+  final List<PublicPostModel> reelsPlaylist;
 
-  const _PostListItem({required this.post, required this.isDark});
+  const _PostListItem({
+    required this.post,
+    required this.isDark,
+    required this.reelsPlaylist,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final hasImage = post.imageUrl != null && post.imageUrl!.isNotEmpty;
     final hasVideo = post.hasVideo;
     final hasMusic = post.musicUrl != null && post.musicUrl!.trim().isNotEmpty;
-    final savedPostIdsAsync = ref.watch(savedPostIdsProvider);
-    final isSaved = savedPostIdsAsync.maybeWhen(
-      data: (ids) => ids.contains(post.id),
-      orElse: () => false,
+    final isSaved = ref.watch(
+      savedPostIdsProvider.select(
+        (async) => async.maybeWhen(
+          data: (ids) => ids.contains(post.id),
+          orElse: () => false,
+        ),
+      ),
     );
-    final profilePosts =
-        ref.watch(profilePostsProvider(post.userId)).value ??
-            const <PublicPostModel>[];
-    final reelsPlaylist = ReelsViewerLauncher.videoPlaylist(profilePosts);
 
     return InkWell(
-      onTap: () => Navigator.push(
+      onTap: () => ContentNavigation.pushPostDetail(
         context,
-        MaterialPageRoute(builder: (_) => PostDetailsPage(postId: post.id)),
+        postId: post.id,
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -2098,31 +2134,34 @@ class _PostListItem extends ConsumerWidget {
                       const SizedBox(height: 6),
                       PostModerationBanner(post: post),
                       if (post.content.isNotEmpty) ...[
-                        Directionality(
-                          textDirection: _getTextDirection(post.content),
-                          child: HashtagRichText(
-                            text: post.content,
-                            style: TextStyle(
-                              fontSize: 15,
-                              height: 1.4,
-                              color: isDark ? Colors.white70 : Colors.black87,
-                            ),
-                            hashtagStyle: const TextStyle(
-                              color: Colors.blue,
-                              fontWeight: FontWeight.w700,
-                            ),
-                            maxLines: 6,
-                            overflow: TextOverflow.ellipsis,
-                            onHashtagTap: (tag) {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) =>
-                                      SearchPage(initialHashtag: '#$tag'),
-                                ),
-                              );
-                            },
+                        HashtagRichText(
+                          text: post.content,
+                          style: TextStyle(
+                            fontSize: 15,
+                            height: 1.4,
+                            color: isDark ? Colors.white70 : Colors.black87,
                           ),
+                          hashtagStyle: const TextStyle(
+                            color: Colors.blue,
+                            fontWeight: FontWeight.w700,
+                          ),
+                          maxLines: 6,
+                          readMoreLabel: 'بیشتر...',
+                          onReadMoreTap: () {
+                            ContentNavigation.pushPostDetail(
+                              context,
+                              postId: post.id,
+                            );
+                          },
+                          onHashtagTap: (tag) {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) =>
+                                    SearchPage(initialHashtag: '#$tag'),
+                              ),
+                            );
+                          },
                         ),
                       ],
                       if (hasMusic)
@@ -2188,7 +2227,7 @@ class _PostListItem extends ConsumerWidget {
                 Consumer(
                   builder: (context, ref, child) {
                     final isLiked =
-                        ref.watch(likeStateProvider)[post.id] ?? post.isLiked;
+                        ref.watch(likeStateProvider.select((map) => map[post.id])) ?? post.isLiked;
                     final likeCount = post.likeCount +
                         (isLiked != post.isLiked ? (isLiked ? 1 : -1) : 0);
 
@@ -2311,15 +2350,6 @@ class _PostListItem extends ConsumerWidget {
         .trim();
 
     return normalized.isEmpty ? 'Music' : normalized;
-  }
-
-  TextDirection _getTextDirection(String text) {
-    if (text.isEmpty) return TextDirection.rtl;
-    final firstChar = text.trim().isNotEmpty ? text.trim()[0] : '';
-    final persianRegex = RegExp(r'[\u0600-\u06FF]');
-    return persianRegex.hasMatch(firstChar)
-        ? TextDirection.rtl
-        : TextDirection.ltr;
   }
 
   void _showCommentsSheet(BuildContext context, WidgetRef ref) {
@@ -2685,9 +2715,9 @@ class _MusicListView extends StatelessWidget {
         final post = posts[index];
         final title = _resolveMusicTitle(post);
         return ListTile(
-          onTap: () => Navigator.push(
+          onTap: () => ContentNavigation.pushPostDetail(
             context,
-            MaterialPageRoute(builder: (_) => PostDetailsPage(postId: post.id)),
+            postId: post.id,
           ),
           leading: Container(
             width: 46,

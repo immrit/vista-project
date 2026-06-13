@@ -1,4 +1,6 @@
 // import '../../../security/logging_utility.dart'; // ⛔️ حذف شد - دیگر استفاده نمی‌شود
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -13,9 +15,10 @@ import '../../../features/chat/providers/chat_providers.dart';
 import 'ArchivedConversationsScreen.dart';
 // ✅ استفاده از صفحه چت جدید
 import '../../../features/chat/screens/modern_chat_screen.dart';
+import '../../../features/chat/navigation/chat_screen_route.dart';
 import '../../../features/chat/screens/modern_group_profile_screen.dart';
 import '../../../features/chat/screens/new_message_screen.dart';
-import '../../../features/chat/screens/telegram_profile_screen.dart';
+import '../../../features/chat/screens/modern_profile_screen.dart';
 import '../../../DB/database_file_utils.dart';
 import '../../../utils/user_friendly_error_utils.dart';
 import '../../../utils/compat_extensions.dart';
@@ -47,7 +50,8 @@ class _ChatConversationsScreenState
   final Set<String> _requestActionLoading = <String>{};
   final Set<String> _selectedConversationIds = <String>{};
   late final AnimationController _searchAnimController;
-  String _searchQuery = '';
+  final _searchQueryNotifier = ValueNotifier<String>('');
+  Timer? _searchDebounce;
   bool _isSearchVisible = false;
 
   bool get _isConversationSelectionMode => _selectedConversationIds.isNotEmpty;
@@ -71,6 +75,8 @@ class _ChatConversationsScreenState
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
+    _searchQueryNotifier.dispose();
     _searchController.dispose();
     _searchAnimController.dispose();
     super.dispose();
@@ -105,7 +111,13 @@ class _ChatConversationsScreenState
       body: Column(
         children: [
           if (_isSearchVisible) _buildSearchSection(theme),
-          Expanded(child: _buildUnifiedList(theme)),
+          Expanded(
+            child: ValueListenableBuilder<String>(
+              valueListenable: _searchQueryNotifier,
+              builder: (context, searchQuery, _) =>
+                  _buildUnifiedList(theme, searchQuery),
+            ),
+          ),
         ],
       ),
     );
@@ -498,15 +510,21 @@ class _ChatConversationsScreenState
                 color: theme.hintColor,
                 size: 22,
               ),
-              suffixIcon: _searchQuery.isNotEmpty
-                  ? IconButton(
-                      icon: Icon(
-                        Icons.clear_rounded,
-                        color: theme.hintColor,
-                      ),
-                      onPressed: _clearSearch,
-                    )
-                  : null,
+              suffixIcon: ValueListenableBuilder<String>(
+                valueListenable: _searchQueryNotifier,
+                builder: (context, searchQuery, _) {
+                  if (searchQuery.isEmpty) {
+                    return const SizedBox.shrink();
+                  }
+                  return IconButton(
+                    icon: Icon(
+                      Icons.clear_rounded,
+                      color: theme.hintColor,
+                    ),
+                    onPressed: _clearSearch,
+                  );
+                },
+              ),
               border: InputBorder.none,
               contentPadding: const EdgeInsets.symmetric(
                 horizontal: 16,
@@ -514,7 +532,10 @@ class _ChatConversationsScreenState
               ),
             ),
             onChanged: (query) {
-              setState(() => _searchQuery = query);
+              _searchDebounce?.cancel();
+              _searchDebounce = Timer(const Duration(milliseconds: 180), () {
+                _searchQueryNotifier.value = query.trim();
+              });
             },
           ),
         ),
@@ -523,61 +544,76 @@ class _ChatConversationsScreenState
   }
 
   // ✅ لیست مکالمات بر پایه Optimized Provider (منبع واحد برای badge + ترتیب)
-  Widget _buildUnifiedList(ThemeData theme) {
-    return Consumer(
-      builder: (context, ref, child) {
-        final conversationsState = ref.watch(optimizedConversationsProvider);
-        final conversations = conversationsState.conversations;
+  Widget _buildUnifiedList(ThemeData theme, String searchQuery) {
+    final conversationsState = ref.watch(
+      optimizedConversationsProvider.select(
+        (state) => (
+          state.conversations,
+          state.status,
+          state.errorMessage,
+        ),
+      ),
+    );
+    final conversations = conversationsState.$1;
+    final status = conversationsState.$2;
+    final errorMessage = conversationsState.$3;
 
-        final isInitialLoading =
-            (conversationsState.status == ConversationsStatus.loading ||
-                    conversationsState.status == ConversationsStatus.initial) &&
-                conversations.isEmpty;
-        if (isInitialLoading) {
-          return _buildLoadingState(theme);
-        }
+    final isInitialLoading =
+        (status == ConversationsStatus.loading ||
+                status == ConversationsStatus.initial) &&
+            conversations.isEmpty;
+    if (isInitialLoading) {
+      return _buildLoadingState(theme);
+    }
 
-        if (conversationsState.status == ConversationsStatus.error &&
-            conversations.isEmpty) {
-          return _buildErrorState(
-            theme,
-            conversationsState.errorMessage ??
-                (AppLocalizations.of(context)?.errorLoadingConversations ??
-                    'خطا در بارگذاری گفتگوها'),
-          );
-        }
+    if (status == ConversationsStatus.error && conversations.isEmpty) {
+      return _buildErrorState(
+        theme,
+        errorMessage ??
+            (AppLocalizations.of(context)?.errorLoadingConversations ??
+                'خطا در بارگذاری گفتگوها'),
+      );
+    }
 
-        if (conversations.isEmpty) {
-          return _buildEmptyState(
-            theme,
-            AppLocalizations.of(context)?.noConversations ??
-                'هیچ گفتگویی وجود ندارد',
-            Icons.chat_bubble_outline_rounded,
-          );
-        }
+    if (conversations.isEmpty) {
+      return _buildEmptyState(
+        theme,
+        AppLocalizations.of(context)?.noConversations ??
+            'هیچ گفتگویی وجود ندارد',
+        Icons.chat_bubble_outline_rounded,
+        isSearchActive: searchQuery.isNotEmpty,
+      );
+    }
 
-        return _buildOptimizedConversationsList(theme, conversations, ref);
-      },
+    return _buildOptimizedConversationsList(
+      theme,
+      conversations,
+      ref,
+      searchQuery: searchQuery,
     );
   }
 
   // ✅ لیست بهینه با Swipe Actions و گروه‌بندی Pinned
   Widget _buildOptimizedConversationsList(
-      ThemeData theme, List<ConversationModel> conversations, WidgetRef ref) {
+    ThemeData theme,
+    List<ConversationModel> conversations,
+    WidgetRef ref, {
+    required String searchQuery,
+  }) {
     // فیلتر جستجو
-    final filteredConversations = _searchQuery.isEmpty
+    final filteredConversations = searchQuery.isEmpty
         ? conversations
         : conversations.where((c) {
             final name = c.otherUserName?.toLowerCase() ?? '';
             final message = c.lastMessage?.toLowerCase() ?? '';
-            final query = _searchQuery.toLowerCase();
+            final query = searchQuery.toLowerCase();
             return name.contains(query) || message.contains(query);
           }).toList();
 
     if (filteredConversations.isEmpty) {
       return CustomScrollView(
         slivers: [
-          if (_searchQuery.isEmpty)
+          if (searchQuery.isEmpty)
             const SliverToBoxAdapter(
               child: Padding(
                 padding: EdgeInsets.only(top: 8, bottom: 8),
@@ -588,12 +624,13 @@ class _ChatConversationsScreenState
             hasScrollBody: false,
             child: _buildEmptyState(
               theme,
-              _searchQuery.isEmpty
+              searchQuery.isEmpty
                   ? (AppLocalizations.of(context)?.noConversations ??
                       'هیچ گفتگویی وجود ندارد')
                   : (AppLocalizations.of(context)?.noResultsFound ??
                       'نتیجه‌ای یافت نشد'),
               Icons.chat_bubble_outline_rounded,
+              isSearchActive: searchQuery.isNotEmpty,
             ),
           ),
         ],
@@ -618,7 +655,7 @@ class _ChatConversationsScreenState
         scrollCacheExtent: const ScrollCacheExtent.pixels(500),
         slivers: [
           // ✅ بخش یادداشت‌ها (Notes) - فقط اگر در حالت جستجو نباشیم
-          if (_searchQuery.isEmpty)
+          if (searchQuery.isEmpty)
             const SliverToBoxAdapter(
               child: Padding(
                 padding: EdgeInsets.only(top: 8, bottom: 8),
@@ -626,7 +663,7 @@ class _ChatConversationsScreenState
               ),
             ),
 
-          // ✅ بخش درخواست پیام (Instagram/X style)
+          // ✅ بخش درخواست پیام (Social/X style)
           if (requestConversations.isNotEmpty) ...[
             SliverToBoxAdapter(
               child: _buildSectionHeader(
@@ -646,6 +683,14 @@ class _ChatConversationsScreenState
                     requestConversations.length,
                     isPinnedSection: false,
                   );
+                },
+                findChildIndexCallback: (key) {
+                  if (key is ValueKey<String> && key.value.startsWith('conv_')) {
+                    final id = key.value.substring(5);
+                    final index = requestConversations.indexWhere((c) => c.id == id);
+                    if (index >= 0) return index;
+                  }
+                  return null;
                 },
                 childCount: requestConversations.length,
               ),
@@ -669,6 +714,14 @@ class _ChatConversationsScreenState
                       theme, conversation, index, pinnedConversations.length,
                       isPinnedSection: true);
                 },
+                findChildIndexCallback: (key) {
+                  if (key is ValueKey<String> && key.value.startsWith('conv_')) {
+                    final id = key.value.substring(5);
+                    final index = pinnedConversations.indexWhere((c) => c.id == id);
+                    if (index >= 0) return index;
+                  }
+                  return null;
+                },
                 childCount: pinnedConversations.length,
               ),
             ),
@@ -691,6 +744,14 @@ class _ChatConversationsScreenState
                   return _buildSwipeableItem(
                       theme, conversation, index, regularConversations.length,
                       isPinnedSection: false);
+                },
+                findChildIndexCallback: (key) {
+                  if (key is ValueKey<String> && key.value.startsWith('conv_')) {
+                    final id = key.value.substring(5);
+                    final index = regularConversations.indexWhere((c) => c.id == id);
+                    if (index >= 0) return index;
+                  }
+                  return null;
                 },
                 childCount: regularConversations.length,
               ),
@@ -745,6 +806,7 @@ class _ChatConversationsScreenState
     final showRequestActions = conversation.isMessageRequest;
     final isSelected = _selectedConversationIds.contains(conversation.id);
     return Column(
+      key: ValueKey('conv_${conversation.id}'),
       children: [
         AnimatedContainer(
           duration: const Duration(milliseconds: 160),
@@ -909,18 +971,16 @@ class _ChatConversationsScreenState
 
   // ✅ Navigation به مکالمه
   Future<void> _navigateToConversation(ConversationModel conversation) async {
-    await Navigator.push(
+    await Navigator.push<void>(
       context,
-      MaterialPageRoute(
-        builder: (context) => ModernChatScreen(
-          args: ChatScreenArgs(
-            conversationId: conversation.id,
-            otherUserName: _conversationDisplayName(conversation),
-            otherUserAvatar: conversation.otherUserAvatar,
-            otherUserId: conversation.otherUserId ?? '',
-            isGroup: conversation.isGroup,
-            isSecret: conversation.isSecret,
-          ),
+      ChatScreenRoute(
+        args: ChatScreenArgs(
+          conversationId: conversation.id,
+          otherUserName: _conversationDisplayName(conversation),
+          otherUserAvatar: conversation.otherUserAvatar,
+          otherUserId: conversation.otherUserId ?? '',
+          isGroup: conversation.isGroup,
+          isSecret: conversation.isSecret,
         ),
       ),
     );
@@ -1263,7 +1323,12 @@ class _ChatConversationsScreenState
   }
 
   // Empty State
-  Widget _buildEmptyState(ThemeData theme, String message, IconData icon) {
+  Widget _buildEmptyState(
+    ThemeData theme,
+    String message,
+    IconData icon, {
+    required bool isSearchActive,
+  }) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
@@ -1294,9 +1359,9 @@ class _ChatConversationsScreenState
             ),
             const SizedBox(height: 8),
             Text(
-              _searchQuery.isEmpty
-                  ? 'با دکمه مداد پیام جدید شروع کنید'
-                  : 'عبارت دیگری را امتحان کنید',
+              isSearchActive
+                  ? 'عبارت دیگری را امتحان کنید'
+                  : 'با دکمه مداد پیام جدید شروع کنید',
               style: TextStyle(
                 fontSize: 14,
                 color: theme.hintColor.withValues(alpha: 0.7),
@@ -1401,7 +1466,7 @@ class _ChatConversationsScreenState
 
   void _clearSearch() {
     _searchController.clear();
-    setState(() => _searchQuery = '');
+    _searchQueryNotifier.value = '';
   }
 
   Future<void> _resetCacheAndRefresh() async {

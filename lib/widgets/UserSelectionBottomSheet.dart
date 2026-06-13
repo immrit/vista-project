@@ -230,10 +230,10 @@ class _UserSelectionBottomSheetState
       return _buildEmptyState(theme);
     }
 
-    return _buildInstagramStyleGrid(theme, filteredConversations);
+    return _buildSocialStyleGrid(theme, filteredConversations);
   }
 
-  Widget _buildInstagramStyleGrid(
+  Widget _buildSocialStyleGrid(
       ThemeData theme, List<dynamic> conversations) {
     return GridView.builder(
       padding: const EdgeInsets.all(20),
@@ -246,12 +246,12 @@ class _UserSelectionBottomSheetState
       itemCount: conversations.length,
       itemBuilder: (context, index) {
         final conversation = conversations[index];
-        return _buildInstagramStyleUserCard(theme, conversation, index);
+        return _buildSocialStyleUserCard(theme, conversation, index);
       },
     );
   }
 
-  Widget _buildInstagramStyleUserCard(
+  Widget _buildSocialStyleUserCard(
       ThemeData theme, dynamic conversation, int index) {
     final isSelected = _selectedConversationIds.contains(conversation.id);
 

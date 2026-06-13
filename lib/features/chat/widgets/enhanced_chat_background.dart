@@ -102,12 +102,12 @@ class _EnhancedChatBackgroundState
   }
 }
 
-/// Telegram-style Message Background Pattern
-class TelegramMessagePattern extends StatelessWidget {
+/// Modern-style Message Background Pattern
+class ModernMessagePattern extends StatelessWidget {
   final bool isMe;
   final Widget child;
 
-  const TelegramMessagePattern({
+  const ModernMessagePattern({
     super.key,
     required this.isMe,
     required this.child,

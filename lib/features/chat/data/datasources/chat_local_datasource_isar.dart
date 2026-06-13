@@ -117,7 +117,8 @@ class ChatLocalDataSourceIsar {
             conversation.lastMessageDeliveryStatus = 'pending';
           } else if (merged.isFailed == true) {
             conversation.lastMessageDeliveryStatus = 'failed';
-          } else if (merged.isSeen == true || merged.isRead == true) {
+          } else if (merged.isMe &&
+              (merged.isSeen == true || merged.isRead == true)) {
             conversation.lastMessageDeliveryStatus = 'read';
           } else if (merged.isDelivered == true) {
             conversation.lastMessageDeliveryStatus = 'delivered';
@@ -178,9 +179,16 @@ class ChatLocalDataSourceIsar {
     return incoming.copyWith(
       // Never regress delivery state due to stale sync snapshots.
       isSent: incoming.isSent || existing.isSent,
-      isDelivered: incoming.isDelivered || existing.isDelivered,
-      isSeen: incoming.isSeen || existing.isSeen,
-      isRead: incoming.isRead || existing.isRead,
+      isDelivered: incoming.isMe
+          ? incoming.isDelivered
+          : (incoming.isDelivered || existing.isDelivered),
+      // Outgoing read receipts must follow server truth so ticks can regress.
+      isSeen: incoming.isMe
+          ? incoming.isSeen
+          : (incoming.isSeen || existing.isSeen),
+      isRead: incoming.isMe
+          ? incoming.isRead
+          : (incoming.isRead || existing.isRead),
       // Pending can only stay true if neither sent nor seen yet.
       isPending: incoming.isPending &&
           !(incoming.isSent ||
@@ -296,6 +304,35 @@ class ChatLocalDataSourceIsar {
         conversation.unreadCount = 0;
         conversation.hasUnreadMessages = false;
         await isar.conversationEntitys.put(conversation);
+      }
+    });
+  }
+
+  Future<void> markOwnMessagesReadUpTo(
+    String conversationId,
+    DateTime readAt,
+  ) async {
+    final isar = await _dbManager.instance;
+    await isar.writeTxn(() async {
+      final messages = await isar.messageEntitys
+          .filter()
+          .conversationIdEqualTo(conversationId)
+          .isMeEqualTo(true)
+          .findAll();
+
+      var changed = false;
+      for (final msg in messages) {
+        if (msg.createdAt.isAfter(readAt)) continue;
+        if (msg.isSeen && msg.isRead && msg.isDelivered) continue;
+        msg.isSeen = true;
+        msg.isRead = true;
+        msg.isDelivered = true;
+        changed = true;
+      }
+
+      if (changed) {
+        await isar.messageEntitys.putAll(messages);
+        await _rebuildConversationMetadataInTxn(isar, conversationId);
       }
     });
   }
@@ -727,7 +764,10 @@ class ChatLocalDataSourceIsar {
   String _messageDeliveryStatusToString(MessageModel message) {
     if (message.isPending == true) return 'pending';
     if (message.isFailed == true) return 'failed';
-    if (message.isSeen == true || message.isRead == true) return 'read';
+    if (message.isMe &&
+        (message.isSeen == true || message.isRead == true)) {
+      return 'read';
+    }
     if (message.isDelivered == true) return 'delivered';
     if (message.isSent == true) return 'sent';
     return 'sent';

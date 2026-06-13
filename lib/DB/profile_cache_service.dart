@@ -25,7 +25,15 @@ class ProfileCacheService {
   static const Duration cacheValidityDuration = Duration(hours: 2);
   static const int maxCachedPostsPerUser = 50;
 
-  Future<Isar> get _db async => await IsarDatabaseManager().instance;
+  Future<Isar> get _db async {
+    try {
+      return await IsarDatabaseManager().instance;
+    } on IsarError catch (e) {
+      logInfo('⚠️ Isar open contention, retrying once: $e');
+      await Future.delayed(const Duration(milliseconds: 120));
+      return IsarDatabaseManager().instance;
+    }
+  }
 
   /// مقداردهی اولیه (دیگر نیازی به لود کردن همه چیز در رم نیست)
   Future<void> initialize() async {
@@ -259,6 +267,7 @@ class ProfileCacheService {
   }
 
   bool _isRecoverableSyncError(Object error) {
+    if (error is IsarError) return true;
     if (error is DioException) {
       final statusCode = error.response?.statusCode;
       if (statusCode == 429) return true;

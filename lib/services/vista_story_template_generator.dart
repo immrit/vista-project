@@ -1,4 +1,4 @@
-﻿import '../security/logging_utility.dart';
+import '../security/logging_utility.dart';
 import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
@@ -26,6 +26,7 @@ class VistaStoryTemplateGenerator {
     Color? textColor,
     String? customPostText,
     String? customImageUrl,
+    bool waitForRender = true,
   }) async {
     try {
       return await _generateFromWidget(
@@ -36,6 +37,7 @@ class VistaStoryTemplateGenerator {
         textColor: textColor,
         customPostText: customPostText,
         customImageUrl: customImageUrl,
+        waitForRender: waitForRender,
       );
     } catch (e) {
       logDebug('Error generating Vista story template: $e');
@@ -92,10 +94,15 @@ class VistaStoryTemplateGenerator {
     Color? textColor,
     String? customPostText,
     String? customImageUrl,
+    bool waitForRender = true,
   }) async {
     try {
       logDebug('=== شروع تولید تصویر از ویجت ===');
       logDebug('RepaintBoundary key: $repaintBoundaryKey');
+
+      if (waitForRender) {
+        await _waitForWidgetRender();
+      }
 
       final BuildContext? context = repaintBoundaryKey.currentContext;
       if (context == null) {
@@ -200,8 +207,15 @@ class VistaStoryTemplateGenerator {
     }
   }
 
+  Future<void> _waitForWidgetRender() async {
+    await Future<void>.delayed(const Duration(milliseconds: 120));
+    await WidgetsBinding.instance.endOfFrame;
+    await WidgetsBinding.instance.endOfFrame;
+    await Future<void>.delayed(const Duration(milliseconds: 80));
+  }
+
   /// اشتراک‌گذاری قالب به ویستا استوری
-  Future<void> shareToInstagramStory(File imageFile) async {
+  Future<void> shareToSocialStory(File imageFile) async {
     try {
       final String filePath = imageFile.path;
 
@@ -211,8 +225,8 @@ class VistaStoryTemplateGenerator {
         subject: 'Vista Story Template',
       );
     } catch (e) {
-      logDebug('Error sharing to Instagram: $e');
-      throw Exception('Failed to share to Instagram');
+      logDebug('Error sharing to Social: $e');
+      throw Exception('Failed to share to Social');
     }
   }
 

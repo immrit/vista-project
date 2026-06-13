@@ -1,29 +1,40 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
+import '../../chat/utils/chat_text_direction.dart';
+
 /// Renders text with clickable #hashtags.
 ///
 /// - Supports Persian + Latin hashtags: `#([\u0600-\u06FF\w_]+)`
 /// - Calls [onHashtagTap] with the normalized tag (without leading '#').
 /// - Disposes gesture recognizers to avoid leaks.
+/// - Optionally shows [readMoreLabel] when [maxLines] truncates the text.
 class HashtagRichText extends StatefulWidget {
   final String text;
   final TextStyle? style;
   final TextStyle? hashtagStyle;
+  final TextStyle? readMoreStyle;
   final TextAlign textAlign;
+  final TextDirection? textDirection;
   final int? maxLines;
   final TextOverflow overflow;
+  final String? readMoreLabel;
   final ValueChanged<String>? onHashtagTap;
+  final VoidCallback? onReadMoreTap;
 
   const HashtagRichText({
     super.key,
     required this.text,
     this.style,
     this.hashtagStyle,
+    this.readMoreStyle,
     this.textAlign = TextAlign.start,
+    this.textDirection,
     this.maxLines,
     this.overflow = TextOverflow.clip,
+    this.readMoreLabel,
     this.onHashtagTap,
+    this.onReadMoreTap,
   });
 
   @override
@@ -49,17 +60,7 @@ class _HashtagRichTextState extends State<HashtagRichText> {
     _recognizers.clear();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    _resetRecognizers();
-
-    final baseStyle = widget.style ?? DefaultTextStyle.of(context).style;
-    final tagStyle = widget.hashtagStyle ??
-        baseStyle.copyWith(
-          color: Colors.blue,
-          fontWeight: FontWeight.w600,
-        );
-
+  List<InlineSpan> _buildSpans(TextStyle baseStyle, TextStyle tagStyle) {
     final text = widget.text;
     final reg = RegExp(r'#([\u0600-\u06FF\w_]+)', unicode: true);
 
@@ -69,7 +70,8 @@ class _HashtagRichTextState extends State<HashtagRichText> {
     for (final m in reg.allMatches(text)) {
       if (m.start > start) {
         spans.add(
-            TextSpan(text: text.substring(start, m.start), style: baseStyle));
+          TextSpan(text: text.substring(start, m.start), style: baseStyle),
+        );
       }
 
       final raw = m.group(1) ?? '';
@@ -97,11 +99,95 @@ class _HashtagRichTextState extends State<HashtagRichText> {
       spans.add(TextSpan(text: text.substring(start), style: baseStyle));
     }
 
-    return RichText(
+    return spans;
+  }
+
+  bool _didExceedMaxLines({
+    required double maxWidth,
+    required TextDirection direction,
+    required TextStyle baseStyle,
+  }) {
+    final maxLines = widget.maxLines;
+    if (maxLines == null || widget.text.isEmpty) return false;
+
+    final painter = TextPainter(
+      text: TextSpan(text: widget.text, style: baseStyle),
+      textDirection: direction,
       textAlign: widget.textAlign,
-      maxLines: widget.maxLines,
-      overflow: widget.overflow,
-      text: TextSpan(children: spans),
+      maxLines: maxLines,
+    )..layout(maxWidth: maxWidth);
+
+    return painter.didExceedMaxLines;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    _resetRecognizers();
+
+    final baseStyle = widget.style ?? DefaultTextStyle.of(context).style;
+    final tagStyle = widget.hashtagStyle ??
+        baseStyle.copyWith(
+          color: Colors.blue,
+          fontWeight: FontWeight.w600,
+        );
+    final direction = widget.textDirection ??
+        resolveChatTextDirection(
+          widget.text,
+          fallback: Directionality.of(context),
+        );
+    final readMoreLabel = widget.readMoreLabel;
+    final showReadMore = readMoreLabel != null && readMoreLabel.isNotEmpty;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final maxWidth = constraints.maxWidth;
+        final isOverflowing = showReadMore &&
+            maxWidth.isFinite &&
+            _didExceedMaxLines(
+              maxWidth: maxWidth,
+              direction: direction,
+              baseStyle: baseStyle,
+            );
+        final readMoreStyle = widget.readMoreStyle ??
+            baseStyle.copyWith(
+              color: baseStyle.color?.withValues(alpha: 0.65) ??
+                  Colors.grey,
+              fontWeight: FontWeight.w600,
+            );
+
+        final spans = _buildSpans(baseStyle, tagStyle);
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            RichText(
+              textDirection: direction,
+              textAlign: widget.textAlign,
+              maxLines: widget.maxLines,
+              overflow: isOverflowing ? TextOverflow.clip : widget.overflow,
+              text: TextSpan(children: spans),
+            ),
+            if (isOverflowing)
+              Align(
+                alignment: direction == TextDirection.rtl
+                    ? AlignmentDirectional.centerEnd
+                    : AlignmentDirectional.centerStart,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: widget.onReadMoreTap,
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(
+                      readMoreLabel,
+                      style: readMoreStyle,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 }

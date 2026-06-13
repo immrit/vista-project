@@ -3,19 +3,19 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../utils/rich_text_parser.dart';
-import '../domain/telegram_emoji_lookup.dart';
-import 'telegram_emoji_inline.dart';
+import '../domain/modern_emoji_lookup.dart';
+import 'modern_emoji_inline.dart';
 
-class TelegramEmojiText extends StatelessWidget {
+class ModernEmojiText extends StatelessWidget {
   final String text;
   final TextStyle? style;
   final TextDirection? textDirection;
   final TextAlign textAlign;
   final int? maxLines;
   final TextOverflow overflow;
-  final bool useTelegramEmoji;
+  final bool useModernEmoji;
 
-  const TelegramEmojiText(
+  const ModernEmojiText(
     this.text, {
     super.key,
     this.style,
@@ -23,13 +23,13 @@ class TelegramEmojiText extends StatelessWidget {
     this.textAlign = TextAlign.start,
     this.maxLines,
     this.overflow = TextOverflow.clip,
-    this.useTelegramEmoji = true,
+    this.useModernEmoji = true,
   });
 
   @override
   Widget build(BuildContext context) {
     final effectiveStyle = style ?? DefaultTextStyle.of(context).style;
-    if (!useTelegramEmoji || text.isEmpty) {
+    if (!useModernEmoji || text.isEmpty) {
       return Text(
         text,
         style: effectiveStyle,
@@ -43,7 +43,7 @@ class TelegramEmojiText extends StatelessWidget {
     final spans = _buildInlineSpans(
       source: text,
       baseStyle: effectiveStyle,
-      useTelegramEmoji: useTelegramEmoji,
+      useModernEmoji: useModernEmoji,
       onTap: null,
     );
 
@@ -60,7 +60,7 @@ class TelegramEmojiText extends StatelessWidget {
   }
 }
 
-class TelegramEmojiRichText extends StatelessWidget {
+class ModernEmojiRichText extends StatelessWidget {
   final String text;
   final TextStyle baseStyle;
   final Color linkColor;
@@ -73,9 +73,9 @@ class TelegramEmojiRichText extends StatelessWidget {
   final TextAlign textAlign;
   final int? maxLines;
   final TextOverflow overflow;
-  final bool useTelegramEmoji;
+  final bool useModernEmoji;
 
-  const TelegramEmojiRichText({
+  const ModernEmojiRichText({
     super.key,
     required this.text,
     required this.baseStyle,
@@ -89,12 +89,12 @@ class TelegramEmojiRichText extends StatelessWidget {
     this.textAlign = TextAlign.right,
     this.maxLines,
     this.overflow = TextOverflow.clip,
-    this.useTelegramEmoji = true,
+    this.useModernEmoji = true,
   });
 
   @override
   Widget build(BuildContext context) {
-    if (!useTelegramEmoji || text.isEmpty) {
+    if (!useModernEmoji || text.isEmpty) {
       return RichText(
         textDirection: textDirection,
         textAlign: textAlign,
@@ -125,7 +125,7 @@ class TelegramEmojiRichText extends StatelessWidget {
                 color: linkColor,
                 decoration: TextDecoration.underline,
               ),
-              useTelegramEmoji: useTelegramEmoji,
+              useModernEmoji: useModernEmoji,
               onTap: () async {
                 if (onLinkTap != null && token.value != null) {
                   onLinkTap!(token.value!);
@@ -150,7 +150,7 @@ class TelegramEmojiRichText extends StatelessWidget {
                 color: mentionColor,
                 fontWeight: FontWeight.bold,
               ),
-              useTelegramEmoji: useTelegramEmoji,
+              useModernEmoji: useModernEmoji,
               onTap: () {
                 if (onMentionTap != null && token.value != null) {
                   onMentionTap!(token.value!);
@@ -164,7 +164,7 @@ class TelegramEmojiRichText extends StatelessWidget {
             _buildInlineSpans(
               source: token.text,
               baseStyle: baseStyle.copyWith(color: hashtagColor),
-              useTelegramEmoji: useTelegramEmoji,
+              useModernEmoji: useModernEmoji,
               onTap: () {
                 if (onHashtagTap != null && token.value != null) {
                   onHashtagTap!(token.value!);
@@ -178,7 +178,7 @@ class TelegramEmojiRichText extends StatelessWidget {
             _buildInlineSpans(
               source: token.text,
               baseStyle: baseStyle,
-              useTelegramEmoji: useTelegramEmoji,
+              useModernEmoji: useModernEmoji,
               onTap: null,
             ),
           );
@@ -202,14 +202,14 @@ class TelegramEmojiRichText extends StatelessWidget {
 List<InlineSpan> _buildInlineSpans({
   required String source,
   required TextStyle baseStyle,
-  required bool useTelegramEmoji,
+  required bool useModernEmoji,
   required VoidCallback? onTap,
 }) {
   if (source.isEmpty) return const <InlineSpan>[];
 
   final spans = <InlineSpan>[];
   final buffer = StringBuffer();
-  final lookup = TelegramEmojiLookup.instance;
+  final lookup = ModernEmojiLookup.instance;
   final emojiSize = ((baseStyle.fontSize ?? 14) * 1.18).clamp(12.0, 36.0);
 
   void flushBuffer() {
@@ -227,7 +227,7 @@ List<InlineSpan> _buildInlineSpans({
   }
 
   for (final grapheme in source.characters) {
-    final hasEmojiAsset = useTelegramEmoji && lookup.hasAsset(grapheme);
+    final hasEmojiAsset = useModernEmoji && lookup.hasAsset(grapheme);
     if (!hasEmojiAsset) {
       buffer.write(grapheme);
       continue;
@@ -236,7 +236,7 @@ List<InlineSpan> _buildInlineSpans({
     spans.add(
       WidgetSpan(
         alignment: PlaceholderAlignment.middle,
-        child: TelegramEmojiInline(
+        child: ModernEmojiInline(
           emoji: grapheme,
           size: emojiSize,
           fallbackStyle: baseStyle,

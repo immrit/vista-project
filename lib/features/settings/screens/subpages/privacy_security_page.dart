@@ -5,7 +5,7 @@ import '../../../../model/messagePrivacyModel.dart';
 import '../../../../provider/settings_providers.dart';
 import '../../../../services/advanced_security_service.dart';
 import '../../../../services/current_user_service.dart';
-import '../../../../services/telegram_read_receipt_service.dart';
+import '../../../../services/modern_read_receipt_service.dart';
 import '../../widgets/vista_settings_widgets.dart';
 import 'ActiveSessionsScreen.dart';
 import 'BlockedUsersPage.dart';
@@ -131,7 +131,20 @@ class _PrivacySecurityPageState extends ConsumerState<PrivacySecurityPage> {
                   value: settings['send_read_receipts'] as bool? ?? true,
                   onChanged: (value) {
                     _updateSetting(userId, 'send_read_receipts', value);
-                    TelegramReadReceiptService().invalidateSettingsCache();
+                    ModernReadReceiptService().invalidateSettingsCache();
+                  },
+                ),
+                VistaSettingsSwitch(
+                  icon: Icons.photo_size_select_large_outlined,
+                  title: 'بزرگنمایی تصویر پروفایل',
+                  subtitle:
+                      'اگر غیرفعال باشد، دیگران نمی‌توانند عکس پروفایل شما را بزرگ کنند',
+                  value: settings['allow_profile_zoom'] as bool? ?? true,
+                  onChanged: (value) async {
+                    await _updateSetting(userId, 'allow_profile_zoom', value);
+                    if (userId != null) {
+                      ref.invalidate(userSettingsByIdProvider(userId));
+                    }
                   },
                 ),
                 VistaSettingsTile(

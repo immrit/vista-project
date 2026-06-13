@@ -484,7 +484,7 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
     );
   }
 
-  /// Adds an Instagram-like transition only when switching between users.
+  /// Adds an Social-like transition only when switching between users.
   Widget _buildAnimatedStoryContent() {
     final rtlFactor = _isRtl ? -1.0 : 1.0;
     final signedDir = _userTransitionDirection * rtlFactor;

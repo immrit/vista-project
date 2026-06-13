@@ -42,10 +42,16 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 }
 
 @pragma('vm:entry-point')
-void notificationTapBackground(NotificationResponse notificationResponse) {
-  PushNotificationService.enqueueBackgroundNotificationAction(
+void notificationTapBackground(NotificationResponse notificationResponse) async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await PushNotificationService.enqueueBackgroundNotificationAction(
     notificationResponse,
   );
+  try {
+    await PushNotificationService.processPendingNotificationActions();
+  } catch (e) {
+    debugPrint('Background notification action failed: $e');
+  }
 }
 
 class AppInitialization {

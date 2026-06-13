@@ -131,7 +131,7 @@ class UserProfileService {
             (userSettings?['allow_profile_zoom'] as bool?) ?? true;
       } catch (e) {
         logInfo('⚠️ Error fetching allow_profile_zoom: $e');
-        allowProfileZoom = true; // default to true on error
+        allowProfileZoom = false;
       }
     }
 

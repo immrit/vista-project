@@ -416,7 +416,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    ref.watch(globalChatNotificationProvider);
     final unreadCount = ref.watch(unreadConversationsCountProvider);
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;

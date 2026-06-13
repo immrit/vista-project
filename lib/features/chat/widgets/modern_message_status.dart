@@ -1,10 +1,10 @@
-// lib/features/chat/widgets/telegram_message_status.dart
+// lib/features/chat/widgets/modern_message_status.dart
 //
 // ویجت نمایش وضعیت پیام - کاملاً مشابه ویستا
 // اصلاح شده: رفع مشکل پرش با استفاده از CustomPainter برای تمام وضعیت‌ها
 
 import 'package:flutter/material.dart';
-import '../../../services/telegram_read_receipt_service.dart';
+import '../../../services/modern_read_receipt_service.dart';
 
 /// رنگ‌های تیک
 class MessageStatusColors {
@@ -23,12 +23,12 @@ class MessageStatusColors {
 /// 3. SizedBox با عرض ثابت برای جلوگیری از layout shift
 /// 4. RepaintBoundary برای ایزوله کردن rebuild
 /// 5. layoutBuilder با Stack برای تراز دقیق
-class TelegramMessageStatus extends StatefulWidget {
+class ModernMessageStatus extends StatefulWidget {
   final MessageDeliveryStatus status;
   final double size;
   final Color? customColor;
 
-  const TelegramMessageStatus({
+  const ModernMessageStatus({
     super.key,
     required this.status,
     this.size = 16,
@@ -36,10 +36,10 @@ class TelegramMessageStatus extends StatefulWidget {
   });
 
   @override
-  State<TelegramMessageStatus> createState() => _TelegramMessageStatusState();
+  State<ModernMessageStatus> createState() => _ModernMessageStatusState();
 }
 
-class _TelegramMessageStatusState extends State<TelegramMessageStatus> {
+class _ModernMessageStatusState extends State<ModernMessageStatus> {
   Color _getStatusColor() {
     if (widget.customColor != null) return widget.customColor!;
 
@@ -336,7 +336,7 @@ class MessageTimeAndStatus extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.only(
                 bottom: 2), // تنظیم دقیق برای هم‌ترازی با متن
-            child: TelegramMessageStatus(
+            child: ModernMessageStatus(
               status: status,
               size: fontSize + 2,
               customColor: status == MessageDeliveryStatus.read

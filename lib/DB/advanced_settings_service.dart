@@ -69,7 +69,7 @@ class AdvancedSettingsService {
           'chat_perf_v1': true,
           'adaptive_effects_v1': true,
           'motion_tokens_v1': true,
-          'telegram_emoji_panel_v1': true,
+          'modern_emoji_panel_v1': true,
           'emoji_renderer_v1': true,
         },
       });
@@ -189,7 +189,7 @@ class AdvancedSettingsService {
     featureFlags.putIfAbsent('chat_perf_v1', () => true);
     featureFlags.putIfAbsent('adaptive_effects_v1', () => true);
     featureFlags.putIfAbsent('motion_tokens_v1', () => true);
-    featureFlags.putIfAbsent('telegram_emoji_panel_v1', () => true);
+    featureFlags.putIfAbsent('modern_emoji_panel_v1', () => true);
     featureFlags.putIfAbsent('emoji_renderer_v1', () => true);
     _performanceSettingsCache['feature_flags'] = featureFlags;
   }

@@ -7,6 +7,7 @@ import '../models/group_user_item.dart';
 import '../services/group_service.dart';
 import 'group_create_screen.dart';
 import 'modern_chat_screen.dart';
+import '../navigation/chat_screen_route.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/chat_providers.dart';
 
@@ -127,17 +128,15 @@ class _NewMessageScreenState extends ConsumerState<NewMessageScreen> {
     }
 
     if (!mounted) return;
-    Navigator.push(
+    Navigator.push<void>(
       context,
-      MaterialPageRoute(
-        builder: (_) => ModernChatScreen(
-          args: ChatScreenArgs(
-            conversationId: conversationId!,
-            otherUserName: user.displayName,
-            otherUserAvatar: user.avatarUrl,
-            otherUserId: user.id,
-            isSecret: isSecret,
-          ),
+      ChatScreenRoute(
+        args: ChatScreenArgs(
+          conversationId: conversationId!,
+          otherUserName: user.displayName,
+          otherUserAvatar: user.avatarUrl,
+          otherUserId: user.id,
+          isSecret: isSecret,
         ),
       ),
     );

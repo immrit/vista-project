@@ -1,5 +1,4 @@
 import 'package:buttons_tabbar/buttons_tabbar.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shimmer/shimmer.dart';
@@ -8,6 +7,7 @@ import '../../../model/notificationModel.dart';
 import '../../../provider/notification_provider.dart';
 import 'package:Vista/services/notification_navigation_service.dart';
 import 'package:Vista/widgets/verification_badge_icon.dart';
+import 'package:Vista/utils/avatar_asset_utils.dart';
 import 'package:Vista/utils/verification_badge_utils.dart';
 
 class NotificationsPage extends ConsumerStatefulWidget {
@@ -121,13 +121,28 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
       return const SizedBox.shrink();
     }
 
-    return Padding(
-      padding: const EdgeInsets.only(right: 4),
-      child: VerificationBadgeIcon(
-        isVerified: notification.userIsVerified,
-        verificationType: notification.verificationType,
-        size: 16,
-      ),
+    return VerificationBadgeIcon(
+      isVerified: notification.userIsVerified,
+      verificationType: notification.verificationType,
+      size: 16,
+    );
+  }
+
+  Widget _buildInlineVerificationBadge(NotificationModel notification) {
+    final resolvedType = resolveVerificationBadgeType(
+      isVerified: notification.userIsVerified,
+      verificationType: notification.verificationType,
+    );
+    if (resolvedType == ResolvedVerificationBadgeType.none) {
+      return const SizedBox.shrink();
+    }
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const SizedBox(width: 4),
+        _buildVerificationBadge(notification),
+      ],
     );
   }
 
@@ -459,9 +474,9 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
     BuildContext context,
     List<NotificationModel> notifications,
   ) {
-    final notifier = ref.watch(notificationsProvider.notifier);
-    final hasMore = notifier.hasMore;
-    final isFetching = notifier.isFetching;
+    final notifier = ref.read(notificationsProvider.notifier);
+    final hasMore = ref.watch(notificationsHasMoreProvider);
+    final isFetching = ref.watch(notificationsLoadingProvider);
 
     if (notifications.isEmpty) {
       return Center(
@@ -544,7 +559,13 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
           final contentText =
               isBatched ? _buildBatchedLikeContent(item) : notification.content;
 
-          return Column(
+          return KeyedSubtree(
+            key: ValueKey<String>(
+              isBatched
+                  ? 'batch_${item.items.map((n) => n.id).join('_')}'
+                  : notification.id,
+            ),
+            child: Column(
             children: [
               Material(
                 color: isUnread ? highlightColor : Colors.transparent,
@@ -577,33 +598,32 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
                               children: [
                                 ClipRRect(
                                   borderRadius: BorderRadius.circular(24),
-                                  child: (notification.avatarUrl == null ||
-                                          notification.avatarUrl!.isEmpty)
-                                      ? Container(
-                                          width: 48,
-                                          height: 48,
-                                          color: Colors.grey.shade300,
-                                          child: const Icon(Icons.person,
-                                              color: Colors.white, size: 32),
-                                        )
-                                      : CachedNetworkImage(
-                                          imageUrl: notification.avatarUrl!,
-                                          width: 48,
-                                          height: 48,
-                                          fit: BoxFit.cover,
-                                          placeholder: (_, __) => Container(
-                                            width: 48,
-                                            height: 48,
-                                            color: Colors.grey.shade300,
-                                          ),
-                                          errorWidget: (_, __, ___) => Container(
-                                            width: 48,
-                                            height: 48,
-                                            color: Colors.grey.shade300,
-                                            child: const Icon(Icons.person,
-                                                color: Colors.white, size: 32),
-                                          ),
+                                  child: SizedBox(
+                                    width: 48,
+                                    height: 48,
+                                    child: AvatarAssetUtils.image(
+                                      source: notification.avatarUrl,
+                                      fit: BoxFit.cover,
+                                      memCacheWidth: 96,
+                                      memCacheHeight: 96,
+                                      placeholder: Container(
+                                        color: Colors.grey.shade300,
+                                        child: const Icon(
+                                          Icons.person,
+                                          color: Colors.white,
+                                          size: 32,
                                         ),
+                                      ),
+                                      fallback: Container(
+                                        color: Colors.grey.shade300,
+                                        child: const Icon(
+                                          Icons.person,
+                                          color: Colors.white,
+                                          size: 32,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
                                 ),
                                 Positioned(
                                   right: 0,
@@ -634,7 +654,7 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
                             children: [
                               Row(
                                 children: [
-                                  Expanded(
+                                  Flexible(
                                     child: Text(
                                       notification.username.isNotEmpty
                                           ? notification.username
@@ -651,7 +671,7 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
-                                  _buildVerificationBadge(notification),
+                                  _buildInlineVerificationBadge(notification),
                                   if (isUnread)
                                     Container(
                                       width: 6,
@@ -723,6 +743,7 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
                 ),
               ),
             ],
+          ),
           );
         },
       ),
@@ -733,9 +754,10 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
   Widget build(BuildContext context) {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     final notifications = ref.watch(notificationsProvider);
-    final notifier = ref.watch(notificationsProvider.notifier);
+    final isFetching = ref.watch(notificationsLoadingProvider);
+    final hasMore = ref.watch(notificationsHasMoreProvider);
     final isInitialLoading =
-        notifications.isEmpty && (notifier.isFetching || notifier.hasMore);
+        notifications.isEmpty && (isFetching || hasMore);
 
     const tabs = <_NotificationTabData>[
       _NotificationTabData(
@@ -834,9 +856,9 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
                                   Builder(
                                     builder: (_) {
                                       final unreadCount = ref.watch(
-                                        unreadNotificationCountByFilterProvider(
-                                          tab.type,
-                                        ),
+                                        unreadCountsByFilterProvider
+                                            .select((counts) =>
+                                                counts[tab.type] ?? 0),
                                       );
                                       if (unreadCount <= 0) {
                                         return const SizedBox.shrink();

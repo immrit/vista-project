@@ -6,7 +6,7 @@ import '../../chat/screens/ChatPartnerInfoScreen.dart';
 import '../../chat/screens/modern_chat_screen.dart';
 import '../../chat/services/group_service.dart';
 import '../../profile/data/profile_repository.dart';
-import '../../posts/screens/profileScreen.dart';
+import '../../posts/navigation/content_routes.dart';
 
 /// اسکنر پیشرفته ویستا برای اسکن QR کدهای پروفایل
 class VistaQRScanner extends ConsumerStatefulWidget {
@@ -92,14 +92,10 @@ class _VistaQRScannerState extends ConsumerState<VistaQRScanner>
         Navigator.pop(context);
 
         // رفتن به صفحه پروفایل کاربر
-        Navigator.push(
+        ContentNavigation.pushProfile(
           context,
-          MaterialPageRoute(
-            builder: (_) => ProfileScreen(
-              userId: userId,
-              username: username,
-            ),
-          ),
+          userId: userId,
+          username: username,
         );
       } catch (e) {
         if (!mounted) return;

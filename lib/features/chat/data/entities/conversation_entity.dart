@@ -1,6 +1,6 @@
 import 'package:isar/isar.dart';
 import '../../../../model/conversation_model.dart';
-import '../../../../services/telegram_read_receipt_service.dart'; // ✅ Correct import
+import '../../../../services/modern_read_receipt_service.dart'; // ✅ Correct import
 
 part 'conversation_entity.g.dart';
 

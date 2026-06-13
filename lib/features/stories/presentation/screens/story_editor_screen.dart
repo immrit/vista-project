@@ -127,7 +127,7 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
 
       StoryItem effectiveItem = updatedItem;
 
-      // Snap gently to canvas center for better precision (Instagram-like feel).
+      // Snap gently to canvas center for better precision (Social-like feel).
       final canvasSize = _resolveCanvasSize();
       final centerX = canvasSize.width / 2;
       final centerY = canvasSize.height / 2;

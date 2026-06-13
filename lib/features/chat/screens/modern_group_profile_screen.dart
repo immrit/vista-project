@@ -954,30 +954,35 @@ class _ModernGroupProfileScreenState
               controller: _tabController,
               children: [
                 _buildMembersTab(theme),
-                _buildSharedMessagesTab(
-                  theme,
+                _GroupSharedMessagesTab(
+                  conversationId: widget.conversationId,
                   filter: _isMediaMessage,
                   emptyIcon: Icons.photo_library_outlined,
                   emptyText: 'رسانه‌ای پیدا نشد',
                   grid: true,
+                  mapError: _mapGroupError,
                 ),
-                _buildSharedMessagesTab(
-                  theme,
+                _GroupSharedMessagesTab(
+                  conversationId: widget.conversationId,
                   filter: _isFileMessage,
                   emptyIcon: Icons.insert_drive_file_outlined,
                   emptyText: 'فایلی پیدا نشد',
+                  mapError: _mapGroupError,
                 ),
-                _buildSharedMessagesTab(
-                  theme,
+                _GroupSharedMessagesTab(
+                  conversationId: widget.conversationId,
                   filter: _hasLink,
                   emptyIcon: Icons.link_off_rounded,
                   emptyText: 'لینکی پیدا نشد',
+                  isLinkTab: true,
+                  mapError: _mapGroupError,
                 ),
-                _buildSharedMessagesTab(
-                  theme,
+                _GroupSharedMessagesTab(
+                  conversationId: widget.conversationId,
                   filter: _isVoiceMessage,
                   emptyIcon: Icons.keyboard_voice_outlined,
                   emptyText: 'پیام صوتی پیدا نشد',
+                  mapError: _mapGroupError,
                 ),
               ],
             ),
@@ -1113,55 +1118,6 @@ class _ModernGroupProfileScreenState
               ],
             )
           : null,
-    );
-  }
-
-  Widget _buildSharedMessagesTab(
-    ThemeData theme, {
-    required bool Function(MessageModel message) filter,
-    required IconData emptyIcon,
-    required String emptyText,
-    bool grid = false,
-  }) {
-    final messagesAsync =
-        ref.watch(chatMessagesProvider(widget.conversationId));
-    return messagesAsync.when(
-      data: (messages) {
-        final items = messages.where(filter).toList(growable: false);
-        if (items.isEmpty) {
-          return _EmptyPanel(icon: emptyIcon, text: emptyText);
-        }
-        if (grid) {
-          return GridView.builder(
-            padding: const EdgeInsets.all(12),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 3,
-              crossAxisSpacing: 6,
-              mainAxisSpacing: 6,
-            ),
-            itemCount: items.length,
-            itemBuilder: (context, index) => _MediaThumb(message: items[index]),
-          );
-        }
-        return ListView.separated(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          itemCount: items.length,
-          separatorBuilder: (_, __) => Divider(
-            height: 1,
-            indent: 64,
-            color: theme.dividerColor.withValues(alpha: 0.35),
-          ),
-          itemBuilder: (context, index) => _SharedMessageTile(
-            message: items[index],
-            isLink: filter == _hasLink,
-          ),
-        );
-      },
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, _) => _EmptyPanel(
-        icon: Icons.error_outline_rounded,
-        text: _mapGroupError(error),
-      ),
     );
   }
 
@@ -1823,6 +1779,87 @@ class _SharedMessageTile extends StatelessWidget {
       content,
     );
     return match?.group(0) ?? content;
+  }
+}
+
+class _GroupSharedMessagesTab extends ConsumerStatefulWidget {
+  const _GroupSharedMessagesTab({
+    required this.conversationId,
+    required this.filter,
+    required this.emptyIcon,
+    required this.emptyText,
+    this.grid = false,
+    this.isLinkTab = false,
+    required this.mapError,
+  });
+
+  final String conversationId;
+  final bool Function(MessageModel message) filter;
+  final IconData emptyIcon;
+  final String emptyText;
+  final bool grid;
+  final bool isLinkTab;
+  final String Function(Object error) mapError;
+
+  @override
+  ConsumerState<_GroupSharedMessagesTab> createState() =>
+      _GroupSharedMessagesTabState();
+}
+
+class _GroupSharedMessagesTabState extends ConsumerState<_GroupSharedMessagesTab>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    final theme = Theme.of(context);
+    final messagesAsync =
+        ref.watch(chatMessagesProvider(widget.conversationId));
+
+    return messagesAsync.when(
+      data: (messages) {
+        final items = messages.where(widget.filter).toList(growable: false);
+        if (items.isEmpty) {
+          return _EmptyPanel(
+            icon: widget.emptyIcon,
+            text: widget.emptyText,
+          );
+        }
+        if (widget.grid) {
+          return GridView.builder(
+            padding: const EdgeInsets.all(12),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 3,
+              crossAxisSpacing: 6,
+              mainAxisSpacing: 6,
+            ),
+            itemCount: items.length,
+            itemBuilder: (context, index) =>
+                _MediaThumb(message: items[index]),
+          );
+        }
+        return ListView.separated(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          itemCount: items.length,
+          separatorBuilder: (_, __) => Divider(
+            height: 1,
+            indent: 64,
+            color: theme.dividerColor.withValues(alpha: 0.35),
+          ),
+          itemBuilder: (context, index) => _SharedMessageTile(
+            message: items[index],
+            isLink: widget.isLinkTab,
+          ),
+        );
+      },
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (error, _) => _EmptyPanel(
+        icon: Icons.error_outline_rounded,
+        text: widget.mapError(error),
+      ),
+    );
   }
 }
 

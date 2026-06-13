@@ -8,7 +8,7 @@ import '../services/current_user_service.dart';
 import 'session_manager_service_v2.dart';
 
 /// ═══════════════════════════════════════════════════════════════════════════
-/// وضعیت‌های نشست - الهام گرفته از Telegram MTProto Authorization States
+/// وضعیت‌های نشست - الهام گرفته از Modern MTProto Authorization States
 /// ═══════════════════════════════════════════════════════════════════════════
 enum SessionState {
   /// نشست کاملاً معتبر و فعال
@@ -67,9 +67,9 @@ class SessionVerificationResult {
 /// سرویس مدیریت احراز هویت - سطح Enterprise
 ///
 /// الهام گرفته از:
-/// - Telegram MTProto Session Layer
+/// - Modern MTProto Session Layer
 /// - WhatsApp Signal Protocol Auth
-/// - Instagram Session Persistence
+/// - Social Session Persistence
 ///
 /// ویژگی‌ها:
 /// - Multi-layer session verification
@@ -110,7 +110,7 @@ class AuthNavigationService {
   static DateTime? _cacheTime;
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // CONFIGURATION (Telegram-inspired)
+  // CONFIGURATION (Modern-inspired)
   // ═══════════════════════════════════════════════════════════════════════════
 
   /// حداکثر تلاش برای refresh

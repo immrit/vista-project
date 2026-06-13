@@ -43,11 +43,11 @@ class MessageStatusInfo {
 typedef LastMessageStatusCallback = void Function(
     String conversationId, MessageDeliveryStatus status);
 
-class TelegramReadReceiptService {
-  static final TelegramReadReceiptService _instance =
-      TelegramReadReceiptService._internal();
-  factory TelegramReadReceiptService() => _instance;
-  TelegramReadReceiptService._internal();
+class ModernReadReceiptService {
+  static final ModernReadReceiptService _instance =
+      ModernReadReceiptService._internal();
+  factory ModernReadReceiptService() => _instance;
+  ModernReadReceiptService._internal();
 
   static String get _backendUrl =>
       EnvConfig.apiBaseUrl;
@@ -170,7 +170,7 @@ class TelegramReadReceiptService {
     if (_sseSubscription != null) return;
     SseManager.instance.start();
     _sseSubscription = SseManager.instance.events.listen(
-      (event) {
+      (event) async {
         if (event['type'] != 'read_receipt') return;
         final data = event['data'];
         if (data is! Map) return;
@@ -178,6 +178,15 @@ class TelegramReadReceiptService {
         final conversationId = data['conversation_id']?.toString() ?? '';
         if (conversationId.isEmpty ||
             !_listenedConversationIds.contains(conversationId)) {
+          return;
+        }
+
+        final readerId = data['user_id']?.toString() ?? '';
+        final currentUserId = await TokenStorage.getUserId();
+        if (readerId.isNotEmpty &&
+            currentUserId != null &&
+            readerId == currentUserId) {
+          // Ignore our own read cursor; it must not mark outgoing ticks as read.
           return;
         }
 
@@ -200,7 +209,7 @@ class TelegramReadReceiptService {
         );
       },
       onError: (Object error, StackTrace stackTrace) {
-        debugPrint('TelegramReadReceiptService SSE error: $error');
+        debugPrint('ModernReadReceiptService SSE error: $error');
       },
     );
   }
@@ -226,7 +235,7 @@ class TelegramReadReceiptService {
       _settingsLastCheckedAt = now;
       return enabled;
     } catch (e) {
-      debugPrint('TelegramReadReceiptService settings error: $e');
+      debugPrint('ModernReadReceiptService settings error: $e');
       return _sendReadReceiptsEnabled ?? true;
     }
   }

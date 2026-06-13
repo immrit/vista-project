@@ -1,4 +1,4 @@
-// lib/features/chat/widgets/telegram_online_status.dart
+// lib/features/chat/widgets/modern_online_status.dart
 //
 // ویجت وضعیت آنلاین به سبک ویستا
 //
@@ -325,7 +325,7 @@ class _TypingDotsAnimationState extends State<TypingDotsAnimation>
 }
 
 /// ✅ ویجت کامل وضعیت آنلاین به سبک ویستا - بهینه با Riverpod
-class TelegramOnlineStatus extends ConsumerWidget {
+class ModernOnlineStatus extends ConsumerWidget {
   final String userId;
   final bool showDot;
   final double dotSize;
@@ -333,7 +333,7 @@ class TelegramOnlineStatus extends ConsumerWidget {
   final bool isTyping;
   final bool isRecording;
 
-  const TelegramOnlineStatus({
+  const ModernOnlineStatus({
     super.key,
     required this.userId,
     this.showDot = false,

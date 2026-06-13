@@ -2,13 +2,13 @@ import 'dart:convert';
 
 import 'package:flutter/services.dart';
 
-class TelegramEmojiLookup {
-  TelegramEmojiLookup._();
+class ModernEmojiLookup {
+  ModernEmojiLookup._();
 
-  static final TelegramEmojiLookup instance = TelegramEmojiLookup._();
+  static final ModernEmojiLookup instance = ModernEmojiLookup._();
 
   static const String _assetMapPath =
-      'lib/features/emoji/data/telegram_emoji_map.json';
+      'lib/features/emoji/data/modern_emoji_map.json';
 
   final Map<String, String> _emojiToAsset = <String, String>{};
   bool _loaded = false;

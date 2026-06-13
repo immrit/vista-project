@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../domain/entities/story_editor_models.dart';
 
-/// Premium Questions Input Sheet (Instagram-style Q&A)
+/// Premium Questions Input Sheet (Social-style Q&A)
 class QuestionsInputSheet extends StatefulWidget {
   final Function(StoryInteractionType, Map<String, dynamic>) onQuestionCreated;
 

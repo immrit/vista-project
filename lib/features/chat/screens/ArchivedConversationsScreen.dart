@@ -6,6 +6,7 @@ import '../../../features/chat/providers/chat_providers.dart';
 // import '../../../provider/chat_provider.dart'; // Unused
 import '../../../provider/optimized_conversations_provider.dart';
 import '../../../features/chat/screens/modern_chat_screen.dart';
+import '../../../features/chat/navigation/chat_screen_route.dart';
 import '../../../utils/avatar_asset_utils.dart';
 import '../../../utils/user_friendly_error_utils.dart';
 
@@ -157,17 +158,15 @@ class ArchivedConversationsScreen extends ConsumerWidget {
   }
 
   void _navigateToChat(BuildContext context, ConversationModel conversation) {
-    Navigator.push(
+    Navigator.push<void>(
       context,
-      MaterialPageRoute(
-        builder: (context) => ModernChatScreen(
-          args: ChatScreenArgs(
-            conversationId: conversation.id,
-            otherUserName: _displayName(conversation),
-            otherUserAvatar: conversation.otherUserAvatar,
-            otherUserId: conversation.otherUserId ?? '',
-            isGroup: conversation.isGroup,
-          ),
+      ChatScreenRoute(
+        args: ChatScreenArgs(
+          conversationId: conversation.id,
+          otherUserName: _displayName(conversation),
+          otherUserAvatar: conversation.otherUserAvatar,
+          otherUserId: conversation.otherUserId ?? '',
+          isGroup: conversation.isGroup,
         ),
       ),
     );

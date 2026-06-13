@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
@@ -21,42 +22,132 @@ class IsarDatabaseManager {
   IsarDatabaseManager._internal();
 
   Isar? _isar;
-  Future<Isar>? _openingFuture;
+  Completer<Isar>? _openingCompleter;
   static const String _isarKeyStorageKey = 'isar_encryption_key';
   static const String _isarEncryptionEnabledKey = 'isar_encryption_enabled';
+  static const int _maxOpenAttempts = 6;
 
   Future<Isar> get instance async {
-    if (_isar != null && _isar!.isOpen) {
-      return _isar!;
+    final cached = _resolveCachedInstance();
+    if (cached != null) return cached;
+
+    if (_openingCompleter != null) {
+      return _openingCompleter!.future;
     }
 
+    final completer = Completer<Isar>();
+    _openingCompleter = completer;
+
+    try {
+      final opened = await _init();
+      _isar = opened;
+      completer.complete(opened);
+      return opened;
+    } catch (error, stackTrace) {
+      if (!completer.isCompleted) {
+        completer.completeError(error, stackTrace);
+      }
+      rethrow;
+    } finally {
+      _openingCompleter = null;
+    }
+  }
+
+  Isar? _resolveCachedInstance() {
+    if (_isar != null && _isar!.isOpen) return _isar;
     final alreadyOpen = Isar.getInstance();
     if (alreadyOpen != null && alreadyOpen.isOpen) {
       _isar = alreadyOpen;
       return alreadyOpen;
     }
-
-    if (_openingFuture != null) {
-      return _openingFuture!;
-    }
-
-    _openingFuture = _init();
-    try {
-      final opened = await _openingFuture!;
-      _isar = opened;
-      return opened;
-    } finally {
-      _openingFuture = null;
-    }
+    return null;
   }
 
   Future<Isar> _init() async {
     final dir = await getApplicationDocumentsDirectory();
     final encryptionKey = await _getEncryptionKey(dir);
-    return _openIsar(dir, encryptionKey);
+    return _openIsarWithRetry(dir, encryptionKey);
   }
 
-  Future<Isar> _openIsar(Directory dir, List<int>? encryptionKey) async {
+  Future<Isar> _openIsarWithRetry(
+    Directory dir,
+    List<int>? encryptionKey,
+  ) async {
+    Object? lastError;
+
+    for (var attempt = 0; attempt < _maxOpenAttempts; attempt++) {
+      final cached = _resolveCachedInstance();
+      if (cached != null) return cached;
+
+      try {
+        return await _openIsarOnce(dir, encryptionKey);
+      } on IsarError catch (error) {
+        lastError = error;
+
+        final resolved = _resolveCachedInstance();
+        if (resolved != null) return resolved;
+
+        if (_isAlreadyOpenError(error)) {
+          final reopened = _resolveCachedInstance();
+          if (reopened != null) return reopened;
+        }
+
+        final isLastAttempt = attempt >= _maxOpenAttempts - 1;
+        if (!_isRetryableOpenError(error)) {
+          rethrow;
+        }
+        if (isLastAttempt) {
+          await _tryClearStaleLockFiles(dir);
+          try {
+            return await _openIsarOnce(dir, encryptionKey);
+          } on IsarError catch (finalError) {
+            lastError = finalError;
+            final resolvedAfterCleanup = _resolveCachedInstance();
+            if (resolvedAfterCleanup != null) return resolvedAfterCleanup;
+            rethrow;
+          }
+        }
+
+        final delayMs = 35 * (1 << attempt);
+        await Future.delayed(Duration(milliseconds: delayMs));
+      }
+    }
+
+    throw lastError ?? IsarError('Failed to open Isar database');
+  }
+
+  bool _isRetryableOpenError(IsarError error) {
+    final message = error.toString().toLowerCase();
+    return message.contains('try again') ||
+        message.contains('mdbxerror (11)') ||
+        message.contains('resource temporarily unavailable') ||
+        message.contains('cannot open environment');
+  }
+
+  bool _isAlreadyOpenError(IsarError error) {
+    return error.toString().contains('already been opened');
+  }
+
+  Future<void> _tryClearStaleLockFiles(Directory dir) async {
+    if (!dir.existsSync()) return;
+    try {
+      for (final entity in dir.listSync(followLinks: false)) {
+        if (entity is! File) continue;
+        final name = entity.uri.pathSegments.last.toLowerCase();
+        if (name.endsWith('.lock') || name.endsWith('.isar.lock')) {
+          try {
+            await entity.delete();
+          } catch (_) {
+            // Best-effort cleanup only.
+          }
+        }
+      }
+    } catch (_) {
+      // Ignore directory listing failures.
+    }
+  }
+
+  Future<Isar> _openIsarOnce(Directory dir, List<int>? encryptionKey) async {
     final schemas = [
       MessageEntitySchema,
       ConversationEntitySchema,
@@ -81,13 +172,9 @@ class IsarDatabaseManager {
       final result = await Function.apply(Isar.open, [schemas], namedArgs);
       return result as Isar;
     } on IsarError catch (e) {
-      // Guard against concurrent open attempts returning
-      // "Instance has already been opened."
-      if (e.toString().contains('already been opened')) {
-        final alreadyOpen = Isar.getInstance();
-        if (alreadyOpen != null && alreadyOpen.isOpen) {
-          return alreadyOpen;
-        }
+      if (_isAlreadyOpenError(e)) {
+        final alreadyOpen = _resolveCachedInstance();
+        if (alreadyOpen != null) return alreadyOpen;
       }
       rethrow;
     } on NoSuchMethodError {

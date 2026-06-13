@@ -16,9 +16,8 @@ import '../../../provider/personalized_feed_provider.dart';
 import '../../../provider/notification_provider.dart';
 
 // Import Screens (for navigation)
-import 'PostDetailPage.dart';
+import 'package:Vista/features/posts/navigation/content_routes.dart';
 import 'notificationScreen.dart';
-import 'profileScreen.dart';
 
 import 'package:Vista/features/posts/widgets/standard_edit_post_dialog.dart';
 import 'package:flutter/services.dart';
@@ -275,16 +274,27 @@ class _ForYouTab extends ConsumerWidget {
             ),
           );
         }
+        final reelsPlaylist = ReelsViewerLauncher.videoPlaylist(posts);
+
         return RefreshIndicator(
           onRefresh: () async =>
               ref.read(personalizedFeedProvider.notifier).refreshPosts(),
-          child: ListView.builder(
+          child: NotificationListener<ScrollNotification>(
+            onNotification: (scrollInfo) {
+              if (scrollInfo.metrics.pixels >=
+                  scrollInfo.metrics.maxScrollExtent - 480) {
+                if (notifier.hasMorePosts()) {
+                  notifier.loadMorePosts();
+                }
+              }
+              return false;
+            },
+            child: ListView.builder(
             scrollCacheExtent: ScrollCacheExtent.pixels(1000),
             padding: _feedListPadding(context),
             itemCount: posts.length + (notifier.hasMorePosts() ? 1 : 0),
             itemBuilder: (context, index) {
               if (index == posts.length) {
-                notifier.loadMorePosts();
                 return const Padding(
                   padding: EdgeInsets.all(16),
                   child: Center(
@@ -295,6 +305,7 @@ class _ForYouTab extends ConsumerWidget {
 
               final post = posts[index];
               return DwellDetector(
+                key: ValueKey<String>(post.id),
                 itemKey: post.id,
                 onView: () {
                   unawaited(ref.read(goPostsRepositoryProvider).trackFeedEvent(
@@ -310,12 +321,17 @@ class _ForYouTab extends ConsumerWidget {
                 },
                 child: Column(
                   children: [
-                    _ThreadPostItem(post: post, isForYou: true),
+                    _ThreadPostItem(
+                      post: post,
+                      isForYou: true,
+                      reelsPlaylist: reelsPlaylist,
+                    ),
                     const Divider(height: 0.5, thickness: 0.5),
                   ],
                 ),
               );
             },
+          ),
           ),
         );
       },
@@ -361,16 +377,27 @@ class _FollowingTab extends ConsumerWidget {
             ),
           );
         }
+        final reelsPlaylist = ReelsViewerLauncher.videoPlaylist(posts);
+
         return RefreshIndicator(
           onRefresh: () async =>
               ref.read(fetchFollowingPostsProvider.notifier).refreshPosts(),
-          child: ListView.builder(
+          child: NotificationListener<ScrollNotification>(
+            onNotification: (scrollInfo) {
+              if (scrollInfo.metrics.pixels >=
+                  scrollInfo.metrics.maxScrollExtent - 480) {
+                if (notifier.hasMorePosts()) {
+                  notifier.loadMorePosts();
+                }
+              }
+              return false;
+            },
+            child: ListView.builder(
             scrollCacheExtent: ScrollCacheExtent.pixels(1000),
             padding: _feedListPadding(context),
             itemCount: posts.length + (notifier.hasMorePosts() ? 1 : 0),
             itemBuilder: (context, index) {
               if (index == posts.length) {
-                notifier.loadMorePosts();
                 return const Padding(
                   padding: EdgeInsets.all(16),
                   child: Center(
@@ -381,6 +408,7 @@ class _FollowingTab extends ConsumerWidget {
 
               final post = posts[index];
               return DwellDetector(
+                key: ValueKey<String>(post.id),
                 itemKey: post.id,
                 onView: () {
                   unawaited(ref.read(goPostsRepositoryProvider).trackFeedEvent(
@@ -396,12 +424,17 @@ class _FollowingTab extends ConsumerWidget {
                 },
                 child: Column(
                   children: [
-                    _ThreadPostItem(post: post, isForYou: false),
+                    _ThreadPostItem(
+                      post: post,
+                      isForYou: false,
+                      reelsPlaylist: reelsPlaylist,
+                    ),
                     const Divider(height: 0.5, thickness: 0.5),
                   ],
                 ),
               );
             },
+          ),
           ),
         );
       },
@@ -607,8 +640,13 @@ class _FeedConnectionBanner extends StatelessWidget {
 class _ThreadPostItem extends ConsumerWidget {
   final PublicPostModel post;
   final bool isForYou;
+  final List<PublicPostModel> reelsPlaylist;
 
-  const _ThreadPostItem({required this.post, required this.isForYou});
+  const _ThreadPostItem({
+    required this.post,
+    required this.isForYou,
+    required this.reelsPlaylist,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -617,7 +655,7 @@ class _ThreadPostItem extends ConsumerWidget {
     final colorScheme = theme.colorScheme;
     final hasImage = post.imageUrl != null && post.imageUrl!.isNotEmpty;
     final hasVideo = post.hasVideo;
-    final isLiked = ref.watch(likeStateProvider)[post.id] ?? post.isLiked;
+    final isLiked = ref.watch(likeStateProvider.select((map) => map[post.id])) ?? post.isLiked;
     final likeCount =
         post.likeCount + (isLiked != post.isLiked ? (isLiked ? 1 : -1) : 0);
     final currentUserId =
@@ -630,19 +668,12 @@ class _ThreadPostItem extends ConsumerWidget {
         post.userId != currentUserId &&
         (followStatus == 'none' || followStatus == 'requested');
 
-    final followLoading = ref.watch(_feedFollowLoadingProvider);
-    final isFollowBusy = followLoading.contains(post.userId);
-    final savedPostIdsAsync = ref.watch(savedPostIdsProvider);
-    final isSaved = savedPostIdsAsync.maybeWhen(
-      data: (ids) => ids.contains(post.id),
-      orElse: () => false,
+    final isFollowBusy = ref.watch(
+      _feedFollowLoadingProvider.select((ids) => ids.contains(post.userId)),
     );
-    final feedPosts = isForYou
-        ? ref.watch(personalizedFeedProvider).value ??
-            const <PublicPostModel>[]
-        : ref.watch(fetchFollowingPostsProvider).value ??
-            const <PublicPostModel>[];
-    final reelsPlaylist = ReelsViewerLauncher.videoPlaylist(feedPosts);
+    final isSaved = ref.watch(savedPostIdsProvider.select((async) => 
+      async.maybeWhen(data: (ids) => ids.contains(post.id), orElse: () => false)
+    ));
 
     // استفاده از GestureDetector به جای InkWell برای حذف افکت ریپل از کل پست
     return GestureDetector(
@@ -652,10 +683,7 @@ class _ThreadPostItem extends ConsumerWidget {
               postId: post.id,
               eventType: 'open',
             ));
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => PostDetailsPage(postId: post.id)),
-        );
+        ContentNavigation.pushPostDetail(context, postId: post.id);
       },
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -669,12 +697,10 @@ class _ThreadPostItem extends ConsumerWidget {
                 // آواتار کاربر
                 GestureDetector(
                   onTap: () {
-                    Navigator.push(
+                    ContentNavigation.pushProfile(
                       context,
-                      MaterialPageRoute(
-                        builder: (_) => ProfileScreen(
-                            userId: post.userId, username: post.username),
-                      ),
+                      userId: post.userId,
+                      username: post.username,
                     );
                   },
                   child: CircleAvatar(
@@ -871,39 +897,35 @@ class _ThreadPostItem extends ConsumerWidget {
 
                       // متن پست
                       if (post.content.isNotEmpty) ...[
-                        Container(
-                          width: double.infinity,
-                          alignment: _getTextDirection(post.content) ==
-                                  TextDirection.rtl
-                              ? Alignment.centerRight
-                              : Alignment.centerLeft,
-                          child: Directionality(
-                            textDirection: _getTextDirection(post.content),
-                            child: HashtagRichText(
-                              text: post.content,
-                              style: TextStyle(
-                                fontSize: 15,
-                                height: 1.4,
-                                color: colorScheme.onSurface
-                                    .withValues(alpha: 0.9),
-                              ),
-                              hashtagStyle: const TextStyle(
-                                color: Colors.blue,
-                                fontWeight: FontWeight.w700,
-                              ),
-                              maxLines: 6,
-                              overflow: TextOverflow.ellipsis,
-                              onHashtagTap: (tag) {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) =>
-                                        SearchPage(initialHashtag: '#$tag'),
-                                  ),
-                                );
-                              },
-                            ),
+                        HashtagRichText(
+                          text: post.content,
+                          style: TextStyle(
+                            fontSize: 15,
+                            height: 1.4,
+                            color: colorScheme.onSurface
+                                .withValues(alpha: 0.9),
                           ),
+                          hashtagStyle: const TextStyle(
+                            color: Colors.blue,
+                            fontWeight: FontWeight.w700,
+                          ),
+                          maxLines: 6,
+                          readMoreLabel: 'بیشتر...',
+                          onReadMoreTap: () {
+                            ContentNavigation.pushPostDetail(
+                              context,
+                              postId: post.id,
+                            );
+                          },
+                          onHashtagTap: (tag) {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) =>
+                                    SearchPage(initialHashtag: '#$tag'),
+                              ),
+                            );
+                          },
                         ),
                       ],
                     ],
@@ -1535,16 +1557,5 @@ class _ThreadPostItem extends ConsumerWidget {
     } else {
       return 'now';
     }
-  }
-
-  TextDirection _getTextDirection(String text) {
-    if (text.isEmpty) return TextDirection.rtl;
-    final cleanedText = text.replaceAll(RegExp(r'[^\w\u0600-\u06FF]'), '');
-    if (cleanedText.isEmpty) return TextDirection.rtl;
-    final firstChar = cleanedText[0];
-    final persianRegex = RegExp(r'[\u0600-\u06FF]');
-    return persianRegex.hasMatch(firstChar)
-        ? TextDirection.rtl
-        : TextDirection.ltr;
   }
 }

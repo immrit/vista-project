@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 
-import '../domain/telegram_emoji_lookup.dart';
+import '../domain/modern_emoji_lookup.dart';
 
-class TelegramEmojiInline extends StatelessWidget {
+class ModernEmojiInline extends StatelessWidget {
   final String emoji;
   final double size;
   final TextStyle? fallbackStyle;
 
-  const TelegramEmojiInline({
+  const ModernEmojiInline({
     super.key,
     required this.emoji,
     required this.size,
@@ -16,7 +16,7 @@ class TelegramEmojiInline extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final path = TelegramEmojiLookup.instance.assetPathFor(emoji);
+    final path = ModernEmojiLookup.instance.assetPathFor(emoji);
     if (path == null || path.isEmpty) {
       return Text(
         emoji,

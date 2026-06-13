@@ -37,7 +37,8 @@ class AdaptiveEffectsController extends StateNotifier<AdaptiveEffectsState> {
 
   void updateScrollVelocity(double velocityPxPerSec) {
     final normalized = velocityPxPerSec.isFinite ? velocityPxPerSec : 0.0;
-    if ((normalized - state.scrollVelocityPxPerSec).abs() < 80) {
+    final velocityDeltaThreshold = 200.0;
+    if ((normalized - state.scrollVelocityPxPerSec).abs() < velocityDeltaThreshold) {
       return;
     }
     _recompute(

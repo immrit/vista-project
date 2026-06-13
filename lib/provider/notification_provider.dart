@@ -66,7 +66,8 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
   static const Duration _rateLimitCooldown = Duration(seconds: 30);
 
   NotificationsNotifier(this._ref) : super([]) {
-    _bootstrap();
+    // Defer bootstrap so we never mutate sibling providers during init.
+    Future.microtask(_bootstrap);
   }
 
   final Ref _ref;
@@ -115,12 +116,14 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
     final nextAllowed = _nextAllowedFetchAt;
     if (nextAllowed != null && DateTime.now().isBefore(nextAllowed)) return;
     _isFetching = true;
+    _publishFetchMeta();
 
     final userId = await _resolveUserId();
     if (userId == null) {
       if (!_isDisposed) state = [];
       _isFetching = false;
       _hasMore = false;
+      _publishFetchMeta();
       return;
     }
 
@@ -171,7 +174,19 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
       _hasMore = false;
     } finally {
       _isFetching = false;
+      _publishFetchMeta();
     }
+  }
+
+  void _publishFetchMeta() {
+    if (_isDisposed) return;
+    final isFetching = _isFetching;
+    final hasMore = _hasMore;
+    Future.microtask(() {
+      if (_isDisposed) return;
+      _ref.read(notificationsLoadingProvider.notifier).state = isFetching;
+      _ref.read(notificationsHasMoreProvider.notifier).state = hasMore;
+    });
   }
 
   Future<void> fetchMore() async {
@@ -489,6 +504,40 @@ final notificationsProvider = StateNotifierProvider<
 
 final notificationsLoadingProvider = StateProvider<bool>((ref) => false);
 
+final notificationsHasMoreProvider = StateProvider<bool>((ref) => true);
+
+/// Single-pass unread counts for all notification tabs.
+final unreadCountsByFilterProvider = Provider<Map<String, int>>((ref) {
+  final notifications = ref.watch(notificationsProvider);
+  const tabTypes = <String>[
+    'all',
+    'follow_request',
+    'follow',
+    'like',
+    'comment',
+    'comment_reply',
+    'mention',
+    'daily_suggestion_digest',
+  ];
+
+  final counts = <String, int>{
+    for (final type in tabTypes) type: 0,
+  };
+
+  for (final notification in notifications) {
+    if (notification.isRead) continue;
+    counts['all'] = (counts['all'] ?? 0) + 1;
+    for (final type in tabTypes) {
+      if (type == 'all') continue;
+      if (notificationTypeMatchesFilter(notification.type, type)) {
+        counts[type] = (counts[type] ?? 0) + 1;
+      }
+    }
+  }
+
+  return counts;
+});
+
 final hasNewNotificationProvider = Provider.autoDispose<bool>((ref) {
   final notifications = ref.watch(notificationsProvider);
   return notifications.any((n) => !n.isRead);
@@ -521,6 +570,7 @@ final filteredNotificationsProvider =
 
 final unreadNotificationCountByFilterProvider =
     Provider.family<int, String?>((ref, type) {
-  final notifications = ref.watch(filteredNotificationsProvider(type));
-  return notifications.where((notification) => !notification.isRead).length;
+  final counts = ref.watch(unreadCountsByFilterProvider);
+  final key = type ?? 'all';
+  return counts[key] ?? 0;
 });

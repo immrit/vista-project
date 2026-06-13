@@ -8,8 +8,8 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../emoji/domain/emoji_render_policy.dart';
-import '../../emoji/domain/telegram_emoji_lookup.dart';
-import '../../emoji/widgets/telegram_emoji_inline.dart';
+import '../../emoji/domain/modern_emoji_lookup.dart';
+import '../../emoji/widgets/modern_emoji_inline.dart';
 import '../utils/grapheme_text_editing.dart';
 import 'gif_picker_widget.dart';
 
@@ -39,7 +39,7 @@ class _VistaEmojiPanelState extends State<VistaEmojiPanel> {
   late final PageController _pageController;
   late final TextEditingController _searchController;
 
-  bool _useTelegramPanel = false;
+  bool _useModernPanel = false;
   String _searchQuery = '';
   List<String> _recentEmojis = <String>[];
   Map<Category, List<Emoji>> _emojiByCategory = <Category, List<Emoji>>{};
@@ -81,13 +81,13 @@ class _VistaEmojiPanelState extends State<VistaEmojiPanel> {
   }
 
   Future<void> _initializePanelMode() async {
-    await TelegramEmojiLookup.instance.load();
-    final useTelegram = EmojiRenderPolicy.useTelegramEmojiPanel();
+    await ModernEmojiLookup.instance.load();
+    final useModern = EmojiRenderPolicy.useModernEmojiPanel();
     final categories = _loadEmojiCatalog();
     final recents = await _loadRecentEmojis();
     if (!mounted) return;
     setState(() {
-      _useTelegramPanel = useTelegram;
+      _useModernPanel = useModern;
       _emojiByCategory = categories;
       _recentEmojis = recents;
     });
@@ -175,7 +175,7 @@ class _VistaEmojiPanelState extends State<VistaEmojiPanel> {
         GraphemeTextEditing.backspace(widget.controller.value);
   }
 
-  List<Emoji> _currentTelegramEmojis() {
+  List<Emoji> _currentModernEmojis() {
     if (_searchQuery.isNotEmpty) {
       final all = _emojiByCategory.values.expand((e) => e);
       return all
@@ -187,10 +187,10 @@ class _VistaEmojiPanelState extends State<VistaEmojiPanel> {
           .toList(growable: false);
     }
 
-    return _telegramEmojisForCategory(_selectedCategoryIndex);
+    return _modernEmojisForCategory(_selectedCategoryIndex);
   }
 
-  List<Emoji> _telegramEmojisForCategory(int index) {
+  List<Emoji> _modernEmojisForCategory(int index) {
     final selectedCategory = _categories[index].category;
 
     if (selectedCategory == Category.RECENT) {
@@ -226,8 +226,8 @@ class _VistaEmojiPanelState extends State<VistaEmojiPanel> {
             child: IndexedStack(
               index: _currentView == PanelView.emoji ? 0 : 1,
               children: [
-                _useTelegramPanel
-                    ? _buildTelegramEmojiView(backgroundColor, isDark)
+                _useModernPanel
+                    ? _buildModernEmojiView(backgroundColor, isDark)
                     : _buildSystemEmojiPage(backgroundColor),
                 GifPickerWidget(
                   onGifSelected: (url) {
@@ -349,7 +349,7 @@ class _VistaEmojiPanelState extends State<VistaEmojiPanel> {
     );
   }
 
-  Widget _buildTelegramEmojiView(Color bgColor, bool isDark) {
+  Widget _buildModernEmojiView(Color bgColor, bool isDark) {
     final hintColor = isDark ? Colors.white38 : Colors.black38;
 
     return Column(
@@ -390,8 +390,8 @@ class _VistaEmojiPanelState extends State<VistaEmojiPanel> {
         ),
         Expanded(
           child: _searchQuery.isNotEmpty
-              ? _buildTelegramEmojiGrid(
-                  emojis: _currentTelegramEmojis(),
+              ? _buildModernEmojiGrid(
+                  emojis: _currentModernEmojis(),
                   bgColor: bgColor,
                   hintColor: hintColor,
                 )
@@ -404,8 +404,8 @@ class _VistaEmojiPanelState extends State<VistaEmojiPanel> {
                   },
                   itemCount: _categories.length,
                   itemBuilder: (context, index) {
-                    return _buildTelegramEmojiGrid(
-                      emojis: _telegramEmojisForCategory(index),
+                    return _buildModernEmojiGrid(
+                      emojis: _modernEmojisForCategory(index),
                       bgColor: bgColor,
                       hintColor: hintColor,
                     );
@@ -416,7 +416,7 @@ class _VistaEmojiPanelState extends State<VistaEmojiPanel> {
     );
   }
 
-  Widget _buildTelegramEmojiGrid({
+  Widget _buildModernEmojiGrid({
     required List<Emoji> emojis,
     required Color bgColor,
     required Color hintColor,
@@ -449,7 +449,7 @@ class _VistaEmojiPanelState extends State<VistaEmojiPanel> {
               color: bgColor,
               borderRadius: BorderRadius.circular(8),
             ),
-            child: TelegramEmojiInline(
+            child: ModernEmojiInline(
               emoji: emojiText,
               size: 29,
               fallbackStyle: const TextStyle(fontSize: 26),

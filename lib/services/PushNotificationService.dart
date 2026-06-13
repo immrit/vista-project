@@ -13,7 +13,11 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
+import '../model/notificationModel.dart';
+import '../model/message_model.dart';
+import 'package:image/image.dart' as img;
 import '../provider/notification_provider.dart';
+import '../utils/avatar_asset_utils.dart';
 import '../utils/const.dart';
 import 'notification_navigation_service.dart';
 import 'session_manager_service_v2.dart';
@@ -21,15 +25,14 @@ import 'current_chat_tracker.dart';
 import 'local_notification_center.dart';
 import '../features/chat/data/datasources/chat_local_datasource_isar.dart';
 import '../features/auth/providers/auth_controller.dart' show TokenStorage;
-import '../model/message_model.dart';
+import 'device_id_service.dart';
 
 @pragma('vm:entry-point')
 void notificationTapBackground(NotificationResponse details) async {
+  WidgetsFlutterBinding.ensureInitialized();
   await PushNotificationService.enqueueBackgroundNotificationAction(details);
-  // Attempt to process immediately in the background isolate
   try {
-    final service = PushNotificationService(null);
-    await service._processPendingNotificationActions();
+    await PushNotificationService.processPendingNotificationActions();
   } catch (e) {
     debugPrint('Background processing failed: $e');
   }
@@ -179,9 +182,13 @@ class PushNotificationService {
     await prefs.setStringList(_pendingActionsPrefsKey, encoded);
   }
 
+  static Future<void> processPendingNotificationActions() async {
+    await PushNotificationService(null)._processPendingNotificationActions();
+  }
+
   Future<void> _processPendingNotificationActions() async {
-    final accessToken = await TokenStorage.getAccessToken();
-    if (accessToken == null || accessToken.isEmpty) {
+    final token = await _resolveAuthToken();
+    if (token == null || token.isEmpty) {
       return;
     }
 
@@ -277,6 +284,10 @@ class PushNotificationService {
 
   /// هندلر مرکزی کلیک روی اعلان (برای Foreground)
   void _onNotificationTap(NotificationResponse details) {
+    unawaited(_handleNotificationResponse(details));
+  }
+
+  Future<void> _handleNotificationResponse(NotificationResponse details) async {
     final payload = details.payload;
     if (payload == null || payload.isEmpty) return;
 
@@ -287,30 +298,42 @@ class PushNotificationService {
       if (details.actionId == 'reply') {
         final input = details.input?.trim() ?? '';
         if (conversationId.isNotEmpty && input.isNotEmpty) {
-          handleQuickReply(conversationId, input);
+          await handleQuickReply(conversationId, input);
         }
         return;
       }
 
       if (details.actionId == 'mark_read') {
         if (conversationId.isNotEmpty) {
-          _markConversationAsRead(conversationId);
+          await _markConversationAsRead(conversationId);
         }
         return;
       }
 
       if (conversationId.isNotEmpty) {
-        cancelConversationNotification(conversationId);
+        await cancelConversationNotification(conversationId);
       }
-      final navContext = navigatorKey.currentContext;
-      if (navContext != null) {
-        NotificationNavigationService.handleFCMPayload(
-          context: navContext,
-          data: data,
-        );
-      }
+
+      // تلاش برای گرفتن کانتکست با تاخیر در صورت نیاز
+      _handleTapWithContext(data);
     } catch (e) {
       logInfo('Error handling notification tap: $e');
+    }
+  }
+
+  void _handleTapWithContext(Map<String, dynamic> data, [int attempts = 0]) {
+    final navContext = navigatorKey.currentContext ?? navigatorKey.currentState?.context;
+    if (navContext != null) {
+      NotificationNavigationService.handleFCMPayload(
+        context: navContext,
+        data: data,
+      );
+    } else if (attempts < 10) {
+      Future.delayed(const Duration(milliseconds: 200), () {
+        _handleTapWithContext(data, attempts + 1);
+      });
+    } else {
+      logInfo('❌ Failed to handle notification tap: context is null after retries');
     }
   }
 
@@ -425,13 +448,7 @@ class PushNotificationService {
       _onMessageOpenedSubscription =
           FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
         logInfo('📬 FCM notification opened (background)');
-        final navContext = navigatorKey.currentContext;
-        if (navContext != null) {
-          NotificationNavigationService.handleFCMPayload(
-            context: navContext,
-            data: message.data,
-          );
-        }
+        _handleTapWithContext(message.data);
       });
       _listenersBound = true;
     } catch (e) {
@@ -555,7 +572,7 @@ class PushNotificationService {
         // isDeleted: false, // Not in constructor
         isMe: currentUserId == senderId, // ✅ Required field
         senderName: senderName,
-        senderAvatar: data['sender_avatar'],
+        senderAvatar: AvatarAssetUtils.resolveUrl(data['sender_avatar']),
       );
 
       logInfo('💾 FCM Fallback: Saving message to Isar: $messageId');
@@ -588,13 +605,42 @@ class PushNotificationService {
       data,
       fallback: 'پیام جدید',
     );
-    final String? senderAvatarUrl = data['sender_avatar'];
+    final String? senderAvatarUrl = AvatarAssetUtils.firstResolvedUrl(
+      data['sender_avatar'],
+      data['avatar_url'] ?? data['actor_avatar'],
+    );
 
     // ✅ ۱. دانلود هوشمند عکس پروفایل
     ByteArrayAndroidIcon? personIcon;
+    ByteArrayAndroidBitmap? largeIcon;
     if (senderAvatarUrl != null && senderAvatarUrl.isNotEmpty) {
-      // از همان تابع کش که قبلاً نوشتیم استفاده می‌کنیم
-      personIcon = await _downloadIconWithCache(senderAvatarUrl);
+      final bytes = await _downloadFileWithCache(senderAvatarUrl);
+      if (bytes != null) {
+        // کراپ دایره‌ای برای اطمینان از گرد بودن در تمام دستگاه‌ها
+        try {
+          final decodedImage = img.decodeImage(bytes);
+          if (decodedImage != null) {
+            final int size = decodedImage.width < decodedImage.height ? decodedImage.width : decodedImage.height;
+            final squared = img.copyCrop(
+              decodedImage,
+              x: (decodedImage.width - size) ~/ 2,
+              y: (decodedImage.height - size) ~/ 2,
+              width: size,
+              height: size,
+            );
+            final circled = img.copyCropCircle(squared, radius: size ~/ 2);
+            final circledBytes = Uint8List.fromList(img.encodePng(circled));
+            personIcon = ByteArrayAndroidIcon(circledBytes);
+            largeIcon = ByteArrayAndroidBitmap(circledBytes);
+          } else {
+            personIcon = ByteArrayAndroidIcon(bytes);
+            largeIcon = ByteArrayAndroidBitmap(bytes);
+          }
+        } catch (e) {
+          personIcon = ByteArrayAndroidIcon(bytes);
+          largeIcon = ByteArrayAndroidBitmap(bytes);
+        }
+      }
     }
 
     // ۲. ساخت Person با آیکون دانلود شده
@@ -642,6 +688,7 @@ class PushNotificationService {
       importance: Importance.max,
       priority: Priority.high,
       styleInformation: style,
+      largeIcon: largeIcon,
       groupKey: groupKey,
       color: const Color(0xFF2196F3),
       actions: actions,
@@ -687,6 +734,39 @@ class PushNotificationService {
       }
     }
 
+    final String? senderAvatarUrl = AvatarAssetUtils.firstResolvedUrl(
+      data['sender_avatar'],
+      data['avatar_url'] ?? data['actor_avatar'],
+    );
+    ByteArrayAndroidBitmap? largeIcon;
+    if (senderAvatarUrl != null && senderAvatarUrl.isNotEmpty) {
+      // ✅ دانلود عکس پروفایل برای نمایش به عنوان آیکون بزرگ
+      final bytes = await _downloadFileWithCache(senderAvatarUrl);
+      if (bytes != null) {
+        // کراپ کردن عکس به صورت دایره‌ای برای اطمینان از گرد بودن در همه نسخه‌های اندروید
+        try {
+          final decodedImage = img.decodeImage(bytes);
+          if (decodedImage != null) {
+            final int size = decodedImage.width < decodedImage.height ? decodedImage.width : decodedImage.height;
+            final squared = img.copyCrop(
+              decodedImage,
+              x: (decodedImage.width - size) ~/ 2,
+              y: (decodedImage.height - size) ~/ 2,
+              width: size,
+              height: size,
+            );
+            final circled = img.copyCropCircle(squared, radius: size ~/ 2);
+            final circledBytes = Uint8List.fromList(img.encodePng(circled));
+            largeIcon = ByteArrayAndroidBitmap(circledBytes);
+          } else {
+            largeIcon = ByteArrayAndroidBitmap(bytes);
+          }
+        } catch (e) {
+          largeIcon = ByteArrayAndroidBitmap(bytes);
+        }
+      }
+    }
+
     StyleInformation? style;
     if (bigPicture != null) {
       style = BigPictureStyleInformation(
@@ -704,6 +784,7 @@ class PushNotificationService {
       importance: Importance.high,
       priority: Priority.high,
       styleInformation: style,
+      largeIcon: largeIcon,
       icon: '@mipmap/ic_launcher',
       // تنظیمات LED
       enableLights: true,
@@ -751,9 +832,12 @@ class PushNotificationService {
   /// 1. چک میکنه فایل تو حافظه گوشی هست؟ اگه بود همونو برمیگردونه.
   /// 2. اگه نبود دانلود میکنه و ذخیره میکنه.
   Future<Uint8List?> _downloadFileWithCache(String url) async {
+    final resolvedUrl = AvatarAssetUtils.resolveUrl(url);
+    if (resolvedUrl == null) return null;
+
     try {
       // ساخت نام فایل یکتا بر اساس URL (برای جلوگیری از تکرار)
-      final fileName = _generateFileName(url);
+      final fileName = _generateFileName(resolvedUrl);
       final directory = await getTemporaryDirectory();
       final filePath = '${directory.path}/$fileName';
       final file = File(filePath);
@@ -769,8 +853,9 @@ class PushNotificationService {
 
       // ۲. اگر نبود، دانلود کن
       // logInfo('⬇️ Downloading: $url');
-      final response =
-          await http.get(Uri.parse(url)).timeout(const Duration(seconds: 10));
+      final response = await http
+          .get(Uri.parse(resolvedUrl))
+          .timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200 && response.bodyBytes.isNotEmpty) {
         // ۳. ذخیره در حافظه برای دفعه بعد
@@ -851,7 +936,7 @@ class PushNotificationService {
     }
   }
 
-  /// Telegram-style: sync only when token changed, after auth, or server epoch bump.
+  /// Modern-style: sync only when token changed, after auth, or server epoch bump.
   static Future<bool> syncIfNeeded({
     String? tokenHint,
     bool afterAuth = false,
@@ -1222,22 +1307,23 @@ class PushNotificationService {
     if (trimmedConversationId.isEmpty) return false;
 
     try {
-      final token = await TokenStorage.getAccessToken();
+      final token = await _resolveAuthToken();
       if (token == null || token.isEmpty) return false;
 
+      final deviceId = await DeviceIdService.getDeviceId();
       final uri = Uri.parse(
         '$_backendUrl/v1/chat/conversations/${Uri.encodeComponent(trimmedConversationId)}/read',
       );
       final response = await http.post(uri, headers: {
-        'Authorization': 'Bearer $token'
+        'Authorization': 'Bearer $token',
+        'X-Device-ID': deviceId,
       }).timeout(const Duration(seconds: 10));
       if (response.statusCode < 200 || response.statusCode >= 300) {
         logInfo('mark read backend failed: ${response.statusCode}');
         return false;
       }
 
-      await _flutterLocalNotifications.cancel(
-          id: trimmedConversationId.hashCode);
+      await cancelConversationNotification(trimmedConversationId);
       return true;
     } catch (e) {
       logInfo('mark read backend failed: $e');
@@ -1245,39 +1331,65 @@ class PushNotificationService {
     }
   }
 
+  Future<String?> _resolveAuthToken() async {
+    final sessionReady =
+        await SessionManagerServiceV2.instance.ensureValidAuthSession();
+    final token = await TokenStorage.getAccessToken();
+    if (token == null || token.isEmpty) {
+      return null;
+    }
+    if (!sessionReady) {
+      logInfo('quick reply auth session not fully refreshed; using cached token');
+    }
+    return token;
+  }
+
+  Future<Map<String, String>> _authorizedHeaders() async {
+    final token = await _resolveAuthToken();
+    if (token == null || token.isEmpty) {
+      throw StateError('missing auth token');
+    }
+    final deviceId = await DeviceIdService.getDeviceId();
+    return {
+      'Authorization': 'Bearer $token',
+      'Content-Type': 'application/json',
+      'X-Device-ID': deviceId,
+    };
+  }
+
   Future<bool> _sendQuickReplyToBackend(
     String conversationId,
     String replyText,
   ) async {
-    final token = await TokenStorage.getAccessToken();
-    if (token == null || token.isEmpty) {
+    try {
+      final headers = await _authorizedHeaders();
+      final uri = Uri.parse(
+        '$_backendUrl/v1/chat/conversations/${Uri.encodeComponent(conversationId)}/messages',
+      );
+      final response = await http
+          .post(
+            uri,
+            headers: headers,
+            body: jsonEncode({
+              'id': _uuid.v4(),
+              'content': replyText,
+              'message_type': 'text',
+            }),
+          )
+          .timeout(const Duration(seconds: 10));
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return true;
+      }
+
+      logInfo(
+        'quick reply backend failed: ${response.statusCode} ${response.body}',
+      );
+      return false;
+    } catch (e) {
+      logInfo('quick reply backend failed: $e');
       return false;
     }
-
-    final uri = Uri.parse(
-      '$_backendUrl/v1/chat/conversations/${Uri.encodeComponent(conversationId)}/messages',
-    );
-    final response = await http
-        .post(
-          uri,
-          headers: {
-            'Authorization': 'Bearer $token',
-            'Content-Type': 'application/json',
-          },
-          body: jsonEncode({
-            'id': _uuid.v4(),
-            'content': replyText,
-            'message_type': 'text',
-          }),
-        )
-        .timeout(const Duration(seconds: 10));
-
-    if (response.statusCode >= 200 && response.statusCode < 300) {
-      return true;
-    }
-
-    logInfo('quick reply backend failed: ${response.statusCode}');
-    return false;
   }
 
   Future<bool> handleQuickReply(String conversationId, String replyText) async {
@@ -1297,6 +1409,7 @@ class PushNotificationService {
       );
       if (sent) {
         logInfo('quick reply sent successfully');
+        await _markConversationAsRead(trimmedConversationId);
       }
       return sent;
     } catch (e) {

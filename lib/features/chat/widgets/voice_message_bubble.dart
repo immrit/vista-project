@@ -20,7 +20,7 @@ import 'package:path/path.dart' as p;
 import '../theme/chat_theme.dart';
 import '../../../services/voice_player_service.dart';
 import '../../emoji/domain/emoji_render_policy.dart';
-import '../../emoji/widgets/telegram_emoji_text.dart';
+import '../../emoji/widgets/modern_emoji_text.dart';
 import '../utils/chat_text_direction.dart';
 
 /// ویجت پیام صوتی شبیه ویستا
@@ -401,10 +401,10 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble>
               textDirection: captionDirection,
               child: Align(
                 alignment: AlignmentDirectional.centerStart,
-                child: TelegramEmojiText(
+                child: ModernEmojiText(
                   widget.caption!,
-                  useTelegramEmoji:
-                      EmojiRenderPolicy.useTelegramEmojiRenderer(),
+                  useModernEmoji:
+                      EmojiRenderPolicy.useModernEmojiRenderer(),
                   textDirection: captionDirection,
                   textAlign: TextAlign.start,
                   style: TextStyle(

@@ -1,8 +1,8 @@
 // Compatibility extensions to restore older helper names used across the codebase.
 // This file maps legacy extension/method names (toPersianDigit, toFullDateTimeLabel, etc.)
-// to the newer TelegramXDateUtils implementations so we don't have to refactor many files.
+// to the newer ModernXDateUtils implementations so we don't have to refactor many files.
 
-import 'telegram_x_date_utils.dart';
+import 'modern_x_date_utils.dart';
 
 /// Convert western digits in a string to Persian digits
 extension PersianDigitsString on String {
@@ -15,29 +15,29 @@ extension PersianDigitsString on String {
   }
 }
 
-/// Legacy DateTime helpers used across the UI. They map to TelegramXDateUtils.
+/// Legacy DateTime helpers used across the UI. They map to ModernXDateUtils.
 extension LegacyDateTimeLabels on DateTime {
   /// Full date + time label
   String toFullDateTimeLabel() {
-    final date = TelegramXDateUtils.formatFullDate(this);
-    return TelegramXDateUtils.formatWithTime(date, this);
+    final date = ModernXDateUtils.formatFullDate(this);
+    return ModernXDateUtils.formatWithTime(date, this);
   }
 
   /// Fixed time label (HH:mm or h:mm a depending on settings)
-  String toFixedTimeLabel() => TelegramXDateUtils.formatTime(this);
+  String toFixedTimeLabel() => ModernXDateUtils.formatTime(this);
 
   /// Human friendly relative time (used in many message/post UI places)
-  String toRelativeTime() => TelegramXDateUtils.formatLastSeen(this);
+  String toRelativeTime() => ModernXDateUtils.formatLastSeen(this);
 
   /// Date divider label
-  String toDateDividerLabel() => TelegramXDateUtils.formatDateDivider(this);
+  String toDateDividerLabel() => ModernXDateUtils.formatDateDivider(this);
 
   /// Floating date header label
   String toFloatingDateLabel() =>
-      TelegramXDateUtils.formatFloatingDateHeader(this);
+      ModernXDateUtils.formatFloatingDateHeader(this);
 }
 
 /// Top-level compatibility wrapper used by some widgets
 bool shouldShowDateDivider(DateTime? currentDate, DateTime? previousDate) {
-  return TelegramXDateUtils.shouldShowDateDivider(currentDate, previousDate);
+  return ModernXDateUtils.shouldShowDateDivider(currentDate, previousDate);
 }

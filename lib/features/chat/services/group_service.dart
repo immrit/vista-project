@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:dio/dio.dart';
 import 'package:Vista/utils/env_config.dart';
+import 'package:Vista/utils/avatar_asset_utils.dart';
 
 import '../../auth/providers/auth_controller.dart';
 import '../../../services/session_manager_service_v2.dart';
@@ -94,7 +95,7 @@ class GroupService {
         id: peerId,
         username: profile['username']?.toString() ?? '',
         fullName: profile['full_name']?.toString(),
-        avatarUrl: profile['avatar_url']?.toString(),
+        avatarUrl: AvatarAssetUtils.resolveUrl(profile['avatar_url']?.toString()),
         conversationId: row['id']?.toString(),
         messageCount: _interactionCount(row),
       );
@@ -129,7 +130,7 @@ class GroupService {
         id: row['user_id']?.toString() ?? '',
         username: row['username']?.toString() ?? '',
         fullName: row['full_name']?.toString(),
-        avatarUrl: row['avatar_url']?.toString(),
+        avatarUrl: AvatarAssetUtils.resolveUrl(row['avatar_url']?.toString()),
       );
     }).where((item) {
       return item.id.isNotEmpty && item.id != currentUserId;
@@ -184,7 +185,7 @@ class GroupService {
         userId: userId,
         username: profile['username']?.toString() ?? '',
         fullName: profile['full_name']?.toString(),
-        avatarUrl: profile['avatar_url']?.toString(),
+        avatarUrl: AvatarAssetUtils.resolveUrl(profile['avatar_url']?.toString()),
         isAdmin: row['is_admin'] == true,
         joinedAt: DateTime.tryParse(row['joined_at']?.toString() ?? ''),
       );
@@ -287,7 +288,7 @@ class GroupService {
             id: id,
             username: row['username']?.toString() ?? '',
             fullName: row['full_name']?.toString(),
-            avatarUrl: row['avatar_url']?.toString(),
+            avatarUrl: AvatarAssetUtils.resolveUrl(row['avatar_url']?.toString()),
           );
         }
       } catch (_) {
@@ -445,11 +446,13 @@ class GroupService {
               row['name'] ??
               '')
           .toString(),
-      'avatar_url': (row['peer_avatar_url'] ??
-              row['other_user_avatar'] ??
-              row['avatar_url'] ??
-              row['image'])
-          ?.toString(),
+      'avatar_url': AvatarAssetUtils.resolveUrl(
+        (row['peer_avatar_url'] ??
+                row['other_user_avatar'] ??
+                row['avatar_url'] ??
+                row['image'])
+            ?.toString(),
+      ),
     };
   }
 

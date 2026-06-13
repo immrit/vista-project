@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../../domain/entities/story_editor_models.dart';
 import 'glass_layer.dart';
 
-/// Premium Link Input Sheet (Instagram-style)
+/// Premium Link Input Sheet (Social-style)
 class LinkInputSheet extends StatefulWidget {
   final Function(StoryInteractionType, Map<String, dynamic>) onLinkCreated;
 

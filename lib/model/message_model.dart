@@ -1,7 +1,7 @@
 // lib/model/message_model.dart
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import '../services/telegram_read_receipt_service.dart';
+import '../services/modern_read_receipt_service.dart';
 import 'message_reaction_ui.dart';
 import '../features/chat/widgets/media_message_bubble.dart';
 import '../utils/env_config.dart';
@@ -277,7 +277,7 @@ class StoryReplyData {
         'story_caption': storyCaption,
       };
 
-  /// Parses Instagram-style story reply metadata stored in reply fields.
+  /// Parses Social-style story reply metadata stored in reply fields.
   static StoryReplyData? parseFromReplyFields({
     String? replyToMessageId,
     String? replyToContent,
@@ -566,6 +566,9 @@ class MessageModel {
   // ✅ Getter برای مقدار فعلی status
   MessageDeliveryStatus get deliveryStatus => _statusNotifier.value;
 
+  /// Outgoing messages only: peer has read up to this message.
+  bool get isReadByPeer => isMe && (isSeen || isRead);
+
   // ✅ محاسبه MessageDeliveryStatus از فیلدهای status
   MessageDeliveryStatus _calculateDeliveryStatus() {
     if (isFailed == true) {
@@ -574,7 +577,7 @@ class MessageModel {
     if (isPending) {
       return MessageDeliveryStatus.pending;
     }
-    if (isSeen || isRead) {
+    if (isReadByPeer) {
       return MessageDeliveryStatus.read;
     }
     if (isDelivered) {
@@ -626,7 +629,7 @@ class MessageModel {
     if (pending) {
       return MessageDeliveryStatus.pending;
     }
-    if (seen || read) {
+    if (isMe && (seen || read)) {
       return MessageDeliveryStatus.read;
     }
     if (delivered) {
@@ -637,6 +640,8 @@ class MessageModel {
     }
     return MessageDeliveryStatus.pending;
   }
+
+  MessageDeliveryStatus get resolvedDeliveryStatus => _calculateDeliveryStatus();
 
   // ✅ Dispose کردن notifier (برای جلوگیری از memory leak)
   void dispose() {
@@ -677,7 +682,18 @@ class MessageModel {
       final content = json['content'] as String? ?? '';
       if (content.trim().startsWith('{') && content.contains('postId')) {
         try {
-          final contentJson = jsonDecode(content) as Map<String, dynamic>?;
+          final decoded = jsonDecode(content);
+          Map<String, dynamic>? contentJson;
+          if (decoded is Map<String, dynamic>) {
+            contentJson = decoded;
+          } else if (decoded is String) {
+            try {
+              final doubleDecoded = jsonDecode(decoded);
+              if (doubleDecoded is Map<String, dynamic>) {
+                contentJson = doubleDecoded;
+              }
+            } catch (_) {}
+          }
           if (contentJson != null) {
             // تبدیل فرمت قدیمی به SharedPostData
             parsedSharedPost = SharedPostData.fromJson({
@@ -735,12 +751,13 @@ class MessageModel {
       senderName: (json['sender_name'] as String?)?.trim().isNotEmpty == true
           ? (json['sender_name'] as String?)?.trim()
           : (profileName.isNotEmpty ? profileName : null),
-      senderAvatar:
-          (json['sender_avatar'] as String?)?.trim().isNotEmpty == true
-              ? (json['sender_avatar'] as String?)?.trim()
-              : (profileAvatar != null && profileAvatar.isNotEmpty
-                  ? profileAvatar
-                  : null),
+      senderAvatar: _parseMediaUrl(
+        (json['sender_avatar'] as String?)?.trim().isNotEmpty == true
+            ? json['sender_avatar']
+            : (profileAvatar != null && profileAvatar.isNotEmpty
+                ? profileAvatar
+                : null),
+      ),
       isMe: json['sender_id'] == currentUserId,
       replyToMessageId: json['reply_to_message_id'],
       replyToContent: json['reply_to_content'],
@@ -950,26 +967,7 @@ class MessageModel {
       isUploading: isUploading ?? this.isUploading,
     );
 
-    // ✅ حفظ ValueNotifier از instance قدیمی به instance جدید
-    // این باعث میشه که ValueListenableBuilder listener خودش رو از دست نده
-    newModel._statusNotifier.value = _statusNotifier.value;
-
-    // ✅ اگر status fields تغییر کرده، آپدیت کن
-    if (isPending != null ||
-        isSeen != null ||
-        isRead != null ||
-        isFailed != null ||
-        isSent != null ||
-        isDelivered != null) {
-      newModel.updateStatus(
-        pending: isPending ?? this.isPending,
-        seen: isSeen ?? this.isSeen,
-        read: isRead ?? this.isRead,
-        failed: isFailed ?? this.isFailed,
-        sent: isSent ?? this.isSent,
-        delivered: isDelivered ?? this.isDelivered,
-      );
-    }
+    newModel._statusNotifier.value = newModel.resolvedDeliveryStatus;
 
     return newModel;
   }

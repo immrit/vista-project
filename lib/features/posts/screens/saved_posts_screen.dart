@@ -22,8 +22,7 @@ import '../widgets/hashtag_rich_text.dart';
 import '../widgets/post_action_buttons.dart';
 import '../widgets/post_moderation_banner.dart';
 import '../widgets/standard_edit_post_dialog.dart';
-import 'PostDetailPage.dart';
-import 'profileScreen.dart';
+import 'package:Vista/features/posts/navigation/content_routes.dart';
 import 'package:Vista/features/search/screens/searchPage.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -283,11 +282,6 @@ class _SavedPostsScreenState extends ConsumerState<SavedPostsScreen> {
 // POST ITEM - دقیقاً مشابه _ThreadPostItem در فید اصلی
 // ─────────────────────────────────────────────────────────────────────────────
 
-TextDirection _getTextDirection(String text) {
-  final persianRegex = RegExp(r'[\u0600-\u06FF]');
-  return persianRegex.hasMatch(text) ? TextDirection.rtl : TextDirection.ltr;
-}
-
 String _getTimeAgo(DateTime dt) {
   final diff = DateTime.now().difference(dt);
   if (diff.inSeconds < 60) return 'همین الان';
@@ -311,26 +305,26 @@ class _SavedPostItem extends ConsumerWidget {
     final colorScheme = theme.colorScheme;
     final hasImage = post.imageUrl != null && post.imageUrl!.isNotEmpty;
 
-    final isLiked = ref.watch(likeStateProvider)[post.id] ?? post.isLiked;
+    final isLiked = ref.watch(likeStateProvider.select((map) => map[post.id])) ?? post.isLiked;
     final likeCount =
         post.likeCount + (isLiked != post.isLiked ? (isLiked ? 1 : -1) : 0);
 
     final currentUserId =
         ref.watch(activeUserProvider)?.id ?? CurrentUserService.cachedUserId;
 
-    final savedPostIdsAsync = ref.watch(savedPostIdsProvider);
-    final isSaved = savedPostIdsAsync.maybeWhen(
-      data: (ids) => ids.contains(post.id),
-      orElse: () => true, // در این صفحه همه پست‌ها ذخیره‌اند
+    final isSaved = ref.watch(
+      savedPostIdsProvider.select(
+        (async) => async.maybeWhen(
+          data: (ids) => ids.contains(post.id),
+          orElse: () => true,
+        ),
+      ),
     );
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => PostDetailsPage(postId: post.id)),
-        );
+        ContentNavigation.pushPostDetail(context, postId: post.id);
       },
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -341,12 +335,10 @@ class _SavedPostItem extends ConsumerWidget {
               children: [
                 // ─── آواتار ───
                 GestureDetector(
-                  onTap: () => Navigator.push(
+                  onTap: () => ContentNavigation.pushProfile(
                     context,
-                    MaterialPageRoute(
-                      builder: (_) => ProfileScreen(
-                          userId: post.userId, username: post.username),
-                    ),
+                    userId: post.userId,
+                    username: post.username,
                   ),
                   child: CircleAvatar(
                     radius: 22,
@@ -378,13 +370,10 @@ class _SavedPostItem extends ConsumerWidget {
                               children: [
                                 Flexible(
                                   child: GestureDetector(
-                                    onTap: () => Navigator.push(
+                                    onTap: () => ContentNavigation.pushProfile(
                                       context,
-                                      MaterialPageRoute(
-                                        builder: (_) => ProfileScreen(
-                                            userId: post.userId,
-                                            username: post.username),
-                                      ),
+                                      userId: post.userId,
+                                      username: post.username,
                                     ),
                                     child: Text(
                                       post.username,
@@ -428,32 +417,35 @@ class _SavedPostItem extends ConsumerWidget {
 
                       // متن پست
                       if (post.content.isNotEmpty) ...[
-                        Directionality(
-                          textDirection: _getTextDirection(post.content),
-                          child: HashtagRichText(
-                            text: post.content,
-                            style: TextStyle(
-                              fontSize: 15,
-                              height: 1.4,
-                              color:
-                                  colorScheme.onSurface.withValues(alpha: 0.9),
-                            ),
-                            hashtagStyle: const TextStyle(
-                              color: Colors.blue,
-                              fontWeight: FontWeight.w700,
-                            ),
-                            maxLines: 6,
-                            overflow: TextOverflow.ellipsis,
-                            onHashtagTap: (tag) {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) =>
-                                      SearchPage(initialHashtag: '#$tag'),
-                                ),
-                              );
-                            },
+                        HashtagRichText(
+                          text: post.content,
+                          style: TextStyle(
+                            fontSize: 15,
+                            height: 1.4,
+                            color:
+                                colorScheme.onSurface.withValues(alpha: 0.9),
                           ),
+                          hashtagStyle: const TextStyle(
+                            color: Colors.blue,
+                            fontWeight: FontWeight.w700,
+                          ),
+                          maxLines: 6,
+                          readMoreLabel: 'بیشتر...',
+                          onReadMoreTap: () {
+                            ContentNavigation.pushPostDetail(
+                              context,
+                              postId: post.id,
+                            );
+                          },
+                          onHashtagTap: (tag) {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    SearchPage(initialHashtag: '#$tag'),
+                              ),
+                            );
+                          },
                         ),
                         const SizedBox(height: 10),
                       ],

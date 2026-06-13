@@ -29,6 +29,7 @@ class _EditProfileState extends ConsumerState<EditProfile> {
   final TextEditingController bioController = TextEditingController();
   final TextEditingController emailController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
+  final TextEditingController websiteController = TextEditingController();
   bool _isLoading = false;
 
   // تاریخ تولد
@@ -82,6 +83,7 @@ class _EditProfileState extends ConsumerState<EditProfile> {
       setState(() {
         emailController.text = data['email'] ?? "";
         _phoneController.text = data['phone_number'] ?? "";
+        websiteController.text = data['website_url'] ?? "";
         if (data['birth_date'] != null) {
           _birthDate = data['birth_date']?.toString();
           _selectedDate = parseBirthDate(_birthDate);
@@ -447,6 +449,7 @@ class _EditProfileState extends ConsumerState<EditProfile> {
         'show_gender': _showGender,
         'show_marital_status': _showMaritalStatus,
         'phone_number': normalizedPhone,
+        'website_url': websiteController.text.trim(),
       });
 
       final userId = (data?['id'] ?? data?['user_id'] ?? '').toString();
@@ -844,6 +847,13 @@ class _EditProfileState extends ConsumerState<EditProfile> {
                         ),
                         const SizedBox(height: 16),
                         _buildVisibilitySection(),
+                        const SizedBox(height: 16),
+                        _buildProfileField(
+                          title: 'لینک وب‌سایت',
+                          icon: Icons.link,
+                          controller: websiteController,
+                          keyboardType: TextInputType.url,
+                        ),
                         const SizedBox(height: 16),
                         _buildProfileField(
                           title: 'درباره من',

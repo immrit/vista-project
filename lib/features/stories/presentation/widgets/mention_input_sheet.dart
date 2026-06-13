@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../domain/entities/story_editor_models.dart';
 
-/// Premium Mention Input Sheet (Instagram-style)
+/// Premium Mention Input Sheet (Social-style)
 class MentionInputSheet extends StatefulWidget {
   final Function(StoryInteractionType, Map<String, dynamic>) onMentionCreated;
 

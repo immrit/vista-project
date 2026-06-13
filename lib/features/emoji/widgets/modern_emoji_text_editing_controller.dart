@@ -1,17 +1,17 @@
 import 'package:flutter/material.dart';
 
-import '../domain/telegram_emoji_lookup.dart';
-import 'telegram_emoji_inline.dart';
+import '../domain/modern_emoji_lookup.dart';
+import 'modern_emoji_inline.dart';
 
-/// TextEditingController that renders supported emojis using Telegram assets
+/// TextEditingController that renders supported emojis using Modern assets
 /// inside EditableText/TextField.
-class TelegramEmojiTextEditingController extends TextEditingController {
-  TelegramEmojiTextEditingController({
+class ModernEmojiTextEditingController extends TextEditingController {
+  ModernEmojiTextEditingController({
     super.text,
-    this.useTelegramEmoji = true,
+    this.useModernEmoji = true,
   });
 
-  bool useTelegramEmoji;
+  bool useModernEmoji;
 
   @override
   TextSpan buildTextSpan({

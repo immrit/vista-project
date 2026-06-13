@@ -226,6 +226,7 @@ class SessionManagerServiceV2 {
     try {
       logInfo('🔧 Initializing Session Manager V2...');
       await _loadSavedSession();
+      await _reconcileOrphanedLocalSession();
 
       if (_currentSessionId != null) {
         logInfo('🚀 Local session found. Trusting it.');
@@ -250,6 +251,41 @@ class SessionManagerServiceV2 {
     } catch (e) {
       logInfo('❌ Error initializing Session Manager: $e');
     }
+  }
+
+  /// Removes stale session ids left in prefs when auth tokens are gone.
+  Future<void> _reconcileOrphanedLocalSession() async {
+    final hasAuth = await _hasAnyAuthSession();
+    if (hasAuth) return;
+
+    if (_currentSessionId != null || (_sessionToken?.isNotEmpty ?? false)) {
+      logInfo('🧹 Clearing orphaned local session (no auth credentials)');
+      await _clearSavedSession();
+      _currentSessionId = null;
+      _sessionToken = null;
+    }
+    _verificationState = SessionVerificationState.pendingVerification;
+  }
+
+  Future<bool> _hadEstablishedAuthSession() async {
+    if (await _hasAnyAuthSession()) return true;
+    if (_currentSessionId != null && (_sessionToken?.isNotEmpty ?? false)) {
+      return true;
+    }
+    final userId = await TokenStorage.getUserId();
+    return userId != null && userId.isNotEmpty;
+  }
+
+  Future<void> _silentSessionReset() async {
+    _stopHealthCheck();
+    _activityTimer?.cancel();
+    _teardownRealtimeListener();
+    await TokenStorage.clearAll();
+    await _clearSavedSession();
+    _currentSessionId = null;
+    _sessionToken = null;
+    _verificationState = SessionVerificationState.pendingVerification;
+    CurrentUserService.clearCache();
   }
 
   void _syncWithServerInBackground() {
@@ -353,6 +389,16 @@ class SessionManagerServiceV2 {
   Future<bool> _quickSessionCheck() async {
     final hasToken = await TokenStorage.hasValidSession();
     if (!hasToken) {
+      if (!await _hasAnyAuthSession()) {
+        _verificationState = SessionVerificationState.pendingVerification;
+        if (_currentSessionId != null || (_sessionToken?.isNotEmpty ?? false)) {
+          await _clearSavedSession();
+          _currentSessionId = null;
+          _sessionToken = null;
+        }
+        return false;
+      }
+
       final refreshed = await _refreshSessionWithRetry();
       if (refreshed == RefreshResult.authError) {
         _verificationState = SessionVerificationState.invalid;
@@ -631,8 +677,23 @@ class SessionManagerServiceV2 {
   // SESSION TERMINATION
   // ═══════════════════════════════════════════════════════════
 
-  Future<void> _handleSessionTermination() async {
+  Future<void> _handleSessionTermination({
+    bool notifyRemoteTermination = true,
+  }) async {
     if (_isTerminating) return;
+
+    final hadEstablishedSession = await _hadEstablishedAuthSession();
+    if (!hadEstablishedSession) {
+      logInfo('ℹ️ Silent session reset — user was never authenticated');
+      _isTerminating = true;
+      try {
+        await _silentSessionReset();
+      } finally {
+        _isTerminating = false;
+      }
+      return;
+    }
+
     _isTerminating = true;
     logInfo('🔴 Terminating session...');
 
@@ -657,13 +718,15 @@ class SessionManagerServiceV2 {
     _verificationState = SessionVerificationState.invalid;
     CurrentUserService.clearCache();
 
-    onSessionTerminated?.call();
+    if (notifyRemoteTermination) {
+      onSessionTerminated?.call();
+    }
     _isTerminating = false;
   }
 
   /// خروج دستی توسط کاربر
   Future<void> userLogout() async {
-    await _handleSessionTermination();
+    await _handleSessionTermination(notifyRemoteTermination: false);
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -836,6 +899,7 @@ class SessionManagerServiceV2 {
   }
 
   Future<void> onNetworkRestored() async {
+    if (_currentSessionId == null && !await _hasAnyAuthSession()) return;
     await _performHealthCheck();
   }
 

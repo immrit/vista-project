@@ -3,8 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../model/conversation_model.dart';
-import '../../services/telegram_read_receipt_service.dart';
-import '../../features/chat/widgets/telegram_message_status.dart';
+import '../../services/modern_read_receipt_service.dart';
+import '../../features/chat/widgets/modern_message_status.dart';
 import '../../features/chat/utils/conversation_name_utils.dart';
 import '../provider/typing_provider.dart';
 import '../utils/avatar_asset_utils.dart';
@@ -538,7 +538,7 @@ class _ContentWidget extends StatelessWidget {
               child: Row(
                 children: [
                   if (isLastMessageFromMe) ...[
-                    TelegramMessageStatus(
+                    ModernMessageStatus(
                       status: lastMessageDeliveryStatus,
                       size: 15,
                     ),

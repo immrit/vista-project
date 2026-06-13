@@ -183,7 +183,7 @@ class StoryViewersSheet extends ConsumerWidget {
               ),
               title: Row(
                 children: [
-                  Expanded(
+                  Flexible(
                     child: Text(
                       view.viewerUsername ?? 'کاربر',
                       style: TextStyle(
@@ -191,15 +191,19 @@ class StoryViewersSheet extends ConsumerWidget {
                         color: textColor,
                         fontFamily: 'Vazir',
                       ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                  if (view.isVerified)
+                  if (view.isVerified) ...[
+                    const SizedBox(width: 4),
                     VerificationBadgeIcon(
                       isVerified: view.isVerified,
                       verificationType: view.verificationType,
                       role: view.role,
                       size: 16,
                     ),
+                  ],
                 ],
               ),
               subtitle: Text(

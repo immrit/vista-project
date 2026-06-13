@@ -444,7 +444,7 @@ class TimeUtils {
     bool isMe,
   ) {
     const double defaultRadius = 18.0;
-    const double smallRadius = 6.0; // TelegramX-style merged corner radius
+    const double smallRadius = 6.0; // ModernX-style merged corner radius
 
     bool isFirstInGroup = previousMessageTime == null ||
         previousSenderId != currentSenderId ||

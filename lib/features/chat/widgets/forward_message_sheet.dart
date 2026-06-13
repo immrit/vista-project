@@ -193,10 +193,10 @@ class _ForwardMessageSheetState extends ConsumerState<ForwardMessageSheet>
       return _buildEmptyState(theme);
     }
 
-    return _buildInstagramStyleGrid(theme, filteredConversations);
+    return _buildSocialStyleGrid(theme, filteredConversations);
   }
 
-  Widget _buildInstagramStyleGrid(
+  Widget _buildSocialStyleGrid(
       ThemeData theme, List<dynamic> conversations) {
     return GridView.builder(
       padding: const EdgeInsets.all(20),
@@ -210,12 +210,12 @@ class _ForwardMessageSheetState extends ConsumerState<ForwardMessageSheet>
       itemBuilder: (context, index) {
         final conversation = conversations[index];
         // Ensure we handle ConversationModel
-        return _buildInstagramStyleUserCard(theme, conversation, index);
+        return _buildSocialStyleUserCard(theme, conversation, index);
       },
     );
   }
 
-  Widget _buildInstagramStyleUserCard(
+  Widget _buildSocialStyleUserCard(
       ThemeData theme, dynamic conversation, int index) {
     // Assuming conversation.otherUserId and otherUserName are available
     // conversations based on ConversationModel

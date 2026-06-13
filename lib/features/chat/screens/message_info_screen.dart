@@ -12,19 +12,25 @@
 import 'package:flutter/material.dart';
 import 'package:shamsi_date/shamsi_date.dart';
 import 'package:timeago/timeago.dart' as timeago;
+
 import '../../../model/message_model.dart';
+import '../../../utils/avatar_asset_utils.dart';
+import '../../../utils/compat_extensions.dart';
 import '../../emoji/domain/emoji_render_policy.dart';
-import '../../emoji/widgets/telegram_emoji_text.dart';
+import '../../emoji/widgets/modern_emoji_text.dart';
+import '../models/message_reaction.dart' as reaction_models;
 
 /// صفحه اطلاعات پیام
 class MessageInfoScreen extends StatelessWidget {
   final MessageModel message;
   final String currentUserId;
+  final List<reaction_models.MessageReaction> reactions;
 
   const MessageInfoScreen({
     super.key,
     required this.message,
     required this.currentUserId,
+    this.reactions = const [],
   });
 
   @override
@@ -42,26 +48,14 @@ class MessageInfoScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // پیش‌نمایش پیام
             _buildMessagePreview(context, theme, isDark),
-
             const SizedBox(height: 8),
-
-            // زمان‌بندی
             _buildTimestamps(context, theme, isDark),
-
-            const SizedBox(height: 8),
-
-            // واکنش‌ها
-            if (message.reactions.isNotEmpty)
+            if (reactions.isNotEmpty) ...[
+              const SizedBox(height: 8),
               _buildReactions(context, theme, isDark),
-
+            ],
             const SizedBox(height: 8),
-
-            // تاریخچه ویرایش
-            // TODO: Add editedAt field to MessageModel
-            // if (message.editedAt != null)
-            //   _buildEditHistory(context, theme, isDark),
           ],
         ),
       ),
@@ -128,11 +122,11 @@ class MessageInfoScreen extends StatelessWidget {
                 color: theme.dividerColor.withValues(alpha: 0.3),
               ),
             ),
-            child: TelegramEmojiText(
+            child: ModernEmojiText(
               message.content.isNotEmpty
                   ? '${message.content}\u200F'
                   : '[${_getAttachmentTypeLabel(message.attachmentType)}]',
-              useTelegramEmoji: EmojiRenderPolicy.useTelegramEmojiRenderer(),
+              useModernEmoji: EmojiRenderPolicy.useModernEmojiRenderer(),
               textDirection: TextDirection.rtl,
               textAlign: TextAlign.right,
               style: TextStyle(
@@ -185,8 +179,6 @@ class MessageInfoScreen extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 16),
-
-          // ارسال شده
           _buildTimelineItem(
             context: context,
             icon: Icons.send_rounded,
@@ -195,26 +187,20 @@ class MessageInfoScreen extends StatelessWidget {
             color: Colors.blue,
             isFirst: true,
           ),
-
-          // تحویل داده شده
           if (message.isDelivered)
             _buildTimelineItem(
               context: context,
               icon: Icons.done_all_rounded,
               label: 'تحویل داده شده',
-              time: message.createdAt.add(const Duration(
-                  seconds: 1)), // TODO: Use deliveredAt when available
+              time: message.createdAt.add(const Duration(seconds: 1)),
               color: Colors.green,
             ),
-
-          // خوانده شده
           if (message.isSeen)
             _buildTimelineItem(
               context: context,
               icon: Icons.visibility_rounded,
               label: 'خوانده شده',
-              time: message.createdAt.add(const Duration(
-                  seconds: 2)), // TODO: Use seenAt when available
+              time: message.createdAt.add(const Duration(seconds: 2)),
               color: Colors.purple,
               isLast: true,
             ),
@@ -237,7 +223,6 @@ class MessageInfoScreen extends StatelessWidget {
     return IntrinsicHeight(
       child: Row(
         children: [
-          // خط عمودی
           SizedBox(
             width: 32,
             child: Column(
@@ -268,10 +253,7 @@ class MessageInfoScreen extends StatelessWidget {
               ],
             ),
           ),
-
           const SizedBox(width: 12),
-
-          // محتوا
           Expanded(
             child: Padding(
               padding: const EdgeInsets.only(bottom: 16),
@@ -312,7 +294,10 @@ class MessageInfoScreen extends StatelessWidget {
   }
 
   Widget _buildReactions(BuildContext context, ThemeData theme, bool isDark) {
-    final reactions = message.reactions;
+    final grouped = reaction_models.ReactionSummary.groupReactions(
+      reactions,
+      currentUserId,
+    );
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -344,134 +329,130 @@ class MessageInfoScreen extends StatelessWidget {
                   color: theme.textTheme.titleLarge?.color,
                 ),
               ),
+              const Spacer(),
+              Text(
+                '${reactions.length.toString().toPersianDigit()} نفر',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: theme.hintColor,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 16),
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children: reactions.entries.map((entry) {
-              final emoji = entry.key;
-              final users = entry.value as List;
-
-              return Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 8,
-                ),
-                decoration: BoxDecoration(
-                  color: theme.primaryColor.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(emoji, style: const TextStyle(fontSize: 20)),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: theme.primaryColor,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Text(
-                        '${users.length}',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
+          ...grouped.map((summary) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(summary.emoji, style: const TextStyle(fontSize: 22)),
+                      const SizedBox(width: 8),
+                      Text(
+                        '${summary.count.toString().toPersianDigit()} نفر',
+                        style: TextStyle(
+                          fontSize: 13,
                           fontWeight: FontWeight.w600,
+                          color: theme.textTheme.titleMedium?.color,
                         ),
                       ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  ...summary.reactions.map(
+                    (reaction) => _buildReactionUserRow(
+                      context,
+                      theme,
+                      reaction,
                     ),
-                  ],
-                ),
-              );
-            }).toList(),
+                  ),
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReactionUserRow(
+    BuildContext context,
+    ThemeData theme,
+    reaction_models.MessageReaction reaction,
+  ) {
+    final displayName = _reactionDisplayName(reaction);
+    final initial = displayName.trim().isNotEmpty
+        ? displayName.trim()[0].toUpperCase()
+        : '?';
+    final isMe = reaction.userId == currentUserId;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: theme.primaryColor.withValues(alpha: 0.08),
+            ),
+            child: ClipOval(
+              child: reaction.userAvatar != null &&
+                      reaction.userAvatar!.isNotEmpty
+                  ? AvatarAssetUtils.image(
+                      source: reaction.userAvatar,
+                      fit: BoxFit.cover,
+                      memCacheWidth: 72,
+                      memCacheHeight: 72,
+                      placeholder: _buildInitialAvatar(theme, initial),
+                      fallback: _buildInitialAvatar(theme, initial),
+                    )
+                  : _buildInitialAvatar(theme, initial),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              isMe ? 'شما' : displayName,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: theme.textTheme.bodyLarge?.color,
+              ),
+            ),
+          ),
+          Text(
+            reaction.emoji,
+            style: const TextStyle(fontSize: 18),
           ),
         ],
       ),
     );
   }
 
-  // TODO: Uncomment when editedAt field is added to MessageModel
-  // Widget _buildEditHistory(BuildContext context, ThemeData theme, bool isDark) {
-  //   return Container(
-  //     margin: const EdgeInsets.symmetric(horizontal: 16),
-  //     padding: const EdgeInsets.all(16),
-  //     decoration: BoxDecoration(
-  //       color: isDark ? const Color(0xFF1A1A1A) : Colors.white,
-  //       borderRadius: BorderRadius.circular(16),
-  //       boxShadow: [
-  //         BoxShadow(
-  //           color: Colors.black.withOpacity(0.05),
-  //           blurRadius: 10,
-  //           offset: const Offset(0, 2),
-  //         ),
-  //       ],
-  //     ),
-  //     child: Column(
-  //       crossAxisAlignment: CrossAxisAlignment.start,
-  //       children: [
-  //         Row(
-  //           children: [
-  //             Icon(Icons.history_rounded, color: theme.primaryColor, size: 20),
-  //             const SizedBox(width: 8),
-  //             Text(
-  //               'تاریخچه ویرایش',
-  //               style: TextStyle(
-  //                 fontSize: 16,
-  //                 fontWeight: FontWeight.w600,
-  //                 color: theme.textTheme.titleLarge?.color,
-  //               ),
-  //             ),
-  //           ],
-  //         ),
-  //         const SizedBox(height: 12),
-  //         Container(
-  //           padding: const EdgeInsets.all(12),
-  //           decoration: BoxDecoration(
-  //             color: Colors.orange.withOpacity(0.1),
-  //             borderRadius: BorderRadius.circular(12),
-  //             border: Border.all(
-  //               color: Colors.orange.withOpacity(0.3),
-  //             ),
-  //           ),
-  //           child: Row(
-  //             children: [
-  //               Icon(Icons.edit_rounded, color: Colors.orange, size: 18),
-  //               const SizedBox(width: 8),
-  //               Expanded(
-  //                 child: Column(
-  //                   crossAxisAlignment: CrossAxisAlignment.start,
-  //                   children: [
-  //                     Text(
-  //                       'ویرایش شده',
-  //                       style: TextStyle(
-  //                         fontSize: 13,
-  //                         fontWeight: FontWeight.w600,
-  //                         color: theme.textTheme.titleLarge?.color,
-  //                       ),
-  //                     ),
-  //                     Text(
-  //                       _formatFullDateTime(message.editedAt!),
-  //                       style: TextStyle(
-  //                         fontSize: 12,
-  //                         color: theme.hintColor,
-  //                       ),
-  //                     ),
-  //                   ],
-  //                 ),
-  //               ),
-  //             ],
-  //           ),
-  //         ),
-  //       ],
-  //     ),
-  //   );
-  // }
+  Widget _buildInitialAvatar(ThemeData theme, String initial) {
+    return Center(
+      child: Text(
+        initial,
+        style: TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w700,
+          color: theme.primaryColor,
+        ),
+      ),
+    );
+  }
+
+  String _reactionDisplayName(reaction_models.MessageReaction reaction) {
+    final name = reaction.userName.trim();
+    if (name.isNotEmpty && name != 'کاربر') return name;
+    return name.isNotEmpty ? name : 'کاربر';
+  }
 
   String _getAttachmentTypeLabel(String? type) {
     switch (type) {

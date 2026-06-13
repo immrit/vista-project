@@ -9,12 +9,12 @@ import '../theme/chat_theme.dart';
 import '../../../utils/compat_extensions.dart';
 import 'voice_message_bubble.dart';
 import 'swipe_to_reply.dart';
-import 'telegram_message_status.dart';
+import 'modern_message_status.dart';
 import 'gif_message_bubble.dart';
 import 'media_message_bubble.dart';
 import 'file_message_bubble.dart';
 import 'full_screen_image_viewer.dart';
-import '../../../services/telegram_read_receipt_service.dart';
+import '../../../services/modern_read_receipt_service.dart';
 import '../../../model/message_model.dart';
 import '../utils/story_reply_media_utils.dart';
 import '../utils/chat_text_direction.dart';
@@ -24,7 +24,8 @@ import '../../../utils/user_friendly_error_utils.dart';
 import '../performance/chat_performance_profile.dart';
 import '../performance/motion_tokens.dart';
 import '../../emoji/domain/emoji_render_policy.dart';
-import '../../emoji/widgets/telegram_emoji_text.dart';
+import '../../emoji/widgets/modern_emoji_text.dart';
+import 'reaction_reactor_avatar_stack.dart';
 
 /// Message delivery state for the bubble widget.
 enum MessageStatus {
@@ -40,12 +41,14 @@ class MessageReaction {
   final String emoji;
   final int count;
   final List<String> userIds;
+  final List<ReactionReactorInfo> reactors;
   final bool isMyReaction;
 
   const MessageReaction({
     required this.emoji,
     required this.count,
     required this.userIds,
+    this.reactors = const [],
     required this.isMyReaction,
   });
 }
@@ -83,6 +86,7 @@ class ImprovedAnimatedMessageBubble extends StatefulWidget {
   final String? senderName;
   final bool showSenderNameInBubble;
   final bool compactWithAvatar;
+  final bool showReactionAvatars;
 
   // Grouping
   final bool isFirstInGroup;
@@ -131,6 +135,7 @@ class ImprovedAnimatedMessageBubble extends StatefulWidget {
     this.senderName,
     this.showSenderNameInBubble = false,
     this.compactWithAvatar = false,
+    this.showReactionAvatars = false,
     this.isFirstInGroup = true,
     this.isLastInGroup = true,
     this.attachmentUrl,
@@ -247,9 +252,9 @@ class _ImprovedAnimatedMessageBubbleState
       curve: switch (widget.effectsLevel) {
         ChatEffectsLevel.low => const Interval(0.0, 0.5, curve: Curves.linear),
         ChatEffectsLevel.medium =>
-          const Interval(0.0, 0.65, curve: Curves.easeOutCubic),
+          const Interval(0.0, 0.65, curve: Curves.easeOutQuart),
         ChatEffectsLevel.high =>
-          const Interval(0.0, 0.75, curve: Curves.easeOutCubic),
+          const Interval(0.0, 1.0, curve: Curves.easeOutQuart),
       },
     ));
 
@@ -414,6 +419,7 @@ class _ImprovedAnimatedMessageBubbleState
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
           if (_shouldShowSenderName())
             _buildSenderName(theme, widget.senderName!.trim()),
@@ -1094,10 +1100,10 @@ class _ImprovedAnimatedMessageBubbleState
                       ],
                     )
                   : _currentContent.isNotEmpty
-                      ? TelegramEmojiRichText(
+                      ? ModernEmojiRichText(
                           text: _currentContent,
-                          useTelegramEmoji:
-                              EmojiRenderPolicy.useTelegramEmojiRenderer(),
+                          useModernEmoji:
+                              EmojiRenderPolicy.useModernEmojiRenderer(),
                           textDirection: contentDirection,
                           textAlign: TextAlign.start,
                           baseStyle: TextStyle(
@@ -1573,34 +1579,8 @@ class _ImprovedAnimatedMessageBubbleState
   }
 
   Widget _buildTimeAndStatus(ChatTheme theme) {
-    if (widget.message != null) {
-      return ValueListenableBuilder<MessageDeliveryStatus>(
-        valueListenable: widget.message!.statusNotifier,
-        builder: (context, status, child) {
-          return Row(
-            mainAxisSize: MainAxisSize.min,
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              Text(
-                _formattedTime,
-                style: TextStyle(
-                  color: widget.isMe
-                      ? theme.myBubbleTextColor.withValues(alpha: 0.7)
-                      : theme.otherBubbleTextColor.withValues(alpha: 0.6),
-                  fontSize: 11,
-                ),
-              ),
-              if (widget.isMe) ...[
-                const SizedBox(width: 3),
-                _buildStatusIconFromDeliveryStatus(theme, status),
-              ],
-            ],
-          );
-        },
-      );
-    }
-
-    final deliveryStatus = _convertToDeliveryStatus(widget.status);
+    final deliveryStatus = widget.message?.resolvedDeliveryStatus ??
+        _convertToDeliveryStatus(widget.status);
     return Row(
       mainAxisSize: MainAxisSize.min,
       mainAxisAlignment: MainAxisAlignment.end,
@@ -1635,7 +1615,7 @@ class _ImprovedAnimatedMessageBubbleState
           ),
         );
       },
-      child: TelegramMessageStatus(
+      child: ModernMessageStatus(
         key: ValueKey(status),
         status: status,
         size: 12,
@@ -1659,7 +1639,7 @@ class _ImprovedAnimatedMessageBubbleState
     );
   }
 
-  /// Convert old local status enum to delivery status used by Telegram ticks.
+  /// Convert old local status enum to delivery status used by Modern ticks.
   MessageDeliveryStatus _convertToDeliveryStatus(MessageStatus status) {
     switch (status) {
       case MessageStatus.pending:
@@ -1722,7 +1702,14 @@ class _ImprovedAnimatedMessageBubbleState
                     children: [
                       Text(reaction.emoji,
                           style: const TextStyle(fontSize: 12)),
-                      if (reaction.count > 1) ...[
+                      if (widget.showReactionAvatars &&
+                          reaction.reactors.isNotEmpty) ...[
+                        const SizedBox(width: 4),
+                        ReactionReactorAvatarStack(
+                          reactors: reaction.reactors,
+                          theme: theme,
+                        ),
+                      ] else if (reaction.count > 1) ...[
                         const SizedBox(width: 4),
                         AnimatedSwitcher(
                           duration: const Duration(milliseconds: 160),

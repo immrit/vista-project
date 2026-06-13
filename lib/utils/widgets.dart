@@ -18,7 +18,7 @@ import '../../model/CommentModel.dart';
 import '../../model/UserModel.dart';
 import '../../model/publicPostModel.dart';
 import '../../provider/provider.dart';
-import 'package:Vista/features/posts/screens/profileScreen.dart';
+import 'package:Vista/features/posts/navigation/content_routes.dart';
 import 'package:Vista/widgets/verification_badge_icon.dart';
 
 class topText extends StatelessWidget {
@@ -962,26 +962,18 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet> {
           // Avatar
           GestureDetector(
             onTap: () {
-              Navigator.push(
+              ContentNavigation.pushProfile(
                 context,
-                MaterialPageRoute(
-                  builder: (context) => ProfileScreen(
-                    userId: comment.userId,
-                    username: comment.username,
-                  ),
-                ),
+                userId: comment.userId,
+                username: comment.username,
               );
             },
             child: GestureDetector(
               onTap: () {
-                Navigator.push(
+                ContentNavigation.pushProfile(
                   context,
-                  MaterialPageRoute(
-                    builder: (context) => ProfileScreen(
-                      userId: comment.userId,
-                      username: comment.username,
-                    ),
-                  ),
+                  userId: comment.userId,
+                  username: comment.username,
                 );
               },
               child: CircleAvatar(
@@ -1392,14 +1384,10 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet> {
               if (username != null) {
                 final userId = await getUserIdByUsername(username);
                 if (userId != null) {
-                  Navigator.push(
+                  ContentNavigation.pushProfile(
                     context,
-                    MaterialPageRoute(
-                      builder: (context) => ProfileScreen(
-                        username: username,
-                        userId: userId,
-                      ),
-                    ),
+                    username: username,
+                    userId: userId,
                   );
                 }
               }

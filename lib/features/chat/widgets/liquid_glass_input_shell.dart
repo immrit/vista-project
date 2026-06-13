@@ -71,7 +71,8 @@ class _LiquidGlassInputShellState extends State<LiquidGlassInputShell>
                   decoration: BoxDecoration(
                     color: widget.reduceEffects
                         ? widget.background.withValues(alpha: 0.95)
-                        : widget.background, // ChatTheme already provides glassBackground colors now
+                        : widget
+                            .background, // ChatTheme already provides glassBackground colors now
                     border: Border.all(
                       color: widget.reduceEffects
                           ? widget.borderColor.withValues(alpha: 0.2)
@@ -92,7 +93,9 @@ class _LiquidGlassInputShellState extends State<LiquidGlassInputShell>
                           colors: [
                             Colors.white.withValues(alpha: 0.0),
                             Colors.white.withValues(
-                              alpha: widget.isDark ? 0.02 : 0.05, // More subtle shine
+                              alpha: widget.isDark
+                                  ? 0.02
+                                  : 0.05, // More subtle shine
                             ),
                             Colors.white.withValues(alpha: 0.0),
                           ],

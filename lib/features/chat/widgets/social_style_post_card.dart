@@ -1,22 +1,22 @@
-﻿// lib/features/chat/widgets/instagram_style_post_card.dart
+﻿// lib/features/chat/widgets/social_style_post_card.dart
 //
 // کارت پست به سبک ویستا/تردز برای چت
 //
 // این ویجت برای نمایش پست‌های اشتراک‌گذاری شده در چت استفاده میشه
-// طراحی مشابه Instagram و Threads
+// طراحی مشابه Social و Threads
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../theme/chat_theme.dart';
 import '../../../utils/compat_extensions.dart';
-import 'telegram_message_status.dart';
-import '../../../services/telegram_read_receipt_service.dart';
+import 'modern_message_status.dart';
+import '../../../services/modern_read_receipt_service.dart';
 import 'improved_animated_message_bubble.dart' show MessageStatus;
 import '../../../widgets/verification_badge_icon.dart';
 import '../../../utils/verification_badge_utils.dart';
 
-class InstagramStylePostCard extends StatefulWidget {
+class SocialStylePostCard extends StatefulWidget {
   final String postId;
   final String authorName;
   final String? authorAvatar;
@@ -37,7 +37,7 @@ class InstagramStylePostCard extends StatefulWidget {
   final List<String>? hashtags;
   final MessageStatus? status; // وضعیت پیام
 
-  const InstagramStylePostCard({
+  const SocialStylePostCard({
     super.key,
     required this.postId,
     required this.authorName,
@@ -61,10 +61,10 @@ class InstagramStylePostCard extends StatefulWidget {
   });
 
   @override
-  State<InstagramStylePostCard> createState() => _InstagramStylePostCardState();
+  State<SocialStylePostCard> createState() => _SocialStylePostCardState();
 }
 
-class _InstagramStylePostCardState extends State<InstagramStylePostCard>
+class _SocialStylePostCardState extends State<SocialStylePostCard>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _scaleAnimation;
@@ -544,7 +544,7 @@ class _InstagramStylePostCardState extends State<InstagramStylePostCard>
     // تبدیل MessageStatus به MessageDeliveryStatus
     final deliveryStatus = _convertToDeliveryStatus(widget.status!);
 
-    return TelegramMessageStatus(
+    return ModernMessageStatus(
       status: deliveryStatus,
       size: 12, // کوچک‌تر و ظریف‌تر
       customColor: deliveryStatus == MessageDeliveryStatus.read

@@ -4,7 +4,7 @@ import 'package:flutter/services.dart';
 /// Shared action buttons for post cards (used in For You / Following / Public).
 ///
 /// Goal: consistent behavior and always-visible counts (including 0),
-/// with a lightweight, Instagram-like visual density.
+/// with a lightweight, Social-like visual density.
 String _formatCount(int count) {
   if (count < 1000) return '$count';
   if (count < 1000000) return '${(count / 1000).toStringAsFixed(1)}k';

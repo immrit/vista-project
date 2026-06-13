@@ -19,7 +19,7 @@ import 'package:flutter/services.dart';
 import '../theme/chat_theme.dart';
 import '../services/voice_recorder_service.dart';
 import 'liquid_glass_input_shell.dart';
-import 'telegram_voice_recorder_bar.dart';
+import 'modern_voice_recorder_bar.dart';
 import 'voice_input_state.dart';
 
 enum _VoiceHapticEvent {
@@ -48,6 +48,7 @@ class AnimatedChatInput extends StatefulWidget {
   final Function(String gifUrl)? onGifSelected;
   final ValueChanged<bool>? onEmojiPickerToggled;
   final ValueChanged<double>? onHeightChanged;
+
   /// وضعیت پنل ایموجی از parent (منبع حقیقت – منطق تلگرام)
   final bool isEmojiPanelOpen;
 
@@ -509,7 +510,7 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
   }
 
   Widget _buildRecordingOverlay(ChatTheme theme) {
-    return TelegramVoiceRecorderBar(
+    return ModernVoiceRecorderBar(
       theme: theme,
       isLocked: _isRecordingLocked,
       isCanceling: _isCancelSwipeArmed,

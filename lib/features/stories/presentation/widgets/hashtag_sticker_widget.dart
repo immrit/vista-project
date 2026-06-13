@@ -38,7 +38,7 @@ class HashtagStickerWidget extends StatelessWidget {
         return _buildWhiteRainbowStyle(key, hashtag);
       case 2: // Glass Effect
         return _buildGlassStyle(key, hashtag);
-      case 0: // Instagram Gradient Background
+      case 0: // Social Gradient Background
       default:
         return _buildGradientStyle(key, hashtag);
     }

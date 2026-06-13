@@ -1,4 +1,4 @@
-// lib/features/chat/widgets/telegram_reaction_picker.dart
+// lib/features/chat/widgets/modern_reaction_picker.dart
 //
 // Reaction Picker به سبک ویستا iOS
 //
@@ -52,15 +52,15 @@ const List<String> kDefaultReactions = [
   '🖕',
 ];
 
-/// Telegram-style Reaction Picker با اسکرول افقی
-class TelegramReactionPicker extends StatefulWidget {
+/// Modern-style Reaction Picker با اسکرول افقی
+class ModernReactionPicker extends StatefulWidget {
   final Function(String emoji) onReactionSelected;
   final VoidCallback? onClose;
   final List<String> reactions;
   final Offset position;
   final bool showAbove;
 
-  const TelegramReactionPicker({
+  const ModernReactionPicker({
     super.key,
     required this.onReactionSelected,
     this.onClose,
@@ -70,10 +70,10 @@ class TelegramReactionPicker extends StatefulWidget {
   });
 
   @override
-  State<TelegramReactionPicker> createState() => _TelegramReactionPickerState();
+  State<ModernReactionPicker> createState() => _ModernReactionPickerState();
 }
 
-class _TelegramReactionPickerState extends State<TelegramReactionPicker>
+class _ModernReactionPickerState extends State<ModernReactionPicker>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _scaleAnimation;
@@ -232,12 +232,12 @@ class _TelegramReactionPickerState extends State<TelegramReactionPicker>
 }
 
 /// Reaction Display در Message Bubble (مثل ویستا)
-class TelegramReactionDisplay extends StatelessWidget {
+class ModernReactionDisplay extends StatelessWidget {
   final Map<String, List<String>> reactions; // emoji -> [userId1, userId2, ...]
   final String currentUserId;
   final Function(String emoji)? onReactionTap;
 
-  const TelegramReactionDisplay({
+  const ModernReactionDisplay({
     super.key,
     required this.reactions,
     required this.currentUserId,

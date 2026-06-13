@@ -24,12 +24,12 @@ enum MessageSendStatus {
 }
 
 /// Retry Indicator به سبک ویستا
-class TelegramRetryIndicator extends StatefulWidget {
+class ModernRetryIndicator extends StatefulWidget {
   final MessageSendStatus status;
   final VoidCallback? onRetry;
   final bool isMe;
 
-  const TelegramRetryIndicator({
+  const ModernRetryIndicator({
     super.key,
     required this.status,
     this.onRetry,
@@ -37,10 +37,10 @@ class TelegramRetryIndicator extends StatefulWidget {
   });
 
   @override
-  State<TelegramRetryIndicator> createState() => _TelegramRetryIndicatorState();
+  State<ModernRetryIndicator> createState() => _ModernRetryIndicatorState();
 }
 
-class _TelegramRetryIndicatorState extends State<TelegramRetryIndicator>
+class _ModernRetryIndicatorState extends State<ModernRetryIndicator>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _scaleAnimation;
@@ -90,7 +90,7 @@ class _TelegramRetryIndicatorState extends State<TelegramRetryIndicator>
   }
 
   @override
-  void didUpdateWidget(TelegramRetryIndicator oldWidget) {
+  void didUpdateWidget(ModernRetryIndicator oldWidget) {
     super.didUpdateWidget(oldWidget);
 
     if (oldWidget.status != widget.status) {
@@ -259,22 +259,22 @@ class _TelegramRetryIndicatorState extends State<TelegramRetryIndicator>
 }
 
 /// Connection Status Banner (مثل ویستا)
-class TelegramConnectionBanner extends StatefulWidget {
+class ModernConnectionBanner extends StatefulWidget {
   final bool isConnected;
   final VoidCallback? onRetry;
 
-  const TelegramConnectionBanner({
+  const ModernConnectionBanner({
     super.key,
     required this.isConnected,
     this.onRetry,
   });
 
   @override
-  State<TelegramConnectionBanner> createState() =>
-      _TelegramConnectionBannerState();
+  State<ModernConnectionBanner> createState() =>
+      _ModernConnectionBannerState();
 }
 
-class _TelegramConnectionBannerState extends State<TelegramConnectionBanner>
+class _ModernConnectionBannerState extends State<ModernConnectionBanner>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<Offset> _slideAnimation;
@@ -311,7 +311,7 @@ class _TelegramConnectionBannerState extends State<TelegramConnectionBanner>
   }
 
   @override
-  void didUpdateWidget(TelegramConnectionBanner oldWidget) {
+  void didUpdateWidget(ModernConnectionBanner oldWidget) {
     super.didUpdateWidget(oldWidget);
 
     if (oldWidget.isConnected != widget.isConnected) {
@@ -401,11 +401,11 @@ class _TelegramConnectionBannerState extends State<TelegramConnectionBanner>
 }
 
 /// Pending Messages Counter (مثل ویستا)
-class TelegramPendingCounter extends StatelessWidget {
+class ModernPendingCounter extends StatelessWidget {
   final int count;
   final VoidCallback? onTap;
 
-  const TelegramPendingCounter({
+  const ModernPendingCounter({
     super.key,
     required this.count,
     this.onTap,

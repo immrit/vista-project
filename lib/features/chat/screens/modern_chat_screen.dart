@@ -28,6 +28,7 @@ import 'package:gal/gal.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cryptography/cryptography.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../widgets/modern_chat_app_bar.dart';
 import '../../../DB/profile_cache_service.dart';
 import '../../../model/ProfileModel.dart';
 import '../../../model/message_model.dart';
@@ -44,26 +45,27 @@ import '../domain/message_payload.dart';
 import '../theme/chat_theme.dart';
 import '../models/group_member_item.dart';
 import '../widgets/enhanced_chat_background.dart';
-import '../widgets/telegram_reaction_picker.dart'
-    show kDefaultReactions, TelegramReactionPicker;
-import '../widgets/retry_indicator_widget.dart' show TelegramConnectionBanner;
+import '../widgets/modern_reaction_picker.dart'
+    show kDefaultReactions, ModernReactionPicker;
+import '../widgets/retry_indicator_widget.dart' show ModernConnectionBanner;
 import '../widgets/improved_animated_message_bubble.dart';
-import '../widgets/telegram_context_menu.dart';
+import '../widgets/reaction_reactor_avatar_stack.dart';
+import '../widgets/modern_context_menu.dart';
 import '../widgets/animated_chat_input.dart';
 import '../widgets/vista_emoji_panel.dart';
 import '../widgets/voice_input_state.dart';
-import '../widgets/instagram_style_post_card.dart';
+import '../widgets/social_style_post_card.dart';
 import '../widgets/date_divider.dart' as date_divider;
 import '../widgets/swipe_to_reply_wrapper.dart';
 import '../widgets/full_screen_image_viewer.dart';
-import '../widgets/telegram_message_status.dart';
+import '../widgets/modern_message_status.dart';
 
 // ✅ Providers
 import '../../../provider/typing_provider.dart';
 import '../../../provider/presence_provider.dart';
 import '../../../provider/optimized_conversations_provider.dart';
 import '../../../provider/settings_providers.dart';
-import '../../../services/telegram_read_receipt_service.dart';
+import '../../../services/modern_read_receipt_service.dart';
 import '../../../services/current_user_service.dart';
 import '../../../services/user_profile_service.dart';
 
@@ -75,7 +77,7 @@ import '../widgets/forward_message_sheet.dart';
 import '../widgets/delete_message_dialog.dart';
 import '../widgets/unread_messages_divider.dart';
 import '../widgets/floating_date_header.dart';
-import '../widgets/telegram_online_status.dart';
+import '../widgets/modern_online_status.dart';
 import '../services/chat_attachment_service.dart';
 import '../services/chat_transfer_manager.dart';
 import '../services/attachment_type_resolver.dart';
@@ -94,20 +96,19 @@ import '../services/voice_duration_service.dart';
 import '../services/message_reactions_service.dart';
 import '../utils/chat_text_direction.dart';
 import '../../emoji/domain/emoji_render_policy.dart';
-import '../../emoji/widgets/telegram_emoji_text.dart';
-import '../../emoji/widgets/telegram_emoji_text_editing_controller.dart';
+import '../../emoji/widgets/modern_emoji_text.dart';
+import '../../emoji/widgets/modern_emoji_text_editing_controller.dart';
 import '../../../utils/user_friendly_error_utils.dart';
 import '../../../security/logging_utility.dart';
 import '../models/message_reaction.dart' as reaction_models;
-import 'package:Vista/features/posts/screens/profileScreen.dart';
-import 'package:Vista/features/posts/screens/PostDetailPage.dart';
+import 'package:Vista/features/posts/navigation/content_routes.dart';
 import '../../stories/presentation/providers/story_providers.dart';
 import '../../stories/presentation/screens/story_player_screen.dart';
 import '../../stories/domain/entities/entities.dart';
 import 'package:uuid/uuid.dart';
 
 // ✅ Phase 4: Final Integration
-import 'telegram_profile_screen.dart';
+import 'modern_profile_screen.dart';
 import 'modern_group_profile_screen.dart';
 import 'document_preview_screen.dart';
 import '../screens/message_info_screen.dart';
@@ -116,7 +117,14 @@ import '../screens/message_info_screen.dart';
 import '../services/message_actions_service.dart';
 import '../widgets/molecular_delete_animation.dart';
 import '../performance/adaptive_effects_provider.dart';
+import '../performance/chat_message_render_window.dart';
 import '../performance/chat_performance_profile.dart';
+import '../widgets/chat_adaptive_blur_scope.dart';
+import '../widgets/chat_input_dock.dart';
+import '../widgets/chat_group_presence_summary.dart';
+import '../widgets/chat_message_list_scope.dart';
+import '../widgets/chat_message_list_tile.dart';
+import '../widgets/chat_selection_controller.dart';
 import '../services/secret_chat_privacy_service.dart';
 import '../utils/conversation_name_utils.dart';
 // So importing the file should expose it.
@@ -180,8 +188,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   // 🎮 CONTROLLERS
   // ═══════════════════════════════════════════════════════════════════════════
 
-  final _messageController = TelegramEmojiTextEditingController(
-    useTelegramEmoji: EmojiRenderPolicy.useTelegramEmojiRenderer(),
+  final _messageController = ModernEmojiTextEditingController(
+    useModernEmoji: EmojiRenderPolicy.useModernEmojiRenderer(),
   );
   final _scrollController = ScrollController();
   final _focusNode = FocusNode();
@@ -197,8 +205,9 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   MessageModel? _replyToMessage;
   _PendingReplyContext? _pendingReplyContext;
   bool _isNearTop = false;
-  bool _showScrollToBottom = false;
+  final _showScrollToBottomNotifier = ValueNotifier<bool>(false);
   String? _currentUserId;
+  bool _isTransitioning = true; // ✅ For deferred rendering during Hero transition
 
   // Search
   bool _isSearchMode = false;
@@ -207,24 +216,30 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       {}; // ✅ کلیدها برای اسکرول به پیام
 
   // Selection mode
-  bool _isSelectionMode = false;
-  final Set<String> _selectedMessageIds = {};
+  final _selectionController = ChatSelectionController();
 
   // Floating date
-  bool _isScrolling = false;
-  DateTime? _currentVisibleDate;
+  final _isScrollingNotifier = ValueNotifier<bool>(false);
+  final _visibleDateNotifier = ValueNotifier<DateTime?>(null);
   DateTime? _lastVisibleDateUpdateAt;
   DateTime? _lastScrollVelocitySampleAt;
   DateTime? _lastReactionWindowUpdateAt;
   double _lastScrollVelocitySampleOffset = 0;
 
   // Typing status
-  bool _isOtherUserTyping = false;
+  final _otherUserTypingNotifier = ValueNotifier<bool>(false);
   StreamSubscription<Set<String>>? _typingSubscription;
 
   // ✅ برای جلوگیری از اجرای منطق در build
   String? _lastFirstMessageId;
   List<MessageModel> _latestVisibleMessages = const [];
+  List<MessageModel> _allLatestUiMessages = const [];
+  List<_ChatRenderItem> _cachedRenderItems = const [];
+  int _cachedRenderCap = ChatMessageRenderWindow.initialCap;
+  final _messageRenderCapNotifier =
+      ValueNotifier<int>(ChatMessageRenderWindow.initialCap);
+  _ConversationImageGalleryBundle _cachedImageGallery =
+      const _ConversationImageGalleryBundle.empty();
 
   // Unread messages
   String? _lastReadMessageId;
@@ -278,8 +293,9 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
   // ✅ اندازه‌گیری ارتفاع اینپوت بار برای پدینگ دقیق لیست
   double _inputHeight = 70.0; // مقدار اولیه بدون emoji panel
+  final _inputHeightNotifier = ValueNotifier<double>(70.0);
 
-  // ─── keyboard / emoji panel (Telegram-style) ────────────────────────────
+  // ─── keyboard / emoji panel (Modern-style) ────────────────────────────
   double _cachedKeyboardHeight = 300.0; // last observed keyboard height
   bool _showEmojiPanel = false;
   bool _isKeyboardRequested = false; // spacer while keyboard is opening
@@ -335,12 +351,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     _scrollController.addListener(_onScroll);
     _loadCurrentUser();
     _checkBlockStatus();
-    _fetchUserProfileIfNeeded();
     _loadHiddenMessages();
-    _initSecretChatPolicy();
-    if (widget.args.isGroup) {
-      unawaited(_loadGroupMembersForHeader());
-    }
+    _bootstrapInitialReplyContext();
 
     // ✅ شروع گوش دادن به Read Receipts
     _initReadReceipts();
@@ -350,7 +362,24 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     _setupMessageSideEffectsListener();
     _setupConnectionStatusBannerListener();
     _setupAdaptiveEffects();
-    _bootstrapInitialReplyContext();
+
+    // First frame: show list immediately after route settles.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      setState(() => _isTransitioning = false);
+    });
+
+    // Second frame: defer heavier work so open-chat transition stays smooth.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        unawaited(_fetchUserProfileIfNeeded());
+        unawaited(_initSecretChatPolicy());
+        if (widget.args.isGroup) {
+          unawaited(_loadGroupMembersForHeader());
+        }
+      });
+    });
 
     // ✅ تنظیم چت فعال برای جلوگیری از دریافت بج پیام
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -376,9 +405,9 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     });
 
     // ✅ Polling Fallback: هر 30 ثانیه برای اطمینان از دریافت پیام‌ها
-    _startPolling();
-    // Force one early refresh even if realtime reports connected.
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _startPolling();
       unawaited(_triggerPollingRefresh());
     });
   }
@@ -535,10 +564,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       // این لاجیک مطمئن‌ترین راه است که خودم را نبینم
       final isTyping = typingUsers.any((id) => id != currentUserId);
 
-      if (_isOtherUserTyping != isTyping) {
-        setState(() {
-          _isOtherUserTyping = isTyping;
-        });
+      if (_otherUserTypingNotifier.value != isTyping) {
+        _otherUserTypingNotifier.value = isTyping;
       }
     });
 
@@ -547,10 +574,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         _typingService.getTypingUsers(widget.args.conversationId);
     final initialIsTyping =
         initialTypingUsers.any((id) => id != currentUserId && id.isNotEmpty);
-    if (_isOtherUserTyping != initialIsTyping) {
-      setState(() {
-        _isOtherUserTyping = initialIsTyping;
-      });
+    if (_otherUserTypingNotifier.value != initialIsTyping) {
+      _otherUserTypingNotifier.value = initialIsTyping;
     }
   }
 
@@ -654,11 +679,21 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
     unawaited(_decryptVisibleSecretMessages(displayMessages));
     final uiMessages = _applySecretUiContent(displayMessages);
-    _latestVisibleMessages = uiMessages;
+    _allLatestUiMessages = uiMessages;
+    final renderCap = _messageRenderCapNotifier.value;
+    final windowed = ChatMessageRenderWindow.clip(uiMessages, renderCap);
+    _latestVisibleMessages = windowed;
+    _cachedRenderCap = renderCap;
+    _cachedRenderItems = _buildRenderItems(windowed);
+    _cachedImageGallery = _buildConversationImageGallery(uiMessages);
     _rescheduleSecretAutoDelete(uiMessages);
 
     if (widget.args.isSecret) {
       _processSecretChatKeyExchange(allMessages);
+    }
+
+    if (widget.args.isGroup) {
+      unawaited(_prefetchMissingGroupSenderAvatars(displayMessages));
     }
 
     if (visibleMessages.any((m) => !m.isMe && !m.isSeen)) {
@@ -669,12 +704,14 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
     if (uiMessages.isEmpty) {
       _latestVisibleMessages = const [];
+      _allLatestUiMessages = const [];
+      _cachedRenderItems = const [];
+      _cachedRenderCap = ChatMessageRenderWindow.initialCap;
+      _cachedImageGallery = const _ConversationImageGalleryBundle.empty();
       _lastFirstMessageId = null;
-      if (_currentVisibleDate != null || _isScrolling) {
-        setState(() {
-          _currentVisibleDate = null;
-          _isScrolling = false;
-        });
+      if (_visibleDateNotifier.value != null || _isScrollingNotifier.value) {
+        _visibleDateNotifier.value = null;
+        _isScrollingNotifier.value = false;
       }
       return;
     }
@@ -696,8 +733,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
     if (_scrollController.hasClients && _scrollController.offset < 100) {
       final newDate = uiMessages.first.createdAt;
-      if (_currentVisibleDate == null ||
-          !_isSameDay(_currentVisibleDate!, newDate)) {
+      if (_visibleDateNotifier.value == null ||
+          !_isSameDay(_visibleDateNotifier.value!, newDate)) {
         _showFloatingDateTemporarily(newDate);
       }
     }
@@ -856,20 +893,18 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
   void _showFloatingDateTemporarily(DateTime date) {
     _floatingDateHideTimer?.cancel();
-    setState(() {
-      _currentVisibleDate = date;
-      _isScrolling = true;
-    });
+    _visibleDateNotifier.value = date;
+    _isScrollingNotifier.value = true;
 
     _floatingDateHideTimer = Timer(const Duration(seconds: 2), () {
       if (!mounted) return;
-      setState(() => _isScrolling = false);
+      _isScrollingNotifier.value = false;
     });
   }
 
   /// راه‌اندازی سرویس Read Receipt
   void _initReadReceipts() {
-    final readReceiptService = TelegramReadReceiptService();
+    final readReceiptService = ModernReadReceiptService();
     readReceiptService.startListening(widget.args.conversationId);
 
     // ✅ تنظیم callback برای آپدیت لیست مکالمات
@@ -907,7 +942,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         orElse: () => messages.first,
       );
 
-      TelegramReadReceiptService().setLastMessageId(
+      ModernReadReceiptService().setLastMessageId(
         widget.args.conversationId,
         myLastMessage.id,
       );
@@ -923,7 +958,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         (m) => m.senderId == _currentUserId,
         orElse: () => messagesFromProvider.first,
       );
-      TelegramReadReceiptService().setLastMessageId(
+      ModernReadReceiptService().setLastMessageId(
         widget.args.conversationId,
         myLastMessage.id,
       );
@@ -933,7 +968,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   /// علامت‌گذاری همه پیام‌ها به عنوان خوانده شده
   Future<void> _markAllMessagesAsRead() async {
     try {
-      final readReceiptService = TelegramReadReceiptService();
+      final readReceiptService = ModernReadReceiptService();
       await readReceiptService.markAllAsRead(widget.args.conversationId);
     } catch (e) {
       debugPrint('❌ Error marking messages as read: $e');
@@ -1384,7 +1419,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
     // ✅ توقف گوش دادن به Read Receipts
     try {
-      TelegramReadReceiptService().stopListening(widget.args.conversationId);
+      ModernReadReceiptService().stopListening(widget.args.conversationId);
     } catch (e) {
       debugPrint('Error stopping read receipt listener: $e');
     }
@@ -1436,6 +1471,13 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     _messageController.dispose();
     _scrollController.dispose();
     _focusNode.dispose();
+    _isScrollingNotifier.dispose();
+    _visibleDateNotifier.dispose();
+    _showScrollToBottomNotifier.dispose();
+    _selectionController.dispose();
+    _otherUserTypingNotifier.dispose();
+    _inputHeightNotifier.dispose();
+    _messageRenderCapNotifier.dispose();
 
     _clearActiveConversationState();
     if (widget.args.isSecret) {
@@ -1580,8 +1622,6 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     _sampleScrollVelocity(now, currentScroll);
     _updateReactionWindow(now);
 
-    bool needsSetState = false;
-
     // 1. Pagination Logic
     final maxScroll = _scrollController.position.maxScrollExtent;
 
@@ -1590,44 +1630,32 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
     if (isNearTop != _isNearTop) {
       _isNearTop = isNearTop;
-      needsSetState = true;
       if (_isNearTop) _loadMoreMessages();
     }
 
     // 2. Scroll to Bottom Button Visibility
-    // دکمه فقط وقتی نمایش داده شود که بیش از ۵۰۰ پیکسل اسکرول کرده‌ایم
     final showScrollButton = currentScroll > 500;
-    if (showScrollButton != _showScrollToBottom) {
-      _showScrollToBottom = showScrollButton;
-      needsSetState = true;
+    if (showScrollButton != _showScrollToBottomNotifier.value) {
+      _showScrollToBottomNotifier.value = showScrollButton;
     }
 
     // 3. Floating Date Logic
-    if (!_isScrolling) {
-      _isScrolling = true;
-      needsSetState = true;
+    if (!_isScrollingNotifier.value) {
+      _isScrollingNotifier.value = true;
     }
 
     // Debounce برای پایان اسکرول (جلوگیری از تایمرهای تودرتو)
     _scrollEndTimer?.cancel();
     _scrollEndTimer = Timer(const Duration(milliseconds: 150), () {
-      if (mounted) {
-        setState(() {
-          _isScrolling = false;
-          // آپدیت تاریخ فقط وقتی اسکرول متوقف شد
-          if (currentScroll < 100) {
-            _updateDateForBottom();
-          } else {
-            _updateVisibleDate(force: true);
-          }
-        });
+      if (!mounted) return;
+      _isScrollingNotifier.value = false;
+      // آپدیت تاریخ فقط وقتی اسکرول متوقف شد
+      if (currentScroll < 100) {
+        _updateDateForBottom();
+      } else {
+        _updateVisibleDate(force: true);
       }
     });
-
-    // ✅ فقط یک بار setState انجام میدهیم اگر واقعا چیزی تغییر کرده باشد
-    if (needsSetState) {
-      setState(() {});
-    }
   }
 
   void _sampleScrollVelocity(DateTime now, double currentScroll) {
@@ -1664,10 +1692,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     try {
       final messages = _latestVisibleMessages;
       if (messages.isEmpty) {
-        if (_currentVisibleDate != null) {
-          setState(() {
-            _currentVisibleDate = null;
-          });
+        if (_visibleDateNotifier.value != null) {
+          _visibleDateNotifier.value = null;
         }
         return;
       }
@@ -1679,16 +1705,12 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
       if (visibleIndex >= 0 && visibleIndex < messages.length) {
         final newDate = messages[visibleIndex].createdAt;
-        if (_currentVisibleDate == null ||
-            !_isSameDay(_currentVisibleDate!, newDate)) {
-          setState(() {
-            _currentVisibleDate = newDate;
-          });
+        if (_visibleDateNotifier.value == null ||
+            !_isSameDay(_visibleDateNotifier.value!, newDate)) {
+          _visibleDateNotifier.value = newDate;
         }
-      } else if (_currentVisibleDate != null) {
-        setState(() {
-          _currentVisibleDate = null;
-        });
+      } else if (_visibleDateNotifier.value != null) {
+        _visibleDateNotifier.value = null;
       }
     } catch (e) {
       debugPrint('Error in _updateVisibleDate: $e');
@@ -1927,6 +1949,9 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
   void _loadMoreMessages() {
     if (!mounted) return;
+    _messageRenderCapNotifier.value = ChatMessageRenderWindow.expandCap(
+      _messageRenderCapNotifier.value,
+    );
     ref
         .read(chatMessagesProvider(widget.args.conversationId).notifier)
         .loadMore();
@@ -1956,11 +1981,9 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     try {
       final messages = _latestVisibleMessages;
       if (messages.isEmpty) {
-        if (_currentVisibleDate != null || _isScrolling) {
-          setState(() {
-            _currentVisibleDate = null;
-            _isScrolling = false;
-          });
+        if (_visibleDateNotifier.value != null || _isScrollingNotifier.value) {
+          _visibleDateNotifier.value = null;
+          _isScrollingNotifier.value = false;
         }
         return;
       }
@@ -1968,8 +1991,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       final newestMessage = messages.first;
       final newDate = newestMessage.createdAt;
 
-      if (_currentVisibleDate == null ||
-          !_isSameDay(_currentVisibleDate!, newDate)) {
+      if (_visibleDateNotifier.value == null ||
+          !_isSameDay(_visibleDateNotifier.value!, newDate)) {
         _showFloatingDateTemporarily(newDate);
       }
     } catch (e) {
@@ -1987,7 +2010,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     final keyboardVisible = kbViewInset > 80;
     final safeBottom = MediaQuery.paddingOf(context).bottom;
 
-    // ── Telegram-style reserved-space logic ────────────────────────────────
+    // ── Modern-style reserved-space logic ────────────────────────────────
     //
     //  The space BELOW the input bar is always exactly one of these values:
     //
@@ -2023,187 +2046,221 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       // ⑥ idle
       reservedHeight = safeBottom;
     }
-    final totalBottomSpace = _inputHeight + reservedHeight;
     // ─────────────────────────────────────────────────────────────────────────
 
-    final adaptiveEffects = ref.watch(adaptiveEffectsProvider);
-    final reduceEffects = keyboardVisible ||
-        _isScrolling ||
-        adaptiveEffects.effectsLevel == ChatEffectsLevel.low;
-    final messagesAsync = ref.watch(
-      chatMessagesProvider(widget.args.conversationId),
-    );
-    final paginationState = ref.watch(
-      paginationStateProvider(widget.args.conversationId),
-    );
-    final connectionStatusAsync = ref.watch(chatConnectionStatusProvider);
-    final connectionStatus = connectionStatusAsync.maybeWhen(
-      data: (status) => status,
-      orElse: () => ConnectionStatus.connecting,
-    );
-    final isConnected = connectionStatus == ConnectionStatus.connected;
+    final reduceEffectsFromKeyboard = keyboardVisible ||
+        ref.read(adaptiveEffectsProvider).effectsLevel == ChatEffectsLevel.low;
+    final isConnected = _latestConnectionStatus == ConnectionStatus.connected;
     final showConnectionBanner =
         !isConnected && _showConnectionBannerAfterDelay;
 
-    return Stack(
-      children: [
-        // 1. والپیپر (زیر همه چیز)
-        Positioned.fill(
-          // ✅ اضافه کردن RepaintBoundary
-          // این باعث می‌شود هنگام باز شدن کیبورد، بک‌گراند دوباره Paint نشود (خیلی مهم برای GPU)
-          child: RepaintBoundary(
-            child: EnhancedChatBackground(
-              enablePattern: true,
-              blurIntensity: adaptiveEffects.blurSigma,
-              allowHeavyEffects:
-                  !reduceEffects && adaptiveEffects.allowHeavyBlur,
-              child: Container(color: Colors.transparent),
-            ),
-          ),
-        ),
-
-        // 2. اسکفولد اصلی
-        Scaffold(
-          backgroundColor: Colors.transparent,
-          extendBody: true,
-          extendBodyBehindAppBar: true,
-          // تلگرام: positioning دستی – input هرگز jump نمی‌کند
-          resizeToAvoidBottomInset: false,
-
-          appBar: _isSearchMode ? null : _buildAppBar(theme),
-
-          body: Stack(
-            children: [
-              // لایه 1: لیست پیام‌ها (تمام صفحه)
-              // با استفاده از Stack، لیست زیر اینپوت می‌رود و افکت شیشه‌ای دیده می‌شود
-              Positioned.fill(
-                child: FloatingDateHeader(
-                  currentDate: _currentVisibleDate,
-                  isScrolling: _isScrolling,
-                  child: _buildMessageList(
-                    messagesAsync,
-                    paginationState,
-                    theme,
-                    adaptiveEffects: adaptiveEffects,
-                    bottomPadding: totalBottomSpace + 8,
-                  ),
-                ),
-              ),
-
-              // لایه 2: بنرها
-              if (_isCurrentUserBlocked || _isOtherUserBlocked)
-                Positioned(
-                  top: kToolbarHeight + 30,
-                  left: 0,
-                  right: 0,
-                  child: _buildBlockedBanner(theme),
-                ),
-
-              Positioned(
-                top: kToolbarHeight + 30,
-                left: 0,
-                right: 0,
-                child: TelegramConnectionBanner(
-                  isConnected: !showConnectionBanner,
-                  onRetry: !showConnectionBanner
-                      ? null
-                      : () {
-                          unawaited(_triggerPollingRefresh());
-                        },
-                ),
-              ),
-
-              // لایه 3: دکمه اسکرول به پایین
-              if (_showScrollToBottom)
-                Positioned(
-                  right: 16,
-                  bottom: totalBottomSpace + 12,
-                  child: TweenAnimationBuilder<double>(
-                    tween: Tween(begin: 0.0, end: 1.0),
-                    duration: const Duration(milliseconds: 200),
-                    builder: (context, value, child) {
-                      return Transform.scale(
-                        scale: value,
-                        child: child,
+    return ValueListenableBuilder<double>(
+      valueListenable: _inputHeightNotifier,
+      builder: (context, inputHeight, _) {
+        final dockBottomSpace = inputHeight + reservedHeight;
+        return Stack(
+          children: [
+            // 1. والپیپر (زیر همه چیز)
+            Positioned.fill(
+              child: ChatAdaptiveBlurScope(
+                builder: (context, blurSigma, allowHeavyBlur, effectsLevel) {
+                  return ValueListenableBuilder<bool>(
+                    valueListenable: _isScrollingNotifier,
+                    builder: (context, isScrolling, _) {
+                      final reduceEffects =
+                          reduceEffectsFromKeyboard || isScrolling;
+                      return RepaintBoundary(
+                        child: EnhancedChatBackground(
+                          enablePattern: true,
+                          blurIntensity: blurSigma,
+                          allowHeavyEffects:
+                              !reduceEffects && allowHeavyBlur,
+                          child: Container(color: Colors.transparent),
+                        ),
                       );
                     },
-                    child: FloatingActionButton.small(
-                      onPressed: _scrollToBottom,
-                      backgroundColor: theme.backgroundColor,
-                      foregroundColor: theme.iconColor,
-                      elevation: 4,
-                      child: const Icon(Icons.keyboard_arrow_down_rounded),
+                  );
+                },
+              ),
+            ),
+
+            // 2. اسکفولد اصلی
+            Scaffold(
+              backgroundColor: Colors.transparent,
+              extendBody: true,
+              extendBodyBehindAppBar: true,
+              resizeToAvoidBottomInset: false,
+              appBar: _isSearchMode
+                  ? null
+                  : PreferredSize(
+                      preferredSize: const Size.fromHeight(kToolbarHeight),
+                      child: ValueListenableBuilder<ChatSelectionState>(
+                        valueListenable: _selectionController,
+                        builder: (context, selection, _) {
+                          return ModernChatAppBar(
+                            theme: theme,
+                            isSelectionMode: selection.isSelectionMode,
+                            selectedMessagesCount:
+                                selection.selectedMessageIds.length,
+                            args: widget.args,
+                            isOtherUserTyping: _otherUserTypingNotifier,
+                            appBarAnimation: _appBarAnimation,
+                            secretAutoDeleteSeconds: _secretAutoDeleteSeconds,
+                            secretAutoDeleteLabel: _secretAutoDeleteLabel(
+                                _secretAutoDeleteSeconds),
+                            secretAutoDeleteStatusText:
+                                _secretAutoDeleteStatusText(),
+                            onExitSelectionMode: _exitSelectionMode,
+                            onForwardSelected:
+                                selection.selectedMessageIds.isEmpty
+                                    ? null
+                                    : _forwardSelectedMessages,
+                            onCopySelected: selection.selectedMessageIds.isEmpty
+                                ? null
+                                : _copySelectedMessages,
+                            onDeleteSelected:
+                                selection.selectedMessageIds.isEmpty
+                                    ? null
+                                    : _deleteSelectedMessages,
+                            onMenuAction: _handleMenuAction,
+                            onBack: () => Navigator.of(context).pop(),
+                            otherUserProfile: _otherUserProfile,
+                            isOtherUserBlocked: _isOtherUserBlocked,
+                            isCurrentUserBlocked: _isCurrentUserBlocked,
+                            isLoadingGroupMembers: _isLoadingGroupMembers,
+                            groupMembers: _groupMembers,
+                            onTitleTap: _navigateToChatDetails,
+                          );
+                        },
+                      ),
                     ),
-                  ),
-                ),
-
-              // لایه 4: input + SizedBox زیرش (منطق تلگرام)
-              // همیشه bottom:0 – SizedBox ارتفاع رزرو می‌کند
-              if (!_isCurrentUserBlocked && !_isOtherUserBlocked)
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  child: Stack(
-                    alignment: Alignment.bottomCenter,
-                    clipBehavior: Clip.none,
-                    children: [
-                      _buildInputDockHalo(
-                        reservedHeight: reservedHeight,
-                        inputHeight: _inputHeight,
-                        keyboardVisible: keyboardVisible,
-                        reduceEffects: reduceEffects,
-                      ),
-                      Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          _buildInputArea(theme,
-                              reduceEffects: reduceEffects,
-                              allowHeavyEffects: adaptiveEffects.allowHeavyBlur,
-                              blurSigma: adaptiveEffects.blurSigma),
-                          SizedBox(
-                            height: reservedHeight,
-                            child: _showEmojiPanel && !keyboardVisible
-                                ? _buildEmojiPanel(theme)
-                                : const SizedBox.shrink(),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-
-              // لایه 5: Search Bar
-              if (_isSearchMode)
-                Positioned(
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  child: SafeArea(
-                    child: MessageSearchBar(
-                      conversationId: widget.args.conversationId,
-                      onClose: () => setState(() {
-                        _isSearchMode = false;
-                        _highlightedMessageId = null;
-                      }),
-                      onResultSelected: (id) {
-                        setState(() => _highlightedMessageId = id);
-                        _scrollToMessage(id);
+              body: Stack(
+                children: [
+                  Positioned.fill(
+                    child: ValueListenableBuilder<DateTime?>(
+                      valueListenable: _visibleDateNotifier,
+                      builder: (context, currentDate, _) {
+                        return ValueListenableBuilder<bool>(
+                          valueListenable: _isScrollingNotifier,
+                          builder: (context, isScrolling, _) {
+                            return FloatingDateHeader(
+                              currentDate: currentDate,
+                              isScrolling: isScrolling,
+                              child: _isTransitioning
+                                  ? const SizedBox.shrink()
+                                  : ChatMessageListScope(
+                                      conversationId:
+                                          widget.args.conversationId,
+                                      selectionListenable: _selectionController,
+                                      buildList: (
+                                        context,
+                                        messagesAsync,
+                                        paginationState,
+                                        adaptiveEffects,
+                                        selection,
+                                      ) =>
+                                          _buildMessageList(
+                                        messagesAsync,
+                                        paginationState,
+                                        theme,
+                                        selection: selection,
+                                        adaptiveEffects: adaptiveEffects,
+                                        bottomPadding: dockBottomSpace + 8,
+                                      ),
+                                    ),
+                            );
+                          },
+                        );
                       },
                     ),
                   ),
-                ),
-            ],
-          ),
-        ),
-
-        // Reaction Picker Overlay
-        if (_reactionPickerMessageId != null &&
-            _reactionPickerPosition != null &&
-            !_isSelectionMode)
-          _buildReactionPickerOverlay(),
-      ],
+                  if (_isCurrentUserBlocked || _isOtherUserBlocked)
+                    Positioned(
+                      top: kToolbarHeight + 30,
+                      left: 0,
+                      right: 0,
+                      child: _buildBlockedBanner(theme),
+                    ),
+                  Positioned(
+                    top: kToolbarHeight + 30,
+                    left: 0,
+                    right: 0,
+                    child: ModernConnectionBanner(
+                      isConnected: !showConnectionBanner,
+                      onRetry: !showConnectionBanner
+                          ? null
+                          : () {
+                              unawaited(_triggerPollingRefresh());
+                            },
+                    ),
+                  ),
+                  ChatInputDock(
+                    totalBottomSpace: dockBottomSpace,
+                    reservedHeight: reservedHeight,
+                    keyboardVisible: keyboardVisible,
+                    reduceEffectsFromKeyboard: reduceEffectsFromKeyboard,
+                    isScrollingListenable: _isScrollingNotifier,
+                    showScrollToBottomListenable: _showScrollToBottomNotifier,
+                    showInput:
+                        !_isCurrentUserBlocked && !_isOtherUserBlocked,
+                    showEmojiPanel: _showEmojiPanel,
+                    onScrollToBottom: _scrollToBottom,
+                    themeBackgroundColor: theme.backgroundColor,
+                    themeIconColor: theme.iconColor,
+                    inputHaloBuilder: (reduceEffects) => _buildInputDockHalo(
+                      reservedHeight: reservedHeight,
+                      inputHeight: inputHeight,
+                      keyboardVisible: keyboardVisible,
+                      reduceEffects: reduceEffects,
+                    ),
+                    inputAreaBuilder: (reduceEffects) {
+                      final blurConfig = ref.read(adaptiveEffectsProvider);
+                      return _buildInputArea(
+                        theme,
+                        reduceEffects: reduceEffects,
+                        allowHeavyEffects:
+                            blurConfig.allowHeavyBlur && !reduceEffects,
+                        blurSigma: blurConfig.blurSigma,
+                      );
+                    },
+                    emojiPanel: _buildEmojiPanel(theme),
+                  ),
+                  if (_isSearchMode)
+                    Positioned(
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      child: SafeArea(
+                        child: MessageSearchBar(
+                          conversationId: widget.args.conversationId,
+                          onClose: () => setState(() {
+                            _isSearchMode = false;
+                            _highlightedMessageId = null;
+                          }),
+                          onResultSelected: (id) {
+                            setState(() => _highlightedMessageId = id);
+                            _scrollToMessage(id);
+                          },
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            ValueListenableBuilder<ChatSelectionState>(
+              valueListenable: _selectionController,
+              builder: (context, selection, _) {
+                if (_reactionPickerMessageId == null ||
+                    _reactionPickerPosition == null ||
+                    selection.isSelectionMode) {
+                  return const SizedBox.shrink();
+                }
+                return _buildReactionPickerOverlay();
+              },
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -2212,12 +2269,11 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     if (!mounted || newHeight <= 0) return;
     if ((newHeight - _inputHeight).abs() < 1.0) return;
 
-    setState(() {
-      _inputHeight = newHeight;
-    });
+    _inputHeight = newHeight;
+    _inputHeightNotifier.value = newHeight;
   }
 
-  /// Telegram-style: keyboard ↔ emoji swap
+  /// Modern-style: keyboard ↔ emoji swap
   void _onEmojiPanelToggled(bool show) {
     _keyboardRequestTimeoutTimer?.cancel();
     if (show) {
@@ -2302,7 +2358,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         onPressed: _exitSelectionMode,
       ),
       title: Text(
-        '${_selectedMessageIds.length} انتخاب شده'.toPersianDigit(),
+        '${_selectionController.value.selectedMessageIds.length} انتخاب شده'.toPersianDigit(),
         style: const TextStyle(
           color: Colors.white,
           fontSize: 18,
@@ -2315,7 +2371,9 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
           IconButton(
             icon: const Icon(Icons.forward_rounded, color: Colors.white),
             onPressed:
-                _selectedMessageIds.isEmpty ? null : _forwardSelectedMessages,
+                _selectionController.value.selectedMessageIds.isEmpty
+                    ? null
+                    : _forwardSelectedMessages,
             tooltip: 'فوروارد',
           ),
         // کپی
@@ -2323,14 +2381,18 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
           IconButton(
             icon: const Icon(Icons.copy_rounded, color: Colors.white),
             onPressed:
-                _selectedMessageIds.isEmpty ? null : _copySelectedMessages,
+                _selectionController.value.selectedMessageIds.isEmpty
+                    ? null
+                    : _copySelectedMessages,
             tooltip: 'کپی',
           ),
         // حذف
         IconButton(
           icon: const Icon(Icons.delete_outline_rounded, color: Colors.white),
           onPressed:
-              _selectedMessageIds.isEmpty ? null : _deleteSelectedMessages,
+              _selectionController.value.selectedMessageIds.isEmpty
+                  ? null
+                  : _deleteSelectedMessages,
           tooltip: 'حذف',
         ),
       ],
@@ -2338,82 +2400,47 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   }
 
   void _enterSelectionMode(String messageId) {
-    HapticFeedback.mediumImpact();
-    setState(() {
-      _isSelectionMode = true;
-      _selectedMessageIds.add(messageId);
-    });
+    _selectionController.enterSelectionMode(messageId);
   }
 
   void _enterSelectionModeForMessages(Iterable<String> messageIds) {
-    final ids = messageIds.where((id) => id.trim().isNotEmpty).toSet();
-    if (ids.isEmpty) return;
-    HapticFeedback.mediumImpact();
-    setState(() {
-      _isSelectionMode = true;
-      _selectedMessageIds.addAll(ids);
-    });
+    _selectionController.enterSelectionModeForMessages(messageIds);
   }
 
   void _exitSelectionMode() {
-    setState(() {
-      _isSelectionMode = false;
-      _selectedMessageIds.clear();
-    });
+    _selectionController.exitSelectionMode();
   }
 
   void _toggleMessageSelection(String messageId) {
-    HapticFeedback.selectionClick();
-    setState(() {
-      if (_selectedMessageIds.contains(messageId)) {
-        _selectedMessageIds.remove(messageId);
-        if (_selectedMessageIds.isEmpty) {
-          _isSelectionMode = false;
-        }
-      } else {
-        _selectedMessageIds.add(messageId);
-      }
-    });
+    _selectionController.toggleMessageSelection(messageId);
   }
 
   bool _isRenderItemSelected(_ChatRenderItem renderItem) {
-    if (renderItem.messages.isEmpty) return false;
-    return renderItem.messages
-        .every((message) => _selectedMessageIds.contains(message.id));
+    return _selectionController.value.containsAll(
+      renderItem.messages.map((message) => message.id),
+    );
   }
 
   void _toggleRenderItemSelection(_ChatRenderItem renderItem) {
-    final ids = renderItem.messages.map((m) => m.id).toSet();
-    if (ids.isEmpty) return;
-
-    HapticFeedback.selectionClick();
-    setState(() {
-      final allSelected = ids.every(_selectedMessageIds.contains);
-      if (allSelected) {
-        _selectedMessageIds.removeAll(ids);
-        if (_selectedMessageIds.isEmpty) {
-          _isSelectionMode = false;
-        }
-      } else {
-        _selectedMessageIds.addAll(ids);
-      }
-    });
+    _selectionController.toggleRenderItemSelection(
+      renderItem.messages.map((message) => message.id),
+    );
   }
 
   /// ✅ توابع کمکی یکپارچه برای هندل کردن کلیک و لانگ پرس
   void _handleMessageTap(BuildContext itemContext, MessageModel message) {
-    if (_isSelectionMode) {
+    if (_selectionController.value.isSelectionMode) {
       _toggleMessageSelection(message.id);
       return;
     }
 
     // Tap opens the context menu unless multi-select is already active.
-    _showTelegramContextMenu(itemContext, message);
+    _showModernContextMenu(itemContext, message);
   }
 
   void _handleMessageLongPress(BuildContext itemContext, MessageModel message) {
     HapticFeedback.mediumImpact();
-    if (_isSelectionMode) {
+    if (_selectionController.value.isSelectionMode) {
       _toggleMessageSelection(message.id);
     } else {
       // Long-press starts multi-select.
@@ -2428,7 +2455,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     }
     final result = await ForwardMessageSheet.show(
       context,
-      messageIds: _selectedMessageIds.toList(),
+      messageIds: _selectionController.value.selectedMessageIds.toList(),
     );
 
     if (result == true) {
@@ -2452,14 +2479,14 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         if (!mounted) return;
 
         final selectedMessages = messages
-            .where((m) => _selectedMessageIds.contains(m.id))
+            .where((m) => _selectionController.value.contains(m.id))
             .map((m) => m.content)
             .join('\n\n');
 
         Clipboard.setData(ClipboardData(text: selectedMessages));
         if (mounted) {
           _showSuccessSnackBar(
-              '${_selectedMessageIds.length} پیام کپی شد'.toPersianDigit());
+              '${_selectionController.value.selectedMessageIds.length} پیام کپی شد'.toPersianDigit());
           _exitSelectionMode();
         }
       });
@@ -2469,7 +2496,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   }
 
   Future<void> _deleteSelectedMessages() async {
-    if (_selectedMessageIds.isEmpty) return;
+    if (_selectionController.value.selectedMessageIds.isEmpty) return;
 
     // دسترسی به لیست کامل پیام‌ها برای استخراج MessageModel
     final messagesAsync =
@@ -2482,7 +2509,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     final currentUserId = _currentUserId;
     bool allMyMessages = true;
 
-    for (final id in _selectedMessageIds) {
+    for (final id in _selectionController.value.selectedMessageIds) {
       final msg = allMessages.firstWhere(
         (m) => m.id == id,
         orElse: () => MessageModel.empty(),
@@ -2655,7 +2682,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
   PreferredSizeWidget _buildAppBar(ChatTheme theme) {
     // Selection mode AppBar
-    if (_isSelectionMode) {
+    if (_selectionController.value.isSelectionMode) {
       return _buildSelectionAppBar(theme);
     }
 
@@ -2916,9 +2943,9 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                   else if (widget.args.isGroup)
                     _buildGroupPresenceSummary(theme)
                   else
-                    TelegramOnlineStatus(
+                    ModernOnlineStatus(
                       userId: widget.args.otherUserId,
-                      isTyping: _isOtherUserTyping, // استفاده از متغیر صحیح
+                      isTyping: _otherUserTypingNotifier.value,
                       textStyle: TextStyle(
                         color: theme.secondaryTextColor,
                         fontSize: 12,
@@ -2934,61 +2961,10 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   }
 
   Widget _buildGroupPresenceSummary(ChatTheme theme) {
-    if (_isLoadingGroupMembers && _groupMembers.isEmpty) {
-      return Text(
-        'در حال بررسی اعضا...',
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          color: theme.secondaryTextColor,
-          fontSize: 12,
-        ),
-      );
-    }
-
-    if (_groupMembers.isEmpty) {
-      return Text(
-        '۰ آنلاین، ۰ آفلاین',
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          color: theme.secondaryTextColor,
-          fontSize: 12,
-        ),
-      );
-    }
-
-    return Consumer(
-      builder: (context, ref, _) {
-        var onlineCount = 0;
-        for (final member in _groupMembers) {
-          final presenceAsync =
-              ref.watch(userPresenceStreamProvider(member.userId));
-          final isAvailable = presenceAsync.maybeWhen(
-            data: (state) =>
-                state.isOnline ||
-                state.isTyping ||
-                state.isRecording ||
-                state.isAway,
-            orElse: () => false,
-          );
-          if (isAvailable) onlineCount++;
-        }
-
-        final offlineCount = (_groupMembers.length - onlineCount)
-            .clamp(0, _groupMembers.length)
-            .toInt();
-
-        return Text(
-          '$onlineCount آنلاین، $offlineCount آفلاین'.toPersianDigit(),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            color: theme.secondaryTextColor,
-            fontSize: 12,
-          ),
-        );
-      },
+    return ChatGroupPresenceSummary(
+      members: _groupMembers,
+      isLoadingMembers: _isLoadingGroupMembers,
+      theme: theme,
     );
   }
 
@@ -3279,8 +3255,9 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     AsyncValue<List<MessageModel>> messagesAsync,
     PaginationState paginationState,
     ChatTheme theme, {
+    required ChatSelectionState selection,
     required AdaptiveEffectsState adaptiveEffects,
-    required double bottomPadding, // پارامتر جدید
+    required double bottomPadding,
   }) {
     return messagesAsync.when(
       data: (allMessages) {
@@ -3296,30 +3273,46 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                 m.attachmentType != 'exchange_key_reply')
             .toList();
 
-        unawaited(_decryptVisibleSecretMessages(filteredMessages));
         final uiMessages = _applySecretUiContent(filteredMessages);
 
-        // Isar query is already sorted (newest first).
-        final messages = uiMessages;
-        final messagesById = <String, MessageModel>{
-          for (final message in messages)
-            if (message.id.trim().isNotEmpty) message.id: message,
-        };
-        final renderItems = _buildRenderItems(messages);
-        final conversationImageGallery =
-            _buildConversationImageGallery(messages);
+        return ValueListenableBuilder<int>(
+          valueListenable: _messageRenderCapNotifier,
+          builder: (context, renderCap, _) {
+            final messages =
+                ChatMessageRenderWindow.clip(uiMessages, renderCap);
+            final messagesById = <String, MessageModel>{
+              for (final message in uiMessages)
+                if (message.id.trim().isNotEmpty) message.id: message,
+            };
+            final cacheReady = messages.isNotEmpty &&
+                _cachedRenderItems.isNotEmpty &&
+                _latestVisibleMessages.isNotEmpty &&
+                _cachedRenderCap == renderCap &&
+                messages.first.id == _latestVisibleMessages.first.id &&
+                messages.length == _latestVisibleMessages.length;
+            final renderItems = cacheReady
+                ? _cachedRenderItems
+                : _buildRenderItems(messages);
+            final conversationImageGallery = cacheReady
+                ? _cachedImageGallery
+                : _buildConversationImageGallery(uiMessages);
 
-        if (renderItems.isEmpty) {
-          return _buildEmptyState(theme);
-        }
+            if (renderItems.isEmpty) {
+              return _buildEmptyState(theme);
+            }
 
-        return RepaintBoundary(
-            child: CustomScrollView(
-          scrollCacheExtent: const ScrollCacheExtent.pixels(300),
-          controller: _scrollController,
-          reverse: true,
-          physics: const BouncingScrollPhysics(),
-          slivers: [
+            final itemCount = renderItems.length +
+                (paginationState.isLoadingMore ? 1 : 0);
+
+            return RepaintBoundary(
+                child: CustomScrollView(
+              scrollCacheExtent: const ScrollCacheExtent.pixels(900),
+              controller: _scrollController,
+              reverse: true,
+              physics: const BouncingScrollPhysics(
+                parent: AlwaysScrollableScrollPhysics(),
+              ),
+              slivers: [
             // ✅ مهم: پدینگ پایین لیست برای اینکه زیر اینپوت نرود
             // چون لیست reverse است، اولین آیتم slivers پایین‌ترین نقطه بصری است
             if (bottomPadding > 0)
@@ -3340,14 +3333,24 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                   final renderItem = renderItems[index];
                   final message = renderItem.primaryMessage;
                   final isMe = message.senderId == _currentUserId;
+                  final fastScroll = adaptiveEffects.isFastScrolling;
+                  final fullPrimaryIndex = uiMessages.indexWhere(
+                    (entry) => entry.id == message.id,
+                  );
 
                   // گروه‌بندی پیام‌ها
                   final (isFirstInGroup, isLastInGroup) =
-                      _getMessageGroupPosition(
-                    messages,
-                    renderItem.primaryIndex,
-                    spanLength: renderItem.messages.length,
-                  );
+                      fullPrimaryIndex == -1
+                          ? _getMessageGroupPosition(
+                              messages,
+                              renderItem.primaryIndex,
+                              spanLength: renderItem.messages.length,
+                            )
+                          : _getMessageGroupPosition(
+                              uiMessages,
+                              fullPrimaryIndex,
+                              spanLength: renderItem.messages.length,
+                            );
 
                   // Date Divider - منطق صحیح برای لیست reverse:
                   // - مقایسه با پیام قدیمی‌تر (index + 1)
@@ -3382,13 +3385,13 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                             behavior: HitTestBehavior
                                 .translucent, // کلیک روی فضای خالی
                             onTap: () {
-                              if (_isSelectionMode) {
+                              if (selection.isSelectionMode) {
                                 _toggleRenderItemSelection(renderItem);
                               }
                             },
                             onLongPress: () {
                               HapticFeedback.mediumImpact();
-                              if (_isSelectionMode) {
+                              if (selection.isSelectionMode) {
                                 _toggleRenderItemSelection(renderItem);
                               } else {
                                 // Long-press selects the full render item,
@@ -3408,12 +3411,12 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                                       : MainAxisAlignment.start,
                                   children: [
                                     // Selection checkbox
-                                    if (_isSelectionMode)
+                                    if (selection.isSelectionMode)
                                       Padding(
                                         padding:
                                             const EdgeInsets.only(right: 8),
                                         child: AnimatedScale(
-                                          scale: _isSelectionMode ? 1.0 : 0.0,
+                                          scale: selection.isSelectionMode ? 1.0 : 0.0,
                                           duration:
                                               const Duration(milliseconds: 200),
                                           child: GestureDetector(
@@ -3461,8 +3464,9 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                                                     .contains(m.id))
                                             ? 0.0
                                             : 1.0,
-                                        child: (!_isSelectionMode &&
-                                                !renderItem.isAlbum)
+                                        child: (!selection.isSelectionMode &&
+                                                !renderItem.isAlbum &&
+                                                !fastScroll)
                                             ? SwipeToReplyWrapper(
                                                 isMe: isMe,
                                                 onReply: () {
@@ -3485,6 +3489,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                                                     isFirstInGroup,
                                                     isLastInGroup,
                                                     adaptiveEffects,
+                                                    selection: selection,
                                                     conversationGalleryItems:
                                                         conversationImageGallery
                                                             .items,
@@ -3509,6 +3514,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                                                       renderItem,
                                                       isMe,
                                                       adaptiveEffects,
+                                                      selection: selection,
                                                       isFirstInGroup:
                                                           isFirstInGroup,
                                                       isLastInGroup:
@@ -3538,6 +3544,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                                                       isFirstInGroup,
                                                       isLastInGroup,
                                                       adaptiveEffects,
+                                                      selection: selection,
                                                       conversationGalleryItems:
                                                           conversationImageGallery
                                                               .items,
@@ -3569,24 +3576,52 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                   );
 
                   // ✅ استفاده از MolecularDeleteAnimation برای افکت پودر شدن
-                  return MolecularDeleteAnimation(
-                    isDeleting: isDeleting,
-                    onAnimationComplete: () {
-                      if (mounted) {
-                        setState(() {
-                          for (final deletingMessage in renderItem.messages) {
-                            _deletingMessageIds.remove(deletingMessage.id);
-                          }
-                        });
-                      }
-                    },
-                    child: messageWidget,
+                  final tile = KeyedSubtree(
+                    key: ValueKey<String>(
+                      renderItem.isAlbum
+                          ? 'album_${renderItem.messages.map((m) => m.id).join('_')}'
+                          : message.id,
+                    ),
+                    child: MolecularDeleteAnimation(
+                      isDeleting: isDeleting,
+                      onAnimationComplete: () {
+                        if (mounted) {
+                          setState(() {
+                            for (final deletingMessage in renderItem.messages) {
+                              _deletingMessageIds.remove(deletingMessage.id);
+                            }
+                          });
+                        }
+                      },
+                      child: messageWidget,
+                    ),
+                  );
+
+                  return ChatMessageListTile(
+                    keepAlive: ChatMessageRenderWindow.shouldKeepAliveMessages(
+                      renderItem.messages,
+                    ),
+                    child: tile,
                   );
                 },
-                childCount: renderItems.length +
-                    (paginationState.isLoadingMore ? 1 : 0),
+                childCount: itemCount,
                 addAutomaticKeepAlives: false,
                 addRepaintBoundaries: true,
+                findChildIndexCallback: (Key key) {
+                  if (key is! ValueKey<String>) return null;
+                  final value = key.value;
+                  for (var i = 0; i < renderItems.length; i++) {
+                    final item = renderItems[i];
+                    if (item.isAlbum) {
+                      final albumKey =
+                          'album_${item.messages.map((m) => m.id).join('_')}';
+                      if (albumKey == value) return i;
+                    } else if (item.primaryMessage.id == value) {
+                      return i;
+                    }
+                  }
+                  return null;
+                },
               ),
             ),
             SliverToBoxAdapter(
@@ -3613,6 +3648,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
               ),
           ],
         ));
+          },
+        );
       },
       loading: () => _buildLoadingState(theme),
       error: (error, stack) => _buildErrorState(error.toString(), theme),
@@ -3800,22 +3837,196 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   }
 
   String? _resolveMessageSenderAvatar(MessageModel message) {
-    final memberAvatar = _groupMemberById[message.senderId]?.avatarUrl?.trim();
-    if (memberAvatar != null && memberAvatar.isNotEmpty) return memberAvatar;
+    final memberAvatar = AvatarAssetUtils.resolveUrl(
+      _groupMemberById[message.senderId]?.avatarUrl,
+    );
+    if (memberAvatar != null) return memberAvatar;
 
     final cachedProfile =
         UserProfileService().getCachedProfile(message.senderId);
     if (cachedProfile != null) {
-      final avatar = cachedProfile['avatar_url']?.trim();
-      if (avatar != null && avatar.isNotEmpty) return avatar;
+      final avatar = AvatarAssetUtils.resolveUrl(cachedProfile['avatar_url']);
+      if (avatar != null) return avatar;
     }
 
-    final messageAvatar = message.senderAvatar?.trim();
-    if (messageAvatar != null && messageAvatar.isNotEmpty) {
-      return messageAvatar;
+    return AvatarAssetUtils.resolveUrl(message.senderAvatar);
+  }
+
+  String _resolveReactionUserName(String userId, [String? fallbackName]) {
+    final fallback = fallbackName?.trim() ?? '';
+    if (fallback.isNotEmpty && fallback != 'کاربر') return fallback;
+
+    if (userId == _currentUserId) {
+      final profile = _currentUserProfile;
+      if (profile != null) {
+        if (profile.username.trim().isNotEmpty) return profile.username.trim();
+        if (profile.fullName.trim().isNotEmpty) return profile.fullName.trim();
+      }
+    }
+
+    if (!widget.args.isGroup && userId == widget.args.otherUserId) {
+      final otherName = widget.args.otherUserName.trim();
+      if (otherName.isNotEmpty && otherName != 'کاربر') return otherName;
+      final otherProfile = _otherUserProfile;
+      if (otherProfile != null) {
+        if (otherProfile.username.trim().isNotEmpty) {
+          return otherProfile.username.trim();
+        }
+        if (otherProfile.fullName.trim().isNotEmpty) {
+          return otherProfile.fullName.trim();
+        }
+      }
+    }
+
+    final memberName = _groupMemberById[userId]?.displayName.trim();
+    if (memberName != null && memberName.isNotEmpty && memberName != 'کاربر') {
+      return memberName;
+    }
+
+    final cachedProfile = UserProfileService().getCachedProfile(userId);
+    if (cachedProfile != null) {
+      final username = cachedProfile['username']?.trim();
+      if (username != null && username.isNotEmpty) return username;
+      final fullName = cachedProfile['full_name']?.trim();
+      if (fullName != null && fullName.isNotEmpty) return fullName;
+    }
+
+    return fallback.isNotEmpty ? fallback : 'کاربر';
+  }
+
+  String? _resolveReactionUserAvatar(String userId, [String? fallbackAvatar]) {
+    final resolvedFallback = AvatarAssetUtils.resolveUrl(fallbackAvatar);
+    if (resolvedFallback != null) return resolvedFallback;
+
+    if (userId == _currentUserId) {
+      final avatar = AvatarAssetUtils.resolveUrl(_currentUserProfile?.avatarUrl);
+      if (avatar != null) return avatar;
+    }
+
+    if (!widget.args.isGroup && userId == widget.args.otherUserId) {
+      final avatar = AvatarAssetUtils.resolveUrl(
+        _otherUserProfile?.avatarUrl ?? widget.args.otherUserAvatar,
+      );
+      if (avatar != null) return avatar;
+    }
+
+    final memberAvatar =
+        AvatarAssetUtils.resolveUrl(_groupMemberById[userId]?.avatarUrl);
+    if (memberAvatar != null) return memberAvatar;
+
+    final cachedProfile = UserProfileService().getCachedProfile(userId);
+    if (cachedProfile != null) {
+      final avatar = AvatarAssetUtils.resolveUrl(cachedProfile['avatar_url']);
+      if (avatar != null) return avatar;
     }
 
     return null;
+  }
+
+  reaction_models.MessageReaction _enrichReaction(
+    reaction_models.MessageReaction reaction,
+  ) {
+    final userName =
+        _resolveReactionUserName(reaction.userId, reaction.userName);
+    final userAvatar =
+        _resolveReactionUserAvatar(reaction.userId, reaction.userAvatar);
+    if (userName == reaction.userName && userAvatar == reaction.userAvatar) {
+      return reaction;
+    }
+    return reaction.copyWith(userName: userName, userAvatar: userAvatar);
+  }
+
+  List<reaction_models.MessageReaction> _enrichReactions(
+    List<reaction_models.MessageReaction> reactions,
+  ) {
+    if (reactions.isEmpty) return const [];
+    return reactions.map(_enrichReaction).toList(growable: false);
+  }
+
+  Future<void> _prefetchMissingReactionProfiles(
+    Iterable<reaction_models.MessageReaction> reactions,
+  ) async {
+    final pendingIds = <String>{};
+    for (final reaction in reactions) {
+      final userId = reaction.userId.trim();
+      if (userId.isEmpty) continue;
+      final resolvedName = _resolveReactionUserName(userId, reaction.userName);
+      if (resolvedName == 'کاربر') {
+        pendingIds.add(userId);
+      }
+    }
+    if (pendingIds.isEmpty) return;
+
+    var changed = false;
+    for (final userId in pendingIds) {
+      try {
+        final profile = await ProfileCacheService().getProfile(userId);
+        if (!mounted) return;
+        changed = true;
+
+        if (widget.args.isGroup) {
+          final existing = _groupMemberById[userId];
+          _groupMemberById[userId] = GroupMemberItem(
+            userId: userId,
+            username: profile.username.isNotEmpty
+                ? profile.username
+                : (existing?.username ?? ''),
+            fullName: profile.fullName.isNotEmpty
+                ? profile.fullName
+                : existing?.fullName,
+            avatarUrl: AvatarAssetUtils.resolveUrl(profile.avatarUrl) ??
+                existing?.avatarUrl,
+            isAdmin: existing?.isAdmin ?? false,
+            joinedAt: existing?.joinedAt,
+          );
+        }
+      } catch (_) {
+        // Best-effort profile hydration for reaction labels.
+      }
+    }
+
+    if (!changed || !mounted) return;
+
+    setState(() {
+      for (final notifier in _messageReactionNotifiers.values) {
+        notifier.value = _enrichReactions(notifier.value);
+      }
+    });
+  }
+
+  Future<void> _prefetchMissingGroupSenderAvatars(
+    List<MessageModel> messages,
+  ) async {
+    final pendingIds = <String>{};
+    for (final message in messages) {
+      if (message.isMe || message.senderId.trim().isEmpty) continue;
+      if (_resolveMessageSenderAvatar(message) != null) continue;
+      pendingIds.add(message.senderId);
+    }
+    if (pendingIds.isEmpty) return;
+
+    for (final userId in pendingIds) {
+      try {
+        final profile = await ProfileCacheService().getProfile(userId);
+        if (!mounted) return;
+        final avatar = AvatarAssetUtils.resolveUrl(profile.avatarUrl);
+        if (avatar == null || avatar.isEmpty) continue;
+
+        setState(() {
+          final existing = _groupMemberById[userId];
+          _groupMemberById[userId] = GroupMemberItem(
+            userId: userId,
+            username: existing?.username ?? profile.username,
+            fullName: existing?.fullName ?? profile.fullName,
+            avatarUrl: avatar,
+            isAdmin: existing?.isAdmin ?? false,
+            joinedAt: existing?.joinedAt,
+          );
+        });
+      } catch (_) {
+        // Best-effort avatar hydration; initials fallback remains available.
+      }
+    }
   }
 
   void _openGroupSenderProfile(MessageModel message) {
@@ -3823,19 +4034,18 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     if (userId.isEmpty) return;
 
     Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => ProfileScreen(
-          userId: userId,
-          username: _resolveMessageSenderName(message),
-        ),
+      ProfileRoute(
+        userId: userId,
+        username: _resolveMessageSenderName(message),
       ),
     );
   }
 
   MessageStatus _getMessageStatus(MessageModel message) {
+    if (!message.isMe) return MessageStatus.sent;
     if (message.isPending) return MessageStatus.pending;
     if (message.isFailed == true) return MessageStatus.failed;
-    if (message.isSeen || message.isRead) return MessageStatus.read;
+    if (message.isReadByPeer) return MessageStatus.read;
     if (message.isDelivered) return MessageStatus.delivered;
     if (message.isSent) return MessageStatus.sent;
     return MessageStatus.pending;
@@ -3855,10 +4065,14 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
           await _reactionsService.getMultipleMessageReactions(messageIds);
 
       if (!mounted) return;
+      final allReactions = <reaction_models.MessageReaction>[];
       for (final message in windowMessages) {
-        _reactionNotifierFor(message.id).value =
-            reactionsMap[message.id] ?? const [];
+        final enriched =
+            _enrichReactions(reactionsMap[message.id] ?? const []);
+        _reactionNotifierFor(message.id).value = enriched;
+        allReactions.addAll(enriched);
       }
+      unawaited(_prefetchMissingReactionProfiles(allReactions));
     } catch (e) {
       debugPrint('❌ Error loading reactions: $e');
     }
@@ -3894,7 +4108,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
             .watchMessageReactions(messageId)
             .listen((reactions) {
           if (!mounted) return;
-          _reactionNotifierFor(messageId).value = reactions;
+          _reactionNotifierFor(messageId).value = _enrichReactions(reactions);
         });
       }
     }
@@ -3909,10 +4123,14 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         final reactionsMap =
             await _reactionsService.getMultipleMessageReactions(messageIds);
         if (!mounted) return;
+        final allReactions = <reaction_models.MessageReaction>[];
         for (final messageId in messageIds) {
-          _reactionNotifierFor(messageId).value =
-              reactionsMap[messageId] ?? const [];
+          final enriched =
+              _enrichReactions(reactionsMap[messageId] ?? const []);
+          _reactionNotifierFor(messageId).value = enriched;
+          allReactions.addAll(enriched);
         }
+        unawaited(_prefetchMissingReactionProfiles(allReactions));
       } catch (e) {
         debugPrint('❌ Error priming reaction window: $e');
       }
@@ -3939,11 +4157,27 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     }
 
     return grouped.entries.map((entry) {
+      final reactors = entry.value
+          .map(
+            (reaction) => ReactionReactorInfo(
+              userId: reaction.userId,
+              userName: _resolveReactionUserName(
+                reaction.userId,
+                reaction.userName,
+              ),
+              userAvatar: _resolveReactionUserAvatar(
+                reaction.userId,
+                reaction.userAvatar,
+              ),
+            ),
+          )
+          .toList(growable: false);
       final userIds = entry.value.map((r) => r.userId).toList();
       return MessageReaction(
         emoji: entry.key,
         count: entry.value.length,
         userIds: userIds,
+        reactors: reactors,
         isMyReaction: userIds.contains(_currentUserId),
       );
     }).toList();
@@ -5221,11 +5455,15 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   void _showMessageInfo(MessageModel message) {
     if (_currentUserId == null) return;
 
+    final reactions =
+        _enrichReactions(_reactionNotifierFor(message.id).value);
+
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => MessageInfoScreen(
           message: message,
           currentUserId: _currentUserId!,
+          reactions: reactions,
         ),
       ),
     );
@@ -5240,7 +5478,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   }
 
   /// ✅ تابع جدید: نمایش Context Menu به سبک ویستا
-  void _showTelegramContextMenu(
+  void _showModernContextMenu(
     BuildContext bubbleContext,
     MessageModel message, {
     List<MessageModel>? groupedMessagesOverride,
@@ -5328,11 +5566,11 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     });
 
     // 4. ساخت آیتم‌های منو
-    final items = <TelegramContextMenuItem>[
+    final items = <ModernContextMenuItem>[
       // ارسال مجدد (در صورت خطا)
       if (isMe &&
           message.statusNotifier.value == MessageDeliveryStatus.failed) ...[
-        TelegramContextMenuItem(
+        ModernContextMenuItem(
           icon: Icons.refresh_rounded,
           label: 'ارسال مجدد',
           color: Colors.orange,
@@ -5342,11 +5580,11 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                 .resendMessage(message);
           },
         ),
-        const TelegramContextMenuItem.divider(),
+        const ModernContextMenuItem.divider(),
       ],
 
       // Reply
-      TelegramContextMenuItem(
+      ModernContextMenuItem(
         icon: Icons.reply_rounded,
         label: 'پاسخ',
         onTap: () {
@@ -5363,7 +5601,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
           !isVoice &&
           !isSharedPost &&
           message.content.isNotEmpty)
-        TelegramContextMenuItem(
+        ModernContextMenuItem(
           icon: Icons.copy_rounded,
           label: 'کپی متن',
           onTap: () {
@@ -5374,86 +5612,86 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
       // گزینه‌های مخصوص GIF
       if (isGif && !widget.args.isSecret) ...[
-        TelegramContextMenuItem(
+        ModernContextMenuItem(
           icon: Icons.gif_box_outlined,
           label: 'ذخیره GIF',
           onTap: () => _saveGif(message),
         ),
-        const TelegramContextMenuItem.divider(),
+        const ModernContextMenuItem.divider(),
       ],
 
       // گزینه‌های مخصوص عکس/آلبوم
       if (albumHasOnlyImages && !widget.args.isSecret) ...[
         if (albumItems.isNotEmpty)
-          TelegramContextMenuItem(
+          ModernContextMenuItem(
             icon: Icons.photo_library_outlined,
             label: 'مشاهده آلبوم',
             onTap: () => _openAlbumViewer(albumItems, 0),
           ),
-        TelegramContextMenuItem(
+        ModernContextMenuItem(
           icon: Icons.collections_rounded,
           label: 'ذخیره آلبوم',
           onTap: () => _saveImageAlbum(albumImageMessages),
         ),
-        const TelegramContextMenuItem.divider(),
+        const ModernContextMenuItem.divider(),
       ] else if (isImage && !widget.args.isSecret) ...[
-        TelegramContextMenuItem(
+        ModernContextMenuItem(
           icon: Icons.download_rounded,
           label: 'ذخیره عکس',
           onTap: () => _saveImage(message),
         ),
-        const TelegramContextMenuItem.divider(),
+        const ModernContextMenuItem.divider(),
       ],
 
       // گزینه‌های مخصوص ویدیو
       if (isVideo && !widget.args.isSecret) ...[
-        TelegramContextMenuItem(
+        ModernContextMenuItem(
           icon: Icons.download_rounded,
           label: 'ذخیره ویدیو',
           onTap: () => _saveVideo(message),
         ),
-        const TelegramContextMenuItem.divider(),
+        const ModernContextMenuItem.divider(),
       ],
 
       // گزینه‌های مخصوص صدا
       if (isVoice && !widget.args.isSecret) ...[
-        TelegramContextMenuItem(
+        ModernContextMenuItem(
           icon: Icons.download_rounded,
           label: 'ذخیره صدا',
           onTap: () => _saveVoice(message),
         ),
-        const TelegramContextMenuItem.divider(),
+        const ModernContextMenuItem.divider(),
       ],
 
       // گزینه‌های مخصوص فایل
       if (isDocument && !widget.args.isSecret) ...[
-        TelegramContextMenuItem(
+        ModernContextMenuItem(
           icon: Icons.download_rounded,
           label: 'دانلود فایل',
           onTap: () => _downloadFile(message),
         ),
-        const TelegramContextMenuItem.divider(),
+        const ModernContextMenuItem.divider(),
       ],
 
       if (isSharedPost) ...[
-        TelegramContextMenuItem(
+        ModernContextMenuItem(
           icon: Icons.open_in_new_rounded,
           label: 'باز کردن پست',
           onTap: () => _showMessageDetails(message),
         ),
-        const TelegramContextMenuItem.divider(),
+        const ModernContextMenuItem.divider(),
       ],
 
       // Forward
       if (!widget.args.isSecret)
-        TelegramContextMenuItem(
+        ModernContextMenuItem(
           icon: Icons.forward_rounded,
           label: 'فوروارد',
           onTap: () => _forwardMessagesByIds(groupedIds),
         ),
 
       // ✅ جزئیات پیام (گزینه جدید)
-      TelegramContextMenuItem(
+      ModernContextMenuItem(
         icon: Icons.info_outline_rounded,
         label: 'جزئیات پیام',
         onTap: () => _showMessageDetails(message),
@@ -5466,7 +5704,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
           !isVideo &&
           !isVoice &&
           message.attachmentUrl == null)
-        TelegramContextMenuItem(
+        ModernContextMenuItem(
           icon: _canEditMessages ? Icons.edit_rounded : Icons.lock_outline,
           label: 'ویرایش',
           color: _canEditMessages ? null : Colors.amber,
@@ -5479,17 +5717,17 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
           },
         ),
 
-      const TelegramContextMenuItem.divider(),
+      const ModernContextMenuItem.divider(),
 
       // Select
-      TelegramContextMenuItem(
+      ModernContextMenuItem(
         icon: Icons.check_circle_outline_rounded,
         label: 'انتخاب چندتایی',
         onTap: () => _enterSelectionModeForMessages(groupedIds),
       ),
 
       // Delete
-      TelegramContextMenuItem(
+      ModernContextMenuItem(
         icon: Icons.delete_outline_rounded,
         label: 'حذف',
         color: theme.errorColor,
@@ -5504,7 +5742,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     ];
 
     // 5. نمایش منو
-    TelegramContextMenu.show(
+    ModernContextMenu.show(
       context: context,
       messageWidget: previewWidget,
       messageRect: messageRect, // پاس دادن مختصات
@@ -5562,6 +5800,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       onStoryReplyTap: (_) {},
       reactions:
           _convertToOldReactionFormat(_reactionNotifierFor(message.id).value),
+      showReactionAvatars: widget.args.isGroup,
       // ✅ غیرفعال کردن تعاملات در Preview
       onTap: (context, message) {},
       onLongPress: (context, message) {},
@@ -6419,7 +6658,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
               color: Colors.black.withValues(alpha: 0.2),
             ),
             // Reaction Picker
-            TelegramReactionPicker(
+            ModernReactionPicker(
               position: _reactionPickerPosition!,
               showAbove: _reactionPickerPosition!.dy > 200,
               onReactionSelected: (emoji) async {
@@ -6455,13 +6694,10 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   // ═══════════════════════════════════════════════════════════════════════════
 
   void _navigateToProfile() {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => ProfileScreen(
-          userId: widget.args.otherUserId,
-          username: widget.args.otherUserName,
-        ),
-      ),
+    ContentNavigation.pushProfile(
+      context,
+      userId: widget.args.otherUserId,
+      username: widget.args.otherUserName,
     );
   }
 
@@ -6518,16 +6754,16 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       final role = postData.role;
       final hashtags = null; // SharedPostData فعلاً hashtags ندارد
       void handlePostTap(BuildContext postContext) {
-        if (_isSelectionMode) {
+        if (_selectionController.value.isSelectionMode) {
           _toggleMessageSelection(message.id);
         } else {
-          _showTelegramContextMenu(postContext, message);
+          _showModernContextMenu(postContext, message);
         }
       }
 
       void handlePostLongPress() {
         HapticFeedback.mediumImpact();
-        if (_isSelectionMode) {
+        if (_selectionController.value.isSelectionMode) {
           _toggleMessageSelection(message.id);
         } else {
           _enterSelectionMode(message.id);
@@ -6545,8 +6781,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
               onLongPress: handlePostLongPress,
               child: AbsorbPointer(
                 // اگر در حالت انتخاب هستیم، اجازه نده دکمه‌های داخلی پست (لایک و...) کار کنند
-                absorbing: _isSelectionMode,
-                child: InstagramStylePostCard(
+                absorbing: _selectionController.value.isSelectionMode,
+                child: SocialStylePostCard(
                   postId: postId,
                   authorName: authorName,
                   authorAvatar: authorAvatar,
@@ -6567,7 +6803,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                   onTap: () => handlePostTap(postContext),
                   onLongPress: handlePostLongPress,
                   onShare: () async {
-                    if (!_isSelectionMode) {
+                    if (!_selectionController.value.isSelectionMode) {
                       final result = await ForwardMessageSheet.show(
                         context,
                         messageIds: [message.id],
@@ -6582,7 +6818,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
             ),
 
             // ✅ لایه آبی رنگ (Selection Overlay) روی پست
-            if (_selectedMessageIds.contains(message.id))
+            if (_selectionController.value.contains(message.id))
               Positioned.fill(
                 child: Container(
                   decoration: BoxDecoration(
@@ -6643,32 +6879,53 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   void _scrollToMessage(String? messageId) {
     if (messageId == null) return;
 
-    final key = _messageKeys[messageId];
-    if (key?.currentContext != null) {
-      // اسکرول به پیام
-      Scrollable.ensureVisible(
-        key!.currentContext!,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
-        alignment: 0.5, // پیام را در وسط صفحه قرار می‌دهد
-      );
-
-      // هایلایت کردن پیام برای چند لحظه
-      setState(() {
-        _highlightedMessageId = messageId;
-      });
-
+    void highlight() {
+      if (!mounted) return;
+      setState(() => _highlightedMessageId = messageId);
       Future.delayed(const Duration(milliseconds: 1500), () {
         if (mounted) {
-          setState(() {
-            _highlightedMessageId = null;
-          });
+          setState(() => _highlightedMessageId = null);
         }
       });
-    } else {
-      // پیام در لیست فعلی موجود نیست (شاید باید لود شود یا دور است)
-      _showErrorSnackBar('پیام در دسترس نیست');
     }
+
+    void ensureVisible(GlobalKey key) {
+      Scrollable.ensureVisible(
+        key.currentContext!,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+        alignment: 0.5,
+      );
+      highlight();
+    }
+
+    final key = _messageKeys[messageId];
+    if (key?.currentContext != null) {
+      ensureVisible(key!);
+      return;
+    }
+
+    final index =
+        _allLatestUiMessages.indexWhere((message) => message.id == messageId);
+    if (index == -1) {
+      _showErrorSnackBar('پیام در دسترس نیست');
+      return;
+    }
+
+    final neededCap = ChatMessageRenderWindow.capToIncludeIndex(index);
+    if (neededCap > _messageRenderCapNotifier.value) {
+      _messageRenderCapNotifier.value = neededCap;
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final retryKey = _messageKeys[messageId];
+      if (retryKey?.currentContext != null) {
+        ensureVisible(retryKey!);
+        return;
+      }
+      _showErrorSnackBar('پیام در دسترس نیست');
+    });
   }
 
   /// متد کمکی برای تمیز شدن کد بالا
@@ -6679,12 +6936,13 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     bool isFirstInGroup,
     bool isLastInGroup,
     AdaptiveEffectsState adaptiveEffects, {
+    required ChatSelectionState selection,
     required Map<String, MessageModel> messagesById,
     List<GalleryItem>? conversationGalleryItems,
     Map<String, int>? conversationGalleryIndexByMessageId,
   }) {
     final isHighlighted = _highlightedMessageId == message.id;
-    final isSelected = _selectedMessageIds.contains(message.id);
+    final isSelected = selection.contains(message.id);
     final bubbleEffectsLevel = adaptiveEffects.motionTokensEnabled
         ? adaptiveEffects.effectsLevel
         : ChatEffectsLevel.high;
@@ -6719,6 +6977,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                 senderName: _resolveMessageSenderName(message),
                 showSenderNameInBubble: false,
                 compactWithAvatar: widget.args.isGroup && !isMe,
+                showReactionAvatars: widget.args.isGroup,
                 attachmentUrl: message.attachmentUrl,
                 attachmentType: message.attachmentType,
                 attachmentFileName: message.attachmentFileName,
@@ -6736,7 +6995,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                 onDoubleTap: () => _onMessageDoubleTap(message),
                 onAddReaction: (emoji) => _onAddReaction(message, emoji),
                 animate: shouldAnimateEntry &&
-                    adaptiveEffects.enableMessageEntryAnimation,
+                    adaptiveEffects.enableMessageEntryAnimation &&
+                    !adaptiveEffects.isFastScrolling,
                 effectsLevel: bubbleEffectsLevel,
                 index: index,
                 isFirstInGroup: isFirstInGroup,
@@ -6775,6 +7035,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     _ChatRenderItem renderItem,
     bool isMe,
     AdaptiveEffectsState adaptiveEffects, {
+    required ChatSelectionState selection,
     required bool isFirstInGroup,
     required bool isLastInGroup,
     required Map<String, MessageModel> messagesById,
@@ -6791,6 +7052,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         isFirstInGroup,
         isLastInGroup,
         adaptiveEffects,
+        selection: selection,
         messagesById: messagesById,
         conversationGalleryItems: conversationGalleryItems,
         conversationGalleryIndexByMessageId:
@@ -6804,7 +7066,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     );
     final hasHighlightedMessage = _highlightedMessageId != null &&
         renderItem.messages.any((m) => m.id == _highlightedMessageId);
-    final isSelected = _isSelectionMode && _isRenderItemSelected(renderItem);
+    final isSelected =
+        selection.isSelectionMode && _isRenderItemSelected(renderItem);
     final albumKey = _messageKeys[primaryMessage.id] ??= GlobalKey();
     for (final item in renderItem.messages) {
       _messageKeys[item.id] ??= albumKey;
@@ -6819,11 +7082,11 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
           ? captionMessage.content.trim()
           : null,
       onImageTap: (index) {
-        if (_isSelectionMode) {
+        if (_selectionController.value.isSelectionMode) {
           _toggleRenderItemSelection(renderItem);
           return;
         }
-        _showTelegramContextMenu(
+        _showModernContextMenu(
           albumKey.currentContext ?? context,
           primaryMessage,
           groupedMessagesOverride: renderItem.messages,
@@ -7053,12 +7316,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       return;
     }
 
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => PostDetailsPage(postId: postId),
-      ),
-    );
+    ContentNavigation.pushPostDetail(context, postId: postId);
   }
 }
 
@@ -7178,14 +7436,14 @@ class _ChatMediaAlbumBubble extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Expanded(
-                      child: TelegramEmojiText(
+                      child: ModernEmojiText(
                         caption!.trim(),
                         maxLines: 4,
                         overflow: TextOverflow.ellipsis,
                         textDirection: captionDirection,
                         textAlign: TextAlign.start,
-                        useTelegramEmoji:
-                            EmojiRenderPolicy.useTelegramEmojiRenderer(),
+                        useModernEmoji:
+                            EmojiRenderPolicy.useModernEmojiRenderer(),
                         style: TextStyle(
                           color: isMe
                               ? theme.myBubbleTextColor
@@ -7499,7 +7757,7 @@ class _ChatMediaAlbumBubble extends StatelessWidget {
             ValueListenableBuilder<MessageDeliveryStatus>(
               valueListenable: statusMessage.statusNotifier,
               builder: (context, status, _) {
-                return TelegramMessageStatus(
+                return ModernMessageStatus(
                   status: status,
                   size: 14,
                   customColor: textColor,

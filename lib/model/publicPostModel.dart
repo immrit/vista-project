@@ -83,8 +83,8 @@ class PublicPostModel {
   factory PublicPostModel.fromMap(Map<String, dynamic> map) {
     return PublicPostModel(
       id: _parseString(map, 'id') ?? '',
-      userId: _parseString(map, 'user_id') ?? '',
-      fullName: _parseString(map, 'full_name') ?? '',
+      userId: _parseUserId(map),
+      fullName: _parseFullName(map),
       content: _parseString(map, 'content') ?? '',
       imageUrl: _parseMediaUrl(map, 'image_url'),
       videoUrl: _parseMediaUrl(map, 'video_url'), 
@@ -223,11 +223,77 @@ class PublicPostModel {
   }
 
   static String _parseUsername(Map<String, dynamic> map) {
-    return map['profiles']?['username']?.toString() ?? 'نام کاربری ناشناخته';
+    final author = _authorMap(map);
+    final candidates = [
+      map['profiles']?['username']?.toString(),
+      author?['username']?.toString(),
+      map['username']?.toString(),
+    ];
+    for (final value in candidates) {
+      final trimmed = value?.trim();
+      if (trimmed != null && trimmed.isNotEmpty) return trimmed;
+    }
+    return 'نام کاربری ناشناخته';
   }
 
   static String _parseAvatarUrl(Map<String, dynamic> map) {
-    return map['profiles']?['avatar_url']?.toString() ?? '';
+    final author = _authorMap(map);
+    final candidates = [
+      map['profiles']?['avatar_url']?.toString(),
+      author?['avatar_url']?.toString(),
+      map['avatar_url']?.toString(),
+    ];
+    for (final value in candidates) {
+      final trimmed = value?.trim();
+      if (trimmed != null && trimmed.isNotEmpty) {
+        return _normalizeAvatarUrl(trimmed);
+      }
+    }
+    return '';
+  }
+
+  static Map<String, dynamic>? _authorMap(Map<String, dynamic> map) {
+    final author = map['author'];
+    if (author is Map<String, dynamic>) return author;
+    if (author is Map) return author.cast<String, dynamic>();
+    return null;
+  }
+
+  static String _parseUserId(Map<String, dynamic> map) {
+    final author = _authorMap(map);
+    final candidates = [
+      author?['id']?.toString(),
+      map['user_id']?.toString(),
+      map['profiles']?['id']?.toString(),
+    ];
+    for (final value in candidates) {
+      final trimmed = value?.trim();
+      if (trimmed != null && trimmed.isNotEmpty) return trimmed;
+    }
+    return '';
+  }
+
+  static String _parseFullName(Map<String, dynamic> map) {
+    final author = _authorMap(map);
+    final candidates = [
+      author?['full_name']?.toString(),
+      map['profiles']?['full_name']?.toString(),
+      map['full_name']?.toString(),
+    ];
+    for (final value in candidates) {
+      final trimmed = value?.trim();
+      if (trimmed != null && trimmed.isNotEmpty) return trimmed;
+    }
+    return '';
+  }
+
+  static String _normalizeAvatarUrl(String raw) {
+    if (raw.startsWith('http://') || raw.startsWith('https://')) {
+      return raw;
+    }
+    final baseUrl = EnvConfig.apiBaseUrl.replaceFirst('api.', 's3.');
+    final cleanPath = raw.startsWith('/') ? raw.substring(1) : raw;
+    return '$baseUrl/$cleanPath';
   }
 
   static VerificationType _parseVerificationType(Map<String, dynamic> map) {
