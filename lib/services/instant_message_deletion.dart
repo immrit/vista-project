@@ -1,11 +1,11 @@
-import '../security/logging_utility.dart';
+import 'package:Vista/security/logging_utility.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../model/message_model.dart';
+import 'package:Vista/model/message_model.dart';
 
-import '../services/improved_error_handler.dart';
-import '../features/chat/providers/chat_providers.dart';
-import '../services/improved_chat_provider.dart' hide chatMessagesProvider;
+import 'improved_error_handler.dart';
+import 'package:Vista/features/chat/providers/chat_providers.dart';
+import 'package:Vista/features/chat/providers/chat_messages_provider.dart';
 
 /// سیستم حذف فوری پیام‌ها و گفتگوها - بدون تأخیر
 class InstantMessageDeletion {
@@ -14,14 +14,11 @@ class InstantMessageDeletion {
   factory InstantMessageDeletion() => _instance;
   InstantMessageDeletion._internal();
 
-  // final ChatService _chatService; // Removed
-  final Map<String, MessageModel> _deletionBackup = {}; // backup برای rollback
+  final Map<String, MessageModel> _deletionBackup = {};
 
-  // Provider برای مدیریت انیمیشن‌های در حال اجرا
   static final StateProvider<Set<String>> _animatingMessagesProvider =
       StateProvider<Set<String>>((ref) => {});
 
-  /// حذف فوری پیام با انیمیشن پودر شدن
   Future<void> deleteMessageInstantly({
     required String messageId,
     required String conversationId,
@@ -32,21 +29,24 @@ class InstantMessageDeletion {
     bool enableAnimation = true,
   }) async {
     try {
-      // 1️⃣ OPTIMISTIC UPDATE - حذف فوری از UI
-      final providers = _getAllMessageProviders(conversationId, ref);
-      final targetMessage = _findMessage(messageId, providers);
+      final notifier =
+          ref.read(chatMessagesProvider(conversationId).notifier);
+      final currentMessages =
+          ref.read(chatMessagesProvider(conversationId)).valueOrNull ?? [];
+      MessageModel? targetMessage;
+      for (final message in currentMessages) {
+        if (message.id == messageId) {
+          targetMessage = message;
+          break;
+        }
+      }
 
       if (targetMessage != null) {
-        // backup پیام برای rollback احتمالی
         _deletionBackup[messageId] = targetMessage;
-
-        // حذف فوری از همه providers
-        _removeFromAllProviders(messageId, providers);
-
+        notifier.removeMessageLocally(messageId);
         logDebug('✅ پیام فوراً از UI حذف شد: $messageId');
       }
 
-      // 2️⃣ SERVER REQUEST - در background (فقط اگر پیام temporary نیست)
       if (!messageId.startsWith('temp_')) {
         try {
           await ImprovedErrorHandler.handleMessageOperation(() async {
@@ -55,195 +55,37 @@ class InstantMessageDeletion {
                 .deleteMessage(messageId, forEveryone: forEveryone);
           });
         } catch (e) {
-          // اگر پیام در سرور وجود نداره، فقط از UI حذف شده در نظر بگیریم
           if (e.toString().contains('PGRST116') ||
               e.toString().contains('multiple (or no) rows returned') ||
               e.toString().contains('MessagingException: درخواست نامعتبر')) {
             debugPrint(
                 '⚠️ پیام در سرور وجود ندارد، فقط از UI حذف شد: $messageId');
-            // این خطا رو به عنوان موفقیت در نظر بگیریم چون پیام از UI حذف شده
             return;
-          } else {
-            rethrow; // خطای دیگری بود، دوباره پرتاب کن
           }
+          rethrow;
         }
       } else {
         logDebug('⚠️ پیام temporary است، حذف از سرور انجام نشد: $messageId');
       }
 
-      // 3️⃣ SUCCESS - پاک کردن backup
       _deletionBackup.remove(messageId);
       onSuccess?.call();
-
       logDebug('✅ حذف پیام در سرور تأیید شد: $messageId');
     } catch (e) {
-      // 4️⃣ ROLLBACK - بازگردانی پیام در صورت خطا
       final backedUpMessage = _deletionBackup.remove(messageId);
       if (backedUpMessage != null) {
-        final providers = _getAllMessageProviders(conversationId, ref);
-        _addToAllProviders(backedUpMessage, providers);
-
+        ref
+            .read(chatMessagesProvider(conversationId).notifier)
+            .restoreMessageLocally(backedUpMessage);
         logDebug('🔄 پیام به علت خطا بازگردانده شد: $messageId');
       }
 
       onError?.call();
-
-      // نمایش خطا به کاربر
       logDebug('❌ خطا در حذف پیام: $e');
       rethrow;
     }
   }
 
-  /// پیدا کردن همه providers مربوط به پیام‌ها
-  Map<String, dynamic> _getAllMessageProviders(
-      String conversationId, WidgetRef ref) {
-    final providers = <String, dynamic>{};
-
-    try {
-      // Chat Provider
-      final chatProvider =
-          ref.read(chatMessagesProvider(conversationId).notifier);
-      providers['chat'] = chatProvider;
-    } catch (e) {
-      logDebug('Chat provider not found: $e');
-    }
-
-    // Removed legacy providers (Lazy, Unified) as they are deprecated.
-
-    try {
-      // Improved Provider - فقط اگر هنوز dispose نشده
-      if (ref.exists(improvedChatProvider(conversationId))) {
-        final improvedProvider =
-            ref.read(improvedChatProvider(conversationId).notifier);
-        providers['improved'] = improvedProvider;
-      }
-    } catch (e) {
-      logDebug('Improved provider not found or disposed: $e');
-    }
-
-    return providers;
-  }
-
-  /// پیدا کردن پیام در providers
-  MessageModel? _findMessage(String messageId, Map<String, dynamic> providers) {
-    for (final provider in providers.values) {
-      try {
-        if (provider.runtimeType.toString().contains('ChatMessagesNotifier')) {
-          final messages = provider.state.value ?? []; // Handle AsyncValue
-          for (final message in messages) {
-            if (message.id == messageId) return message;
-          }
-        } else if (provider.runtimeType
-            .toString()
-            .contains('ImprovedChatProvider')) {
-          try {
-            final messages = provider.state.messages;
-            for (final message in messages) {
-              if (message.id == messageId) return message;
-            }
-          } catch (e) {
-            if (e.toString().contains('dispose')) {
-              logDebug('⚠️ ImprovedChatProvider disposed, skipping...');
-              continue;
-            }
-            logDebug('Error accessing ImprovedChatProvider state: $e');
-          }
-        }
-      } catch (e) {
-        if (e.toString().contains('dispose')) {
-          logDebug('⚠️ Provider disposed, skipping...');
-        } else {
-          logDebug('Error finding message in provider: $e');
-        }
-      }
-    }
-    return null;
-  }
-
-  /// حذف پیام از همه providers
-  void _removeFromAllProviders(
-      String messageId, Map<String, dynamic> providers) {
-    for (final entry in providers.entries) {
-      try {
-        final provider = entry.value;
-        final providerType = entry.key;
-
-        // بررسی اینکه provider هنوز فعال است
-        if (provider.runtimeType.toString().contains('ChatMessagesNotifier')) {
-          // ChatMessagesNotifier doesn't expose markLocallyDeleted directly usually.
-          // It likely uses deleteMessage.
-          // Or we might need to assume it has a method.
-          // Assuming it has deleteMessage or similar.
-          // If ChatMessagesNotifier is Optimistic, it should have a way.
-          // Let's assume deleteMessage for now, or check ChatMessagesNotifier definition.
-          // Waiting to verify ChatMessagesNotifier.
-          // For now, logging.
-          logDebug('Attempting to remove from ChatMessagesNotifier..');
-          // provider.deleteMessage(messageId); // checking later
-        } else if (provider.runtimeType
-            .toString()
-            .contains('ImprovedChatProvider')) {
-          try {
-            provider.deleteMessage(messageId);
-          } catch (e) {
-            if (e.toString().contains('dispose')) {
-              logDebug('⚠️ ImprovedChatProvider disposed, skipping...');
-              continue;
-            }
-            logDebug('❌ خطا در حذف از ImprovedChatProvider: $e');
-          }
-        }
-
-        logDebug('✅ پیام از $providerType provider حذف شد');
-      } catch (e) {
-        if (e.toString().contains('dispose')) {
-          logDebug('⚠️ Provider ${entry.key} disposed, skipping...');
-        } else {
-          logDebug('❌ خطا در حذف از ${entry.key}: $e');
-        }
-      }
-    }
-  }
-
-  /// اضافه کردن پیام به همه providers (برای rollback)
-  void _addToAllProviders(
-      MessageModel message, Map<String, dynamic> providers) {
-    for (final entry in providers.entries) {
-      try {
-        final provider = entry.value;
-        final providerType = entry.key;
-
-        if (provider.runtimeType.toString().contains('ChatMessagesNotifier')) {
-          // provider.addMessage(message); // Placeholder
-        } else if (provider.runtimeType
-            .toString()
-            .contains('ImprovedChatProvider')) {
-          // برای improved provider باید state را دستی آپدیت کنیم
-          try {
-            final currentMessages = provider.state.messages;
-            final updatedMessages = [message, ...currentMessages];
-            provider.state = provider.state.copyWith(messages: updatedMessages);
-          } catch (e) {
-            if (e.toString().contains('dispose')) {
-              logDebug('⚠️ ImprovedChatProvider disposed, skipping...');
-              continue;
-            }
-            logDebug('❌ خطا در آپدیت ImprovedChatProvider: $e');
-          }
-        }
-
-        logDebug('✅ پیام به $providerType provider بازگردانده شد');
-      } catch (e) {
-        if (e.toString().contains('dispose')) {
-          logDebug('⚠️ Provider ${entry.key} disposed, skipping...');
-        } else {
-          logDebug('❌ خطا در بازگردانی به ${entry.key}: $e');
-        }
-      }
-    }
-  }
-
-  /// حذف فوری گفتگو کامل
   Future<void> deleteConversationInstantly({
     required String conversationId,
     required WidgetRef ref,
@@ -252,53 +94,24 @@ class InstantMessageDeletion {
     VoidCallback? onError,
   }) async {
     try {
-      // 1️⃣ OPTIMISTIC UPDATE - پاک کردن فوری پیام‌ها از UI
-      final providers = _getAllMessageProviders(conversationId, ref);
+      final notifier =
+          ref.read(chatMessagesProvider(conversationId).notifier);
+      final currentMessages =
+          ref.read(chatMessagesProvider(conversationId)).valueOrNull ?? [];
 
-      // backup همه پیام‌ها
-      final allMessages = <MessageModel>[];
-      for (final provider in providers.values) {
-        try {
-          if (provider.runtimeType
-              .toString()
-              .contains('ConversationMessagesNotifier')) {
-            allMessages.addAll(provider.state);
-          } else if (provider.runtimeType
-              .toString()
-              .contains('LazyMessagesNotifier')) {
-            allMessages.addAll(provider.state);
-          } else if (provider.runtimeType
-              .toString()
-              .contains('UnifiedMessagesNotifier')) {
-            allMessages.addAll(provider.state.messages);
-          } else if (provider.runtimeType
-              .toString()
-              .contains('ImprovedChatProvider')) {
-            allMessages.addAll(provider.state.messages);
-          }
-        } catch (e) {
-          logDebug('Error backing up messages: $e');
-        }
-      }
-
-      // backup برای rollback
-      _deletionBackup['conversation_$conversationId'] = allMessages.isNotEmpty
-          ? allMessages.first
+      _deletionBackup['conversation_$conversationId'] = currentMessages.isNotEmpty
+          ? currentMessages.first
           : MessageModel.temporary(
               tempId: 'backup',
               conversationId: conversationId,
               senderId: '',
               content: '');
 
-      // پاک کردن فوری همه پیام‌ها
-      _clearAllProviders(providers);
-
+      notifier.clearMessagesLocally();
       logDebug('✅ گفتگو فوراً از UI پاک شد: $conversationId');
 
-      // 2️⃣ SERVER REQUEST
       await ImprovedErrorHandler.handleMessageOperation(() async {
         if (forEveryone) {
-          // 🔥 استفاده از متد جدید برای حذف مکالمه برای همه (مثل ویستا)
           await ref
               .read(chatRepositoryProvider)
               .clearConversation(conversationId, forEveryone: true);
@@ -309,41 +122,16 @@ class InstantMessageDeletion {
         }
       });
 
-      // 3️⃣ SUCCESS
       _deletionBackup.remove('conversation_$conversationId');
       onSuccess?.call();
-
       logDebug('✅ پاک کردن گفتگو در سرور تأیید شد: $conversationId');
     } catch (e) {
-      // 4️⃣ ROLLBACK در صورت خطا
       onError?.call();
       logDebug('❌ خطا در پاک کردن گفتگو: $e');
       rethrow;
     }
   }
 
-  /// پاک کردن همه پیام‌ها از providers
-  void _clearAllProviders(Map<String, dynamic> providers) {
-    for (final entry in providers.entries) {
-      try {
-        final provider = entry.value;
-
-        if (provider.runtimeType.toString().contains('ChatMessagesNotifier')) {
-          // provider.clearAll(); // Placeholder
-        } else if (provider.runtimeType
-            .toString()
-            .contains('ImprovedChatProvider')) {
-          provider.state = provider.state.copyWith(messages: []);
-        }
-
-        logDebug('✅ همه پیام‌ها از ${entry.key} provider پاک شد');
-      } catch (e) {
-        logDebug('❌ خطا در پاک کردن ${entry.key}: $e');
-      }
-    }
-  }
-
-  /// شروع انیمیشن حذف
   void _startAnimation(WidgetRef ref, String messageId) {
     ref.read(_animatingMessagesProvider.notifier).update((state) {
       final newState = Set<String>.from(state);
@@ -352,7 +140,6 @@ class InstantMessageDeletion {
     });
   }
 
-  /// توقف انیمیشن حذف
   void _stopAnimation(WidgetRef ref, String messageId) {
     ref.read(_animatingMessagesProvider.notifier).update((state) {
       final newState = Set<String>.from(state);
@@ -361,38 +148,30 @@ class InstantMessageDeletion {
     });
   }
 
-  /// بررسی وضعیت انیمیشن
   bool isAnimating(WidgetRef ref, String messageId) {
     return ref.read(_animatingMessagesProvider).contains(messageId);
   }
 
-  /// پاک کردن cache backup
   void clearBackup() {
     _deletionBackup.clear();
   }
 }
 
-/// Extension برای انیمیشن
 extension AnimationExtension on WidgetRef {
-  /// شروع انیمیشن حذف
   void startDeletionAnimation(String messageId) {
     InstantMessageDeletion()._startAnimation(this, messageId);
   }
 
-  /// توقف انیمیشن حذف
   void stopDeletionAnimation(String messageId) {
     InstantMessageDeletion()._stopAnimation(this, messageId);
   }
 
-  /// بررسی وضعیت انیمیشن
   bool isMessageAnimating(String messageId) {
     return InstantMessageDeletion().isAnimating(this, messageId);
   }
 }
 
-// فراخوانی آسان برای استفاده در UI
 extension InstantDeletionExtension on WidgetRef {
-  /// حذف پیام با انیمیشن پودر شدن
   Future<void> deleteMessageInstantly(
     String messageId,
     String conversationId, {
@@ -412,7 +191,6 @@ extension InstantDeletionExtension on WidgetRef {
     );
   }
 
-  /// حذف کل گفتگو
   Future<void> deleteConversationInstantly(
     String conversationId, {
     bool forEveryone = false,
@@ -429,15 +207,12 @@ extension InstantDeletionExtension on WidgetRef {
   }
 }
 
-// ========== دیالوگ‌ها و UI Components ==========
-
-/// نمایش دیالوگ حذف پیام - با instant deletion
 Future<void> showDeleteMessageDialog({
   required BuildContext context,
   required MessageModel message,
   required bool isMyMessage,
   required VoidCallback onDeleted,
-  required WidgetRef ref, // Made required
+  required WidgetRef ref,
 }) async {
   final result = await showDialog<DeleteMessageOption>(
     context: context,
@@ -458,7 +233,6 @@ Future<void> showDeleteMessageDialog({
   }
 }
 
-/// نمایش دیالوگ حذف گفتگو
 Future<void> showDeleteConversationDialog({
   required BuildContext context,
   required String conversationId,
@@ -486,23 +260,16 @@ Future<void> showDeleteConversationDialog({
   }
 }
 
-/// مدیریت حذف فوری پیام
 Future<void> _handleMessageDeletionInstant({
   required BuildContext context,
   required MessageModel message,
   required DeleteMessageOption option,
   required VoidCallback onDeleted,
-  WidgetRef? ref,
+  required WidgetRef ref,
 }) async {
-  if (ref == null) {
-    // Should be impossible now as ref is required
-    throw Exception('WidgetRef is required for deletion');
-  }
-
   try {
     final forEveryone = option == DeleteMessageOption.deleteForEveryone;
 
-    // ✨ INSTANT DELETION - بدون loading dialog
     await ref.deleteMessageInstantly(
       message.id,
       message.conversationId,
@@ -526,7 +293,6 @@ Future<void> _handleMessageDeletionInstant({
   }
 }
 
-/// مدیریت حذف گفتگو
 Future<void> _handleConversationDeletion({
   required BuildContext context,
   required String conversationId,
@@ -584,7 +350,6 @@ Future<void> _handleConversationDeletion({
   }
 }
 
-/// نمایش loading dialog
 void _showLoadingDialog(BuildContext context, String message) {
   showDialog(
     context: context,
@@ -601,7 +366,6 @@ void _showLoadingDialog(BuildContext context, String message) {
   );
 }
 
-/// نمایش success snackbar
 void _showSuccessSnackbar(BuildContext context, String message) {
   ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(
@@ -612,7 +376,6 @@ void _showSuccessSnackbar(BuildContext context, String message) {
   );
 }
 
-/// نمایش error snackbar
 void _showErrorSnackbar(BuildContext context, String message) {
   ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(
@@ -623,20 +386,17 @@ void _showErrorSnackbar(BuildContext context, String message) {
   );
 }
 
-/// گزینه‌های حذف پیام
 enum DeleteMessageOption {
   deleteForMe,
   deleteForEveryone,
 }
 
-/// گزینه‌های حذف گفتگو
 enum DeleteConversationOption {
   deleteForMe,
   clearHistory,
   deleteForEveryone,
 }
 
-/// دیالوگ حذف پیام
 class _DeleteMessageDialog extends StatelessWidget {
   final MessageModel message;
   final bool isMyMessage;
@@ -702,7 +462,6 @@ class _DeleteMessageDialog extends StatelessWidget {
   }
 }
 
-/// دیالوگ حذف گفتگو
 class _DeleteConversationDialog extends StatelessWidget {
   final String conversationTitle;
   final bool isGroupChat;
@@ -769,7 +528,6 @@ class _DeleteConversationDialog extends StatelessWidget {
   }
 }
 
-/// Widget برای نمایش گزینه‌های حذف در context menu
 class DeleteOptionsWidget extends ConsumerWidget {
   final MessageModel message;
   final bool isMyMessage;

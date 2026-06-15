@@ -1,8 +1,9 @@
 import 'package:flutter/foundation.dart';
+import '../domain/chat_render_descriptor.dart';
 import 'package:flutter/services.dart';
 
 @immutable
-class ChatSelectionState {
+class ChatSelectionState implements ChatSelectionStateLike {
   const ChatSelectionState({
     this.isSelectionMode = false,
     this.selectedMessageIds = const {},

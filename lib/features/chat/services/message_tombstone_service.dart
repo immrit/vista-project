@@ -8,6 +8,7 @@ import '../../../DB/entities/deletion_task_entity.dart';
 import '../../../DB/isar_database_manager.dart';
 import '../../auth/providers/auth_controller.dart';
 import '../../../security/logging_utility.dart';
+import '../../../services/http_client_factory.dart';
 import '../data/datasources/chat_local_datasource_isar.dart';
 
 class MessageTombstoneService {
@@ -20,14 +21,7 @@ class MessageTombstoneService {
 
   final IsarDatabaseManager _dbManager = IsarDatabaseManager();
   final ChatLocalDataSourceIsar _localDataSource = ChatLocalDataSourceIsar();
-  late final Dio _dio = Dio(
-    BaseOptions(
-      baseUrl: '${EnvConfig.apiBaseUrl}/v1',
-      connectTimeout: const Duration(seconds: 10),
-      receiveTimeout: const Duration(seconds: 20),
-      headers: {'Content-Type': 'application/json'},
-    ),
-  );
+  final Dio _dio = createApiV1Dio(baseUrl: EnvConfig.apiBaseUrl);
   static const String _syncedMarker = '__tombstone_synced__';
 
   Timer? _syncTimer;

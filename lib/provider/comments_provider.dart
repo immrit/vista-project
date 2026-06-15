@@ -10,6 +10,7 @@ import '../features/auth/providers/auth_controller.dart';
 import '../features/profile/data/profile_repository.dart';
 import '../features/posts/data/go_posts_repository.dart';
 import '../services/comment_repository.dart';
+import 'comment_provider.dart';
 // Import security provider
 
 export 'security_provider.dart';
@@ -91,12 +92,6 @@ final commentServiceProvider = Provider<CommentService>((ref) {
   return CommentService();
 });
 
-final commentsProvider = FutureProvider.family<List<CommentModel>, String>(
-  (ref, postId) {
-    return ref.read(commentServiceProvider).getComments(postId);
-  },
-);
-
 final searchMentionableUsersProvider =
     FutureProvider.family<List<UserModel>, String>((ref, query) {
   return ref.read(commentServiceProvider).searchMentionableUsers(query);
@@ -136,7 +131,7 @@ class CommentsNotifier extends StateNotifier<List<CommentModel>> {
     );
 
     state = [comment, ...state];
-    _ref.invalidate(commentsProvider(postId));
+    await _ref.read(commentsProvider(postId).notifier).refreshComments();
   }
 
   Future<String> getPostOwnerId(String postId) async {
@@ -151,7 +146,7 @@ class CommentsNotifier extends StateNotifier<List<CommentModel>> {
   ) async {
     await _commentService.deleteComment(commentId);
     state = state.where((comment) => comment.id != commentId).toList();
-    _ref.invalidate(commentsProvider(postId));
+    await _ref.read(commentsProvider(postId).notifier).refreshComments();
   }
 
   Future<void> updateComment({
@@ -164,7 +159,7 @@ class CommentsNotifier extends StateNotifier<List<CommentModel>> {
       for (final comment in state)
         if (comment.id == commentId) updated else comment,
     ];
-    _ref.invalidate(commentsProvider(postId));
+    await _ref.read(commentsProvider(postId).notifier).refreshComments();
   }
 }
 

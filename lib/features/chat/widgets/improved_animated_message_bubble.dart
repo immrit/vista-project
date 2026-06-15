@@ -172,6 +172,8 @@ class _ImprovedAnimatedMessageBubbleState
   String _currentContent = "";
   bool _isDecrypting = false;
 
+  bool _staticPresentation = false;
+
   @override
   bool get wantKeepAlive {
     final isUploading = widget.message?.isUploading ?? false;
@@ -215,6 +217,7 @@ class _ImprovedAnimatedMessageBubbleState
         }
       });
     } else {
+      _staticPresentation = true;
       _controller.value = 1.0;
       _shownMessages.add(uniqueId);
     }
@@ -324,69 +327,78 @@ class _ImprovedAnimatedMessageBubbleState
   Widget build(BuildContext context) {
     super.build(context);
     final theme = context.chatTheme;
-    // Keep bubbles close to the edge, with a tiny breathing room.
-    const edgeInset = 4.0;
-    const oppositeInset = 12.0;
 
-    Widget child = RepaintBoundary(
-      child: FadeTransition(
-        opacity: _fadeAnimation,
-        child: SlideTransition(
-          position: _slideAnimation,
-          child: ScaleTransition(
-            scale: _scaleAnimation,
-            child: GestureDetector(
-              onTap: () {
-                HapticFeedback.selectionClick();
-                if (widget.onTap != null && widget.message != null) {
-                  widget.onTap!(context, widget.message!);
-                }
-              },
-              onLongPress: () {
-                HapticFeedback.mediumImpact();
-                if (widget.onLongPress != null && widget.message != null) {
-                  widget.onLongPress!(context, widget.message!);
-                }
-              },
-              onDoubleTap: widget.onDoubleTap,
-              child: Padding(
-                padding: EdgeInsetsDirectional.only(
-                  start: widget.isMe
-                      ? oppositeInset
-                      : (widget.compactWithAvatar ? 6 : edgeInset),
-                  end: widget.isMe ? edgeInset : oppositeInset,
-                  bottom: widget.isLastInGroup ? 4 : 1.5,
-                  top: widget.isFirstInGroup ? 4 : 1.5,
-                ),
-                child: Column(
-                  crossAxisAlignment: widget.isMe
-                      ? CrossAxisAlignment.end
-                      : CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: widget.isMe
-                          ? MainAxisAlignment.end
-                          : MainAxisAlignment.start,
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Flexible(
-                          child: ConstrainedBox(
-                            constraints: BoxConstraints(
-                              maxWidth:
-                                  MediaQuery.of(context).size.width * 0.82,
-                            ),
-                            child: _buildMessageBubble(theme),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
+    final child = RepaintBoundary(
+      child: _staticPresentation
+          ? _buildInteractiveBubble(theme)
+          : FadeTransition(
+              opacity: _fadeAnimation,
+              child: SlideTransition(
+                position: _slideAnimation,
+                child: ScaleTransition(
+                  scale: _scaleAnimation,
+                  child: _buildInteractiveBubble(theme),
                 ),
               ),
             ),
-          ),
+    );
+
+    return child;
+  }
+
+  Widget _buildInteractiveBubble(ChatTheme theme) {
+    const edgeInset = 4.0;
+    const oppositeInset = 12.0;
+
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.selectionClick();
+        if (widget.onTap != null && widget.message != null) {
+          widget.onTap!(context, widget.message!);
+        }
+      },
+      onLongPress: () {
+        HapticFeedback.mediumImpact();
+        if (widget.onLongPress != null && widget.message != null) {
+          widget.onLongPress!(context, widget.message!);
+        }
+      },
+      onDoubleTap: widget.onDoubleTap,
+      child: Padding(
+        padding: EdgeInsetsDirectional.only(
+          start: widget.isMe
+              ? oppositeInset
+              : (widget.compactWithAvatar ? 6 : edgeInset),
+          end: widget.isMe ? edgeInset : oppositeInset,
+          bottom: widget.isLastInGroup ? 4 : 1.5,
+          top: widget.isFirstInGroup ? 4 : 1.5,
         ),
+        child: _buildBubbleBody(theme),
       ),
+    );
+  }
+
+  Widget _buildBubbleBody(ChatTheme theme) {
+    Widget child = Column(
+      crossAxisAlignment:
+          widget.isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment:
+              widget.isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Flexible(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: MediaQuery.of(context).size.width * 0.82,
+                ),
+                child: _buildMessageBubble(theme),
+              ),
+            ),
+          ],
+        ),
+      ],
     );
 
     if (widget.onSwipeToReply != null) {
@@ -1579,8 +1591,23 @@ class _ImprovedAnimatedMessageBubbleState
   }
 
   Widget _buildTimeAndStatus(ChatTheme theme) {
-    final deliveryStatus = widget.message?.resolvedDeliveryStatus ??
-        _convertToDeliveryStatus(widget.status);
+    if (widget.message != null) {
+      return ValueListenableBuilder<MessageDeliveryStatus>(
+        valueListenable: widget.message!.statusNotifier,
+        builder: (context, deliveryStatus, _) {
+          return _buildTimeAndStatusRow(theme, deliveryStatus);
+        },
+      );
+    }
+
+    final deliveryStatus = _convertToDeliveryStatus(widget.status);
+    return _buildTimeAndStatusRow(theme, deliveryStatus);
+  }
+
+  Widget _buildTimeAndStatusRow(
+    ChatTheme theme,
+    MessageDeliveryStatus deliveryStatus,
+  ) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       mainAxisAlignment: MainAxisAlignment.end,

@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:Vista/utils/env_config.dart';
 
 import '../../auth/providers/auth_controller.dart';
+import '../../../services/http_client_factory.dart';
 
 class MessageForwardResult {
   final bool isSuccess;
@@ -27,21 +28,7 @@ class MessageForwardResult {
 }
 
 class MessageForwardService {
-  late final Dio _dio;
-
-  static String get _backendUrl =>
-      EnvConfig.apiBaseUrl;
-
-  MessageForwardService() {
-    _dio = Dio(
-      BaseOptions(
-        baseUrl: '$_backendUrl/v1',
-        connectTimeout: const Duration(seconds: 10),
-        receiveTimeout: const Duration(seconds: 20),
-        headers: {'Content-Type': 'application/json'},
-      ),
-    );
-  }
+  final Dio _dio = createApiV1Dio(baseUrl: EnvConfig.apiBaseUrl);
 
   Future<Options> _authOptions() async {
     final token = await TokenStorage.getAccessToken();

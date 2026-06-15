@@ -48,7 +48,7 @@
 
     <application
         android:label="Vista"
-        android:name="${applicationName}"
+        android:name=".GlobalApplication"
         android:icon="@mipmap/ic_launcher"
         android:enableOnBackInvokedCallback="true"
         android:usesCleartextTraffic="true"

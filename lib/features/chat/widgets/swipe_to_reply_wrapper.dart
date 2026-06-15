@@ -4,6 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../theme/chat_theme.dart';
 
+/// Swipe-to-reply that does not compete with vertical list scrolling.
+///
+/// Uses [Listener] instead of horizontal drag gestures so the scroll view
+/// keeps ownership of vertical movement immediately.
 class SwipeToReplyWrapper extends StatefulWidget {
   final Widget child;
   final VoidCallback onReply;
@@ -20,71 +24,80 @@ class SwipeToReplyWrapper extends StatefulWidget {
   State<SwipeToReplyWrapper> createState() => _SwipeToReplyWrapperState();
 }
 
-class _SwipeToReplyWrapperState extends State<SwipeToReplyWrapper>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
+class _SwipeToReplyWrapperState extends State<SwipeToReplyWrapper> {
   double _dragOffset = 0.0;
   static const double _replyThreshold = 60.0;
   bool _thresholdReached = false;
+  bool _isDraggingHorizontally = false;
 
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 300),
-    );
+  bool _bubbleOnRight(BuildContext context) {
+    final textDirection = Directionality.of(context);
+    return textDirection == TextDirection.ltr ? widget.isMe : !widget.isMe;
   }
 
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
+  bool _isAllowedHorizontalDelta(bool bubbleOnRight, double delta) {
+    if (bubbleOnRight) return delta < 0;
+    return delta > 0;
   }
 
-  void _onHorizontalDragUpdate(DragUpdateDetails details) {
-    double delta = details.primaryDelta ?? 0;
-    if (_dragOffset + delta > 100 || _dragOffset + delta < -100) return;
-
-    setState(() {
-      _dragOffset += delta;
-      final reached = _dragOffset.abs() > _replyThreshold;
-      if (reached && !_thresholdReached) {
-        HapticFeedback.lightImpact();
-        _thresholdReached = true;
-      } else if (!reached && _thresholdReached) {
-        _thresholdReached = false;
-      }
-    });
-  }
-
-  void _onHorizontalDragEnd(DragEndDetails details) {
-    if (_thresholdReached) {
-      widget.onReply();
-      HapticFeedback.selectionClick();
+  void _resetDrag() {
+    if (_dragOffset == 0.0 && !_thresholdReached && !_isDraggingHorizontally) {
+      return;
     }
-
     setState(() {
       _dragOffset = 0.0;
       _thresholdReached = false;
+      _isDraggingHorizontally = false;
     });
+  }
+
+  void _applyHorizontalDelta(double delta) {
+    final nextOffset = (_dragOffset + delta).clamp(-100.0, 100.0);
+    if ((nextOffset - _dragOffset).abs() < 0.5) return;
+
+    final reached = nextOffset.abs() > _replyThreshold;
+    if (reached && !_thresholdReached) {
+      HapticFeedback.lightImpact();
+    }
+
+    setState(() {
+      _dragOffset = nextOffset;
+      _thresholdReached = reached;
+    });
+  }
+
+  void _onPointerMove(PointerMoveEvent event, bool bubbleOnRight) {
+    final dx = event.delta.dx;
+    final dy = event.delta.dy;
+
+    if (!_isDraggingHorizontally) {
+      if (dx.abs() <= dy.abs() * 1.15 || dx.abs() < 2.0) return;
+      if (!_isAllowedHorizontalDelta(bubbleOnRight, dx)) return;
+      _isDraggingHorizontally = true;
+    }
+
+    if (!_isAllowedHorizontalDelta(bubbleOnRight, dx)) return;
+    _applyHorizontalDelta(dx);
+  }
+
+  void _onPointerEnd() {
+    if (_isDraggingHorizontally && _thresholdReached) {
+      widget.onReply();
+      HapticFeedback.selectionClick();
+    }
+    _resetDrag();
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = context.chatTheme;
-    final textDirection = Directionality.of(context);
-    final bubbleOnRight =
-        textDirection == TextDirection.ltr ? widget.isMe : !widget.isMe;
+    final bubbleOnRight = _bubbleOnRight(context);
 
-    return GestureDetector(
-      onHorizontalDragUpdate: (details) {
-        final delta = details.primaryDelta ?? 0;
-        if (bubbleOnRight && delta > 0) return;
-        if (!bubbleOnRight && delta < 0) return;
-        _onHorizontalDragUpdate(details);
-      },
-      onHorizontalDragEnd: _onHorizontalDragEnd,
+    return Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerMove: (event) => _onPointerMove(event, bubbleOnRight),
+      onPointerUp: (_) => _onPointerEnd(),
+      onPointerCancel: (_) => _onPointerEnd(),
       child: Stack(
         alignment: Alignment.center,
         children: [
@@ -106,7 +119,7 @@ class _SwipeToReplyWrapperState extends State<SwipeToReplyWrapper>
                           color: Colors.black.withValues(alpha: 0.1),
                           blurRadius: 4,
                           spreadRadius: 1,
-                        )
+                        ),
                     ],
                   ),
                   child: Icon(

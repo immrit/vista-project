@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import '../../../provider/chat_provider.dart' as legacy_chat;
+import '../../../features/chat/providers/legacy_chat_providers.dart' as legacy_chat;
 import '../../../services/smart_share_service.dart';
 import '../providers/chat_providers.dart';
 import '../../../utils/user_friendly_error_utils.dart';

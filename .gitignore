@@ -1,4 +1,7 @@
 # Miscellaneous
+# Backup / temp artifacts (Phase 1 cleanup)
+*.tmp
+old_*.dart
 *.class
 *.log
 *.md

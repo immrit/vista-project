@@ -26,7 +26,7 @@ import 'package:shimmer/shimmer.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:path_provider/path_provider.dart';
 import '../../../model/message_model.dart';
-import '../../../provider/chat_provider.dart' as legacy_chat;
+import '../../../features/chat/providers/legacy_chat_providers.dart' as legacy_chat;
 import '../../../provider/chat_screen_provider.dart';
 import '../../../provider/presence_provider.dart';
 import 'package:photo_view/photo_view_gallery.dart';

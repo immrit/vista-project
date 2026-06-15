@@ -13,6 +13,7 @@ import '../../../model/conversation_model.dart';
 
 export 'chat_connection_status_provider.dart';
 export 'chat_messages_provider.dart';
+export 'chat_message_store_provider.dart';
 export 'chat_action_controller.dart';
 export '../models/send_message_params.dart';
 

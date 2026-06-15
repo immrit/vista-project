@@ -458,6 +458,8 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
       return Image.file(
         _offlineFile!,
         fit: BoxFit.cover,
+        cacheWidth: decodeWidth.toInt(),
+        cacheHeight: decodeHeight.toInt(),
         errorBuilder: (_, __, ___) => _buildPlaceholder(theme),
       );
     }
@@ -466,6 +468,8 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
       return Image.file(
         _cachedFile!,
         fit: BoxFit.cover,
+        cacheWidth: decodeWidth.toInt(),
+        cacheHeight: decodeHeight.toInt(),
         errorBuilder: (ctx, err, stack) =>
             _buildNetworkImage(theme), // Fallback
       );
@@ -475,6 +479,8 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
       return Image.file(
         File(widget.mediaUrl),
         fit: BoxFit.cover,
+        cacheWidth: decodeWidth.toInt(),
+        cacheHeight: decodeHeight.toInt(),
         errorBuilder: (_, __, ___) => _buildPlaceholder(theme),
       );
     }

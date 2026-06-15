@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../model/message_model.dart';
 import '../../auth/providers/auth_controller.dart';
+import '../../../services/http_client_factory.dart';
 
 class SearchResult {
   final MessageModel message;
@@ -67,19 +68,8 @@ class SearchState {
 }
 
 class MessageSearchService {
-  late final Dio _dio;
+  final Dio _dio = createApiV1Dio(baseUrl: EnvConfig.apiBaseUrl);
   Timer? _debounceTimer;
-
-  MessageSearchService() {
-    _dio = Dio(
-      BaseOptions(
-        baseUrl: '${EnvConfig.apiBaseUrl}/v1',
-        connectTimeout: const Duration(seconds: 10),
-        receiveTimeout: const Duration(seconds: 20),
-        headers: {'Content-Type': 'application/json'},
-      ),
-    );
-  }
 
   Future<List<SearchResult>> searchInConversation({
     required String conversationId,

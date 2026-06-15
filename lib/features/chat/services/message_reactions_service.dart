@@ -5,21 +5,12 @@ import 'package:flutter/foundation.dart';
 import 'package:Vista/utils/env_config.dart';
 
 import '../../../features/auth/providers/auth_controller.dart';
+import '../../../services/http_client_factory.dart';
 import '../models/message_reaction.dart';
 import 'sse_manager.dart';
 
 class MessageReactionsService {
-  static String get _backendUrl =>
-      EnvConfig.apiBaseUrl;
-
-  late final Dio _dio = Dio(
-    BaseOptions(
-      baseUrl: '$_backendUrl/v1',
-      connectTimeout: const Duration(seconds: 10),
-      receiveTimeout: const Duration(seconds: 15),
-      headers: {'Content-Type': 'application/json'},
-    ),
-  );
+  final Dio _dio = createApiV1Dio(baseUrl: EnvConfig.apiBaseUrl);
 
   final Map<String, StreamController<List<MessageReaction>>> _controllers = {};
   final Map<String, List<MessageReaction>> _cache = {};

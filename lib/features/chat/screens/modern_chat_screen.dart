@@ -56,7 +56,6 @@ import '../widgets/vista_emoji_panel.dart';
 import '../widgets/voice_input_state.dart';
 import '../widgets/social_style_post_card.dart';
 import '../widgets/date_divider.dart' as date_divider;
-import '../widgets/swipe_to_reply_wrapper.dart';
 import '../widgets/full_screen_image_viewer.dart';
 import '../widgets/modern_message_status.dart';
 
@@ -75,7 +74,6 @@ import '../widgets/message_search_bar.dart';
 import '../widgets/edit_message_dialog.dart';
 import '../widgets/forward_message_sheet.dart';
 import '../widgets/delete_message_dialog.dart';
-import '../widgets/unread_messages_divider.dart';
 import '../widgets/floating_date_header.dart';
 import '../widgets/modern_online_status.dart';
 import '../services/chat_attachment_service.dart';
@@ -115,15 +113,15 @@ import '../screens/message_info_screen.dart';
 // TODO: Use CompleteDeletionService for delete with undo
 // import '../services/complete_deletion_service.dart';
 import '../services/message_actions_service.dart';
-import '../widgets/molecular_delete_animation.dart';
 import '../performance/adaptive_effects_provider.dart';
 import '../performance/chat_message_render_window.dart';
 import '../performance/chat_performance_profile.dart';
 import '../widgets/chat_adaptive_blur_scope.dart';
 import '../widgets/chat_input_dock.dart';
 import '../widgets/chat_group_presence_summary.dart';
+import '../widgets/chat_message_bindings.dart';
 import '../widgets/chat_message_list_scope.dart';
-import '../widgets/chat_message_list_tile.dart';
+import '../widgets/chat_message_list_view.dart';
 import '../widgets/chat_selection_controller.dart';
 import '../services/secret_chat_privacy_service.dart';
 import '../utils/conversation_name_utils.dart';
@@ -215,8 +213,14 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   final Map<String, GlobalKey> _messageKeys =
       {}; // ✅ کلیدها برای اسکرول به پیام
 
-  // Selection mode
-  final _selectionController = ChatSelectionController();
+  // Selection mode (granular Riverpod state per conversation)
+  String get _conversationId => widget.args.conversationId;
+
+  ConversationChatSelection get _selectionActions =>
+      ref.read(conversationChatSelectionProvider(_conversationId).notifier);
+
+  ChatSelectionState get _selection =>
+      ref.read(conversationChatSelectionProvider(_conversationId));
 
   // Floating date
   final _isScrollingNotifier = ValueNotifier<bool>(false);
@@ -234,16 +238,18 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   String? _lastFirstMessageId;
   List<MessageModel> _latestVisibleMessages = const [];
   List<MessageModel> _allLatestUiMessages = const [];
-  List<_ChatRenderItem> _cachedRenderItems = const [];
-  int _cachedRenderCap = ChatMessageRenderWindow.initialCap;
   final _messageRenderCapNotifier =
       ValueNotifier<int>(ChatMessageRenderWindow.initialCap);
-  _ConversationImageGalleryBundle _cachedImageGallery =
-      const _ConversationImageGalleryBundle.empty();
+  final _listOverlayRevision = ValueNotifier<int>(0);
+  ChatMessageBindings? _cachedMessageBindings;
+  int _cachedBindingsOverlayRevision = -1;
+  int _cachedBindingsGalleryStructureVersion = -1;
+  int _cachedBindingsUnreadCount = -1;
 
   // Unread messages
   String? _lastReadMessageId;
   int _unreadCount = 0;
+  bool _didCaptureUnreadBoundary = false;
 
   // Services
   final _moderationService = UserModerationService();
@@ -683,9 +689,6 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     final renderCap = _messageRenderCapNotifier.value;
     final windowed = ChatMessageRenderWindow.clip(uiMessages, renderCap);
     _latestVisibleMessages = windowed;
-    _cachedRenderCap = renderCap;
-    _cachedRenderItems = _buildRenderItems(windowed);
-    _cachedImageGallery = _buildConversationImageGallery(uiMessages);
     _rescheduleSecretAutoDelete(uiMessages);
 
     if (widget.args.isSecret) {
@@ -696,18 +699,20 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       unawaited(_prefetchMissingGroupSenderAvatars(displayMessages));
     }
 
+    if (!_didCaptureUnreadBoundary && displayMessages.isNotEmpty) {
+      _didCaptureUnreadBoundary = true;
+      _lastReadMessageId = _resolveLastReadMessageId(displayMessages);
+    }
+
     if (visibleMessages.any((m) => !m.isMe && !m.isSeen)) {
       unawaited(_chatRepository.markMessagesAsSeen(widget.args.conversationId));
     }
 
-    _calculateUnreadCount(visibleMessages);
+    _calculateUnreadCount(displayMessages);
 
     if (uiMessages.isEmpty) {
       _latestVisibleMessages = const [];
       _allLatestUiMessages = const [];
-      _cachedRenderItems = const [];
-      _cachedRenderCap = ChatMessageRenderWindow.initialCap;
-      _cachedImageGallery = const _ConversationImageGalleryBundle.empty();
       _lastFirstMessageId = null;
       if (_visibleDateNotifier.value != null || _isScrollingNotifier.value) {
         _visibleDateNotifier.value = null;
@@ -1137,6 +1142,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         setState(() {
           _hiddenMessageIds = {...hiddenIds, ...tombstoneIds};
         });
+        _bumpListOverlay();
       }
     } catch (e) {
       debugPrint('Error loading hidden messages: $e');
@@ -1377,6 +1383,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         _deletingMessageIds.add(messageId);
         _hiddenMessageIds.add(messageId);
       });
+      _bumpListOverlay();
     }
     await Future.delayed(const Duration(milliseconds: 340));
     try {
@@ -1397,6 +1404,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         setState(() {
           _deletingMessageIds.remove(messageId);
         });
+        _bumpListOverlay();
       }
     }
   }
@@ -1474,10 +1482,12 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     _isScrollingNotifier.dispose();
     _visibleDateNotifier.dispose();
     _showScrollToBottomNotifier.dispose();
-    _selectionController.dispose();
     _otherUserTypingNotifier.dispose();
     _inputHeightNotifier.dispose();
     _messageRenderCapNotifier.dispose();
+    _listOverlayRevision.dispose();
+    ref.invalidate(chatMessageStoreProvider(_conversationId));
+    ref.invalidate(conversationChatSelectionProvider(_conversationId));
 
     _clearActiveConversationState();
     if (widget.args.isSecret) {
@@ -1770,17 +1780,6 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     return a.year == b.year && a.month == b.month && a.day == b.day;
   }
 
-  bool _shouldShowUnreadDividerForRenderItem(
-    _ChatRenderItem renderItem,
-    int index,
-    List<_ChatRenderItem> renderItems,
-  ) {
-    if (_lastReadMessageId == null) return false;
-    final hasBoundaryMessage =
-        renderItem.messages.any((m) => m.id == _lastReadMessageId);
-    return hasBoundaryMessage && index < renderItems.length - 1;
-  }
-
   List<_ChatRenderItem> _buildRenderItems(List<MessageModel> messages) {
     if (messages.isEmpty) return const <_ChatRenderItem>[];
 
@@ -1932,19 +1931,48 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
   /// محاسبه تعداد پیام‌های خوانده نشده
   void _calculateUnreadCount(List<MessageModel> messages) {
+    final previousUnread = _unreadCount;
     if (_lastReadMessageId == null) {
-      _unreadCount = 0;
-      return;
-    }
-
-    final lastReadIndex =
-        messages.indexWhere((m) => m.id == _lastReadMessageId);
-    if (lastReadIndex == -1) {
-      _unreadCount = 0;
+      var count = 0;
+      for (final message in messages) {
+        if (!message.isMe && !message.isSeen) {
+          count++;
+        } else {
+          break;
+        }
+      }
+      _unreadCount = count;
     } else {
-      // چون لیست reverse هست، پیام‌های جدیدتر index کمتر دارن
-      _unreadCount = lastReadIndex;
+      final lastReadIndex =
+          messages.indexWhere((m) => m.id == _lastReadMessageId);
+      if (lastReadIndex == -1) {
+        _unreadCount = 0;
+      } else {
+        var count = 0;
+        for (var i = 0; i < lastReadIndex; i++) {
+          final message = messages[i];
+          if (!message.isMe && !message.isSeen) {
+            count++;
+          }
+        }
+        _unreadCount = count;
+      }
     }
+    if (previousUnread != _unreadCount) {
+      _cachedMessageBindings = null;
+      _bumpListOverlay();
+    }
+  }
+
+  /// Newest-first list: first already-read message marks the unread boundary.
+  /// When every loaded message is unread, anchor on the oldest loaded message.
+  String? _resolveLastReadMessageId(List<MessageModel> messages) {
+    for (final message in messages) {
+      if (message.isMe || message.isSeen) {
+        return message.id;
+      }
+    }
+    return messages.isNotEmpty ? messages.last.id : null;
   }
 
   void _loadMoreMessages() {
@@ -2094,9 +2122,11 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                   ? null
                   : PreferredSize(
                       preferredSize: const Size.fromHeight(kToolbarHeight),
-                      child: ValueListenableBuilder<ChatSelectionState>(
-                        valueListenable: _selectionController,
-                        builder: (context, selection, _) {
+                      child: Consumer(
+                        builder: (context, ref, _) {
+                          final selection = ref.watch(
+                            conversationChatSelectionProvider(_conversationId),
+                          );
                           return ModernChatAppBar(
                             theme: theme,
                             isSelectionMode: selection.isSelectionMode,
@@ -2149,22 +2179,11 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                               child: _isTransitioning
                                   ? const SizedBox.shrink()
                                   : ChatMessageListScope(
-                                      conversationId:
-                                          widget.args.conversationId,
-                                      selectionListenable: _selectionController,
-                                      buildList: (
-                                        context,
-                                        messagesAsync,
-                                        paginationState,
-                                        adaptiveEffects,
-                                        selection,
-                                      ) =>
+                                      conversationId: _conversationId,
+                                      buildList: (context, paginationState) =>
                                           _buildMessageList(
-                                        messagesAsync,
                                         paginationState,
                                         theme,
-                                        selection: selection,
-                                        adaptiveEffects: adaptiveEffects,
                                         bottomPadding: dockBottomSpace + 8,
                                       ),
                                     ),
@@ -2247,9 +2266,11 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                 ],
               ),
             ),
-            ValueListenableBuilder<ChatSelectionState>(
-              valueListenable: _selectionController,
-              builder: (context, selection, _) {
+            Consumer(
+              builder: (context, ref, _) {
+                final selection = ref.watch(
+                  conversationChatSelectionProvider(_conversationId),
+                );
                 if (_reactionPickerMessageId == null ||
                     _reactionPickerPosition == null ||
                     selection.isSelectionMode) {
@@ -2358,7 +2379,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         onPressed: _exitSelectionMode,
       ),
       title: Text(
-        '${_selectionController.value.selectedMessageIds.length} انتخاب شده'.toPersianDigit(),
+        '${_selection.selectedMessageIds.length} انتخاب شده'.toPersianDigit(),
         style: const TextStyle(
           color: Colors.white,
           fontSize: 18,
@@ -2371,7 +2392,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
           IconButton(
             icon: const Icon(Icons.forward_rounded, color: Colors.white),
             onPressed:
-                _selectionController.value.selectedMessageIds.isEmpty
+                _selection.selectedMessageIds.isEmpty
                     ? null
                     : _forwardSelectedMessages,
             tooltip: 'فوروارد',
@@ -2381,7 +2402,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
           IconButton(
             icon: const Icon(Icons.copy_rounded, color: Colors.white),
             onPressed:
-                _selectionController.value.selectedMessageIds.isEmpty
+                _selection.selectedMessageIds.isEmpty
                     ? null
                     : _copySelectedMessages,
             tooltip: 'کپی',
@@ -2390,7 +2411,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         IconButton(
           icon: const Icon(Icons.delete_outline_rounded, color: Colors.white),
           onPressed:
-              _selectionController.value.selectedMessageIds.isEmpty
+              _selection.selectedMessageIds.isEmpty
                   ? null
                   : _deleteSelectedMessages,
           tooltip: 'حذف',
@@ -2400,36 +2421,36 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   }
 
   void _enterSelectionMode(String messageId) {
-    _selectionController.enterSelectionMode(messageId);
+    _selectionActions.enterSelectionMode(messageId);
   }
 
   void _enterSelectionModeForMessages(Iterable<String> messageIds) {
-    _selectionController.enterSelectionModeForMessages(messageIds);
+    _selectionActions.enterSelectionModeForMessages(messageIds);
   }
 
   void _exitSelectionMode() {
-    _selectionController.exitSelectionMode();
+    _selectionActions.exitSelectionMode();
   }
 
   void _toggleMessageSelection(String messageId) {
-    _selectionController.toggleMessageSelection(messageId);
+    _selectionActions.toggleMessageSelection(messageId);
   }
 
   bool _isRenderItemSelected(_ChatRenderItem renderItem) {
-    return _selectionController.value.containsAll(
+    return _selection.containsAll(
       renderItem.messages.map((message) => message.id),
     );
   }
 
   void _toggleRenderItemSelection(_ChatRenderItem renderItem) {
-    _selectionController.toggleRenderItemSelection(
+    _selectionActions.toggleRenderItemSelection(
       renderItem.messages.map((message) => message.id),
     );
   }
 
   /// ✅ توابع کمکی یکپارچه برای هندل کردن کلیک و لانگ پرس
   void _handleMessageTap(BuildContext itemContext, MessageModel message) {
-    if (_selectionController.value.isSelectionMode) {
+    if (_selection.isSelectionMode) {
       _toggleMessageSelection(message.id);
       return;
     }
@@ -2440,7 +2461,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
   void _handleMessageLongPress(BuildContext itemContext, MessageModel message) {
     HapticFeedback.mediumImpact();
-    if (_selectionController.value.isSelectionMode) {
+    if (_selection.isSelectionMode) {
       _toggleMessageSelection(message.id);
     } else {
       // Long-press starts multi-select.
@@ -2455,7 +2476,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     }
     final result = await ForwardMessageSheet.show(
       context,
-      messageIds: _selectionController.value.selectedMessageIds.toList(),
+      messageIds: _selection.selectedMessageIds.toList(),
     );
 
     if (result == true) {
@@ -2479,14 +2500,14 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         if (!mounted) return;
 
         final selectedMessages = messages
-            .where((m) => _selectionController.value.contains(m.id))
+            .where((m) => _selection.contains(m.id))
             .map((m) => m.content)
             .join('\n\n');
 
         Clipboard.setData(ClipboardData(text: selectedMessages));
         if (mounted) {
           _showSuccessSnackBar(
-              '${_selectionController.value.selectedMessageIds.length} پیام کپی شد'.toPersianDigit());
+              '${_selection.selectedMessageIds.length} پیام کپی شد'.toPersianDigit());
           _exitSelectionMode();
         }
       });
@@ -2496,7 +2517,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   }
 
   Future<void> _deleteSelectedMessages() async {
-    if (_selectionController.value.selectedMessageIds.isEmpty) return;
+    if (_selection.selectedMessageIds.isEmpty) return;
 
     // دسترسی به لیست کامل پیام‌ها برای استخراج MessageModel
     final messagesAsync =
@@ -2509,7 +2530,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     final currentUserId = _currentUserId;
     bool allMyMessages = true;
 
-    for (final id in _selectionController.value.selectedMessageIds) {
+    for (final id in _selection.selectedMessageIds) {
       final msg = allMessages.firstWhere(
         (m) => m.id == id,
         orElse: () => MessageModel.empty(),
@@ -2542,6 +2563,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
           _deletingMessageIds.add(id);
           _hiddenMessageIds.add(id);
         });
+        _bumpListOverlay();
       });
     }
   }
@@ -2639,6 +2661,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                 _deletingMessageIds.removeAll(messageIds);
                 _hiddenMessageIds.removeAll(messageIds);
               });
+              _bumpListOverlay();
             },
           ),
         ),
@@ -2682,7 +2705,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
   PreferredSizeWidget _buildAppBar(ChatTheme theme) {
     // Selection mode AppBar
-    if (_selectionController.value.isSelectionMode) {
+    if (_selection.isSelectionMode) {
       return _buildSelectionAppBar(theme);
     }
 
@@ -3251,408 +3274,216 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   // 💬 MESSAGE LIST
   // ═══════════════════════════════════════════════════════════════════════════
 
+  void _bumpListOverlay() {
+    _listOverlayRevision.value++;
+    _cachedMessageBindings = null;
+  }
+
   Widget _buildMessageList(
-    AsyncValue<List<MessageModel>> messagesAsync,
     PaginationState paginationState,
     ChatTheme theme, {
-    required ChatSelectionState selection,
-    required AdaptiveEffectsState adaptiveEffects,
     required double bottomPadding,
   }) {
-    return messagesAsync.when(
-      data: (allMessages) {
-        // ✅ فیلتر پیام‌های مخفی شده (حذف شده برای من)
-        // اما پیام‌های در حال حذف را نگه دار (برای انیمیشن پودر شدن)
-        final filteredMessages = allMessages
-            .where((m) =>
-                (!_hiddenMessageIds.contains(m.id) ||
-                    _deletingMessageIds.contains(m.id)) &&
-                m.messageType != 'exchange_key' &&
-                m.messageType != 'exchange_key_reply' &&
-                m.attachmentType != 'exchange_key' &&
-                m.attachmentType != 'exchange_key_reply')
-            .toList();
+    final messagesAsync = ref.read(chatMessagesProvider(_conversationId));
 
-        final uiMessages = _applySecretUiContent(filteredMessages);
+    if (messagesAsync.isLoading && !messagesAsync.hasValue) {
+      return _buildLoadingState(theme);
+    }
+    if (messagesAsync.hasError && !messagesAsync.hasValue) {
+      return _buildErrorState(
+        messagesAsync.error.toString(),
+        theme,
+      );
+    }
 
-        return ValueListenableBuilder<int>(
-          valueListenable: _messageRenderCapNotifier,
-          builder: (context, renderCap, _) {
-            final messages =
-                ChatMessageRenderWindow.clip(uiMessages, renderCap);
-            final messagesById = <String, MessageModel>{
-              for (final message in uiMessages)
-                if (message.id.trim().isNotEmpty) message.id: message,
-            };
-            final cacheReady = messages.isNotEmpty &&
-                _cachedRenderItems.isNotEmpty &&
-                _latestVisibleMessages.isNotEmpty &&
-                _cachedRenderCap == renderCap &&
-                messages.first.id == _latestVisibleMessages.first.id &&
-                messages.length == _latestVisibleMessages.length;
-            final renderItems = cacheReady
-                ? _cachedRenderItems
-                : _buildRenderItems(messages);
-            final conversationImageGallery = cacheReady
-                ? _cachedImageGallery
-                : _buildConversationImageGallery(uiMessages);
-
-            if (renderItems.isEmpty) {
-              return _buildEmptyState(theme);
-            }
-
-            final itemCount = renderItems.length +
-                (paginationState.isLoadingMore ? 1 : 0);
-
-            return RepaintBoundary(
-                child: CustomScrollView(
-              scrollCacheExtent: const ScrollCacheExtent.pixels(900),
-              controller: _scrollController,
-              reverse: true,
-              physics: const BouncingScrollPhysics(
-                parent: AlwaysScrollableScrollPhysics(),
-              ),
-              slivers: [
-            // ✅ مهم: پدینگ پایین لیست برای اینکه زیر اینپوت نرود
-            // چون لیست reverse است، اولین آیتم slivers پایین‌ترین نقطه بصری است
-            if (bottomPadding > 0)
-              SliverPadding(
-                padding: EdgeInsets.only(bottom: bottomPadding),
-                sliver: const SliverToBoxAdapter(child: SizedBox.shrink()),
-              ),
-            const SliverPadding(padding: EdgeInsets.only(bottom: 10)),
-            SliverList(
-              delegate: SliverChildBuilderDelegate(
-                (context, index) {
-                  // Loading indicator در بالا
-                  if (paginationState.isLoadingMore &&
-                      index == renderItems.length) {
-                    return _buildLoadingIndicator(theme);
-                  }
-
-                  final renderItem = renderItems[index];
-                  final message = renderItem.primaryMessage;
-                  final isMe = message.senderId == _currentUserId;
-                  final fastScroll = adaptiveEffects.isFastScrolling;
-                  final fullPrimaryIndex = uiMessages.indexWhere(
-                    (entry) => entry.id == message.id,
-                  );
-
-                  // گروه‌بندی پیام‌ها
-                  final (isFirstInGroup, isLastInGroup) =
-                      fullPrimaryIndex == -1
-                          ? _getMessageGroupPosition(
-                              messages,
-                              renderItem.primaryIndex,
-                              spanLength: renderItem.messages.length,
-                            )
-                          : _getMessageGroupPosition(
-                              uiMessages,
-                              fullPrimaryIndex,
-                              spanLength: renderItem.messages.length,
-                            );
-
-                  // Date Divider - منطق صحیح برای لیست reverse:
-                  // - مقایسه با پیام قدیمی‌تر (index + 1)
-                  // - اگر تاریخ فرق داشت، divider نشون بده
-                  // - divider باید بالای پیام فعلی باشه (قبل از پیام در Column)
-                  // - برای قدیمی‌ترین پیام هم divider نشون بده (وقتی nextMessage null هست)
-                  final nextMessage = index < renderItems.length - 1
-                      ? renderItems[index + 1].primaryMessage
-                      : null;
-                  final showDateDivider = date_divider.shouldShowDateDivider(
-                    renderItem.oldestMessage.createdAt,
-                    nextMessage?.createdAt,
-                  );
-
-                  // ✅ درست: فقط اگر پیام در حال حذف شدن است انیمیشن را اعمال کن
-                  final isDeleting = renderItem.messages
-                      .any((m) => _deletingMessageIds.contains(m.id));
-
-                  // ساخت ویجت پیام (DateDivider + Bubble + Unread)
-                  Widget messageWidget = Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Date Divider
-                      if (showDateDivider)
-                        date_divider.DateDivider(
-                            date: renderItem.oldestMessage.createdAt),
-
-                      // ✅ استفاده از Builder برای گرفتن کانتکست RenderBox
-                      Builder(
-                        builder: (itemContext) {
-                          return GestureDetector(
-                            behavior: HitTestBehavior
-                                .translucent, // کلیک روی فضای خالی
-                            onTap: () {
-                              if (selection.isSelectionMode) {
-                                _toggleRenderItemSelection(renderItem);
-                              }
-                            },
-                            onLongPress: () {
-                              HapticFeedback.mediumImpact();
-                              if (selection.isSelectionMode) {
-                                _toggleRenderItemSelection(renderItem);
-                              } else {
-                                // Long-press selects the full render item,
-                                // including every message in an album.
-                                _enterSelectionModeForMessages(
-                                  renderItem.messages.map((m) => m.id),
-                                );
-                              }
-                            },
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 2, vertical: 2),
-                              child: RepaintBoundary(
-                                child: Row(
-                                  mainAxisAlignment: isMe
-                                      ? MainAxisAlignment.end
-                                      : MainAxisAlignment.start,
-                                  children: [
-                                    // Selection checkbox
-                                    if (selection.isSelectionMode)
-                                      Padding(
-                                        padding:
-                                            const EdgeInsets.only(right: 8),
-                                        child: AnimatedScale(
-                                          scale: selection.isSelectionMode ? 1.0 : 0.0,
-                                          duration:
-                                              const Duration(milliseconds: 200),
-                                          child: GestureDetector(
-                                            onTap: () =>
-                                                _toggleRenderItemSelection(
-                                                    renderItem),
-                                            child: Container(
-                                              width: 24,
-                                              height: 24,
-                                              decoration: BoxDecoration(
-                                                shape: BoxShape.circle,
-                                                color: _isRenderItemSelected(
-                                                        renderItem)
-                                                    ? context.chatTheme
-                                                        .sendButtonColor
-                                                    : Colors.transparent,
-                                                border: Border.all(
-                                                  color: _isRenderItemSelected(
-                                                          renderItem)
-                                                      ? context.chatTheme
-                                                          .sendButtonColor
-                                                      : context.chatTheme
-                                                          .secondaryTextColor,
-                                                  width: 2,
-                                                ),
-                                              ),
-                                              child: _isRenderItemSelected(
-                                                      renderItem)
-                                                  ? const Icon(
-                                                      Icons.check,
-                                                      color: Colors.white,
-                                                      size: 16,
-                                                    )
-                                                  : null,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-
-                                    // پیام
-                                    Flexible(
-                                      child: Opacity(
-                                        opacity: renderItem.messages.any((m) =>
-                                                _temporarilyHiddenMessages
-                                                    .contains(m.id))
-                                            ? 0.0
-                                            : 1.0,
-                                        child: (!selection.isSelectionMode &&
-                                                !renderItem.isAlbum &&
-                                                !fastScroll)
-                                            ? SwipeToReplyWrapper(
-                                                isMe: isMe,
-                                                onReply: () {
-                                                  setState(() =>
-                                                      _replyToMessage =
-                                                          message);
-                                                  _focusNode.requestFocus();
-                                                },
-                                                child: _buildGroupSenderFrame(
-                                                  message: message,
-                                                  isMe: isMe,
-                                                  isFirstInGroup:
-                                                      isFirstInGroup,
-                                                  isLastInGroup: isLastInGroup,
-                                                  theme: theme,
-                                                  child: _buildBubbleContent(
-                                                    message,
-                                                    isMe,
-                                                    renderItem.primaryIndex,
-                                                    isFirstInGroup,
-                                                    isLastInGroup,
-                                                    adaptiveEffects,
-                                                    selection: selection,
-                                                    conversationGalleryItems:
-                                                        conversationImageGallery
-                                                            .items,
-                                                    conversationGalleryIndexByMessageId:
-                                                        conversationImageGallery
-                                                            .indexByMessageId,
-                                                    messagesById: messagesById,
-                                                  ),
-                                                ),
-                                              )
-                                            : (renderItem.isAlbum
-                                                ? _buildGroupSenderFrame(
-                                                    message: message,
-                                                    isMe: isMe,
-                                                    isFirstInGroup:
-                                                        isFirstInGroup,
-                                                    isLastInGroup:
-                                                        isLastInGroup,
-                                                    theme: theme,
-                                                    child:
-                                                        _buildAlbumBubbleContent(
-                                                      renderItem,
-                                                      isMe,
-                                                      adaptiveEffects,
-                                                      selection: selection,
-                                                      isFirstInGroup:
-                                                          isFirstInGroup,
-                                                      isLastInGroup:
-                                                          isLastInGroup,
-                                                      conversationGalleryItems:
-                                                          conversationImageGallery
-                                                              .items,
-                                                      conversationGalleryIndexByMessageId:
-                                                          conversationImageGallery
-                                                              .indexByMessageId,
-                                                      messagesById:
-                                                          messagesById,
-                                                    ),
-                                                  )
-                                                : _buildGroupSenderFrame(
-                                                    message: message,
-                                                    isMe: isMe,
-                                                    isFirstInGroup:
-                                                        isFirstInGroup,
-                                                    isLastInGroup:
-                                                        isLastInGroup,
-                                                    theme: theme,
-                                                    child: _buildBubbleContent(
-                                                      message,
-                                                      isMe,
-                                                      renderItem.primaryIndex,
-                                                      isFirstInGroup,
-                                                      isLastInGroup,
-                                                      adaptiveEffects,
-                                                      selection: selection,
-                                                      conversationGalleryItems:
-                                                          conversationImageGallery
-                                                              .items,
-                                                      conversationGalleryIndexByMessageId:
-                                                          conversationImageGallery
-                                                              .indexByMessageId,
-                                                      messagesById:
-                                                          messagesById,
-                                                    ),
-                                                  )),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-
-                      // Unread Divider
-                      if (_shouldShowUnreadDividerForRenderItem(
-                          renderItem, index, renderItems))
-                        UnreadMessagesDivider(
-                          unreadCount: _unreadCount,
-                          onTap: _scrollToBottom,
-                        ),
-                    ],
-                  );
-
-                  // ✅ استفاده از MolecularDeleteAnimation برای افکت پودر شدن
-                  final tile = KeyedSubtree(
-                    key: ValueKey<String>(
-                      renderItem.isAlbum
-                          ? 'album_${renderItem.messages.map((m) => m.id).join('_')}'
-                          : message.id,
-                    ),
-                    child: MolecularDeleteAnimation(
-                      isDeleting: isDeleting,
-                      onAnimationComplete: () {
-                        if (mounted) {
-                          setState(() {
-                            for (final deletingMessage in renderItem.messages) {
-                              _deletingMessageIds.remove(deletingMessage.id);
-                            }
-                          });
-                        }
-                      },
-                      child: messageWidget,
-                    ),
-                  );
-
-                  return ChatMessageListTile(
-                    keepAlive: ChatMessageRenderWindow.shouldKeepAliveMessages(
-                      renderItem.messages,
-                    ),
-                    child: tile,
-                  );
-                },
-                childCount: itemCount,
-                addAutomaticKeepAlives: false,
-                addRepaintBoundaries: true,
-                findChildIndexCallback: (Key key) {
-                  if (key is! ValueKey<String>) return null;
-                  final value = key.value;
-                  for (var i = 0; i < renderItems.length; i++) {
-                    final item = renderItems[i];
-                    if (item.isAlbum) {
-                      final albumKey =
-                          'album_${item.messages.map((m) => m.id).join('_')}';
-                      if (albumKey == value) return i;
-                    } else if (item.primaryMessage.id == value) {
-                      return i;
-                    }
-                  }
-                  return null;
-                },
-              ),
-            ),
-            SliverToBoxAdapter(
-              child: paginationState.isLoadingMore
-                  ? _buildLoadingIndicator(theme)
-                  : const SizedBox(height: 20),
-            ),
-            if (widget.args.isSecret && _secretSystemNotices.isNotEmpty)
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-                  child: Column(
-                    children: _secretSystemNotices
-                        .map(
-                          (notice) => KeyedSubtree(
-                            key: ValueKey(notice.id),
-                            child: _buildSecretSystemNoticeBubble(notice),
-                          ),
-                        )
-                        .toList(growable: false),
-                  ),
+    return ChatMessageListView(
+      conversationId: _conversationId,
+      renderCapListenable: _messageRenderCapNotifier,
+      overlayRevisionListenable: _listOverlayRevision,
+      scrollController: _scrollController,
+      bottomPadding: bottomPadding,
+      bindings: _getMessageBindings(theme),
+      filterMessage: _isMessageVisibleInList,
+      resolveUiContent: _applySecretUiContent,
+      buildLoadingIndicator: _buildLoadingIndicator,
+      buildEmptyState: _buildEmptyState,
+      secretSystemNoticeWidgets: widget.args.isSecret
+          ? _secretSystemNotices
+              .map(
+                (notice) => KeyedSubtree(
+                  key: ValueKey(notice.id),
+                  child: _buildSecretSystemNoticeBubble(notice),
                 ),
-              ),
-          ],
-        ));
-          },
+              )
+              .toList(growable: false)
+          : const [],
+      showSecretNotices:
+          widget.args.isSecret && _secretSystemNotices.isNotEmpty,
+    );
+  }
+
+  bool _isMessageVisibleInList(MessageModel message) {
+    return (!_hiddenMessageIds.contains(message.id) ||
+            _deletingMessageIds.contains(message.id)) &&
+        message.messageType != 'exchange_key' &&
+        message.messageType != 'exchange_key_reply' &&
+        message.attachmentType != 'exchange_key' &&
+        message.attachmentType != 'exchange_key_reply';
+  }
+
+  bool _shouldShowUnreadDividerForIds(
+    List<String> messageIds,
+    int index,
+    int totalRows,
+  ) {
+    if (_lastReadMessageId == null || _unreadCount <= 0) return false;
+    final hasBoundary = messageIds.contains(_lastReadMessageId);
+    if (!hasBoundary) return false;
+    if (index < totalRows - 1) return true;
+    // All loaded messages are unread — show divider on the oldest row.
+    return index == totalRows - 1;
+  }
+
+  ({
+    List<GalleryItem> items,
+    Map<String, int> indexByMessageId,
+  }) _conversationGalleryFromStore() {
+    final store = ref.read(chatMessageStoreProvider(_conversationId));
+    final messages = store.orderedIds
+        .map((id) => store.byId[id])
+        .whereType<MessageModel>()
+        .where(_isMessageVisibleInList)
+        .toList(growable: false);
+    final gallery = _buildConversationImageGallery(
+      _applySecretUiContent(messages),
+    );
+    return (
+      items: gallery.items,
+      indexByMessageId: gallery.indexByMessageId,
+    );
+  }
+
+  ChatMessageBindings _getMessageBindings(ChatTheme theme) {
+    final store = ref.read(chatMessageStoreProvider(_conversationId));
+    final overlayRevision = _listOverlayRevision.value;
+    if (_cachedMessageBindings != null &&
+        _cachedBindingsOverlayRevision == overlayRevision &&
+        _cachedBindingsGalleryStructureVersion == store.structureVersion &&
+        _cachedBindingsUnreadCount == _unreadCount) {
+      return _cachedMessageBindings!;
+    }
+
+    final bindings = _createMessageBindings(
+      theme,
+      overlayRevision: overlayRevision,
+      galleryStructureVersion: store.structureVersion,
+    );
+    _cachedMessageBindings = bindings;
+    _cachedBindingsOverlayRevision = overlayRevision;
+    _cachedBindingsGalleryStructureVersion = store.structureVersion;
+    _cachedBindingsUnreadCount = _unreadCount;
+    return bindings;
+  }
+
+  ChatMessageBindings _createMessageBindings(
+    ChatTheme theme, {
+    required int overlayRevision,
+    required int galleryStructureVersion,
+  }) {
+    final gallery = _conversationGalleryFromStore();
+    return ChatMessageBindings(
+      conversationId: _conversationId,
+      currentUserId: _currentUserId,
+      unreadCount: _unreadCount,
+      overlayRevision: overlayRevision,
+      galleryStructureVersion: galleryStructureVersion,
+      conversationGallery: gallery,
+      buildBubble: (request) => _buildGroupSenderFrame(
+        message: request.message,
+        isMe: request.isMe,
+        isFirstInGroup: request.isFirstInGroup,
+        isLastInGroup: request.isLastInGroup,
+        theme: theme,
+        child: _buildBubbleContent(
+          request.message,
+          request.isMe,
+          request.index,
+          request.isFirstInGroup,
+          request.isLastInGroup,
+          request.adaptiveEffects,
+          selection: request.selection,
+          messagesById: request.messagesById,
+          conversationGalleryItems: request.conversationGalleryItems,
+          conversationGalleryIndexByMessageId:
+              request.conversationGalleryIndexByMessageId,
+        ),
+      ),
+      buildAlbumBubble: (request) => _buildGroupSenderFrame(
+        message: request.messages.first,
+        isMe: request.isMe,
+        isFirstInGroup: request.isFirstInGroup,
+        isLastInGroup: request.isLastInGroup,
+        theme: theme,
+        child: _buildAlbumBubbleContent(
+          _ChatRenderItem(
+            primaryIndex: request.primaryIndex,
+            messages: request.messages,
+          ),
+          request.isMe,
+          request.adaptiveEffects,
+          selection: request.selection,
+          isFirstInGroup: request.isFirstInGroup,
+          isLastInGroup: request.isLastInGroup,
+          messagesById: request.messagesById,
+          conversationGalleryItems: request.conversationGalleryItems,
+          conversationGalleryIndexByMessageId:
+              request.conversationGalleryIndexByMessageId,
+        ),
+      ),
+      buildLoadingIndicator: () => _buildLoadingIndicator(theme),
+      buildEmptyState: () => _buildEmptyState(theme),
+      onToggleRenderItemSelection: (messageIds) =>
+          _selectionActions.toggleRenderItemSelection(messageIds),
+      onEnterSelectionMode: (messageIds) =>
+          _selectionActions.enterSelectionModeForMessages(messageIds),
+      onScrollToBottom: _scrollToBottom,
+      onReplyToMessage: (message) {
+        setState(() => _replyToMessage = message);
+        _focusNode.requestFocus();
+      },
+      onDeleteAnimationComplete: (messageIds) {
+        if (!mounted) return;
+        setState(() {
+          for (final id in messageIds) {
+            _deletingMessageIds.remove(id);
+          }
+        });
+        _bumpListOverlay();
+      },
+      isMessageDeleting: (id) => _deletingMessageIds.contains(id),
+      isMessageTemporarilyHidden: (id) =>
+          _temporarilyHiddenMessages.contains(id),
+      shouldShowUnreadDivider: _shouldShowUnreadDividerForIds,
+      shouldShowDateDivider: date_divider.shouldShowDateDivider,
+      getMessageGroupPosition: (primaryIndex, spanLength) {
+        final store = ref.read(chatMessageStoreProvider(_conversationId));
+        final messages = <MessageModel>[];
+        for (final id in store.orderedIds) {
+          final message = store.byId[id];
+          if (message != null && _isMessageVisibleInList(message)) {
+            messages.add(message);
+          }
+        }
+        final uiMessages = _applySecretUiContent(messages);
+        if (primaryIndex < 0 || primaryIndex >= uiMessages.length) {
+          return (true, true);
+        }
+        return _getMessageGroupPosition(
+          uiMessages,
+          primaryIndex,
+          spanLength: spanLength,
         );
       },
-      loading: () => _buildLoadingState(theme),
-      error: (error, stack) => _buildErrorState(error.toString(), theme),
     );
   }
 
@@ -5564,6 +5395,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     setState(() {
       _temporarilyHiddenMessages.add(message.id);
     });
+    _bumpListOverlay();
 
     // 4. ساخت آیتم‌های منو
     final items = <ModernContextMenuItem>[
@@ -5760,6 +5592,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
           setState(() {
             _temporarilyHiddenMessages.remove(message.id);
           });
+          _bumpListOverlay();
         }
       },
     );
@@ -6754,7 +6587,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       final role = postData.role;
       final hashtags = null; // SharedPostData فعلاً hashtags ندارد
       void handlePostTap(BuildContext postContext) {
-        if (_selectionController.value.isSelectionMode) {
+        if (_selection.isSelectionMode) {
           _toggleMessageSelection(message.id);
         } else {
           _showModernContextMenu(postContext, message);
@@ -6763,7 +6596,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
       void handlePostLongPress() {
         HapticFeedback.mediumImpact();
-        if (_selectionController.value.isSelectionMode) {
+        if (_selection.isSelectionMode) {
           _toggleMessageSelection(message.id);
         } else {
           _enterSelectionMode(message.id);
@@ -6781,7 +6614,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
               onLongPress: handlePostLongPress,
               child: AbsorbPointer(
                 // اگر در حالت انتخاب هستیم، اجازه نده دکمه‌های داخلی پست (لایک و...) کار کنند
-                absorbing: _selectionController.value.isSelectionMode,
+                absorbing: _selection.isSelectionMode,
                 child: SocialStylePostCard(
                   postId: postId,
                   authorName: authorName,
@@ -6803,7 +6636,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                   onTap: () => handlePostTap(postContext),
                   onLongPress: handlePostLongPress,
                   onShare: () async {
-                    if (!_selectionController.value.isSelectionMode) {
+                    if (!_selection.isSelectionMode) {
                       final result = await ForwardMessageSheet.show(
                         context,
                         messageIds: [message.id],
@@ -6818,7 +6651,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
             ),
 
             // ✅ لایه آبی رنگ (Selection Overlay) روی پست
-            if (_selectionController.value.contains(message.id))
+            if (_selection.contains(message.id))
               Positioned.fill(
                 child: Container(
                   decoration: BoxDecoration(
@@ -7082,7 +6915,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
           ? captionMessage.content.trim()
           : null,
       onImageTap: (index) {
-        if (_selectionController.value.isSelectionMode) {
+        if (_selection.isSelectionMode) {
           _toggleRenderItemSelection(renderItem);
           return;
         }

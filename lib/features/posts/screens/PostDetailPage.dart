@@ -838,9 +838,10 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
   }
 
   Widget _buildCommentsSection() {
-    final commentsAsyncValue = ref.watch(commentsProvider(widget.postId));
+    final commentsState = ref.watch(commentsProvider(widget.postId));
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final comments = commentsState.comments;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -873,55 +874,67 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
           color: isDark ? Colors.grey[800] : Colors.grey[300],
         ),
         const SizedBox(height: 8),
-        commentsAsyncValue.when(
-          data: (comments) => comments.isEmpty
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(32.0),
-                    child: Column(
-                      children: [
-                        Icon(
-                          Icons.chat_bubble_outline,
-                          size: 48,
-                          color: isDark ? Colors.grey[700] : Colors.grey[400],
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          'هنوز نظری ثبت نشده',
-                          style: TextStyle(
-                            fontSize: 15,
-                            color: isDark ? Colors.grey[500] : Colors.grey[600],
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'اولین نفری باش که نظر میدی!',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: isDark ? Colors.grey[600] : Colors.grey[500],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                )
-              : _buildCommentTree(comments),
-          loading: () => const Center(
+        if (commentsState.isLoading && comments.isEmpty)
+          const Center(
             child: Padding(
               padding: EdgeInsets.all(32.0),
               child: CircularProgressIndicator(strokeWidth: 2),
             ),
-          ),
-          error: (error, _) => Center(
+          )
+        else if (commentsState.error != null && comments.isEmpty)
+          Center(
             child: Padding(
               padding: const EdgeInsets.all(32.0),
-              child: Text(
-                'خطا در بارگذاری نظرات',
-                style: TextStyle(color: Colors.red[400]),
+              child: Column(
+                children: [
+                  Text(
+                    'خطا در بارگذاری نظرات',
+                    style: TextStyle(color: Colors.red[400]),
+                  ),
+                  const SizedBox(height: 8),
+                  TextButton(
+                    onPressed: () => ref
+                        .read(commentsProvider(widget.postId).notifier)
+                        .refreshComments(),
+                    child: const Text('تلاش مجدد'),
+                  ),
+                ],
               ),
             ),
-          ),
-        ),
+          )
+        else if (comments.isEmpty)
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.all(32.0),
+              child: Column(
+                children: [
+                  Icon(
+                    Icons.chat_bubble_outline,
+                    size: 48,
+                    color: isDark ? Colors.grey[700] : Colors.grey[400],
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'هنوز نظری ثبت نشده',
+                    style: TextStyle(
+                      fontSize: 15,
+                      color: isDark ? Colors.grey[500] : Colors.grey[600],
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'اولین نفری باش که نظر میدی!',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: isDark ? Colors.grey[600] : Colors.grey[500],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          )
+        else
+          _buildCommentTree(comments),
       ],
     );
   }
@@ -1202,7 +1215,7 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
       commentController.clear();
       replyToCommentId = null;
       mentionedUsers.clear();
-      ref.invalidate(commentsProvider(widget.postId));
+      ref.read(commentsProvider(widget.postId).notifier).refreshComments();
       UserFriendlyErrorUtils.showSuccessSnackBar(
           context, 'نظر با موفقیت ثبت شد');
     } catch (e) {
@@ -1331,7 +1344,7 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
       await ref
           .read(commentNotifierProvider.notifier)
           .deleteComment(commentId, postId, ref);
-      ref.invalidate(commentsProvider(postId));
+      ref.read(commentsProvider(postId).notifier).refreshComments();
 
       if (mounted) {
         UserFriendlyErrorUtils.showSuccessSnackBar(

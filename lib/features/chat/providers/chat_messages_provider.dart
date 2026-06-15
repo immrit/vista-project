@@ -172,4 +172,22 @@ class ChatMessages extends _$ChatMessages {
   void removeOptimisticMessage(String messageId) {
     // No-op: Repository handles DB write -> Stream update
   }
+
+  void removeMessageLocally(String messageId) {
+    final current = state.valueOrNull;
+    if (current == null) return;
+    state = AsyncValue.data(
+      current.where((message) => message.id != messageId).toList(),
+    );
+  }
+
+  void restoreMessageLocally(MessageModel message) {
+    final current = state.valueOrNull ?? const <MessageModel>[];
+    if (current.any((item) => item.id == message.id)) return;
+    state = AsyncValue.data([message, ...current]);
+  }
+
+  void clearMessagesLocally() {
+    state = const AsyncValue.data([]);
+  }
 }

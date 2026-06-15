@@ -72,4 +72,8 @@ dependencies {
     // 🔴 این خط را حتما اضافه کنید تا نسخه جدید و بدون باگ بازار استفاده شود
     implementation "com.github.cafebazaar.Poolakey:poolakey:2.2.0"
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
+    
+    // Adtrace SDK
+    implementation 'io.adtrace:android-sdk:2.6.0'
+    implementation 'com.android.installreferrer:installreferrer:2.2'
 }

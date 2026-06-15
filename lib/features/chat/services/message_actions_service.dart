@@ -9,6 +9,7 @@ import 'package:Vista/utils/env_config.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../features/auth/providers/auth_controller.dart';
 import '../../../security/logging_utility.dart';
+import '../../../services/http_client_factory.dart';
 
 /// نتیجه عملیات
 class ActionResult<T> {
@@ -30,17 +31,7 @@ class MessageActionsService {
   // محدودیت زمانی ویرایش (48 ساعت)
   static const editTimeLimit = Duration(hours: 48);
 
-  static String get _backendUrl =>
-      EnvConfig.apiBaseUrl;
-
-  Dio _buildDio() {
-    return Dio(BaseOptions(
-      baseUrl: '$_backendUrl/v1',
-      connectTimeout: const Duration(seconds: 10),
-      receiveTimeout: const Duration(seconds: 15),
-      headers: {'Content-Type': 'application/json'},
-    ));
-  }
+  final Dio _dio = createApiV1Dio(baseUrl: EnvConfig.apiBaseUrl);
 
   Future<Options?> _authOptions() async {
     final token = await TokenStorage.getAccessToken();
@@ -72,7 +63,7 @@ class MessageActionsService {
         return const ActionResult.failure('کاربر وارد نشده است');
       }
 
-      final dio = _buildDio();
+      final dio = _dio;
       await dio.put(
         '/chat/messages/$messageId',
         data: {'content': newContent.trim()},
@@ -107,7 +98,7 @@ class MessageActionsService {
         return const ActionResult.failure('هیچ مکالمه‌ای انتخاب نشده');
       }
 
-      final dio = _buildDio();
+      final dio = _dio;
       int successCount = 0;
 
       for (final conversationId in targetConversationIds) {
@@ -171,7 +162,7 @@ class MessageActionsService {
         return const ActionResult.failure('توکن نامعتبر است');
       }
 
-      final dio = _buildDio();
+      final dio = _dio;
       await dio.delete(
         '/chat/messages/$messageId',
         queryParameters: {'for_everyone': forEveryone},
@@ -223,7 +214,7 @@ class MessageActionsService {
       final options = await _authOptions();
       if (options == null) return const ActionResult.failure('توکن نامعتبر');
 
-      final dio = _buildDio();
+      final dio = _dio;
       await dio.post(
         '/chat/conversations/$conversationId/pin',
         data: {'message_id': messageId},
@@ -242,7 +233,7 @@ class MessageActionsService {
       final options = await _authOptions();
       if (options == null) return const ActionResult.failure('توکن نامعتبر');
 
-      final dio = _buildDio();
+      final dio = _dio;
       await dio.delete(
         '/chat/messages/$messageId/pin',
         options: options,
@@ -260,7 +251,7 @@ class MessageActionsService {
     try {
       final options = await _authOptions();
       if (options == null) return [];
-      final dio = _buildDio();
+      final dio = _dio;
       final response = await dio.get(
         '/chat/conversations/$conversationId/pinned',
         options: options,

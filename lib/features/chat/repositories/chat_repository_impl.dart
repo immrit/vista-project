@@ -20,10 +20,10 @@ import '../../../../security/logging_utility.dart';
 import '../../../DB/isar_database_manager.dart';
 import '../../../DB/entities/deletion_task_entity.dart';
 import '../../auth/providers/auth_controller.dart';
-import '../../../services/device_id_service.dart';
 import '../../../services/orphaned_media_cleanup_service.dart';
 import '../../../services/session_manager_service_v2.dart';
 import '../../../services/system_status_service.dart';
+import '../../../services/http_client_factory.dart';
 import '../data/datasources/chat_local_datasource_isar.dart';
 import '../domain/message_payload.dart';
 import '../services/sse_manager.dart';
@@ -55,15 +55,7 @@ class ChatRepositoryImpl implements ChatRepository {
 
   ChatRepositoryImpl({required ChatLocalDataSourceIsar localDataSource})
       : _local = localDataSource {
-    _dio = Dio(BaseOptions(
-      baseUrl: '$_base/v1',
-      connectTimeout: const Duration(seconds: 10),
-      receiveTimeout: const Duration(seconds: 20),
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Device-ID': DeviceIdService.id,
-      },
-    ));
+    _dio = createApiV1Dio(baseUrl: _base);
 
     // âœ… SSE singleton Ø´Ø±ÙˆØ¹ Ù…ÛŒØ´Ù‡ â€” Ù‡Ù…Ù‡ provider Ù‡Ø§ Ø§Ø² ÛŒÙ‡ Ú©Ø§Ù†Ú©Ø´Ù† Ø§Ø³ØªÙØ§Ø¯Ù‡ Ù…ÛŒâ€ŒÚ©Ù†Ù†
     SseManager.instance.start();

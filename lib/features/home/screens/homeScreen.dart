@@ -15,7 +15,6 @@ import 'package:Vista/features/posts/screens/profileScreen.dart';
 import 'package:Vista/features/posts/screens/ExploreFeedScreen.dart';
 import 'package:Vista/features/search/screens/searchPage.dart';
 import 'package:Vista/features/profile/data/profile_repository.dart';
-import 'package:Vista/provider/chat_provider.dart';
 import 'package:Vista/provider/optimized_conversations_provider.dart';
 import 'package:Vista/core/security/input_policy.dart';
 import 'package:shared_preferences/shared_preferences.dart';

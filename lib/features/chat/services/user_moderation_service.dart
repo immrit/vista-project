@@ -3,6 +3,7 @@ import 'package:Vista/utils/env_config.dart';
 
 import '../../auth/providers/auth_controller.dart';
 import '../../../security/logging_utility.dart';
+import '../../../services/http_client_factory.dart';
 
 enum ModerationReason {
   inappropriateContent('محتوای نامناسب'),
@@ -65,14 +66,7 @@ class UserModerationService {
   static const Duration _cacheDuration = Duration(minutes: 5);
 
   UserModerationService() {
-    _dio = Dio(
-      BaseOptions(
-        baseUrl: '${EnvConfig.apiBaseUrl}/v1',
-        connectTimeout: const Duration(seconds: 10),
-        receiveTimeout: const Duration(seconds: 20),
-        headers: {'Content-Type': 'application/json'},
-      ),
-    );
+    _dio = createApiV1Dio(baseUrl: EnvConfig.apiBaseUrl);
   }
 
   Future<ModerationResult> blockUser(String userId) async {

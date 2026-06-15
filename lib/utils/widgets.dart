@@ -694,7 +694,7 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet> {
               Expanded(
                 child: RefreshIndicator(
                   onRefresh: () async {
-                    ref.invalidate(commentsProvider(widget.postId));
+                    ref.read(commentsProvider(widget.postId).notifier).refreshComments();
                   },
                   child: ListView(
                     controller: scrollController,
@@ -718,7 +718,8 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet> {
   }
 
   Widget _buildCommentsSection() {
-    final commentsAsyncValue = ref.watch(commentsProvider(widget.postId));
+    final commentsState = ref.watch(commentsProvider(widget.postId));
+    final comments = commentsState.comments;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -744,32 +745,15 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet> {
         const SizedBox(height: 8),
         const Divider(height: 1, endIndent: 16, indent: 16),
         const SizedBox(height: 8),
-        commentsAsyncValue.when(
-          data: (comments) => comments.isEmpty
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      children: [
-                        Icon(Icons.chat_bubble_outline,
-                            size: 48, color: Colors.grey[400]),
-                        const SizedBox(height: 8),
-                        const Text('هنوز نظری ثبت نشده است.'),
-                        const SizedBox(height: 4),
-                        const Text('اولین نفری باشید که نظر می‌دهید!',
-                            style: TextStyle(fontSize: 12, color: Colors.grey)),
-                      ],
-                    ),
-                  ),
-                )
-              : _buildCommentTree(comments),
-          loading: () => const Center(
+        if (commentsState.isLoading && comments.isEmpty)
+          const Center(
             child: Padding(
               padding: EdgeInsets.all(24.0),
               child: CircularProgressIndicator(),
             ),
-          ),
-          error: (error, _) => Center(
+          )
+        else if (commentsState.error != null && comments.isEmpty)
+          Center(
             child: Padding(
               padding: const EdgeInsets.all(16.0),
               child: Column(
@@ -777,20 +761,41 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet> {
                   const Icon(Icons.error_outline, size: 48, color: Colors.red),
                   const SizedBox(height: 8),
                   Text(
-                    UserFriendlyErrorUtils.getUserFriendlyMessage(error),
+                    UserFriendlyErrorUtils.getUserFriendlyMessage(
+                      commentsState.error,
+                    ),
                     textDirection: TextDirection.rtl,
                   ),
                   const SizedBox(height: 8),
                   ElevatedButton(
-                    onPressed: () =>
-                        ref.invalidate(commentsProvider(widget.postId)),
+                    onPressed: () => ref
+                        .read(commentsProvider(widget.postId).notifier)
+                        .refreshComments(),
                     child: const Text('تلاش مجدد'),
                   ),
                 ],
               ),
             ),
-          ),
-        ),
+          )
+        else if (comments.isEmpty)
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                children: [
+                  Icon(Icons.chat_bubble_outline,
+                      size: 48, color: Colors.grey[400]),
+                  const SizedBox(height: 8),
+                  const Text('هنوز نظری ثبت نشده است.'),
+                  const SizedBox(height: 4),
+                  const Text('اولین نفری باشید که نظر می‌دهید!',
+                      style: TextStyle(fontSize: 12, color: Colors.grey)),
+                ],
+              ),
+            ),
+          )
+        else
+          _buildCommentTree(comments),
       ],
     );
   }
@@ -1116,7 +1121,7 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet> {
         });
 
         // Refresh comments list
-        ref.invalidate(commentsProvider(widget.postId));
+        ref.read(commentsProvider(widget.postId).notifier).refreshComments();
 
         // Show success message
         if (mounted) {
@@ -1343,7 +1348,7 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet> {
       await ref
           .read(commentNotifierProvider.notifier)
           .deleteComment(commentId, postId, ref);
-      ref.invalidate(commentsProvider(postId));
+      ref.read(commentsProvider(postId).notifier).refreshComments();
 
       UserFriendlyErrorUtils.showSuccessSnackBar(
           context, 'کامنت با موفقیت حذف شد');

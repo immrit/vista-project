@@ -164,6 +164,30 @@ Dio createPinnedDioClient({
   return dio;
 }
 
+/// Creates an authenticated [Dio] client with optional API path suffix.
+/// Creates a Dio client for REST `/v1` API calls with pinning and global interceptors.
+Dio createApiV1Dio({String? baseUrl}) {
+  final root = (baseUrl ?? backendUrl).replaceAll(RegExp(r'/+$'), '');
+  return createPinnedDioClient(
+    baseUrl: '$root/v1',
+    headers: {'Content-Type': 'application/json'},
+  );
+}
+
+Future<Dio?> createAuthedPinnedDio({String apiPath = '/v1'}) async {
+  final token = await TokenStorage.getAccessToken();
+  if (token == null || token.isEmpty) return null;
+
+  final base = backendUrl.replaceAll(RegExp(r'/+$'), '');
+  return createPinnedDioClient(
+    baseUrl: '$base$apiPath',
+    headers: {
+      'Authorization': 'Bearer $token',
+      'Content-Type': 'application/json',
+    },
+  );
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 bool get kIsWebPlatform {
