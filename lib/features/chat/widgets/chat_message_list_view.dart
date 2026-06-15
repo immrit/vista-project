@@ -111,7 +111,7 @@ class ChatMessageListView extends ConsumerWidget {
                   physics: chatListScrollPhysics(context),
                   padding: EdgeInsets.only(bottom: bottomPadding + 10),
                   addAutomaticKeepAlives: false,
-                  addRepaintBoundaries: false,
+                  addRepaintBoundaries: true,
                   itemCount: itemCount,
                   itemBuilder: (context, index) {
                     if (index >= descriptors.length) {

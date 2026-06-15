@@ -90,6 +90,8 @@ class _StoryReplyThumbnailState extends ConsumerState<StoryReplyThumbnail> {
               CachedNetworkImage(
                 imageUrl: _imageUrl!,
                 fit: BoxFit.cover,
+                memCacheWidth: (widget.size * MediaQuery.of(context).devicePixelRatio).round(),
+                memCacheHeight: (widget.size * MediaQuery.of(context).devicePixelRatio).round(),
                 fadeInDuration: const Duration(milliseconds: 150),
                 placeholder: (context, url) => _placeholder(isQuestion, isVideo),
                 errorWidget: (context, url, error) =>

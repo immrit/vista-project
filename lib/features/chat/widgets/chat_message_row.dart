@@ -154,29 +154,27 @@ class ChatMessageRow extends ConsumerWidget {
           },
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
-            child: RepaintBoundary(
-              child: Row(
-                mainAxisAlignment:
-                    isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
-                children: [
-                  if (selection.isSelectionMode)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: _SelectionCheckbox(
-                        selected: isRowSelected,
-                        onTap: () => bindings.onToggleRenderItemSelection(
-                          descriptor.messageIds,
-                        ),
+            child: Row(
+              mainAxisAlignment:
+                  isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+              children: [
+                if (selection.isSelectionMode)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: _SelectionCheckbox(
+                      selected: isRowSelected,
+                      onTap: () => bindings.onToggleRenderItemSelection(
+                        descriptor.messageIds,
                       ),
                     ),
-                  Flexible(
-                    child: Opacity(
-                      opacity: isHidden ? 0.0 : 1.0,
-                      child: bubble,
-                    ),
                   ),
-                ],
-              ),
+                Flexible(
+                  child: Opacity(
+                    opacity: isHidden ? 0.0 : 1.0,
+                    child: bubble,
+                  ),
+                ),
+              ],
             ),
           ),
         ),

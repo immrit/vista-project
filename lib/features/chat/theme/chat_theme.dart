@@ -184,6 +184,8 @@ class ChatTheme {
     final double mergedRadius = bubbleMergedRadius.clamp(0.0, baseRadius);
     final Radius r = Radius.circular(baseRadius);
     final Radius mr = Radius.circular(mergedRadius);
+    final Radius tail = const Radius.elliptical(12, 2);
+    
     final bool topMerged = !isFirstInGroup;
     final bool bottomMerged = !isLastInGroup;
     final bool bubbleOnRight =
@@ -194,13 +196,13 @@ class ChatTheme {
         topLeft: r,
         topRight: topMerged ? mr : r,
         bottomLeft: r,
-        bottomRight: bottomMerged ? mr : r,
+        bottomRight: bottomMerged ? mr : tail,
       );
     } else {
       return BorderRadius.only(
         topLeft: topMerged ? mr : r,
         topRight: r,
-        bottomLeft: bottomMerged ? mr : r,
+        bottomLeft: bottomMerged ? mr : tail,
         bottomRight: r,
       );
     }

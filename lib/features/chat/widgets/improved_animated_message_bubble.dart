@@ -328,26 +328,24 @@ class _ImprovedAnimatedMessageBubbleState
     super.build(context);
     final theme = context.chatTheme;
 
-    final child = RepaintBoundary(
-      child: _staticPresentation
-          ? _buildInteractiveBubble(theme)
-          : FadeTransition(
-              opacity: _fadeAnimation,
-              child: SlideTransition(
-                position: _slideAnimation,
-                child: ScaleTransition(
-                  scale: _scaleAnimation,
-                  child: _buildInteractiveBubble(theme),
-                ),
+    final child = _staticPresentation
+        ? _buildInteractiveBubble(theme)
+        : FadeTransition(
+            opacity: _fadeAnimation,
+            child: SlideTransition(
+              position: _slideAnimation,
+              child: ScaleTransition(
+                scale: _scaleAnimation,
+                child: _buildInteractiveBubble(theme),
               ),
             ),
-    );
+          );
 
     return child;
   }
 
   Widget _buildInteractiveBubble(ChatTheme theme) {
-    const edgeInset = 4.0;
+    const edgeInset = 6.0;
     const oppositeInset = 12.0;
 
     return GestureDetector(
@@ -789,6 +787,8 @@ class _ImprovedAnimatedMessageBubbleState
             imageUrl,
             width: 48,
             height: 48,
+            cacheWidth: (48 * MediaQuery.of(context).devicePixelRatio).round(),
+            cacheHeight: (48 * MediaQuery.of(context).devicePixelRatio).round(),
             fit: BoxFit.cover,
             errorBuilder: (_, __, ___) => placeholder,
             loadingBuilder: (context, child, progress) {
@@ -1315,7 +1315,11 @@ class _ImprovedAnimatedMessageBubbleState
               fit: StackFit.expand,
               children: [
                 if (hasLocalImage)
-                  Image.file(localFile, fit: BoxFit.cover)
+                  Image.file(
+                    localFile,
+                    fit: BoxFit.cover,
+                    cacheWidth: (300 * MediaQuery.of(context).devicePixelRatio).round(),
+                  )
                 else
                   Container(
                       color: theme.otherBubbleColor.withValues(alpha: 0.3)),

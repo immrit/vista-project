@@ -13,24 +13,19 @@ class ChatScrollPhysics extends ScrollPhysics {
 
   /// React to small finger movements instead of waiting for full touch slop.
   @override
-  double get dragStartDistanceMotionThreshold {
-    return switch (defaultTargetPlatform) {
-      TargetPlatform.iOS || TargetPlatform.macOS => 3.5,
-      _ => 1.0,
-    };
-  }
+  double get dragStartDistanceMotionThreshold => 1.0;
 
   @override
-  double get minFlingVelocity => 50.0;
+  double get minFlingVelocity => 30.0;
 }
 
 ScrollPhysics chatListScrollPhysics(BuildContext context) {
-  final platform = Theme.of(context).platform;
-  final ScrollPhysics platformPhysics = switch (platform) {
-    TargetPlatform.iOS || TargetPlatform.macOS => const BouncingScrollPhysics(),
-    _ => const ClampingScrollPhysics(),
-  };
-  return ChatScrollPhysics(
+  // Use BouncingScrollPhysics across all platforms for a smoother, iOS-like 
+  // or Telegram-like feeling, eliminating the "dry" and sudden ClampingScrollPhysics.
+  const ScrollPhysics platformPhysics = BouncingScrollPhysics(
+    decelerationRate: ScrollDecelerationRate.normal,
+  );
+  return const ChatScrollPhysics(
     parent: AlwaysScrollableScrollPhysics(parent: platformPhysics),
   );
 }
