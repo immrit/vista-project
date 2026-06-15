@@ -433,6 +433,42 @@ class MessageModel {
     return MediaType.image;
   }
 
+  /// Best URL/path for rendering attachments (remote or local).
+  String? get resolvedMediaUrl {
+    for (final candidate
+        in [attachmentUrl, audioUrl, localImagePath, localFilePath]) {
+      if (candidate != null && candidate.trim().isNotEmpty) {
+        return candidate.trim();
+      }
+    }
+    return null;
+  }
+
+  String? get resolvedAttachmentType {
+    final raw = (attachmentType ?? messageType ?? '').trim().toLowerCase();
+    return raw.isEmpty ? null : raw;
+  }
+
+  /// FCM/sync sometimes stores notification preview text in [content].
+  bool get hasMediaPlaceholderContent {
+    final normalized = content.trim();
+    if (normalized.isEmpty) return false;
+    const placeholders = {
+      '📷 تصویر',
+      '🎤 پیام صوتی',
+      '🎥 ویدیو',
+      '📁 فایل',
+      'تصویر',
+      'پیام صوتی',
+      'ویدیو',
+      'فایل',
+    };
+    return placeholders.contains(normalized);
+  }
+
+  String get displayContent =>
+      hasMediaPlaceholderContent ? '' : content;
+
   factory MessageModel.empty() {
     return MessageModel(
       id: '',

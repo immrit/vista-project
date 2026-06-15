@@ -368,9 +368,7 @@ class ChatRepositoryImpl implements ChatRepository {
             final readerId = data?['user_id']?.toString() ?? '';
             final readAtRaw = data?['read_at']?.toString() ?? '';
             final readAt = DateTime.tryParse(readAtRaw);
-            if (readerId.isNotEmpty &&
-                readerId != uid &&
-                readAt != null) {
+            if (readerId.isNotEmpty && readerId != uid && readAt != null) {
               unawaited(
                 _local.markOwnMessagesReadUpTo(conversationId, readAt),
               );
@@ -1260,6 +1258,18 @@ class ChatRepositoryImpl implements ChatRepository {
     );
 
     return server.copyWith(
+      content: server.hasMediaPlaceholderContent &&
+              !local.hasMediaPlaceholderContent
+          ? local.content
+          : (server.hasMediaPlaceholderContent &&
+                  (server.resolvedMediaUrl != null ||
+                      local.resolvedMediaUrl != null))
+              ? ''
+              : server.content,
+      attachmentUrl: _preferNonEmpty(server.attachmentUrl, local.attachmentUrl),
+      audioUrl: _preferNonEmpty(server.audioUrl, local.audioUrl),
+      attachmentType: _preferNonEmpty(server.attachmentType, local.attachmentType) ??
+          local.messageType,
       attachmentFileName: server.attachmentFileName?.isNotEmpty == true
           ? server.attachmentFileName
           : local.attachmentFileName,
@@ -1280,7 +1290,10 @@ class ChatRepositoryImpl implements ChatRepository {
       replyToMessageId: replyToMessageId,
       replyToContent: replyToContent,
       replyToSenderName: replyToSenderName,
-      messageType: storyReplyData != null ? 'storyReply' : server.messageType,
+      messageType: storyReplyData != null
+          ? 'storyReply'
+          : (_preferNonEmpty(server.messageType, local.messageType) ??
+              local.messageType),
       storyReplyData: storyReplyData,
       localFilePath: local.localFilePath,
       localImagePath: local.localImagePath,
@@ -1417,6 +1430,8 @@ class ChatRepositoryImpl implements ChatRepository {
       'content': j['content'] ?? '',
       'created_at': j['created_at'] ?? DateTime.now().toIso8601String(),
       'attachment_url': j['media_url'] ?? j['attachment_url'],
+      'audio_url': j['audio_url'],
+      'message_type': j['message_type'] ?? j['attachment_type'],
       'attachment_type': j['message_type'] ?? j['attachment_type'],
       'attachment_file_name': j['attachment_file_name'],
       'attachment_mime_type': j['attachment_mime_type'],

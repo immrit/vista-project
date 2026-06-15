@@ -5,9 +5,10 @@ import '../../../model/message_model.dart';
 class ChatMessageRenderWindow {
   const ChatMessageRenderWindow._();
 
-  static const int initialCap = 280;
-  static const int maxCap = 520;
-  static const int expandStep = 40;
+  /// Mount only a viewport-sized window — feed-style lazy rendering.
+  static const int initialCap = 96;
+  static const int maxCap = 180;
+  static const int expandStep = 32;
 
   static int clampCap(int value) {
     if (value < initialCap) return initialCap;

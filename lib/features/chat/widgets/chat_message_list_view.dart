@@ -13,7 +13,8 @@ import '../theme/chat_theme.dart';
 import 'chat_message_bindings.dart';
 import 'chat_message_row.dart';
 
-/// Scrollable message list. Rebuilds on structure/overlay changes — not per-tick.
+/// Scrollable message list — uses [ListView.builder] (same pattern as feed)
+/// for a lighter scroll path than [CustomScrollView] on Android/Impeller.
 class ChatMessageListView extends ConsumerWidget {
   const ChatMessageListView({
     super.key,
@@ -38,7 +39,8 @@ class ChatMessageListView extends ConsumerWidget {
   final double bottomPadding;
   final ChatMessageBindings bindings;
   final bool Function(MessageModel message) filterMessage;
-  final List<MessageModel> Function(List<MessageModel> messages) resolveUiContent;
+  final List<MessageModel> Function(List<MessageModel> messages)
+      resolveUiContent;
   final Widget Function(ChatTheme theme) buildLoadingIndicator;
   final Widget Function(ChatTheme theme) buildEmptyState;
   final List<Widget> secretSystemNoticeWidgets;
@@ -79,8 +81,7 @@ class ChatMessageListView extends ConsumerWidget {
         return ValueListenableBuilder<int>(
           valueListenable: renderCapListenable,
           builder: (context, renderCap, __) {
-            // Touch structure version so rebuild happens when order changes.
-            final _ = structureVersion;
+            final _ = structureVersion + overlayRevision;
 
             final clipped = ChatMessageRenderWindow.clip(uiMessages, renderCap);
             final descriptors = ChatRenderItemBuilder.build(clipped);
@@ -92,115 +93,101 @@ class ChatMessageListView extends ConsumerWidget {
             final paginationState = ref.watch(
               paginationStateProvider(conversationId),
             );
-            final itemCount = descriptors.length;
+            final footerCount = 1 +
+                (showSecretNotices && secretSystemNoticeWidgets.isNotEmpty
+                    ? 1
+                    : 0);
+            final itemCount = descriptors.length + footerCount;
 
             return ChatMessageBindingsScope(
               bindings: bindings,
-              child: RepaintBoundary(
-                child: ScrollConfiguration(
-                  behavior: const ChatScrollBehavior(),
-                  child: CustomScrollView(
-                    scrollCacheExtent: const ScrollCacheExtent.pixels(1200),
-                    controller: scrollController,
-                    reverse: true,
-                    physics: chatListScrollPhysics(context),
-                    slivers: [
-                      if (bottomPadding > 0)
-                        SliverPadding(
-                          padding: EdgeInsets.only(bottom: bottomPadding),
-                          sliver:
-                              const SliverToBoxAdapter(child: SizedBox.shrink()),
-                        ),
-                      const SliverPadding(padding: EdgeInsets.only(bottom: 10)),
-                      SliverList(
-                        delegate: SliverChildBuilderDelegate(
-                          (context, index) {
-                            final descriptor = descriptors[index];
-                            final primaryId = descriptor.primaryMessageId;
-                            final fullPrimaryIndex =
-                                messageIndexById[primaryId] ?? -1;
+              child: ScrollConfiguration(
+                behavior: const ChatScrollBehavior(),
+                child: ListView.builder(
+                  scrollCacheExtent: const ScrollCacheExtent.pixels(800),
+                  controller: scrollController,
+                  reverse: true,
+                  clipBehavior: Clip.hardEdge,
+                  physics: chatListScrollPhysics(context),
+                  padding: EdgeInsets.only(bottom: bottomPadding + 10),
+                  addAutomaticKeepAlives: false,
+                  addRepaintBoundaries: false,
+                  itemCount: itemCount,
+                  itemBuilder: (context, index) {
+                    if (index >= descriptors.length) {
+                      return _buildFooter(
+                        theme,
+                        index - descriptors.length,
+                        paginationState.isLoadingMore,
+                      );
+                    }
 
-                            final (isFirstInGroup, isLastInGroup) =
-                                fullPrimaryIndex == -1
-                                    ? (true, true)
-                                    : _getMessageGroupPosition(
-                                        uiMessages,
-                                        fullPrimaryIndex,
-                                        descriptor.messageIds.length,
-                                      );
+                    final descriptor = descriptors[index];
+                    final primaryId = descriptor.primaryMessageId;
+                    final fullPrimaryIndex = messageIndexById[primaryId] ?? -1;
 
-                            final nextDescriptor =
-                                index < descriptors.length - 1
-                                    ? descriptors[index + 1]
-                                    : null;
-                            final nextOldestCreatedAt = nextDescriptor == null
-                                ? null
-                                : storeState
-                                    .byId[nextDescriptor.messageIds.last]
-                                    ?.createdAt;
+                    final (isFirstInGroup, isLastInGroup) =
+                        fullPrimaryIndex == -1
+                            ? (true, true)
+                            : _getMessageGroupPosition(
+                                uiMessages,
+                                fullPrimaryIndex,
+                                descriptor.messageIds.length,
+                              );
 
-                            final oldestMessage = storeState
-                                .byId[descriptor.messageIds.last];
-                            final showDateDivider = oldestMessage != null &&
-                                bindings.shouldShowDateDivider(
-                                  oldestMessage.createdAt,
-                                  nextOldestCreatedAt,
-                                );
+                    final nextDescriptor = index < descriptors.length - 1
+                        ? descriptors[index + 1]
+                        : null;
+                    final nextOldestCreatedAt = nextDescriptor == null
+                        ? null
+                        : storeState
+                            .byId[nextDescriptor.messageIds.last]
+                            ?.createdAt;
 
-                            return ChatMessageRow(
-                              descriptor: descriptor,
-                              layout: ChatMessageRowLayout(
-                                isFirstInGroup: isFirstInGroup,
-                                isLastInGroup: isLastInGroup,
-                                showDateDivider: showDateDivider,
-                                showUnreadDivider:
-                                    bindings.shouldShowUnreadDivider(
-                                  descriptor.messageIds,
-                                  index,
-                                  descriptors.length,
-                                ),
-                              ),
-                            );
-                          },
-                          childCount: itemCount,
-                          addAutomaticKeepAlives: false,
-                          addRepaintBoundaries: true,
-                          findChildIndexCallback: (Key key) {
-                            if (key is! ValueKey<String>) return null;
-                            final value = key.value;
-                            for (var i = 0; i < descriptors.length; i++) {
-                              if (descriptors[i].key == value) return i;
-                            }
-                            return null;
-                          },
+                    final oldestMessage =
+                        storeState.byId[descriptor.messageIds.last];
+                    final showDateDivider = oldestMessage != null &&
+                        bindings.shouldShowDateDivider(
+                          oldestMessage.createdAt,
+                          nextOldestCreatedAt,
+                        );
+
+                    return ChatMessageRow(
+                      descriptor: descriptor,
+                      layout: ChatMessageRowLayout(
+                        isFirstInGroup: isFirstInGroup,
+                        isLastInGroup: isLastInGroup,
+                        showDateDivider: showDateDivider,
+                        showUnreadDivider: bindings.shouldShowUnreadDivider(
+                          descriptor.messageIds,
+                          index,
+                          descriptors.length,
                         ),
                       ),
-                      SliverToBoxAdapter(
-                        child: paginationState.isLoadingMore
-                            ? buildLoadingIndicator(theme)
-                            : const SizedBox(height: 20),
-                      ),
-                      if (showSecretNotices &&
-                          secretSystemNoticeWidgets.isNotEmpty)
-                        SliverToBoxAdapter(
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 24,
-                              vertical: 8,
-                            ),
-                            child: Column(
-                              children: secretSystemNoticeWidgets,
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
+                    );
+                  },
                 ),
               ),
             );
           },
         );
       },
+    );
+  }
+
+  Widget _buildFooter(
+    ChatTheme theme,
+    int footerIndex,
+    bool isLoadingMore,
+  ) {
+    if (footerIndex == 0) {
+      return isLoadingMore
+          ? buildLoadingIndicator(theme)
+          : const SizedBox(height: 20);
+    }
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+      child: Column(children: secretSystemNoticeWidgets),
     );
   }
 
@@ -213,8 +200,7 @@ class ChatMessageListView extends ConsumerWidget {
     final current = messages[index];
     final newer = index > 0 ? messages[index - 1] : null;
     final olderIndex = index + spanLength;
-    final older =
-        olderIndex < messages.length ? messages[olderIndex] : null;
+    final older = olderIndex < messages.length ? messages[olderIndex] : null;
     final isFirst = newer == null || newer.senderId != current.senderId;
     final isLast = older == null || older.senderId != current.senderId;
     return (isFirst, isLast);

@@ -25,7 +25,10 @@ import '../providers/saved_posts_provider.dart';
 import '../data/go_posts_repository.dart';
 import '../widgets/standard_edit_post_dialog.dart';
 import '../widgets/post_feed_video.dart';
+import 'package:Vista/features/auth/providers/auth_controller.dart';
 import 'package:Vista/widgets/verification_badge_icon.dart';
+import 'package:Vista/widgets/comment_input_field.dart';
+import 'package:Vista/utils/comments_bottom_sheet.dart';
 
 class PostDetailsPage extends ConsumerStatefulWidget {
   const PostDetailsPage({super.key, required this.postId});
@@ -38,12 +41,16 @@ class PostDetailsPage extends ConsumerStatefulWidget {
 
 class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
   late TextEditingController commentController;
+  late FocusNode commentFocusNode;
   final List<UserModel> mentionedUsers = [];
   String? replyToCommentId;
+  String? replyingToUsername;
+  bool isSubmittingComment = false;
 
   @override
   void dispose() {
     commentController.dispose();
+    commentFocusNode.dispose();
     super.dispose();
   }
 
@@ -51,6 +58,7 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
   void initState() {
     super.initState();
     commentController = TextEditingController();
+    commentFocusNode = FocusNode();
   }
 
   // Loading widget
@@ -934,270 +942,35 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
             ),
           )
         else
-          _buildCommentTree(comments),
+          Column(
+            children: comments.map((comment) {
+              return CommentItem(
+                comment: comment,
+                postId: widget.postId,
+                onReply: (commentId, username) {
+                  setState(() {
+                    replyToCommentId = commentId;
+                    replyingToUsername = username;
+                  });
+                  commentFocusNode.requestFocus();
+                },
+              );
+            }).toList(),
+          ),
       ],
     );
   }
 
-  Widget _buildCommentTree(List<CommentModel> comments) {
-    // ساختاردهی ریپلای‌ها در نقشه
-    Map<String, CommentModel> commentMap = {
-      for (var comment in comments) comment.id: comment
-    };
-
-    for (var comment in comments) {
-      if (comment.parentCommentId != null) {
-        var parent = commentMap[comment.parentCommentId!];
-        if (parent != null) {
-          parent.replies.add(comment);
-        }
-      }
-    }
-
-    // فقط کامنت‌های والد را نمایش دهید
-    return Column(
-      children: comments
-          .where((comment) => comment.parentCommentId == null)
-          .expand(_buildTree)
-          .toList(),
-    );
-  }
-
-  List<Widget> _buildTree(CommentModel comment) {
-    return [
-      _buildCommentItem(comment),
-      if (comment.replies.isNotEmpty)
-        ExpansionTile(
-          title: Text(
-            'نمایش ${comment.replies.length} پاسخ',
-            style: const TextStyle(
-              color: Colors.blue,
-              fontSize: 13,
-            ),
-          ),
-          children: comment.replies.expand(_buildTree).toList(),
-        ),
-    ];
-  }
-
-  Widget _buildCommentItem(CommentModel comment) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final currentUserId =
-        ref.watch(activeUserProvider)?.id ?? CurrentUserService.cachedUserId;
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // آواتار
-            GestureDetector(
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => ProfileScreen(
-                      userId: comment.userId,
-                      username: comment.username,
-                    ),
-                  ),
-                );
-              },
-              child: CircleAvatar(
-                radius: 20,
-                backgroundImage: comment.avatarUrl.isEmpty
-                    ? const AssetImage('lib/utils/images/default-avatar.jpg')
-                    : CachedNetworkImageProvider(comment.avatarUrl)
-                        as ImageProvider,
-                backgroundColor: isDark ? Colors.grey[800] : Colors.grey[200],
-              ),
-            ),
-            const SizedBox(width: 12),
-
-            // محتوای کامنت
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // هدر (نام کاربری و زمان)
-                  Row(
-                    children: [
-                      Flexible(
-                        child: GestureDetector(
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => ProfileScreen(
-                                  userId: comment.userId,
-                                  username: comment.username,
-                                ),
-                              ),
-                            );
-                          },
-                          child: Text(
-                            comment.username,
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 15,
-                              color: isDark ? Colors.white : Colors.black,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                      if (comment.isVerified)
-                        _buildVerificationBadgeComment(comment),
-                      const SizedBox(width: 8),
-                      Text(
-                        _getTimeAgoComment(comment.createdAt),
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: isDark ? Colors.grey[400] : Colors.grey[600],
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-
-                  // متن کامنت
-                  Directionality(
-                    textDirection: getDirectionality(comment.content),
-                    child: Text(
-                      comment.content,
-                      style: TextStyle(
-                        fontSize: 14,
-                        height: 1.4,
-                        color: isDark ? Colors.white70 : Colors.black87,
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 8),
-
-                  // دکمه‌های اکشن
-                  Row(
-                    children: [
-                      // دکمه پاسخ
-                      GestureDetector(
-                        onTap: () {
-                          setState(() {
-                            replyToCommentId = comment.id;
-                            commentController.text = '@${comment.username} ';
-                            commentController.selection =
-                                TextSelection.fromPosition(
-                              TextPosition(
-                                  offset: commentController.text.length),
-                            );
-                          });
-                        },
-                        child: Text(
-                          'پاسخ',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
-                            color: isDark ? Colors.blue[300] : Colors.blue,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      // منوی اکشن
-                      PopupMenuButton<String>(
-                        padding: EdgeInsets.zero,
-                        icon: Icon(
-                          Icons.more_horiz,
-                          size: 18,
-                          color: isDark ? Colors.grey[500] : Colors.grey[400],
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        itemBuilder: (context) => [
-                          if (comment.userId != currentUserId)
-                            const PopupMenuItem(
-                              value: 'report',
-                              child: Row(
-                                children: [
-                                  Icon(Icons.flag,
-                                      color: Colors.orange, size: 18),
-                                  SizedBox(width: 8),
-                                  Text('گزارش'),
-                                ],
-                              ),
-                            ),
-                          if (comment.userId == currentUserId)
-                            const PopupMenuItem(
-                              value: 'delete',
-                              child: Row(
-                                children: [
-                                  Icon(Icons.delete,
-                                      color: Colors.red, size: 18),
-                                  SizedBox(width: 8),
-                                  Text('حذف'),
-                                ],
-                              ),
-                            ),
-                        ],
-                        onSelected: (value) {
-                          if (value == 'report') {
-                            if (currentUserId != null) {
-                              _showReportDialog(
-                                  context, ref, comment, currentUserId);
-                            }
-                          } else if (value == 'delete') {
-                            _deleteComment(
-                                context, ref, comment.id, widget.postId);
-                          }
-                        },
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  String _getTimeAgoComment(DateTime dateTime) {
-    final now = DateTime.now();
-    final difference = now.difference(dateTime);
-
-    if (difference.inDays > 7) {
-      // برای تاریخ‌های قدیمی‌تر از یک هفته، تاریخ جلالی نمایش بده
-      final jalaliDate = Jalali.fromDateTime(dateTime.toLocal());
-      return '${jalaliDate.year}/${jalaliDate.month}/${jalaliDate.day}';
-    } else if (difference.inDays > 0) {
-      return '${difference.inDays} روز پیش';
-    } else if (difference.inHours > 0) {
-      return '${difference.inHours} ساعت پیش';
-    } else if (difference.inMinutes > 0) {
-      return '${difference.inMinutes} دقیقه پیش';
-    } else {
-      return 'همین الان';
-    }
-  }
-
-  Widget _buildVerificationBadgeComment(CommentModel profile) {
-    return VerificationBadgeIcon(
-      isVerified: profile.isVerified,
-      verificationType: profile.verificationType,
-      role: profile.role,
-      size: 16,
-    );
-  }
 
   void _sendComment() async {
     final content = commentController.text.trim();
     final mentionedUserIds = mentionedUsers.map((user) => user.id).toList();
 
     if (content.isEmpty) return;
+
+    setState(() {
+      isSubmittingComment = true;
+    });
 
     try {
       final notifier = ref.read(commentNotifierProvider.notifier);
@@ -1214,35 +987,43 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
 
       commentController.clear();
       replyToCommentId = null;
+      replyingToUsername = null;
       mentionedUsers.clear();
       ref.read(commentsProvider(widget.postId).notifier).refreshComments();
       UserFriendlyErrorUtils.showSuccessSnackBar(
           context, 'نظر با موفقیت ثبت شد');
     } catch (e) {
       UserFriendlyErrorUtils.showErrorSnackBar(context, e);
+    } finally {
+      if (mounted) {
+        setState(() {
+          isSubmittingComment = false;
+        });
+      }
     }
   }
 
   Widget _buildCommentInputArea(
       BuildContext context, List<UserModel> mentionNotifier) {
-    return SafeArea(
-      child: Container(
-        padding:
-            EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Directionality(
-            textDirection: TextDirection.rtl,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (mentionNotifier.isNotEmpty)
-                  _buildMentionList(mentionNotifier),
-                _buildTextField(),
-              ],
-            ),
-          ),
-        ),
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: CommentInputField(
+        controller: commentController,
+        focusNode: commentFocusNode,
+        replyingToCommentId: replyToCommentId,
+        replyingToUsername: replyingToUsername,
+        onCancelReply: () {
+          setState(() {
+            replyToCommentId = null;
+            replyingToUsername = null;
+          });
+        },
+        onSubmit: _sendComment,
+        isSubmitting: isSubmittingComment,
+        onChanged: _onTextChanged,
+        mentionListWidget: mentionNotifier.isNotEmpty
+            ? _buildMentionList(mentionNotifier)
+            : null,
       ),
     );
   }
@@ -1264,7 +1045,8 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
                   backgroundImage: user.avatarUrl != null &&
                           user.avatarUrl!.isNotEmpty
                       ? CachedNetworkImageProvider(user.avatarUrl!)
-                      : const AssetImage('lib/utils/images/default-avatar.jpg'),
+                      : const AssetImage('lib/utils/images/default-avatar.jpg')
+                          as ImageProvider,
                 ),
                 label: Text(user.username),
               ),
@@ -1272,23 +1054,6 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
           );
         },
       ),
-    );
-  }
-
-  Widget _buildTextField() {
-    return TextField(
-      controller: commentController,
-      decoration: InputDecoration(
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-        ),
-        labelText: 'کامنت خود را بنویسید...',
-        suffixIcon: IconButton(
-          icon: const Icon(Icons.send),
-          onPressed: _sendComment,
-        ),
-      ),
-      onChanged: _onTextChanged,
     );
   }
 

@@ -170,6 +170,25 @@ class ChatLocalDataSourceIsar {
     });
   }
 
+  String? _preferNonEmptyUrl(String? primary, String? fallback) {
+    final primaryValue = primary?.trim() ?? '';
+    if (primaryValue.isNotEmpty) return primaryValue;
+    final fallbackValue = fallback?.trim() ?? '';
+    return fallbackValue.isNotEmpty ? fallbackValue : null;
+  }
+
+  String _mergeIncomingContent(MessageModel incoming, MessageModel? existing) {
+    if (!incoming.hasMediaPlaceholderContent) return incoming.content;
+    if (existing != null && !existing.hasMediaPlaceholderContent) {
+      return existing.content;
+    }
+    if (incoming.resolvedMediaUrl != null ||
+        existing?.resolvedMediaUrl != null) {
+      return '';
+    }
+    return incoming.content;
+  }
+
   MessageModel _mergeWithExistingLocalFields(
     MessageModel incoming,
     MessageModel? existing,
@@ -177,6 +196,12 @@ class ChatLocalDataSourceIsar {
     if (existing == null) return incoming;
 
     return incoming.copyWith(
+      content: _mergeIncomingContent(incoming, existing),
+      attachmentUrl: _preferNonEmptyUrl(incoming.attachmentUrl, existing.attachmentUrl),
+      audioUrl: _preferNonEmptyUrl(incoming.audioUrl, existing.audioUrl),
+      attachmentType:
+          incoming.attachmentType ?? existing.attachmentType ?? existing.messageType,
+      messageType: incoming.messageType ?? existing.messageType,
       // Never regress delivery state due to stale sync snapshots.
       isSent: incoming.isSent || existing.isSent,
       isDelivered: incoming.isMe

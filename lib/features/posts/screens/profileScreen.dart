@@ -2226,8 +2226,9 @@ class _PostListItem extends ConsumerWidget {
               children: [
                 Consumer(
                   builder: (context, ref, child) {
-                    final isLiked =
-                        ref.watch(likeStateProvider.select((map) => map[post.id])) ?? post.isLiked;
+                    final isLiked = ref.watch(
+                            likeStateProvider.select((map) => map[post.id])) ??
+                        post.isLiked;
                     final likeCount = post.likeCount +
                         (isLiked != post.isLiked ? (isLiked ? 1 : -1) : 0);
 
@@ -2243,9 +2244,7 @@ class _PostListItem extends ConsumerWidget {
                             .read(likeStateProvider.notifier)
                             .updateLikeState(post.id, willLike);
                         try {
-                          await ref
-                              .read(postActionsServiceProvider)
-                              .toggleLike(
+                          await ref.read(postActionsServiceProvider).toggleLike(
                                 postId: post.id,
                                 ownerId: post.userId,
                                 ref: ref,
@@ -2290,8 +2289,8 @@ class _PostListItem extends ConsumerWidget {
                       SmartShareService().showShareOptions(post, context),
                   borderRadius: BorderRadius.circular(12),
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 3, vertical: 3),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 3, vertical: 3),
                     child: Image.asset(
                       'lib/utils/images/component/send.png',
                       width: 19,

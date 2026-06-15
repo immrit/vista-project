@@ -25,7 +25,7 @@ class PerformancePolicyResult {
 }
 
 class PerformancePolicyEngine {
-  static const double fastScrollThreshold = 2200.0;
+  static const double fastScrollThreshold = 1400.0;
 
   static PerformancePolicyResult resolve({
     OptimizationSurface surface = OptimizationSurface.chat,
@@ -168,7 +168,7 @@ class PerformancePolicyEngine {
   static double _fastScrollThresholdForSurface(OptimizationSurface surface) {
     return switch (surface) {
       OptimizationSurface.chat => fastScrollThreshold,
-      OptimizationSurface.feed => 1800.0,
+      OptimizationSurface.feed => 1600.0,
       OptimizationSurface.story => 1400.0,
     };
   }

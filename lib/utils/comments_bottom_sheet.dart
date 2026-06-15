@@ -1,4 +1,5 @@
 import '../../security/logging_utility.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:Vista/provider/comment_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -6,6 +7,7 @@ import '../../model/CommentModel.dart';
 import 'package:Vista/features/posts/navigation/content_routes.dart';
 import 'package:Vista/features/auth/providers/auth_controller.dart';
 import 'package:Vista/widgets/verification_badge_icon.dart';
+import '../widgets/comment_input_field.dart';
 
 class CommentsBottomSheet extends ConsumerStatefulWidget {
   final String postId;
@@ -109,23 +111,37 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet>
       _isSubmittingComment = true;
     });
 
-    try {
-      final notifier = ref.read(commentsProvider(widget.postId).notifier);
-      final success = await notifier.addComment(content,
-          parentCommentId: _replyingToCommentId);
+    final previousReplyingTo = _replyingToCommentId;
 
-      if (success) {
-        _commentController.clear();
-        _cancelReply();
-        FocusScope.of(context).unfocus();
-      } else {
+    // Clear UI immediately (Optimistic UI)
+    _commentController.clear();
+    _cancelReply();
+    FocusScope.of(context).unfocus();
+
+    try {
+      final currentUser = ref.read(activeUserProvider);
+      final notifier = ref.read(commentsProvider(widget.postId).notifier);
+      final success = await notifier.addComment(
+        content,
+        parentCommentId: previousReplyingTo,
+        userId: currentUser?.id,
+        username: currentUser?.username,
+        avatarUrl: '',
+      );
+
+      if (!success) {
+        // Restore text if failed
+        _commentController.text = content;
+        
         // Get the error message from the provider state
         final error = ref.read(commentsProvider(widget.postId)).error;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content:
-                  Text(error ?? 'خطا در ارسال کامنت. لطفا دوباره تلاش کنید.')),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+                content:
+                    Text(error ?? 'خطا در ارسال کامنت. لطفا دوباره تلاش کنید.')),
+          );
+        }
       }
     } finally {
       if (mounted) {
@@ -163,20 +179,25 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet>
         ),
         child: Column(
           children: [
-            // هندل و هدر
-            _buildHeader(theme),
+            _buildHeader(theme, commentsState),
 
-            // محتوای کامنت‌ها
             Expanded(
               child: _buildCommentsContent(commentsState, theme),
             ),
 
-            // باکس ارسال کامنت با padding برای کیبورد
             AnimatedPadding(
               duration: const Duration(milliseconds: 200),
               curve: Curves.easeOutCubic,
               padding: EdgeInsets.only(bottom: keyboardHeight),
-              child: _buildCommentInputBox(theme),
+              child: CommentInputField(
+                controller: _commentController,
+                focusNode: _commentFocusNode,
+                replyingToCommentId: _replyingToCommentId,
+                replyingToUsername: _replyingToUsername,
+                onCancelReply: _cancelReply,
+                onSubmit: _submitComment,
+                isSubmitting: _isSubmittingComment,
+              ),
             ),
           ],
         ),
@@ -184,7 +205,7 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet>
     );
   }
 
-  Widget _buildHeader(ThemeData theme) {
+  Widget _buildHeader(ThemeData theme, CommentsState commentsState) {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 5, horizontal: 20),
       decoration: BoxDecoration(
@@ -198,7 +219,6 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet>
       ),
       child: Column(
         children: [
-          // هندل
           Container(
             width: 40,
             height: 4,
@@ -209,7 +229,6 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet>
           ),
           const SizedBox(height: 16),
 
-          // عنوان
           Row(
             children: [
               Icon(
@@ -226,26 +245,16 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet>
                       'نظرات',
                       style: theme.textTheme.titleLarge?.copyWith(
                         fontWeight: FontWeight.bold,
-                        color:
-                            theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                       ),
                     ),
                   ],
                 ),
               ),
-              IconButton(
-                onPressed: () {
-                  ref
-                      .read(commentsProvider(widget.postId).notifier)
-                      .loadComments(refresh: true);
-                },
-                icon: Icon(
-                  Icons.refresh,
-                  color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-                ),
-              ),
+
             ],
           ),
+          const SizedBox(height: 8),
         ],
       ),
     );
@@ -253,9 +262,7 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet>
 
   Widget _buildCommentsContent(CommentsState state, ThemeData theme) {
     if (state.isLoading && state.comments.isEmpty) {
-      return const Center(
-        child: CircularProgressIndicator(),
-      );
+      return const Center(child: CircularProgressIndicator());
     }
 
     if (state.error != null && state.comments.isEmpty) {
@@ -263,26 +270,14 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet>
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.error_outline,
-              size: 48,
-              color: theme.colorScheme.error,
-            ),
+            Icon(Icons.error_outline, size: 48, color: theme.colorScheme.error),
             const SizedBox(height: 16),
-            Text(
-              state.error!,
-              style: theme.textTheme.bodyLarge?.copyWith(
-                color: theme.colorScheme.error,
-              ),
-              textAlign: TextAlign.center,
-            ),
+            Text(state.error!),
             const SizedBox(height: 16),
             ElevatedButton(
-              onPressed: () {
-                ref
-                    .read(commentsProvider(widget.postId).notifier)
-                    .loadComments(refresh: true);
-              },
+              onPressed: () => ref
+                  .read(commentsProvider(widget.postId).notifier)
+                  .loadComments(refresh: true),
               child: const Text('تلاش مجدد'),
             ),
           ],
@@ -298,20 +293,14 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet>
             Icon(
               Icons.chat_bubble_outline,
               size: 64,
-              color: theme.colorScheme.onSurface.withValues(alpha: 0.3),
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.2),
             ),
             const SizedBox(height: 16),
             Text(
-              'هنوز کامنتی ثبت نشده',
-              style: theme.textTheme.titleMedium?.copyWith(
-                color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'اولین نفری باشید که کامنت می‌گذارد!',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
+              'هنوز نظری ثبت نشده\nاولین نفری باشید که نظر می‌دهد!',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyLarge?.copyWith(
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
               ),
             ),
           ],
@@ -327,10 +316,10 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet>
         },
         child: ListView.builder(
           controller: _scrollController,
-          padding: const EdgeInsets.only(top: 8),
+          padding: const EdgeInsets.only(top: 8, bottom: 24),
           itemCount: state.comments.length + (state.hasMore ? 1 : 0),
           itemBuilder: (context, index) {
-            if (index >= state.comments.length) {
+            if (index == state.comments.length) {
               return const Padding(
                 padding: EdgeInsets.all(16),
                 child: Center(child: CircularProgressIndicator()),
@@ -346,220 +335,6 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet>
           },
         ));
   }
-
-  Widget _buildCommentInputBox(ThemeData theme) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        border: Border(
-          top: BorderSide(
-            color: theme.dividerColor.withValues(alpha: 0.1),
-            width: 1,
-          ),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: theme.shadowColor.withValues(alpha: 0.1),
-            blurRadius: 8,
-            offset: const Offset(0, -2),
-          ),
-        ],
-      ),
-      child: SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // نمایش اطلاعات ریپلای
-            if (_replyingToCommentId != null) ...[
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                margin: const EdgeInsets.only(bottom: 12),
-                decoration: BoxDecoration(
-                  color:
-                      theme.colorScheme.primaryContainer.withValues(alpha: 0.3),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: theme.colorScheme.primary.withValues(alpha: 0.2),
-                    width: 1,
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.reply,
-                      size: 16,
-                      color: theme.colorScheme.primary,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'در حال پاسخ به $_replyingToUsername',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.primary,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
-                    InkWell(
-                      onTap: _cancelReply,
-                      borderRadius: BorderRadius.circular(12),
-                      child: Padding(
-                        padding: const EdgeInsets.all(4),
-                        child: Icon(
-                          Icons.close,
-                          size: 16,
-                          color: theme.colorScheme.primary,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-
-            // فیلد ورودی کامنت
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                // آواتار کاربر جاری
-                Builder(builder: (context) {
-                  return CircleAvatar(
-                    radius: 18,
-                    backgroundColor:
-                        theme.colorScheme.primary.withValues(alpha: 0.1),
-                    child: Icon(
-                      Icons.person,
-                      size: 20,
-                      color: theme.colorScheme.primary,
-                    ),
-                  );
-                }),
-
-                const SizedBox(width: 12),
-
-                // فیلد متن
-                Expanded(
-                  child: Container(
-                    constraints: const BoxConstraints(
-                      minHeight: 40,
-                      maxHeight: 120,
-                    ),
-                    child: TextField(
-                      controller: _commentController,
-                      focusNode: _commentFocusNode,
-                      maxLines: null,
-                      textInputAction: TextInputAction.newline,
-                      textDirection: getDirection(_commentController.text),
-                      decoration: InputDecoration(
-                        filled: true,
-                        fillColor: theme.colorScheme.surfaceContainerHighest
-                            .withValues(alpha: 0.5),
-                        hintText: _replyingToCommentId != null
-                            ? 'پاسخ خود را بنویسید...'
-                            : 'نظر خود را بنویسید...',
-                        hintStyle: TextStyle(
-                          color: theme.colorScheme.onSurface
-                              .withValues(alpha: 0.5),
-                        ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(20),
-                          borderSide: BorderSide(
-                            color: theme.colorScheme.outline
-                                .withValues(alpha: 0.2),
-                            width: 1,
-                          ),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(20),
-                          borderSide: BorderSide(
-                            color: theme.colorScheme.outline
-                                .withValues(alpha: 0.2),
-                            width: 1,
-                          ),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(20),
-                          borderSide: BorderSide(
-                            color: theme.colorScheme.outline
-                                .withValues(alpha: 0.2),
-                            width: 1,
-                          ),
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 12,
-                        ),
-                      ),
-                      style: theme.textTheme.bodyMedium,
-                    ),
-                  ),
-                ),
-
-                const SizedBox(width: 8),
-
-                // دکمه ارسال
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  child: InkWell(
-                    onTap: (_commentController.text.trim().isNotEmpty &&
-                            !_isSubmittingComment)
-                        ? _submitComment
-                        : null,
-                    borderRadius: BorderRadius.circular(20),
-                    child: Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: _commentController.text.trim().isNotEmpty &&
-                                !_isSubmittingComment
-                            ? (Theme.of(context).brightness == Brightness.dark
-                                ? const Color(
-                                    0xFF007AFF) // Custom blue color for dark theme
-                                : const Color(
-                                    0xFF007AFF)) // Same blue for light theme
-                            : theme.colorScheme.outline.withValues(alpha: 0.2),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: _isSubmittingComment
-                          ? SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(
-                                  Theme.of(context).brightness ==
-                                          Brightness.dark
-                                      ? Colors
-                                          .white // White spinner on blue background in dark theme
-                                      : Colors
-                                          .white, // White spinner on blue background in light theme
-                                ),
-                              ),
-                            )
-                          : Icon(
-                              Icons.send_rounded,
-                              size: 20,
-                              color: _commentController.text
-                                          .trim()
-                                          .isNotEmpty &&
-                                      !_isSubmittingComment
-                                  ? Colors
-                                      .white // White icon on blue background
-                                  : theme.colorScheme.onSurface
-                                      .withValues(alpha: 0.4),
-                            ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
 // ویجت نمایش کامنت منفرد
@@ -568,6 +343,8 @@ class CommentItem extends ConsumerStatefulWidget {
   final Function(String commentId, String username) onReply;
   final String postId;
   final bool isReply;
+  final bool hasLineAbove;
+  final bool hasLineBelow;
 
   const CommentItem({
     super.key,
@@ -575,6 +352,8 @@ class CommentItem extends ConsumerStatefulWidget {
     required this.onReply,
     required this.postId,
     this.isReply = false,
+    this.hasLineAbove = false,
+    this.hasLineBelow = false,
   });
 
   @override
@@ -587,11 +366,45 @@ class _CommentItemState extends ConsumerState<CommentItem>
   late Animation<double> _scaleAnimation;
   late Animation<double> _fadeAnimation;
 
-  bool _showReplies = false;
+  int _loadedRepliesCount = 1;
 
   // Add this controller
   final TextEditingController _editController = TextEditingController();
   bool _isEditing = false;
+  bool _isSavingEdit = false;
+
+  List<CommentModel> _getFlattenedReplies(CommentModel root) {
+    final List<CommentModel> flat = [];
+    void flatten(CommentModel c) {
+      for (var reply in c.replies) {
+        flat.add(reply);
+        flatten(reply);
+      }
+    }
+    flatten(root);
+    return flat;
+  }
+
+  void _loadMoreReplies() {
+    if (_loadedRepliesCount <= 1) {
+      ref
+          .read(commentsProvider(widget.postId).notifier)
+          .loadReplies(widget.comment.id);
+    }
+    setState(() {
+      if (_loadedRepliesCount == 1) {
+        _loadedRepliesCount = 10;
+      } else {
+        _loadedRepliesCount += 10;
+      }
+    });
+  }
+
+  void _hideReplies() {
+    setState(() {
+      _loadedRepliesCount = 0;
+    });
+  }
 
   @override
   void initState() {
@@ -625,19 +438,6 @@ class _CommentItemState extends ConsumerState<CommentItem>
     _animationController.dispose();
     _editController.dispose();
     super.dispose();
-  }
-
-  void _toggleReplies() {
-    setState(() {
-      _showReplies = !_showReplies;
-    });
-
-    if (_showReplies) {
-      // هر بار که کاربر روی نمایش ریپلای‌ها کلیک می‌کند، آنها را بارگذاری کنید
-      ref
-          .read(commentsProvider(widget.postId).notifier)
-          .loadReplies(widget.comment.id);
-    }
   }
 
   String _getTimeAgo(DateTime dateTime) {
@@ -833,6 +633,17 @@ class _CommentItemState extends ConsumerState<CommentItem>
     final theme = Theme.of(context);
     final currentUserId = ref.watch(activeUserProvider)?.id;
     final isOwner = currentUserId == widget.comment.userId;
+    final commentsState = ref.watch(commentsProvider(widget.postId));
+    
+    final currentComment = commentsState.comments.firstWhere(
+      (c) => c.id == widget.comment.id,
+      orElse: () => widget.comment,
+    );
+    final flatReplies = widget.isReply ? <CommentModel>[] : _getFlattenedReplies(currentComment);
+    final shownReplies = flatReplies.take(_loadedRepliesCount).toList();
+    final bool showThreadLineBelowRoot = shownReplies.isNotEmpty;
+    final isLoading = commentsState.loadingReplies[widget.comment.id] ?? false;
+    final isDark = theme.brightness == Brightness.dark;
 
     return AnimatedBuilder(
       animation: _animationController,
@@ -845,362 +656,318 @@ class _CommentItemState extends ConsumerState<CommentItem>
           ),
         );
       },
-      child: Container(
-        margin: EdgeInsets.only(
-          // right: widget.isReply ? 48 : 0, // حذف مارجین راست برای جلوگیری از کاهش عرض پاسخ‌ها
-          bottom: 8,
-        ),
-        child: Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // آواتار
-                  GestureDetector(
-                    onTap: () {
-                      ContentNavigation.pushProfile(
-                        context,
-                        userId: widget.comment.userId,
-                        username: widget.comment.username,
-                      );
-                    },
-                    child: CircleAvatar(
-                      radius: widget.isReply ? 16 : 20,
-                      backgroundImage: NetworkImage(widget.comment.avatarUrl),
-                      backgroundColor:
-                          theme.colorScheme.primary.withValues(alpha: 0.1),
-                      child: null,
-                    ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Stack(
+            children: [
+              if (widget.hasLineAbove)
+                Positioned(
+                  top: 0,
+                  bottom: null,
+                  right: 35,
+                  child: Container(
+                    width: 2,
+                    height: 12, // padding top
+                    color: isDark ? Colors.grey[800] : Colors.grey[300],
                   ),
-                  const SizedBox(width: 12),
-
-                  // محتوای کامنت
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // هدر (نام کاربری و زمان)
-                        Row(
-                          children: [
-                            Flexible(
-                              // Flexible اکنون فرزند مستقیم Row است
-                              child: GestureDetector(
-                                // GestureDetector فرزند Flexible است
-                                onTap: () {
-                                  ContentNavigation.pushProfile(
-                                    context,
-                                    userId: widget.comment.userId,
-                                    username: widget.comment.username,
-                                  );
-                                },
-                                child: Text(
-                                  // Text فرزند GestureDetector است
-                                  widget.comment.username,
-                                  style: theme.textTheme.bodyMedium?.copyWith(
-                                    fontWeight: FontWeight.bold,
-                                    color: theme.colorScheme.onSurface,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 4),
-                            _buildVerificationBadge(widget.comment),
-                            const SizedBox(width: 8),
-                            Text(
-                              _getTimeAgo(widget.comment.createdAt),
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onSurface
-                                    .withValues(alpha: 0.6),
-                              ),
-                            ),
-                            if (isOwner) ...[
-                              const SizedBox(width: 8),
-                              Icon(
-                                Icons.edit,
-                                size: 14,
-                                color: theme.colorScheme.primary
-                                    .withValues(alpha: 0.7),
-                              ),
-                            ],
-                          ],
+                ),
+              if (widget.hasLineBelow || showThreadLineBelowRoot)
+                Positioned(
+                  top: 52, // 12 padding top + 40 avatar size
+                  bottom: 0,
+                  right: 35,
+                  child: Container(
+                    width: 2,
+                    color: isDark ? Colors.grey[800] : Colors.grey[300],
+                  ),
+                ),
+              Container(
+                padding: const EdgeInsets.only(left: 16, right: 16, top: 12, bottom: 8),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // آواتار
+                    Padding(
+                      padding: EdgeInsets.only(right: widget.isReply ? 4 : 0, left: widget.isReply ? 4 : 0),
+                      child: GestureDetector(
+                        onTap: () {
+                          ContentNavigation.pushProfile(
+                            context,
+                            userId: widget.comment.userId,
+                            username: widget.comment.username,
+                          );
+                        },
+                        child: CircleAvatar(
+                          radius: widget.isReply ? 16 : 20,
+                          backgroundImage: widget.comment.avatarUrl.isEmpty
+                              ? const AssetImage('lib/utils/images/default-avatar.jpg')
+                              : CachedNetworkImageProvider(widget.comment.avatarUrl)
+                                  as ImageProvider,
+                          backgroundColor: theme.colorScheme.surfaceContainerHighest,
                         ),
-                        const SizedBox(height: 4),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
 
-                        // متن کامنت
-                        if (_isEditing)
-                          _buildEditingField(theme)
-                        else
-                          Directionality(
-                            textDirection: getDirection(widget.comment.content),
-                            child: Text(
-                              widget.comment.content,
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                color: theme.colorScheme.onSurface,
-                                height: 1.4,
-                              ),
-                            ),
-                          ),
-                        const SizedBox(height: 8),
-
-                        // دکمه‌های عملکرد
-                        Row(
-                          children: [
-                            // دکمه پاسخ (حالا برای همه کامنت‌ها نمایش داده می‌شود)
-                            InkWell(
-                              onTap: () => widget.onReply(
-                                widget.comment.id,
-                                widget.comment.username,
-                              ),
-                              borderRadius: BorderRadius.circular(16),
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 4,
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                      Icons.reply,
-                                      size: 16,
-                                      color: theme.colorScheme.onSurface
-                                          .withValues(alpha: 0.6),
+                    // محتوای کامنت
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // هدر
+                          Row(
+                            children: [
+                              Flexible(
+                                child: GestureDetector(
+                                  onTap: () {
+                                    ContentNavigation.pushProfile(
+                                      context,
+                                      userId: widget.comment.userId,
+                                      username: widget.comment.username,
+                                    );
+                                  },
+                                  child: Text(
+                                    widget.comment.username,
+                                    style: theme.textTheme.bodyMedium?.copyWith(
+                                      fontWeight: FontWeight.bold,
+                                      color: theme.colorScheme.onSurface,
                                     ),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      'پاسخ',
-                                      style:
-                                          theme.textTheme.bodySmall?.copyWith(
-                                        color: theme.colorScheme.onSurface
-                                            .withValues(alpha: 0.6),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-
-                            // دکمه نمایش/پنهان کردن پاسخ‌ها (برای هر کامنتی که پاسخ دارد)
-                            if (widget.comment.replies.isNotEmpty)
-                              InkWell(
-                                onTap: _toggleReplies,
-                                borderRadius: BorderRadius.circular(16),
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 4,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        _showReplies
-                                            ? Icons.keyboard_arrow_up
-                                            : Icons.keyboard_arrow_down,
-                                        size: 16,
-                                        color: theme.colorScheme.primary,
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              _buildVerificationBadge(widget.comment),
+                              if (isOwner) ...[
+                                const SizedBox(width: 8),
+                                Icon(
+                                  Icons.person,
+                                  size: 14,
+                                  color: theme.colorScheme.primary.withValues(alpha: 0.7),
+                                ),
+                              ],
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+
+                          // متن کامنت
+                          if (_isEditing)
+                            _buildEditingField(theme)
+                          else
+                            Directionality(
+                              textDirection: getDirection(widget.comment.content),
+                              child: Text(
+                                widget.comment.content,
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: theme.colorScheme.onSurface,
+                                  height: 1.4,
+                                ),
+                              ),
+                            ),
+                          const SizedBox(height: 8),
+
+                          // دکمه‌های عملکرد
+                          Row(
+                            children: [
+                              Text(
+                                _getTimeAgo(widget.comment.createdAt),
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              // پاسخ
+                              InkWell(
+                                onTap: () => widget.onReply(
+                                  widget.comment.id,
+                                  widget.comment.username,
+                                ),
+                                borderRadius: BorderRadius.circular(16),
+                                child: Text(
+                                  'پاسخ',
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                              if (isOwner) ...[
+                                const SizedBox(width: 16),
+                                InkWell(
+                                  onTap: _startEditing,
+                                  borderRadius: BorderRadius.circular(16),
+                                  child: Text(
+                                    'ویرایش',
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ],
+
+                              const Spacer(),
+
+                              // منوی بیشتر
+                              PopupMenuButton<String>(
+                                icon: Icon(
+                                  Icons.more_horiz,
+                                  size: 18,
+                                  color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                                ),
+                                onSelected: (value) async {
+                                  switch (value) {
+                                    case 'edit':
+                                      _startEditing();
+                                      break;
+                                    case 'delete':
+                                      final notifier = ref.read(commentsProvider(widget.postId).notifier);
+                                      final success = await notifier.deleteComment(
+                                        widget.comment.id,
+                                        parentCommentId: widget.comment.parentCommentId,
+                                      );
+                                      if (!success && mounted) {
+                                        final error = ref.read(commentsProvider(widget.postId)).error;
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(content: Text(error ?? 'خطا در حذف کامنت. لطفا دوباره تلاش کنید.')),
+                                        );
+                                      }
+                                      break;
+                                  }
+                                },
+                                itemBuilder: (context) {
+                                  final canEdit = widget.comment.isVerified ||
+                                      [VerificationType.blackTick, VerificationType.goldTick, VerificationType.blueTick]
+                                          .contains(widget.comment.verificationType);
+                                  return [
+                                    if (isOwner) ...[
+                                      PopupMenuItem(
+                                        value: 'edit',
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.edit, size: 18, color: canEdit ? theme.colorScheme.primary : theme.colorScheme.onSurface.withValues(alpha: 0.3)),
+                                            const SizedBox(width: 8),
+                                            Text('ویرایش', style: TextStyle(color: canEdit ? null : theme.colorScheme.onSurface.withValues(alpha: 0.3))),
+                                          ],
+                                        ),
                                       ),
-                                      const SizedBox(width: 4),
-                                      Text(
-                                        '${widget.comment.replies.length} پاسخ',
-                                        style:
-                                            theme.textTheme.bodySmall?.copyWith(
-                                          color: theme.colorScheme.primary,
+                                      const PopupMenuItem(
+                                        value: 'delete',
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.delete, size: 18, color: Colors.red),
+                                            const SizedBox(width: 8),
+                                            Text('حذف', style: TextStyle(color: Colors.red)),
+                                          ],
+                                        ),
+                                      ),
+                                    ] else ...[
+                                      const PopupMenuItem(
+                                        value: 'report',
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.report, size: 18),
+                                            const SizedBox(width: 8),
+                                            Text('گزارش'),
+                                          ],
                                         ),
                                       ),
                                     ],
-                                  ),
-                                ),
+                                  ];
+                                },
                               ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
 
-                            const Spacer(),
+          if (!widget.isReply) ...[
+            if (shownReplies.isNotEmpty) ...[
+              ...shownReplies.asMap().entries.map((entry) {
+                final index = entry.key;
+                final reply = entry.value;
+                final isLast = index == shownReplies.length - 1;
+                return CommentItem(
+                  comment: reply,
+                  onReply: widget.onReply,
+                  postId: widget.postId,
+                  isReply: true,
+                  hasLineAbove: true,
+                  hasLineBelow: !isLast && !isLoading,
+                );
+              }).toList(),
+            ],
+            
+            if (isLoading)
+              const Padding(
+                padding: EdgeInsets.all(16.0),
+                child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+              )
+            else if (shownReplies.isEmpty && _loadedRepliesCount > 0)
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Text(
+                  'هنوز پاسخی وجود ندارد',
+                  style: TextStyle(
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                    fontStyle: FontStyle.italic,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
 
-                            // منوی بیشتر
-                            PopupMenuButton<String>(
-                              icon: Icon(
-                                Icons.more_horiz,
-                                size: 18,
-                                color: theme.colorScheme.onSurface
-                                    .withValues(alpha: 0.5),
-                              ),
-                              onSelected: (value) async {
-                                switch (value) {
-                                  case 'edit':
-                                    _startEditing();
-                                    break;
-                                  case 'delete':
-                                    final notifier = ref.read(
-                                        commentsProvider(widget.postId)
-                                            .notifier);
-                                    final success =
-                                        await notifier.deleteComment(
-                                      widget.comment.id,
-                                      parentCommentId:
-                                          widget.comment.parentCommentId,
-                                    );
-                                    if (!success && mounted) {
-                                      final error = ref
-                                          .read(commentsProvider(widget.postId))
-                                          .error;
-                                      ScaffoldMessenger.of(context)
-                                          .showSnackBar(
-                                        SnackBar(
-                                            content: Text(error ??
-                                                'خطا در حذف کامنت. لطفا دوباره تلاش کنید.')),
-                                      );
-                                    }
-                                    break;
-
-                                  case 'report':
-                                    break;
-                                }
-                              },
-                              itemBuilder: (context) {
-                                // بررسی مستقیم از متادیتای کاربر برای دسترسی به ویرایش
-                                // استفاده از اطلاعات خود کامنت
-                                final isVerifiedByTick =
-                                    widget.comment.isVerified;
-                                final hasSpecialTick =
-                                    widget.comment.verificationType ==
-                                            VerificationType.blackTick ||
-                                        widget.comment.verificationType ==
-                                            VerificationType.goldTick ||
-                                        widget.comment.verificationType ==
-                                            VerificationType.blueTick;
-                                final canEdit =
-                                    isVerifiedByTick || hasSpecialTick;
-
-                                return [
-                                  if (isOwner) ...[
-                                    PopupMenuItem(
-                                      value: 'edit',
-                                      child: Row(
-                                        children: [
-                                          Icon(
-                                            Icons.edit,
-                                            size: 18,
-                                            color: canEdit
-                                                ? theme.colorScheme.primary
-                                                : theme.colorScheme.onSurface
-                                                    .withValues(alpha: 0.3),
-                                          ),
-                                          SizedBox(width: 8),
-                                          Text(
-                                            'ویرایش',
-                                            style: TextStyle(
-                                              color: canEdit
-                                                  ? null
-                                                  : theme.colorScheme.onSurface
-                                                      .withValues(alpha: 0.3),
-                                            ),
-                                          ),
-                                          if (!canEdit) ...[
-                                            // نمایش آیکون وریفای اگر کاربر اجازه ویرایش ندارد
-                                            SizedBox(width: 4),
-                                            Icon(
-                                              Icons.verified,
-                                              size: 14,
-                                              color: Colors.amber
-                                                  .withValues(alpha: 0.5),
-                                            ),
-                                          ],
-                                        ],
-                                      ),
-                                    ),
-                                    const PopupMenuItem(
-                                      value: 'delete',
-                                      child: Row(
-                                        children: [
-                                          Icon(Icons.delete,
-                                              size: 18, color: Colors.red),
-                                          SizedBox(width: 8),
-                                          Text('حذف',
-                                              style:
-                                                  TextStyle(color: Colors.red)),
-                                        ],
-                                      ),
-                                    ),
-                                  ] else ...[
-                                    const PopupMenuItem(
-                                      value: 'report',
-                                      child: Row(
-                                        children: [
-                                          Icon(Icons.report, size: 18),
-                                          SizedBox(width: 8),
-                                          Text('گزارش'),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ];
-                              },
+            // دکمه مشاهده پاسخ‌های بیشتر
+            if (currentComment.replies.isNotEmpty || flatReplies.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(right: 64, top: 4, bottom: 8),
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: InkWell(
+                    onTap: () {
+                      if (_loadedRepliesCount == 0 || _loadedRepliesCount < flatReplies.length) {
+                        _loadMoreReplies();
+                      } else {
+                        _hideReplies();
+                      }
+                    },
+                    borderRadius: BorderRadius.circular(16),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 24,
+                            height: 1,
+                            color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            _loadedRepliesCount == 0
+                                ? 'مشاهده ${flatReplies.isNotEmpty ? flatReplies.length : currentComment.replies.length} پاسخ'
+                                : _loadedRepliesCount < flatReplies.length
+                                    ? 'مشاهده ${flatReplies.length - _loadedRepliesCount} پاسخ دیگر'
+                                    : 'پنهان کردن پاسخ‌ها',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                              fontWeight: FontWeight.bold,
                             ),
-                          ],
-                        ),
-                      ],
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                ],
-              ),
-            ),
-
-            // نمایش پاسخ‌ها
-            if (_showReplies) // نمایش پاسخ‌ها برای هر کامنتی که قابلیت باز شدن دارد
-              Consumer(
-                builder: (context, ref, child) {
-                  final commentsState =
-                      ref.watch(commentsProvider(widget.postId));
-                  final isLoading =
-                      commentsState.loadingReplies[widget.comment.id] ?? false;
-
-                  // پیدا کردن کامنت فعلی با ریپلای‌های به‌روز
-                  final currentComment = commentsState.comments.firstWhere(
-                    (c) => c.id == widget.comment.id,
-                    orElse: () => widget.comment,
-                  );
-
-                  if (isLoading) {
-                    return const Padding(
-                      padding: EdgeInsets.all(16.0),
-                      child: Center(
-                          child: CircularProgressIndicator(strokeWidth: 2)),
-                    );
-                  }
-
-                  if (currentComment.replies.isEmpty) {
-                    return Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Text(
-                        'هنوز پاسخی وجود ندارد',
-                        style: TextStyle(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onSurface
-                              .withValues(alpha: 0.6),
-                          fontStyle: FontStyle.italic,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                    );
-                  }
-
-                  return Column(
-                    children: currentComment.replies
-                        .map((reply) => CommentItem(
-                              comment: reply,
-                              onReply: widget.onReply,
-                              postId: widget.postId,
-                              isReply: true,
-                            ))
-                        .toList(),
-                  );
-                },
+                ),
               ),
           ],
-        ),
+        ],
       ),
     );
   }

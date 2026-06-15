@@ -542,29 +542,33 @@ class PushNotificationService {
       }
 
       final senderName = data['sender_name']?.toString() ?? 'User';
-      final attachmentType = data['attachment_type']?.toString();
-      // We don't have full profile profile here, but we have enough for the message list
-      // Note: MessageModel usually needs just senderId.
+      final attachmentType = data['attachment_type']?.toString() ??
+          data['message_type']?.toString();
+      final mediaUrl = data['media_url']?.toString() ??
+          data['attachment_url']?.toString();
+      final audioUrl = data['audio_url']?.toString();
+      final resolvedAttachmentUrl = (mediaUrl?.trim().isNotEmpty == true)
+          ? mediaUrl!.trim()
+          : (audioUrl?.trim().isNotEmpty == true ? audioUrl!.trim() : null);
+      final isMediaMessage = attachmentType != null &&
+          attachmentType.isNotEmpty &&
+          attachmentType.toLowerCase() != 'text';
+      final resolvedContent = isMediaMessage ? '' : (content ?? '');
 
       final currentUserId = await TokenStorage.getUserId() ?? '';
-
-      // Construct MessageModel
-      // Note: We need to match the JSON structure MessageModel expects, OR use constructor.
-      // MessageModel.fromJson expects database columns usually.
-      // Let's manually construct it to be safe.
 
       final message = MessageModel(
         id: messageId,
         conversationId: conversationId,
         senderId: senderId,
-        content: content ?? '',
+        content: resolvedContent,
         createdAt: createdAt,
         isSeen: false,
         isSent: true, // It came from server, so it is sent.
         isDelivered: true,
-        attachmentUrl: data['attachment_url']?.toString(),
+        attachmentUrl: resolvedAttachmentUrl,
         attachmentType: attachmentType,
-        audioUrl: data['audio_url']?.toString(),
+        audioUrl: audioUrl,
         messageType:
             attachmentType?.isNotEmpty == true ? attachmentType : 'text',
         replyToMessageId: data['reply_to_message_id']?.toString(),

@@ -207,20 +207,46 @@ class CommentsNotifier extends StateNotifier<CommentsState> {
     CommentModel newReply,
   ) {
     return comments.map((comment) {
-      // اگر این کامنت والد ریپلای جدید است
       if (comment.id == newReply.parentCommentId) {
-        // Add new reply to the beginning to keep newest first, assuming newReply is the newest
+        // Prevent duplicate insertion
+        if (comment.replies.any((r) => r.id == newReply.id)) {
+          return comment;
+        }
         final updatedReplies = [newReply, ...comment.replies];
         return comment.copyWith(replies: updatedReplies);
       }
 
-      // اگر ریپلای در زیرمجموعه‌های این کامنت است (جستجوی recursive)
       final updatedReplies = _addReplyToCommentTree(comment.replies, newReply);
       if (updatedReplies != comment.replies) {
         return comment.copyWith(replies: updatedReplies);
       }
 
       return comment;
+    }).toList();
+  }
+
+  List<CommentModel> _replaceCommentInTree(
+    List<CommentModel> comments,
+    String oldId,
+    CommentModel newComment,
+  ) {
+    return comments.map((c) {
+      if (c.id == oldId) return newComment;
+      if (c.replies.isNotEmpty) {
+        return c.copyWith(
+            replies: _replaceCommentInTree(c.replies, oldId, newComment));
+      }
+      return c;
+    }).toList();
+  }
+
+  List<CommentModel> _deleteFromTree(
+      List<CommentModel> comments, String idToDelete) {
+    return comments.where((c) => c.id != idToDelete).map((c) {
+      if (c.replies.isNotEmpty) {
+        return c.copyWith(replies: _deleteFromTree(c.replies, idToDelete));
+      }
+      return c;
     }).toList();
   }
 
@@ -265,7 +291,15 @@ class CommentsNotifier extends StateNotifier<CommentsState> {
   ) {
     return comments.map((comment) {
       if (comment.id == commentId) {
-        return comment.copyWith(replies: newReplies);
+        // Deduplicate new replies by ID, keeping existing ones
+        final Map<String, CommentModel> uniqueReplies = {};
+        for (var reply in comment.replies) {
+          uniqueReplies[reply.id] = reply;
+        }
+        for (var reply in newReplies) {
+          uniqueReplies[reply.id] = reply;
+        }
+        return comment.copyWith(replies: uniqueReplies.values.toList());
       }
 
       // جستجوی recursive در ریپلای‌ها
@@ -377,21 +411,43 @@ class CommentsNotifier extends StateNotifier<CommentsState> {
 
   // ساخت درخت کامنت‌ها
   List<CommentModel> buildCommentTree(List<CommentModel> allComments) {
+    final List<CommentModel> flatComments = [];
+    void flatten(List<CommentModel> comments) {
+      for (var c in comments) {
+        flatComments.add(c);
+        if (c.replies.isNotEmpty) flatten(c.replies);
+      }
+    }
+
+    flatten(allComments);
+
     final Map<String, CommentModel> commentMap = {
-      for (var comment in allComments) comment.id: comment.copyWith(replies: [])
+      for (var comment in flatComments)
+        comment.id: comment.copyWith(replies: [])
     };
 
     final List<CommentModel> rootComments = [];
+    final Set<String> processedReplies = {};
 
-    for (var comment in allComments) {
+    for (var comment in flatComments) {
       if (comment.parentCommentId == null) {
         rootComments.add(commentMap[comment.id]!);
       } else {
         final parent = commentMap[comment.parentCommentId];
         if (parent != null) {
-          parent.replies.add(commentMap[comment.id]!);
+          // Prevent adding duplicate replies to parent
+          if (!processedReplies.contains(comment.id)) {
+            parent.replies.add(commentMap[comment.id]!);
+            processedReplies.add(comment.id);
+          }
         }
       }
+    }
+
+    // Remove duplicates from rootComments
+    final Map<String, CommentModel> uniqueRoots = {};
+    for (var comment in rootComments) {
+      uniqueRoots[comment.id] = comment;
     }
 
     // مرتب‌سازی والدها و ریپلای‌ها بر اساس تاریخ
@@ -428,10 +484,44 @@ class CommentsNotifier extends StateNotifier<CommentsState> {
   }
 
   // اضافه کردن کامنت جدید
-  Future<bool> addComment(String content, {String? parentCommentId}) async {
+  Future<bool> addComment(
+    String content, {
+    String? parentCommentId,
+    String? username,
+    String? avatarUrl,
+    String? userId,
+  }) async {
     if (content.trim().isEmpty) return false;
 
     state = state.copyWith(isAddingComment: true, error: null);
+
+    // Optimistic UI Update
+    final tempId = 'temp_${DateTime.now().millisecondsSinceEpoch}';
+    final optimisticComment = CommentModel(
+      id: tempId,
+      postId: _postId,
+      userId: userId ?? '',
+      username: username ?? 'شما',
+      avatarUrl: avatarUrl ?? '',
+      content: content.trim(),
+      createdAt: DateTime.now(),
+      replies: [],
+      isVerified: false,
+      role: 'user',
+      verificationType: VerificationType.none,
+      parentCommentId: parentCommentId,
+      postOwnerId: '',
+    );
+
+    final previousComments = state.comments;
+
+    if (parentCommentId == null) {
+      state = state.copyWith(comments: [optimisticComment, ...state.comments]);
+    } else {
+      final updatedComments =
+          _addReplyToCommentTree(state.comments, optimisticComment);
+      state = state.copyWith(comments: updatedComments);
+    }
 
     try {
       final newComment = await _repository.addComment(
@@ -440,24 +530,19 @@ class CommentsNotifier extends StateNotifier<CommentsState> {
         parentCommentId: parentCommentId,
       );
 
-      if (parentCommentId == null) {
-        state = state.copyWith(
-          comments: [newComment, ...state.comments],
-          isAddingComment: false,
-        );
-      } else {
-        final updatedComments =
-            _addReplyToCommentTree(state.comments, newComment);
-        state = state.copyWith(
-          comments: updatedComments,
-          isAddingComment: false,
-        );
-      }
+      // Replace optimistic comment with real comment
+      final realComments =
+          _replaceCommentInTree(state.comments, tempId, newComment);
 
+      state = state.copyWith(
+        comments: realComments,
+        isAddingComment: false,
+      );
       return true;
     } catch (e) {
       state = state.copyWith(
-        isAddingComment: false, // Ensure state is reset on failure
+        comments: previousComments, // Revert on failure
+        isAddingComment: false,
         error: 'مشکلی در ارسال کامنت پیش آمد. لطفا دوباره تلاش کنید.',
       );
       return false;
@@ -468,39 +553,19 @@ class CommentsNotifier extends StateNotifier<CommentsState> {
   Future<bool> deleteComment(String commentId,
       {String? parentCommentId}) async {
     state = state.copyWith(isDeletingComment: true, error: null);
+    final previousComments = state.comments;
+
+    // Optimistic UI Update
+    final optimisticComments = _deleteFromTree(state.comments, commentId);
+    state = state.copyWith(comments: optimisticComments);
 
     try {
       await _repository.deleteComment(commentId);
-
-      if (parentCommentId == null) {
-        // حذف کامنت اصلی
-        final updatedComments =
-            state.comments.where((comment) => comment.id != commentId).toList();
-        state = state.copyWith(
-          comments: updatedComments,
-          isDeletingComment: false,
-        );
-      } else {
-        // حذف پاسخ
-        final updatedComments = state.comments.map((comment) {
-          if (comment.id == parentCommentId) {
-            final updatedReplies = comment.replies
-                .where((reply) => reply.id != commentId)
-                .toList();
-            return comment.copyWith(replies: updatedReplies);
-          }
-          return comment;
-        }).toList();
-
-        state = state.copyWith(
-          comments: updatedComments,
-          isDeletingComment: false,
-        );
-      }
-
+      state = state.copyWith(isDeletingComment: false);
       return true;
     } catch (e) {
       state = state.copyWith(
+        comments: previousComments, // Revert on failure
         isDeletingComment: false,
         error: 'مشکلی در حذف کامنت پیش آمد. لطفا دوباره تلاش کنید.',
       );

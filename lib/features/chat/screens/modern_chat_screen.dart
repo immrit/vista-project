@@ -205,7 +205,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   bool _isNearTop = false;
   final _showScrollToBottomNotifier = ValueNotifier<bool>(false);
   String? _currentUserId;
-  bool _isTransitioning = true; // ✅ For deferred rendering during Hero transition
+  bool _isTransitioning =
+      true; // ✅ For deferred rendering during Hero transition
 
   // Search
   bool _isSearchMode = false;
@@ -1486,8 +1487,6 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     _inputHeightNotifier.dispose();
     _messageRenderCapNotifier.dispose();
     _listOverlayRevision.dispose();
-    ref.invalidate(chatMessageStoreProvider(_conversationId));
-    ref.invalidate(conversationChatSelectionProvider(_conversationId));
 
     _clearActiveConversationState();
     if (widget.args.isSecret) {
@@ -1618,7 +1617,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
   Timer? _scrollEndTimer;
   static const Duration _scrollVelocitySampleInterval =
-      Duration(milliseconds: 120);
+      Duration(milliseconds: 80);
   static const Duration _reactionWindowUpdateInterval =
       Duration(milliseconds: 180);
   static const double _reactionEstimateItemExtent = 88.0;
@@ -1630,7 +1629,6 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     final now = DateTime.now();
     final currentScroll = _scrollController.position.pixels;
     _sampleScrollVelocity(now, currentScroll);
-    _updateReactionWindow(now);
 
     // 1. Pagination Logic
     final maxScroll = _scrollController.position.maxScrollExtent;
@@ -1659,6 +1657,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     _scrollEndTimer = Timer(const Duration(milliseconds: 150), () {
       if (!mounted) return;
       _isScrollingNotifier.value = false;
+      _adaptiveEffectsController.updateScrollVelocity(0);
+      _updateReactionWindow(DateTime.now(), force: true);
       // آپدیت تاریخ فقط وقتی اسکرول متوقف شد
       if (currentScroll < 100) {
         _updateDateForBottom();
@@ -2101,8 +2101,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                         child: EnhancedChatBackground(
                           enablePattern: true,
                           blurIntensity: blurSigma,
-                          allowHeavyEffects:
-                              !reduceEffects && allowHeavyBlur,
+                          allowHeavyEffects: !reduceEffects && allowHeavyBlur,
                           child: Container(color: Colors.transparent),
                         ),
                       );
@@ -2220,8 +2219,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                     reduceEffectsFromKeyboard: reduceEffectsFromKeyboard,
                     isScrollingListenable: _isScrollingNotifier,
                     showScrollToBottomListenable: _showScrollToBottomNotifier,
-                    showInput:
-                        !_isCurrentUserBlocked && !_isOtherUserBlocked,
+                    showInput: !_isCurrentUserBlocked && !_isOtherUserBlocked,
                     showEmojiPanel: _showEmojiPanel,
                     onScrollToBottom: _scrollToBottom,
                     themeBackgroundColor: theme.backgroundColor,
@@ -2391,29 +2389,26 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         if (!widget.args.isSecret)
           IconButton(
             icon: const Icon(Icons.forward_rounded, color: Colors.white),
-            onPressed:
-                _selection.selectedMessageIds.isEmpty
-                    ? null
-                    : _forwardSelectedMessages,
+            onPressed: _selection.selectedMessageIds.isEmpty
+                ? null
+                : _forwardSelectedMessages,
             tooltip: 'فوروارد',
           ),
         // کپی
         if (!widget.args.isSecret)
           IconButton(
             icon: const Icon(Icons.copy_rounded, color: Colors.white),
-            onPressed:
-                _selection.selectedMessageIds.isEmpty
-                    ? null
-                    : _copySelectedMessages,
+            onPressed: _selection.selectedMessageIds.isEmpty
+                ? null
+                : _copySelectedMessages,
             tooltip: 'کپی',
           ),
         // حذف
         IconButton(
           icon: const Icon(Icons.delete_outline_rounded, color: Colors.white),
-          onPressed:
-              _selection.selectedMessageIds.isEmpty
-                  ? null
-                  : _deleteSelectedMessages,
+          onPressed: _selection.selectedMessageIds.isEmpty
+              ? null
+              : _deleteSelectedMessages,
           tooltip: 'حذف',
         ),
       ],
@@ -2507,7 +2502,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         Clipboard.setData(ClipboardData(text: selectedMessages));
         if (mounted) {
           _showSuccessSnackBar(
-              '${_selection.selectedMessageIds.length} پیام کپی شد'.toPersianDigit());
+              '${_selection.selectedMessageIds.length} پیام کپی شد'
+                  .toPersianDigit());
           _exitSelectionMode();
         }
       });
@@ -3730,7 +3726,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     if (resolvedFallback != null) return resolvedFallback;
 
     if (userId == _currentUserId) {
-      final avatar = AvatarAssetUtils.resolveUrl(_currentUserProfile?.avatarUrl);
+      final avatar =
+          AvatarAssetUtils.resolveUrl(_currentUserProfile?.avatarUrl);
       if (avatar != null) return avatar;
     }
 
@@ -3898,8 +3895,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       if (!mounted) return;
       final allReactions = <reaction_models.MessageReaction>[];
       for (final message in windowMessages) {
-        final enriched =
-            _enrichReactions(reactionsMap[message.id] ?? const []);
+        final enriched = _enrichReactions(reactionsMap[message.id] ?? const []);
         _reactionNotifierFor(message.id).value = enriched;
         allReactions.addAll(enriched);
       }
@@ -5286,8 +5282,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   void _showMessageInfo(MessageModel message) {
     if (_currentUserId == null) return;
 
-    final reactions =
-        _enrichReactions(_reactionNotifierFor(message.id).value);
+    final reactions = _enrichReactions(_reactionNotifierFor(message.id).value);
 
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -5619,11 +5614,11 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       },
       key: ValueKey('preview_${message.id}'),
       messageId: message.id,
-      content: message.content,
+      content: message.displayContent,
       isMe: isMe,
       time: message.createdAt,
       status: _getMessageStatus(message),
-      attachmentUrl: message.attachmentUrl,
+      attachmentUrl: message.resolvedMediaUrl,
       attachmentType: message.attachmentType,
       attachmentFileName: message.attachmentFileName,
       duration: message.duration,
@@ -6787,65 +6782,68 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     };
     final replyPreview = _resolveReplyPreviewForMessage(message, messagesById);
 
+    Widget buildBubble(List<reaction_models.MessageReaction> messageReactions) {
+      return ImprovedAnimatedMessageBubble(
+        recipientPublicKey:
+            widget.args.isSecret ? _otherUserProfile?.publicKey : null,
+        isSecretMode: widget.args.isSecret,
+        key: _messageKeys[message.id] ??= GlobalKey(),
+        messageId: message.id,
+        content: message.displayContent,
+        isMe: isMe,
+        time: message.createdAt,
+        status: _getMessageStatus(message),
+        senderName: _resolveMessageSenderName(message),
+        showSenderNameInBubble: false,
+        compactWithAvatar: widget.args.isGroup && !isMe,
+        showReactionAvatars: widget.args.isGroup,
+        attachmentUrl: message.resolvedMediaUrl,
+        attachmentType: message.attachmentType,
+        attachmentFileName: message.attachmentFileName,
+        replyToContent: replyPreview.content,
+        replyToSenderName: replyPreview.senderName,
+        replyToMessageId: message.replyToMessageId,
+        onReplyTap: _isSyntheticNoteReplyId(message.replyToMessageId)
+            ? null
+            : () => _scrollToMessage(message.replyToMessageId),
+        onStoryReplyTap: _openStoryReply,
+        duration: message.duration,
+        reactions: _convertToOldReactionFormat(messageReactions),
+        onTap: (ctx, msg) => _handleMessageTap(ctx, msg),
+        onLongPress: (ctx, msg) => _handleMessageLongPress(ctx, msg),
+        onDoubleTap: () => _onMessageDoubleTap(message),
+        onAddReaction: (emoji) => _onAddReaction(message, emoji),
+        animate: shouldAnimateEntry &&
+            adaptiveEffects.enableMessageEntryAnimation &&
+            !adaptiveEffects.isFastScrolling,
+        effectsLevel: bubbleEffectsLevel,
+        index: index,
+        isFirstInGroup: isFirstInGroup,
+        isLastInGroup: isLastInGroup,
+        isForwarded: message.isForwarded,
+        forwardedFrom: message.forwardedFromSenderName,
+        onRetryUpload: message.isFailed == true
+            ? () => _retryFailedMessage(message)
+            : null,
+        conversationGalleryItems: conversationGalleryItems,
+        initialGalleryIndex:
+            conversationGalleryIndexByMessageId?[message.id],
+        message: message,
+      );
+    }
+
     final bubbleContent = _isSharedPostMessage(message)
         ? Builder(
             builder: (postContext) => _buildPostMessageBubble(message, isMe),
           )
-        : ValueListenableBuilder<List<reaction_models.MessageReaction>>(
-            valueListenable: _reactionNotifierFor(message.id),
-            builder: (context, messageReactions, _) {
-              return ImprovedAnimatedMessageBubble(
-                recipientPublicKey:
-                    widget.args.isSecret ? _otherUserProfile?.publicKey : null,
-                isSecretMode: widget.args.isSecret,
-                onSwipeToReply: () {
-                  _setReplyToMessage(message);
+        : adaptiveEffects.isFastScrolling
+            ? buildBubble(_reactionNotifierFor(message.id).value)
+            : ValueListenableBuilder<List<reaction_models.MessageReaction>>(
+                valueListenable: _reactionNotifierFor(message.id),
+                builder: (context, messageReactions, _) {
+                  return buildBubble(messageReactions);
                 },
-                key: _messageKeys[message.id] ??= GlobalKey(),
-                messageId: message.id,
-                content: message.content,
-                isMe: isMe,
-                time: message.createdAt,
-                status: _getMessageStatus(message),
-                senderName: _resolveMessageSenderName(message),
-                showSenderNameInBubble: false,
-                compactWithAvatar: widget.args.isGroup && !isMe,
-                showReactionAvatars: widget.args.isGroup,
-                attachmentUrl: message.attachmentUrl,
-                attachmentType: message.attachmentType,
-                attachmentFileName: message.attachmentFileName,
-                replyToContent: replyPreview.content,
-                replyToSenderName: replyPreview.senderName,
-                replyToMessageId: message.replyToMessageId,
-                onReplyTap: _isSyntheticNoteReplyId(message.replyToMessageId)
-                    ? null
-                    : () => _scrollToMessage(message.replyToMessageId),
-                onStoryReplyTap: _openStoryReply,
-                duration: message.duration,
-                reactions: _convertToOldReactionFormat(messageReactions),
-                onTap: (ctx, msg) => _handleMessageTap(ctx, msg),
-                onLongPress: (ctx, msg) => _handleMessageLongPress(ctx, msg),
-                onDoubleTap: () => _onMessageDoubleTap(message),
-                onAddReaction: (emoji) => _onAddReaction(message, emoji),
-                animate: shouldAnimateEntry &&
-                    adaptiveEffects.enableMessageEntryAnimation &&
-                    !adaptiveEffects.isFastScrolling,
-                effectsLevel: bubbleEffectsLevel,
-                index: index,
-                isFirstInGroup: isFirstInGroup,
-                isLastInGroup: isLastInGroup,
-                isForwarded: message.isForwarded,
-                forwardedFrom: message.forwardedFromSenderName,
-                onRetryUpload: message.isFailed == true
-                    ? () => _retryFailedMessage(message)
-                    : null,
-                conversationGalleryItems: conversationGalleryItems,
-                initialGalleryIndex:
-                    conversationGalleryIndexByMessageId?[message.id],
-                message: message,
               );
-            },
-          );
 
     if (!isHighlighted && !isSelected) {
       return bubbleContent;

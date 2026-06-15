@@ -44,8 +44,28 @@ class CommentRepository {
       page: page,
       limit: limit,
     );
-    return pageResult.comments
-        .where((comment) => comment.parentCommentId == null)
+    
+    // Create a map of parentId to children for O(N) tree building
+    final groupedByParent = <String?, List<CommentModel>>{};
+    for (var comment in pageResult.comments) {
+      groupedByParent.putIfAbsent(comment.parentCommentId, () => []).add(comment);
+    }
+    
+    return (groupedByParent[null] ?? [])
+        .map((root) => root.copyWith(
+              replies: _buildRepliesTreeOptimized(groupedByParent, root.id),
+            ))
+        .toList(growable: false);
+  }
+
+  List<CommentModel> _buildRepliesTreeOptimized(
+    Map<String?, List<CommentModel>> groupedByParent,
+    String parentId,
+  ) {
+    return (groupedByParent[parentId] ?? [])
+        .map((c) => c.copyWith(
+              replies: _buildRepliesTreeOptimized(groupedByParent, c.id),
+            ))
         .toList(growable: false);
   }
 
@@ -55,9 +75,13 @@ class CommentRepository {
     if (postId == null || postId.isEmpty) return const [];
 
     final comments = await _fetchGoComments(postId: postId);
-    return comments
-        .where((comment) => comment.parentCommentId == parentCommentId)
-        .toList(growable: false);
+    
+    final groupedByParent = <String?, List<CommentModel>>{};
+    for (var comment in comments) {
+      groupedByParent.putIfAbsent(comment.parentCommentId, () => []).add(comment);
+    }
+    
+    return _buildRepliesTreeOptimized(groupedByParent, parentCommentId);
   }
 
   Future<CommentModel> addComment({

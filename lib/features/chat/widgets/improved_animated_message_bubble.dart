@@ -414,14 +414,15 @@ class _ImprovedAnimatedMessageBubbleState
 
   Widget _buildMessageBubble(ChatTheme theme) {
     final canonicalType = _canonicalAttachmentType();
+    final mediaUrl = _resolvedMediaUrl();
     final isMedia = (canonicalType == 'image' || canonicalType == 'video') &&
-        widget.attachmentUrl != null;
+        mediaUrl != null;
     final storyReply = _effectiveStoryReplyData();
     final sharedPostReply =
         storyReply == null ? _effectiveSharedPostReplyData() : null;
 
     return Container(
-      clipBehavior: isMedia ? Clip.antiAlias : Clip.none,
+      clipBehavior: isMedia ? Clip.hardEdge : Clip.none,
       decoration: BoxDecoration(
         color: widget.isMe && theme.myBubbleGradient == null
             ? theme.myBubbleColor
@@ -961,9 +962,10 @@ class _ImprovedAnimatedMessageBubbleState
 
   Widget _buildContent(ChatTheme theme) {
     final canonicalType = _canonicalAttachmentType();
+    final mediaUrl = _resolvedMediaUrl();
+    final caption = _displayCaption();
     final isLocalPendingUpload = (widget.message?.isUploading ?? false) &&
-        (widget.message?.attachmentUrl == null ||
-            widget.message!.attachmentUrl!.isEmpty) &&
+        mediaUrl == null &&
         ((widget.message?.localFilePath?.isNotEmpty ?? false) ||
             (widget.message?.localImagePath?.isNotEmpty ?? false));
     if (isLocalPendingUpload) {
@@ -971,8 +973,7 @@ class _ImprovedAnimatedMessageBubbleState
     }
 
     final isLocalFailedUpload = (widget.message?.isFailed ?? false) &&
-        (widget.message?.attachmentUrl == null ||
-            widget.message!.attachmentUrl!.isEmpty) &&
+        mediaUrl == null &&
         ((widget.message?.localFilePath?.isNotEmpty ?? false) ||
             (widget.message?.localImagePath?.isNotEmpty ?? false));
     if (isLocalFailedUpload) {
@@ -981,8 +982,7 @@ class _ImprovedAnimatedMessageBubbleState
 
     if ((widget.attachmentType == 'gif' ||
             widget.message?.messageType == 'gif') &&
-        widget.attachmentUrl != null &&
-        widget.attachmentUrl!.isNotEmpty) {
+        mediaUrl != null) {
       if (widget.message != null) {
         return Padding(
           padding: const EdgeInsets.all(8),
@@ -993,15 +993,14 @@ class _ImprovedAnimatedMessageBubbleState
 
     // 2. Voice message
     if ((canonicalType == 'audio' || canonicalType == 'voice') &&
-        widget.attachmentUrl != null &&
-        widget.attachmentUrl!.isNotEmpty) {
+        mediaUrl != null) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
           VoiceMessageBubble(
             messageId: widget.messageId,
-            audioUrl: widget.attachmentUrl!,
+            audioUrl: mediaUrl,
             localFilePath: widget.message?.localFilePath,
             durationSeconds: widget.duration,
             isMe: widget.isMe,
@@ -1013,7 +1012,7 @@ class _ImprovedAnimatedMessageBubbleState
             audioTitle: widget.message?.audioTitle,
             audioArtist: widget.message?.audioArtist,
             audioAlbum: widget.message?.audioAlbum,
-            caption: _currentContent,
+            caption: caption,
           ),
           Padding(
             padding: const EdgeInsets.only(left: 12, right: 12, bottom: 6),
@@ -1025,18 +1024,17 @@ class _ImprovedAnimatedMessageBubbleState
 
     // 3. Image & Video message (Updated)
     if ((canonicalType == 'image' || canonicalType == 'video') &&
-        widget.attachmentUrl != null &&
-        widget.attachmentUrl!.isNotEmpty) {
+        mediaUrl != null) {
       final isVideo = canonicalType == 'video';
 
       return MediaMessageBubble(
         message: widget.message,
-        mediaUrl: widget.attachmentUrl!,
+        mediaUrl: mediaUrl,
         mediaType: isVideo ? MediaType.video : MediaType.image,
         isMe: widget.isMe,
         time: widget.time,
         isSecretMode: widget.isSecretMode,
-        caption: _currentContent.isNotEmpty ? _currentContent : null,
+        caption: caption.isNotEmpty ? caption : null,
         videoDuration: isVideo ? widget.duration : null,
         isUploading: widget.status == MessageStatus.pending ||
             (widget.message?.isUploading ?? false),
@@ -1048,8 +1046,7 @@ class _ImprovedAnimatedMessageBubbleState
     }
 
     // 4. File message (Fallback for other attachment types)
-    if (widget.attachmentUrl != null &&
-        widget.attachmentUrl!.isNotEmpty &&
+    if (mediaUrl != null &&
         (canonicalType == 'document' || canonicalType == 'unknown')) {
       final resolvedFileName = (widget.attachmentFileName?.trim().isNotEmpty ??
               false)
@@ -1059,18 +1056,22 @@ class _ImprovedAnimatedMessageBubbleState
               : 'File');
       return FileMessageBubble(
         messageId: widget.messageId,
-        fileUrl: widget.attachmentUrl!,
+        fileUrl: mediaUrl,
         fileName: resolvedFileName,
         fileSizeBytes: widget.message?.attachmentSizeBytes,
         localFilePath: widget.message?.localFilePath,
-        caption: _currentContent.isNotEmpty ? _currentContent : null,
+        caption: caption.isNotEmpty ? caption : null,
         isMe: widget.isMe,
         time: widget.time,
       );
     }
 
+    if (_isKnownMediaType(canonicalType) && mediaUrl == null) {
+      return _buildUnavailableMediaAttachment(theme, canonicalType);
+    }
+
     final contentDirection = resolveChatTextDirection(
-      _currentContent,
+      caption,
       fallback: Directionality.of(context),
     );
 
@@ -1111,9 +1112,9 @@ class _ImprovedAnimatedMessageBubbleState
                         ),
                       ],
                     )
-                  : _currentContent.isNotEmpty
+                  : caption.isNotEmpty
                       ? ModernEmojiRichText(
-                          text: _currentContent,
+                          text: caption,
                           useModernEmoji:
                               EmojiRenderPolicy.useModernEmojiRenderer(),
                           textDirection: contentDirection,
@@ -1154,8 +1155,75 @@ class _ImprovedAnimatedMessageBubbleState
     );
   }
 
+  String? _resolvedMediaUrl() {
+    final fromMessage = widget.message?.resolvedMediaUrl;
+    if (fromMessage != null && fromMessage.isNotEmpty) return fromMessage;
+    final prop = widget.attachmentUrl?.trim();
+    if (prop != null && prop.isNotEmpty) return prop;
+    return null;
+  }
+
+  String _displayCaption() {
+    if (widget.message?.hasMediaPlaceholderContent == true) return '';
+    return widget.message?.displayContent ?? _currentContent;
+  }
+
+  bool _isKnownMediaType(String canonicalType) {
+    return canonicalType == 'image' ||
+        canonicalType == 'video' ||
+        canonicalType == 'audio' ||
+        canonicalType == 'voice' ||
+        canonicalType == 'document';
+  }
+
+  Widget _buildUnavailableMediaAttachment(ChatTheme theme, String type) {
+    final label = switch (type) {
+      'image' => 'تصویر در دسترس نیست',
+      'video' => 'ویدیو در دسترس نیست',
+      'audio' || 'voice' => 'پیام صوتی در دسترس نیست',
+      'document' => 'فایل در دسترس نیست',
+      _ => 'پیوست در دسترس نیست',
+    };
+    final icon = switch (type) {
+      'image' => Icons.image_outlined,
+      'video' => Icons.videocam_outlined,
+      'audio' || 'voice' => Icons.mic_none_outlined,
+      'document' => Icons.insert_drive_file_outlined,
+      _ => Icons.attachment_outlined,
+    };
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            icon,
+            size: 18,
+            color: widget.isMe
+                ? theme.myBubbleTextColor.withValues(alpha: 0.7)
+                : theme.otherBubbleTextColor.withValues(alpha: 0.7),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: TextStyle(
+              color: widget.isMe
+                  ? theme.myBubbleTextColor.withValues(alpha: 0.85)
+                  : theme.otherBubbleTextColor.withValues(alpha: 0.85),
+              fontSize: 13,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   String _canonicalAttachmentType() {
-    final raw = (widget.message?.attachmentType ?? widget.attachmentType ?? '')
+    final raw = (widget.message?.attachmentType ??
+            widget.message?.messageType ??
+            widget.attachmentType ??
+            '')
         .trim()
         .toLowerCase();
     if (raw.isNotEmpty) {
@@ -1178,7 +1246,9 @@ class _ImprovedAnimatedMessageBubbleState
     if (mime.startsWith('video/')) return 'video';
 
     final fileName = widget.message?.attachmentFileName ?? '';
-    final url = widget.message?.attachmentUrl ?? widget.attachmentUrl ?? '';
+    final url = widget.message?.resolvedMediaUrl ??
+        widget.attachmentUrl ??
+        '';
     final ext = p
         .extension(fileName.isNotEmpty ? fileName : url)
         .replaceFirst('.', '')

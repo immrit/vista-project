@@ -41,7 +41,8 @@ class ChatMessageRow extends ConsumerWidget {
       rowMessages.add(message);
     }
 
-    final messagesById = ref.read(chatMessageStoreProvider(conversationId)).byId;
+    final messagesById =
+        ref.read(chatMessageStoreProvider(conversationId)).byId;
 
     final rowSelection = ref.watch(
       conversationChatSelectionProvider(conversationId).select(
@@ -188,7 +189,8 @@ class ChatMessageRow extends ConsumerWidget {
     );
 
     return ChatMessageListTile(
-      keepAlive: ChatMessageRenderWindow.shouldKeepAliveMessages(rowMessages),
+      keepAlive: !fastScroll &&
+          ChatMessageRenderWindow.shouldKeepAliveMessages(rowMessages),
       child: KeyedSubtree(
         key: ValueKey<String>(descriptor.key),
         child: MolecularDeleteAnimation(
@@ -226,9 +228,8 @@ class _SelectionCheckbox extends StatelessWidget {
             shape: BoxShape.circle,
             color: selected ? theme.sendButtonColor : Colors.transparent,
             border: Border.all(
-              color: selected
-                  ? theme.sendButtonColor
-                  : theme.secondaryTextColor,
+              color:
+                  selected ? theme.sendButtonColor : theme.secondaryTextColor,
               width: 2,
             ),
           ),
