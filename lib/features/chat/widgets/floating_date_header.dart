@@ -140,7 +140,7 @@ class _FloatingDateHeaderState extends State<FloatingDateHeader>
   @override
   Widget build(BuildContext context) {
     // محاسبه ارتفاع نوار وضعیت + اپ‌بار
-    final topPadding = MediaQuery.of(context).padding.top + kToolbarHeight;
+    final topPadding = MediaQuery.paddingOf(context).top + kToolbarHeight;
 
     return Stack(
       children: [

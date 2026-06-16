@@ -34,7 +34,26 @@ class _LiquidGlassInputShellState extends State<LiquidGlassInputShell>
     _driftController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 2800),
-    )..repeat(reverse: true);
+    );
+    _syncDriftAnimation();
+  }
+
+  @override
+  void didUpdateWidget(LiquidGlassInputShell oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.reduceEffects != widget.reduceEffects) {
+      _syncDriftAnimation();
+    }
+  }
+
+  void _syncDriftAnimation() {
+    if (widget.reduceEffects) {
+      if (_driftController.isAnimating) {
+        _driftController.stop();
+      }
+    } else if (!_driftController.isAnimating) {
+      _driftController.repeat(reverse: true);
+    }
   }
 
   @override
@@ -45,8 +64,23 @@ class _LiquidGlassInputShellState extends State<LiquidGlassInputShell>
 
   @override
   Widget build(BuildContext context) {
-    final effectiveBlur =
-        widget.reduceEffects ? 0.0 : widget.blurSigma.clamp(0.0, 14.0);
+    if (widget.reduceEffects) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: Container(
+          decoration: BoxDecoration(
+            color: widget.background.withValues(alpha: 0.95),
+            border: Border.all(
+              color: widget.borderColor.withValues(alpha: 0.2),
+              width: 0.5,
+            ),
+          ),
+          child: widget.child,
+        ),
+      );
+    }
+
+    final effectiveBlur = widget.blurSigma.clamp(0.0, 14.0);
 
     return AnimatedBuilder(
       animation: _driftController,
@@ -69,42 +103,34 @@ class _LiquidGlassInputShellState extends State<LiquidGlassInputShell>
               Positioned.fill(
                 child: Container(
                   decoration: BoxDecoration(
-                    color: widget.reduceEffects
-                        ? widget.background.withValues(alpha: 0.95)
-                        : widget
-                            .background, // ChatTheme already provides glassBackground colors now
+                    color: widget.background,
                     border: Border.all(
-                      color: widget.reduceEffects
-                          ? widget.borderColor.withValues(alpha: 0.2)
-                          : widget.borderColor,
-                      width: 0.5, // Thinner border for premium look
+                      color: widget.borderColor,
+                      width: 0.5,
                     ),
                   ),
                 ),
               ),
-              if (!widget.reduceEffects)
-                Positioned.fill(
-                  child: IgnorePointer(
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment(-1 + (drift * 1.5), -1),
-                          end: Alignment(1 + (drift * 1.2), 1),
-                          colors: [
-                            Colors.white.withValues(alpha: 0.0),
-                            Colors.white.withValues(
-                              alpha: widget.isDark
-                                  ? 0.02
-                                  : 0.05, // More subtle shine
-                            ),
-                            Colors.white.withValues(alpha: 0.0),
-                          ],
-                          stops: const [0.2, 0.5, 0.8],
-                        ),
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment(-1 + (drift * 1.5), -1),
+                        end: Alignment(1 + (drift * 1.2), 1),
+                        colors: [
+                          Colors.white.withValues(alpha: 0.0),
+                          Colors.white.withValues(
+                            alpha: widget.isDark ? 0.02 : 0.05,
+                          ),
+                          Colors.white.withValues(alpha: 0.0),
+                        ],
+                        stops: const [0.2, 0.5, 0.8],
                       ),
                     ),
                   ),
                 ),
+              ),
               widget.child,
             ],
           ),

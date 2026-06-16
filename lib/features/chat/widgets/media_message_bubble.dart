@@ -14,6 +14,8 @@ import 'package:path/path.dart' as p;
 
 import 'full_screen_image_viewer.dart';
 import '../theme/chat_theme.dart';
+import '../utils/chat_image_dimensions.dart';
+import '../utils/chat_media_bubble_layout.dart';
 import '../../../model/message_model.dart';
 import '../../../services/network_status_service.dart';
 import '../../../provider/settings_providers.dart';
@@ -78,6 +80,7 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
   ChatTransferTask? _transferTask;
   final ChatTransferManager _transferManager = ChatTransferManager();
   StreamSubscription<ChatTransferTask?>? _transferSub;
+  SizeInt? _resolvedDimensions;
 
   // ✅ تابع دقیق برای تشخیص لینک اینترنتی (جلوگیری از خطای PathNotFound)
   bool get _isNetworkUrl {
@@ -98,7 +101,38 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
     super.initState();
     _checkCacheStatus();
     _bindTransferTask();
+    _resolveImageDimensions();
   }
+
+  @override
+  void didUpdateWidget(covariant MediaMessageBubble oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.mediaUrl != widget.mediaUrl ||
+        oldWidget.width != widget.width ||
+        oldWidget.height != widget.height ||
+        oldWidget.message?.localFilePath != widget.message?.localFilePath ||
+        oldWidget.message?.localImagePath != widget.message?.localImagePath) {
+      _resolveImageDimensions();
+    }
+  }
+
+  Future<void> _resolveImageDimensions() async {
+    final dimensions = await ChatImageDimensions.resolve(
+      cacheKey: _dimensionCacheKey,
+      knownWidth: widget.width,
+      knownHeight: widget.height,
+      localPath: _preferredLocalPath ??
+          (_cachedFile?.path ?? _offlineFile?.path) ??
+          (!_isNetworkUrl ? widget.mediaUrl : null),
+      networkUrl: _isNetworkUrl ? widget.mediaUrl : null,
+    );
+    if (!mounted) return;
+    if (_resolvedDimensions == dimensions) return;
+    setState(() => _resolvedDimensions = dimensions);
+  }
+
+  String get _dimensionCacheKey =>
+      widget.message?.id ?? widget.mediaUrl.hashCode.toString();
 
   String get _transferMessageId =>
       widget.message?.id ?? widget.mediaUrl.hashCode.toString();
@@ -144,6 +178,7 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
           if (_offlineFile != null) {
             _cachedFile = _offlineFile;
             _isFileCached = true;
+            unawaited(_resolveImageDimensions());
           }
         } else if ((_offlineFile?.existsSync() ?? false) == false) {
           _offlineFile = null;
@@ -159,6 +194,7 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
       _cachedFile = existing;
       _isFileCached = true;
     });
+    unawaited(_resolveImageDimensions());
   }
 
   Future<void> _checkCacheStatus() async {
@@ -172,6 +208,7 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
             _cachedFile = localFile;
             _offlineFile = localFile;
           });
+          unawaited(_resolveImageDimensions());
         }
         return;
       }
@@ -186,6 +223,7 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
             _isFileCached = true;
             _cachedFile = file;
           });
+          unawaited(_resolveImageDimensions());
         }
       }
       return;
@@ -200,6 +238,7 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
           _isFileCached = true;
           _cachedFile = fileInfo.file;
         });
+        unawaited(_resolveImageDimensions());
       }
     } catch (e) {
       // خطا در خواندن کش را نادیده بگیر
@@ -349,15 +388,16 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
     final shouldDownload =
         _shouldAutoDownload(networkService.connectionType, settings);
 
-    final maxWidth = MediaQuery.of(context).size.width * 0.75;
-    final double aspectRatio = (widget.width != null && widget.height != null)
-        ? widget.width! / widget.height!
-        : 1.0;
-    final decodeSize = _computeDecodeSize(
-      context: context,
-      maxWidth: maxWidth,
-      aspectRatio: aspectRatio,
+    final screenSize = MediaQuery.sizeOf(context);
+    final displaySize = ChatMediaBubbleLayout.computeBubblePhotoSize(
+      screenWidth: screenSize.width,
+      screenHeight: screenSize.height,
+      imageWidth: _resolvedDimensions?.width ?? widget.width,
+      imageHeight: _resolvedDimensions?.height ?? widget.height,
+      bubbleMaxWidth: screenSize.width * 0.75,
+      useFullWidth: true,
     );
+    final decodeWidth = _computeDecodeWidth(displaySize.width);
 
     // ✅ ساخت تگ یکتا برای جلوگیری از خطای Multiple Heroes
     final String uniqueHeroTag = widget.message != null
@@ -376,31 +416,28 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
           _openFullScreenViewer(uniqueHeroTag);
         }
       },
-      child: Container(
-        constraints:
-            BoxConstraints(maxWidth: maxWidth, minWidth: 100, maxHeight: 450),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          mainAxisSize: MainAxisSize.min, // مهم برای جلوگیری از کش آمدن
-          children: [
-            Stack(
-              alignment: Alignment.center,
-              children: [
-                Hero(
-                  tag: uniqueHeroTag,
-                  child: AspectRatio(
-                    aspectRatio: aspectRatio,
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: _buildContent(
-                        theme,
-                        shouldDownload,
-                        decodeWidth: decodeSize.width,
-                        decodeHeight: decodeSize.height,
-                      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Stack(
+            alignment: Alignment.center,
+            children: [
+              Hero(
+                tag: uniqueHeroTag,
+                child: SizedBox(
+                  width: displaySize.width,
+                  height: displaySize.height,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: _buildContent(
+                      theme,
+                      shouldDownload,
+                      decodeWidth: decodeWidth,
                     ),
                   ),
                 ),
+              ),
 
                 if (!_isFileCached &&
                     !shouldDownload &&
@@ -419,7 +456,6 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
                     bottom: 8,
                     child: _buildTransferControls(),
                   ),
-                // اگر کپشن نداریم، ساعت را روی عکس نشان بده
                 if (!hasCaption)
                   Positioned(
                     right: 6,
@@ -428,38 +464,40 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
                   ),
               ],
             ),
-            // فقط اگر کپشن واقعی داشتیم نمایش بده
-            if (hasCaption) _buildCaption(theme),
-          ],
-        ),
+          if (hasCaption) _buildCaption(theme),
+        ],
       ),
     );
   }
 
-  Size _computeDecodeSize({
-    required BuildContext context,
-    required double maxWidth,
-    required double aspectRatio,
-  }) {
+  int _computeDecodeWidth(double displayWidth) {
     final dpr = MediaQuery.of(context).devicePixelRatio.clamp(1.0, 2.5);
-    final targetWidth = (maxWidth * dpr).round().clamp(120, 1600);
-    final targetHeight =
-        ((maxWidth / aspectRatio) * dpr).round().clamp(120, 1600);
-    return Size(targetWidth.toDouble(), targetHeight.toDouble());
+    return (displayWidth * dpr).round().clamp(120, 1600);
+  }
+
+  Future<void> _captureProviderDimensions(ImageProvider provider) async {
+    final dimensions = await ChatImageDimensions.fromImageProvider(provider);
+    if (!mounted || dimensions == null) return;
+    if (_resolvedDimensions?.width == dimensions.width &&
+        _resolvedDimensions?.height == dimensions.height) {
+      return;
+    }
+    ChatImageDimensions.remember(_dimensionCacheKey, dimensions);
+    setState(() => _resolvedDimensions = dimensions);
   }
 
   Widget _buildContent(
     ChatTheme theme,
     bool shouldDownload, {
-    required double decodeWidth,
-    required double decodeHeight,
+    required int decodeWidth,
   }) {
     if (_offlineFile != null && _offlineFile!.existsSync()) {
       return Image.file(
         _offlineFile!,
         fit: BoxFit.cover,
-        cacheWidth: decodeWidth.toInt(),
-        cacheHeight: decodeHeight.toInt(),
+        width: double.infinity,
+        height: double.infinity,
+        cacheWidth: decodeWidth,
         errorBuilder: (_, __, ___) => _buildPlaceholder(theme),
       );
     }
@@ -468,10 +506,11 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
       return Image.file(
         _cachedFile!,
         fit: BoxFit.cover,
-        cacheWidth: decodeWidth.toInt(),
-        cacheHeight: decodeHeight.toInt(),
+        width: double.infinity,
+        height: double.infinity,
+        cacheWidth: decodeWidth,
         errorBuilder: (ctx, err, stack) =>
-            _buildNetworkImage(theme), // Fallback
+            _buildNetworkImage(theme, memCacheWidth: decodeWidth),
       );
     }
 
@@ -479,8 +518,9 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
       return Image.file(
         File(widget.mediaUrl),
         fit: BoxFit.cover,
-        cacheWidth: decodeWidth.toInt(),
-        cacheHeight: decodeHeight.toInt(),
+        width: double.infinity,
+        height: double.infinity,
+        cacheWidth: decodeWidth,
         errorBuilder: (_, __, ___) => _buildPlaceholder(theme),
       );
     }
@@ -491,8 +531,7 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
     if (shouldDownload || _isManuallyDownloading || transferDownloading) {
       return _buildNetworkImage(
         theme,
-        memCacheWidth: decodeWidth.toInt(),
-        memCacheHeight: decodeHeight.toInt(),
+        memCacheWidth: decodeWidth,
       );
     }
 
@@ -502,17 +541,24 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
   Widget _buildNetworkImage(
     ChatTheme theme, {
     int? memCacheWidth,
-    int? memCacheHeight,
   }) {
     return CachedNetworkImage(
       imageUrl: widget.mediaUrl,
       fit: BoxFit.cover,
+      width: double.infinity,
+      height: double.infinity,
       memCacheWidth: memCacheWidth,
-      memCacheHeight: memCacheHeight,
       placeholder: (context, url) => _buildBlurPreview(theme),
       errorWidget: (context, url, error) => const Icon(Icons.broken_image),
-      imageBuilder: (context, imageProvider) =>
-          Image(image: imageProvider, fit: BoxFit.cover),
+      imageBuilder: (context, imageProvider) {
+        unawaited(_captureProviderDimensions(imageProvider));
+        return Image(
+          image: imageProvider,
+          fit: BoxFit.cover,
+          width: double.infinity,
+          height: double.infinity,
+        );
+      },
     );
   }
 

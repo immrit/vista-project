@@ -17,6 +17,8 @@ import 'full_screen_image_viewer.dart';
 import '../../../services/modern_read_receipt_service.dart';
 import '../../../model/message_model.dart';
 import '../utils/story_reply_media_utils.dart';
+import '../utils/chat_image_dimensions.dart';
+import '../utils/chat_media_bubble_layout.dart';
 import '../utils/chat_text_direction.dart';
 import 'story_reply_thumbnail.dart';
 import '../../../utils/navigation_helper.dart';
@@ -391,7 +393,7 @@ class _ImprovedAnimatedMessageBubbleState
               Flexible(
                 child: ConstrainedBox(
                   constraints: BoxConstraints(
-                    maxWidth: MediaQuery.of(context).size.width * 0.82,
+                    maxWidth: MediaQuery.sizeOf(context).width * 0.82,
                   ),
                   child: _buildMessageBubble(theme),
                 ),
@@ -787,8 +789,10 @@ class _ImprovedAnimatedMessageBubbleState
             imageUrl,
             width: 48,
             height: 48,
-            cacheWidth: (48 * MediaQuery.of(context).devicePixelRatio).round(),
-            cacheHeight: (48 * MediaQuery.of(context).devicePixelRatio).round(),
+            cacheWidth:
+                (48 * MediaQuery.devicePixelRatioOf(context)).round(),
+            cacheHeight:
+                (48 * MediaQuery.devicePixelRatioOf(context)).round(),
             fit: BoxFit.cover,
             errorBuilder: (_, __, ___) => placeholder,
             loadingBuilder: (context, child, progress) {
@@ -1304,60 +1308,85 @@ class _ImprovedAnimatedMessageBubbleState
         (localPath != null && localPath.isNotEmpty) ? File(localPath) : null;
     final hasLocalImage = localFile != null && localFile.existsSync();
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        AspectRatio(
-          aspectRatio: 1,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                if (hasLocalImage)
-                  Image.file(
-                    localFile,
-                    fit: BoxFit.cover,
-                    cacheWidth: (300 * MediaQuery.of(context).devicePixelRatio).round(),
-                  )
-                else
-                  Container(
-                      color: theme.otherBubbleColor.withValues(alpha: 0.3)),
-                Container(color: Colors.black.withValues(alpha: 0.22)),
-                Center(
-                  child: _buildUploadProgressCircle(
-                    theme: theme,
-                    progress: progress,
-                    size: 54,
-                    strokeWidth: 3,
-                    centerLabel: '$pct%',
-                  ),
+    return FutureBuilder<SizeInt?>(
+      future: ChatImageDimensions.resolve(
+        cacheKey: 'upload_${widget.messageId}',
+        localPath: localPath,
+      ),
+      builder: (context, snapshot) {
+        final screenSize = MediaQuery.sizeOf(context);
+        final displaySize = ChatMediaBubbleLayout.computeBubblePhotoSize(
+          screenWidth: screenSize.width,
+          screenHeight: screenSize.height,
+          imageWidth: snapshot.data?.width,
+          imageHeight: snapshot.data?.height,
+          bubbleMaxWidth: screenSize.width * 0.75,
+          useFullWidth: true,
+        );
+        final decodeWidth =
+            (displaySize.width * MediaQuery.devicePixelRatioOf(context))
+                .round()
+                .clamp(120, 1600);
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: displaySize.width,
+              height: displaySize.height,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    if (hasLocalImage)
+                      Image.file(
+                        localFile,
+                        fit: BoxFit.cover,
+                        width: double.infinity,
+                        height: double.infinity,
+                        cacheWidth: decodeWidth,
+                      )
+                    else
+                      Container(
+                          color: theme.otherBubbleColor.withValues(alpha: 0.3)),
+                    Container(color: Colors.black.withValues(alpha: 0.22)),
+                    Center(
+                      child: _buildUploadProgressCircle(
+                        theme: theme,
+                        progress: progress,
+                        size: 54,
+                        strokeWidth: 3,
+                        centerLabel: '$pct%',
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-          ),
-        ),
-        if (_currentContent.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(10, 8, 10, 2),
-            child: Text(
-              _currentContent,
-              maxLines: 3,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: widget.isMe
-                    ? theme.myBubbleTextColor
-                    : theme.otherBubbleTextColor,
-                fontSize: 13,
               ),
             ),
-          ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(10, 4, 10, 6),
-          child: _buildTimeAndStatus(theme),
-        ),
-      ],
+            if (_currentContent.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(10, 8, 10, 2),
+                child: Text(
+                  _currentContent,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: widget.isMe
+                        ? theme.myBubbleTextColor
+                        : theme.otherBubbleTextColor,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10, 4, 10, 6),
+              child: _buildTimeAndStatus(theme),
+            ),
+          ],
+        );
+      },
     );
   }
 

@@ -118,6 +118,7 @@ import '../performance/chat_message_render_window.dart';
 import '../performance/chat_performance_profile.dart';
 import '../widgets/chat_adaptive_blur_scope.dart';
 import '../widgets/chat_input_dock.dart';
+import '../widgets/keyboard_stable_media_query.dart';
 import '../widgets/chat_group_presence_summary.dart';
 import '../widgets/chat_message_bindings.dart';
 import '../widgets/chat_message_list_scope.dart';
@@ -304,9 +305,16 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
   // ─── keyboard / emoji panel (Modern-style) ────────────────────────────
   double _cachedKeyboardHeight = 300.0; // last observed keyboard height
+  double _cachedSafeBottom = 34.0;
+  double _lastViewInsetBottom = 0.0;
   bool _showEmojiPanel = false;
   bool _isKeyboardRequested = false; // spacer while keyboard is opening
+  bool _reduceEffectsFromKeyboard = false;
   Timer? _keyboardRequestTimeoutTimer;
+  final _listBottomGapNotifier = ValueNotifier<double>(34.0);
+  final _inputDockLayoutNotifier =
+      ValueNotifier<ChatInputDockLayout>(ChatInputDockLayout.initial);
+  final _keyboardEffectsNotifier = ValueNotifier<bool>(false);
   // Lock A – emoji→keyboard dismiss animation (keyboard going away).
   // Prevents didChangeMetrics from closing the panel while h>80 temporarily.
   bool _lockEmojiPanel = false;
@@ -316,6 +324,14 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   // doesn't jump while kbViewInset is still small mid-animation.
   bool _isKeyboardOpening = false;
   Timer? _keyboardOpeningTimer;
+  static const double _keyboardVisibleThreshold = 80.0;
+
+  double _keyboardInsetFromPlatform() {
+    final views = WidgetsBinding.instance.platformDispatcher.views;
+    if (views.isEmpty) return 0;
+    final view = views.first;
+    return view.viewInsets.bottom / view.devicePixelRatio;
+  }
 
   // ═══════════════════════════════════════════════════════════════════════════
   // 🎬 LIFECYCLE
@@ -373,6 +389,9 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     // First frame: show list immediately after route settles.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+      _cachedSafeBottom = MediaQuery.paddingOf(context).bottom;
+      _listBottomGapNotifier.value = _cachedSafeBottom;
+      _publishKeyboardLayout(force: true);
       setState(() => _isTransitioning = false);
     });
 
@@ -1485,6 +1504,9 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     _showScrollToBottomNotifier.dispose();
     _otherUserTypingNotifier.dispose();
     _inputHeightNotifier.dispose();
+    _listBottomGapNotifier.dispose();
+    _inputDockLayoutNotifier.dispose();
+    _keyboardEffectsNotifier.dispose();
     _messageRenderCapNotifier.dispose();
     _listOverlayRevision.dispose();
 
@@ -1500,49 +1522,125 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   @override
   void didChangeMetrics() {
     super.didChangeMetrics();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    if (!mounted) return;
+    _handleKeyboardMetrics(_keyboardInsetFromPlatform());
+  }
+
+  ChatInputDockLayout _inputDockLayoutSnapshot() {
+    return ChatInputDockLayout(
+      showEmojiPanel: _showEmojiPanel,
+      lockEmojiPanel: _lockEmojiPanel,
+      isKeyboardOpening: _isKeyboardOpening,
+      isKeyboardRequested: _isKeyboardRequested,
+      cachedKeyboardHeight: _cachedKeyboardHeight,
+      safeBottom: _cachedSafeBottom,
+    );
+  }
+
+  /// همان منطق reservedHeight نسخه قبل (01cfb92):
+  /// - emoji/transition lock → cache
+  /// - کیبورد باز → viewInset زنده (هماهنگ با IME)
+  /// - idle → safeBottom
+  double _reservedHeightForInset(double liveInset) {
+    final keyboardVisible = liveInset > _keyboardVisibleThreshold;
+    if (_showEmojiPanel || _lockEmojiPanel || _isKeyboardOpening) {
+      return _cachedKeyboardHeight;
+    }
+    if (keyboardVisible) {
+      return liveInset;
+    }
+    if (_isKeyboardRequested) {
+      return _cachedKeyboardHeight;
+    }
+    return _cachedSafeBottom;
+  }
+
+  void _beginKeyboardOpening() {
+    _keyboardOpeningTimer?.cancel();
+    _isKeyboardOpening = true;
+    _keyboardOpeningTimer = Timer(const Duration(milliseconds: 800), () {
       if (!mounted) return;
-      final h = MediaQuery.of(context).viewInsets.bottom;
+      _isKeyboardOpening = false;
+      _publishKeyboardLayout(force: true);
+    });
+    _publishKeyboardLayout(force: true);
+  }
 
-      if (h > 80) {
-        // ── keyboard is visible (fully or mid-animation) ──────────────────
-        _keyboardRequestTimeoutTimer?.cancel();
-        setState(() {
-          _isKeyboardRequested = false;
+  void _publishKeyboardLayout({bool force = false}) {
+    final bottomGap = _reservedHeightForInset(_lastViewInsetBottom);
+    final reduceEffectsFromKeyboard = _reduceEffectsFromKeyboard ||
+        ref.read(adaptiveEffectsProvider).effectsLevel == ChatEffectsLevel.low;
+    final dockLayout = _inputDockLayoutSnapshot();
 
-          if (!_lockEmojiPanel) {
-            // ─── Core fix for real-device behaviour ─────────────────────────
-            // On physical Android devices, didChangeMetrics fires on EVERY
-            // animation frame during both keyboard APPEAR and DISMISS.
-            //
-            //   Appear:  h goes  0 → 150 → 400 → 650  (increasing)
-            //   Dismiss: h goes 650 → 400 → 150 →  90 (decreasing)
-            //
-            // Only update the cache when h is GROWING (keyboard appearing).
-            // During dismiss h is always ≤ the cached peak, so the cache
-            // is preserved at the true keyboard height.
-            if (h > _cachedKeyboardHeight) {
-              _cachedKeyboardHeight = h;
-            }
-            _showEmojiPanel = false;
-          }
+    if (force || bottomGap != _listBottomGapNotifier.value) {
+      _listBottomGapNotifier.value = bottomGap;
+    }
+    if (force || dockLayout != _inputDockLayoutNotifier.value) {
+      _inputDockLayoutNotifier.value = dockLayout;
+    }
+    if (force ||
+        reduceEffectsFromKeyboard != _keyboardEffectsNotifier.value) {
+      _keyboardEffectsNotifier.value = reduceEffectsFromKeyboard;
+    }
+  }
 
-          // ── Lock B: release "keyboard opening" guard ──────────────────
-          // Keep the input pinned until the keyboard reaches ≥95 % of its
-          // full height (within one or two frames of the stable position).
-          // After that, kbViewInset ≈ _cachedKeyboardHeight so no jump.
-          if (_isKeyboardOpening && h >= _cachedKeyboardHeight * 0.95) {
-            _keyboardOpeningTimer?.cancel();
-            _isKeyboardOpening = false;
-          }
-        });
-      } else if (_lockEmojiPanel) {
-        // ── keyboard is gone (h ≤ 80) while lock A is still held ─────────
-        // The keyboard dismiss animation has completed – safe to release.
+  void _handleKeyboardMetrics(double h) {
+    _lastViewInsetBottom = h;
+    var layoutChanged = false;
+    final nextGap = _reservedHeightForInset(h);
+    if (nextGap != _listBottomGapNotifier.value) {
+      layoutChanged = true;
+    }
+    final nextLayout = _inputDockLayoutSnapshot();
+    if (nextLayout != _inputDockLayoutNotifier.value) {
+      layoutChanged = true;
+    }
+
+    if (h > _keyboardVisibleThreshold) {
+      _keyboardRequestTimeoutTimer?.cancel();
+
+      if (_isKeyboardRequested) {
+        _isKeyboardRequested = false;
+        layoutChanged = true;
+      }
+
+      if (!_lockEmojiPanel) {
+        if (h > _cachedKeyboardHeight) {
+          _cachedKeyboardHeight = h;
+        }
+        if (_showEmojiPanel) {
+          _showEmojiPanel = false;
+          layoutChanged = true;
+        }
+      }
+
+      if (_isKeyboardOpening &&
+          h >= _cachedKeyboardHeight * 0.95) {
+        _keyboardOpeningTimer?.cancel();
+        _isKeyboardOpening = false;
+        layoutChanged = true;
+      }
+
+      if (!_reduceEffectsFromKeyboard) {
+        _reduceEffectsFromKeyboard = true;
+        layoutChanged = true;
+      }
+    } else {
+      if (_lockEmojiPanel) {
         _lockEmojiPanelTimer?.cancel();
         _lockEmojiPanel = false;
       }
-    });
+      if (_isKeyboardRequested) {
+        _isKeyboardRequested = false;
+        layoutChanged = true;
+      }
+      if (_reduceEffectsFromKeyboard) {
+        _reduceEffectsFromKeyboard = false;
+        layoutChanged = true;
+      }
+    }
+
+    _publishKeyboardLayout(force: layoutChanged);
   }
 
   @override
@@ -2034,252 +2132,234 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   @override
   Widget build(BuildContext context) {
     final theme = context.chatTheme;
-    final kbViewInset = MediaQuery.of(context).viewInsets.bottom;
-    final keyboardVisible = kbViewInset > 80;
-    final safeBottom = MediaQuery.paddingOf(context).bottom;
-
-    // ── Modern-style reserved-space logic ────────────────────────────────
-    //
-    //  The space BELOW the input bar is always exactly one of these values:
-    //
-    //  ① emoji panel or transition lock active
-    //       → _cachedKeyboardHeight  (fixed, never follows kbViewInset)
-    //       WHY: during the keyboard-dismiss animation kbViewInset decreases
-    //       (650 → 0 over ~300 ms). If we tracked it the input bar would
-    //       visually "fall" with the keyboard – exactly the jump the user
-    //       sees. By pinning to the cached peak height the input stays still.
-    //
-    //  ② keyboard fully visible, no emoji transition
-    //       → kbViewInset  (follows keyboard height in real time)
-    //
-    //  ③ keyboard requested (spacer while keyboard opens)
-    //       → _cachedKeyboardHeight
-    //
-    //  ④ idle (no keyboard, no emoji)
-    //       → safeBottom
-    //
-    final double reservedHeight;
-    if (_showEmojiPanel || _lockEmojiPanel || _isKeyboardOpening) {
-      // ① emoji panel active  → fixed cached height (no jump during dismiss)
-      // ② lock A active       → keyboard still animating out, hold height
-      // ③ lock B active       → keyboard animating in, hold height until ≥95%
-      reservedHeight = _cachedKeyboardHeight;
-    } else if (keyboardVisible) {
-      // ④ keyboard fully visible, no transition → track actual inset
-      reservedHeight = kbViewInset;
-    } else if (_isKeyboardRequested) {
-      // ⑤ keyboard requested but not yet visible → hold cached height
-      reservedHeight = _cachedKeyboardHeight;
-    } else {
-      // ⑥ idle
-      reservedHeight = safeBottom;
-    }
-    // ─────────────────────────────────────────────────────────────────────────
-
-    final reduceEffectsFromKeyboard = keyboardVisible ||
-        ref.read(adaptiveEffectsProvider).effectsLevel == ChatEffectsLevel.low;
+    final blurConfig = ref.read(adaptiveEffectsProvider);
     final isConnected = _latestConnectionStatus == ConnectionStatus.connected;
     final showConnectionBanner =
         !isConnected && _showConnectionBannerAfterDelay;
 
-    return ValueListenableBuilder<double>(
-      valueListenable: _inputHeightNotifier,
-      builder: (context, inputHeight, _) {
-        final dockBottomSpace = inputHeight + reservedHeight;
-        return Stack(
-          children: [
-            // 1. والپیپر (زیر همه چیز)
-            Positioned.fill(
-              child: ChatAdaptiveBlurScope(
-                builder: (context, blurSigma, allowHeavyBlur, effectsLevel) {
-                  return ValueListenableBuilder<bool>(
-                    valueListenable: _isScrollingNotifier,
-                    builder: (context, isScrolling, _) {
-                      final reduceEffects =
-                          reduceEffectsFromKeyboard || isScrolling;
-                      return RepaintBoundary(
-                        child: EnhancedChatBackground(
-                          enablePattern: true,
-                          blurIntensity: blurSigma,
-                          allowHeavyEffects: !reduceEffects && allowHeavyBlur,
-                          child: Container(color: Colors.transparent),
-                        ),
-                      );
-                    },
-                  );
-                },
-              ),
-            ),
-
-            // 2. اسکفولد اصلی
-            Scaffold(
-              backgroundColor: Colors.transparent,
-              extendBody: true,
-              extendBodyBehindAppBar: true,
-              resizeToAvoidBottomInset: false,
-              appBar: _isSearchMode
-                  ? null
-                  : PreferredSize(
-                      preferredSize: const Size.fromHeight(kToolbarHeight),
-                      child: Consumer(
-                        builder: (context, ref, _) {
-                          final selection = ref.watch(
-                            conversationChatSelectionProvider(_conversationId),
-                          );
-                          return ModernChatAppBar(
-                            theme: theme,
-                            isSelectionMode: selection.isSelectionMode,
-                            selectedMessagesCount:
-                                selection.selectedMessageIds.length,
-                            args: widget.args,
-                            isOtherUserTyping: _otherUserTypingNotifier,
-                            appBarAnimation: _appBarAnimation,
-                            secretAutoDeleteSeconds: _secretAutoDeleteSeconds,
-                            secretAutoDeleteLabel: _secretAutoDeleteLabel(
-                                _secretAutoDeleteSeconds),
-                            secretAutoDeleteStatusText:
-                                _secretAutoDeleteStatusText(),
-                            onExitSelectionMode: _exitSelectionMode,
-                            onForwardSelected:
-                                selection.selectedMessageIds.isEmpty
-                                    ? null
-                                    : _forwardSelectedMessages,
-                            onCopySelected: selection.selectedMessageIds.isEmpty
-                                ? null
-                                : _copySelectedMessages,
-                            onDeleteSelected:
-                                selection.selectedMessageIds.isEmpty
-                                    ? null
-                                    : _deleteSelectedMessages,
-                            onMenuAction: _handleMenuAction,
-                            onBack: () => Navigator.of(context).pop(),
-                            otherUserProfile: _otherUserProfile,
-                            isOtherUserBlocked: _isOtherUserBlocked,
-                            isCurrentUserBlocked: _isCurrentUserBlocked,
-                            isLoadingGroupMembers: _isLoadingGroupMembers,
-                            groupMembers: _groupMembers,
-                            onTitleTap: _navigateToChatDetails,
-                          );
-                        },
-                      ),
-                    ),
-              body: Stack(
-                children: [
-                  Positioned.fill(
-                    child: ValueListenableBuilder<DateTime?>(
-                      valueListenable: _visibleDateNotifier,
-                      builder: (context, currentDate, _) {
+    return Stack(
+      children: [
+        // والپیپر + لیست — ایزوله از viewInsets کیبورد (Flutter #170592)
+        KeyboardStableMediaQuery(
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: ChatAdaptiveBlurScope(
+                  builder: (context, blurSigma, allowHeavyBlur, effectsLevel) {
+                    return ValueListenableBuilder<bool>(
+                      valueListenable: _keyboardEffectsNotifier,
+                      builder: (context, reduceEffectsFromKeyboard, _) {
                         return ValueListenableBuilder<bool>(
                           valueListenable: _isScrollingNotifier,
                           builder: (context, isScrolling, _) {
-                            return FloatingDateHeader(
-                              currentDate: currentDate,
-                              isScrolling: isScrolling,
-                              child: _isTransitioning
-                                  ? const SizedBox.shrink()
-                                  : ChatMessageListScope(
-                                      conversationId: _conversationId,
-                                      buildList: (context, paginationState) =>
-                                          _buildMessageList(
-                                        paginationState,
-                                        theme,
-                                        bottomPadding: dockBottomSpace + 8,
-                                      ),
-                                    ),
+                            final reduceEffects =
+                                reduceEffectsFromKeyboard || isScrolling;
+                            return RepaintBoundary(
+                              child: EnhancedChatBackground(
+                                enablePattern: true,
+                                blurIntensity: blurSigma,
+                                allowHeavyEffects:
+                                    !reduceEffects && allowHeavyBlur,
+                                child: const SizedBox.expand(),
+                              ),
                             );
                           },
                         );
                       },
+                    );
+                  },
+                ),
+              ),
+              Scaffold(
+                backgroundColor: Colors.transparent,
+                extendBody: true,
+                extendBodyBehindAppBar: true,
+                resizeToAvoidBottomInset: false,
+                appBar: _isSearchMode
+                    ? null
+                    : PreferredSize(
+                        preferredSize: const Size.fromHeight(kToolbarHeight),
+                        child: Consumer(
+                          builder: (context, ref, _) {
+                            final selection = ref.watch(
+                              conversationChatSelectionProvider(
+                                  _conversationId),
+                            );
+                            return ModernChatAppBar(
+                              theme: theme,
+                              isSelectionMode: selection.isSelectionMode,
+                              selectedMessagesCount:
+                                  selection.selectedMessageIds.length,
+                              args: widget.args,
+                              isOtherUserTyping: _otherUserTypingNotifier,
+                              appBarAnimation: _appBarAnimation,
+                              secretAutoDeleteSeconds:
+                                  _secretAutoDeleteSeconds,
+                              secretAutoDeleteLabel: _secretAutoDeleteLabel(
+                                  _secretAutoDeleteSeconds),
+                              secretAutoDeleteStatusText:
+                                  _secretAutoDeleteStatusText(),
+                              onExitSelectionMode: _exitSelectionMode,
+                              onForwardSelected:
+                                  selection.selectedMessageIds.isEmpty
+                                      ? null
+                                      : _forwardSelectedMessages,
+                              onCopySelected:
+                                  selection.selectedMessageIds.isEmpty
+                                      ? null
+                                      : _copySelectedMessages,
+                              onDeleteSelected:
+                                  selection.selectedMessageIds.isEmpty
+                                      ? null
+                                      : _deleteSelectedMessages,
+                              onMenuAction: _handleMenuAction,
+                              onBack: () => Navigator.of(context).pop(),
+                              otherUserProfile: _otherUserProfile,
+                              isOtherUserBlocked: _isOtherUserBlocked,
+                              isCurrentUserBlocked: _isCurrentUserBlocked,
+                              isLoadingGroupMembers: _isLoadingGroupMembers,
+                              groupMembers: _groupMembers,
+                              onTitleTap: _navigateToChatDetails,
+                            );
+                          },
+                        ),
+                      ),
+                body: Stack(
+                  children: [
+                    Positioned.fill(
+                      child: ValueListenableBuilder<double>(
+                        valueListenable: _inputHeightNotifier,
+                        builder: (context, inputHeight, _) {
+                          return ValueListenableBuilder<double>(
+                            valueListenable: _listBottomGapNotifier,
+                            builder: (context, listBottomGap, _) {
+                              return ValueListenableBuilder<DateTime?>(
+                                valueListenable: _visibleDateNotifier,
+                                builder: (context, currentDate, _) {
+                                  return ValueListenableBuilder<bool>(
+                                    valueListenable: _isScrollingNotifier,
+                                    builder: (context, isScrolling, _) {
+                                      return FloatingDateHeader(
+                                        currentDate: currentDate,
+                                        isScrolling: isScrolling,
+                                        child: _isTransitioning
+                                            ? const SizedBox.shrink()
+                                            : ChatMessageListScope(
+                                                conversationId: _conversationId,
+                                                buildList: (context,
+                                                        paginationState) =>
+                                                    _buildMessageList(
+                                                  paginationState,
+                                                  theme,
+                                                  bottomPadding: inputHeight +
+                                                      listBottomGap +
+                                                      8,
+                                                ),
+                                              ),
+                                      );
+                                    },
+                                  );
+                                },
+                              );
+                            },
+                          );
+                        },
+                      ),
                     ),
-                  ),
-                  if (_isCurrentUserBlocked || _isOtherUserBlocked)
+                    if (_isCurrentUserBlocked || _isOtherUserBlocked)
+                      Positioned(
+                        top: kToolbarHeight + 30,
+                        left: 0,
+                        right: 0,
+                        child: _buildBlockedBanner(theme),
+                      ),
                     Positioned(
                       top: kToolbarHeight + 30,
                       left: 0,
                       right: 0,
-                      child: _buildBlockedBanner(theme),
-                    ),
-                  Positioned(
-                    top: kToolbarHeight + 30,
-                    left: 0,
-                    right: 0,
-                    child: ModernConnectionBanner(
-                      isConnected: !showConnectionBanner,
-                      onRetry: !showConnectionBanner
-                          ? null
-                          : () {
-                              unawaited(_triggerPollingRefresh());
-                            },
-                    ),
-                  ),
-                  ChatInputDock(
-                    totalBottomSpace: dockBottomSpace,
-                    reservedHeight: reservedHeight,
-                    keyboardVisible: keyboardVisible,
-                    reduceEffectsFromKeyboard: reduceEffectsFromKeyboard,
-                    isScrollingListenable: _isScrollingNotifier,
-                    showScrollToBottomListenable: _showScrollToBottomNotifier,
-                    showInput: !_isCurrentUserBlocked && !_isOtherUserBlocked,
-                    showEmojiPanel: _showEmojiPanel,
-                    onScrollToBottom: _scrollToBottom,
-                    themeBackgroundColor: theme.backgroundColor,
-                    themeIconColor: theme.iconColor,
-                    inputHaloBuilder: (reduceEffects) => _buildInputDockHalo(
-                      reservedHeight: reservedHeight,
-                      inputHeight: inputHeight,
-                      keyboardVisible: keyboardVisible,
-                      reduceEffects: reduceEffects,
-                    ),
-                    inputAreaBuilder: (reduceEffects) {
-                      final blurConfig = ref.read(adaptiveEffectsProvider);
-                      return _buildInputArea(
-                        theme,
-                        reduceEffects: reduceEffects,
-                        allowHeavyEffects:
-                            blurConfig.allowHeavyBlur && !reduceEffects,
-                        blurSigma: blurConfig.blurSigma,
-                      );
-                    },
-                    emojiPanel: _buildEmojiPanel(theme),
-                  ),
-                  if (_isSearchMode)
-                    Positioned(
-                      top: 0,
-                      left: 0,
-                      right: 0,
-                      child: SafeArea(
-                        child: MessageSearchBar(
-                          conversationId: widget.args.conversationId,
-                          onClose: () => setState(() {
-                            _isSearchMode = false;
-                            _highlightedMessageId = null;
-                          }),
-                          onResultSelected: (id) {
-                            setState(() => _highlightedMessageId = id);
-                            _scrollToMessage(id);
-                          },
-                        ),
+                      child: ModernConnectionBanner(
+                        isConnected: !showConnectionBanner,
+                        onRetry: !showConnectionBanner
+                            ? null
+                            : () {
+                                unawaited(_triggerPollingRefresh());
+                              },
                       ),
                     ),
-                ],
+                    if (_isSearchMode)
+                      Positioned(
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        child: SafeArea(
+                          child: MessageSearchBar(
+                            conversationId: widget.args.conversationId,
+                            onClose: () => setState(() {
+                              _isSearchMode = false;
+                              _highlightedMessageId = null;
+                            }),
+                            onResultSelected: (id) {
+                              setState(() => _highlightedMessageId = id);
+                              _scrollToMessage(id);
+                            },
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
               ),
+            ],
+          ),
+        ),
+
+        // اینپوت — خارج از KeyboardStableMediaQuery → viewInsets زنده = چسبیده به IME
+        Positioned.fill(
+          child: Material(
+            type: MaterialType.transparency,
+            child: ChatInputDock(
+              inputHeightListenable: _inputHeightNotifier,
+              layoutListenable: _inputDockLayoutNotifier,
+              keyboardEffectsListenable: _keyboardEffectsNotifier,
+              isScrollingListenable: _isScrollingNotifier,
+              showScrollToBottomListenable: _showScrollToBottomNotifier,
+              showInput: !_isCurrentUserBlocked && !_isOtherUserBlocked,
+              onScrollToBottom: _scrollToBottom,
+              themeBackgroundColor: theme.backgroundColor,
+              themeIconColor: theme.iconColor,
+              inputHaloBuilder: (reduceEffects,
+                      {required gapHeight, required keyboardVisible}) =>
+                  _buildInputDockHalo(
+                gapHeight: gapHeight,
+                inputHeight: _inputHeight,
+                keyboardVisible: keyboardVisible,
+                reduceEffects: reduceEffects,
+              ),
+              inputAreaBuilder: (reduceEffects) => _buildInputArea(
+                theme,
+                reduceEffects: reduceEffects,
+                allowHeavyEffects:
+                    blurConfig.allowHeavyBlur && !reduceEffects,
+                blurSigma: blurConfig.blurSigma,
+              ),
+              emojiPanel: _buildEmojiPanel(theme),
             ),
-            Consumer(
-              builder: (context, ref, _) {
-                final selection = ref.watch(
-                  conversationChatSelectionProvider(_conversationId),
-                );
-                if (_reactionPickerMessageId == null ||
-                    _reactionPickerPosition == null ||
-                    selection.isSelectionMode) {
-                  return const SizedBox.shrink();
-                }
-                return _buildReactionPickerOverlay();
-              },
-            ),
-          ],
-        );
-      },
+          ),
+        ),
+
+        Consumer(
+          builder: (context, ref, _) {
+            final selection = ref.watch(
+              conversationChatSelectionProvider(_conversationId),
+            );
+            if (_reactionPickerMessageId == null ||
+                _reactionPickerPosition == null ||
+                selection.isSelectionMode) {
+              return const SizedBox.shrink();
+            }
+            return _buildReactionPickerOverlay();
+          },
+        ),
+      ],
     );
   }
 
@@ -2297,52 +2377,46 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     _keyboardRequestTimeoutTimer?.cancel();
     if (show) {
       // ── keyboard → emoji ─────────────────────────────────────────────────
-      // 1. Capture current keyboard height (if visible).
-      // 2. Engage the lock so that the keyboard-dismiss animation on real
-      //    devices cannot trigger didChangeMetrics → _showEmojiPanel=false.
-      // 3. Mark panel open and dismiss keyboard.
       _lockEmojiPanelTimer?.cancel();
       _lockEmojiPanel = true;
-      // The lock covers the keyboard dismiss animation (max ~400 ms on real
-      // devices) plus a small buffer → 600 ms total.
       _lockEmojiPanelTimer = Timer(const Duration(milliseconds: 600), () {
         _lockEmojiPanel = false;
+        _publishKeyboardLayout(force: true);
       });
 
-      final h = MediaQuery.of(context).viewInsets.bottom;
-      setState(() {
-        if (h > 80) _cachedKeyboardHeight = h;
-        _showEmojiPanel = true;
-        _isKeyboardRequested = false;
-      });
+      final h = _lastViewInsetBottom > 0
+          ? _lastViewInsetBottom
+          : _keyboardInsetFromPlatform();
+      if (h > _keyboardVisibleThreshold) {
+        _cachedKeyboardHeight = h;
+      }
+      _showEmojiPanel = true;
+      _isKeyboardRequested = false;
       _focusNode.unfocus();
       SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
+      _publishKeyboardLayout(force: true);
     } else {
       // ── emoji → keyboard ─────────────────────────────────────────────────
-      // Release Lock A so didChangeMetrics can work normally once the
-      // keyboard appears.
       _lockEmojiPanelTimer?.cancel();
       _lockEmojiPanel = false;
 
-      // Engage Lock B: keep reservedHeight pinned to _cachedKeyboardHeight
-      // throughout the keyboard-appear animation so the input bar doesn't
-      // jump while kbViewInset is still small mid-animation.
       _keyboardOpeningTimer?.cancel();
       _isKeyboardOpening = true;
-      // Safety: clear if keyboard never appears (e.g. focus rejected)
       _keyboardOpeningTimer = Timer(const Duration(milliseconds: 800), () {
-        if (mounted) setState(() => _isKeyboardOpening = false);
+        if (!mounted) return;
+        _isKeyboardOpening = false;
+        _publishKeyboardLayout(force: true);
       });
 
-      setState(() {
-        _showEmojiPanel = false;
-        _isKeyboardRequested = true;
-      });
+      _showEmojiPanel = false;
+      _isKeyboardRequested = true;
       _focusNode.requestFocus();
+      _publishKeyboardLayout(force: true);
       _keyboardRequestTimeoutTimer =
           Timer(const Duration(milliseconds: 800), () {
         if (mounted && _isKeyboardRequested) {
-          setState(() => _isKeyboardRequested = false);
+          _isKeyboardRequested = false;
+          _publishKeyboardLayout(force: true);
         }
       });
     }
@@ -4137,7 +4211,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   // ═══════════════════════════════════════════════════════════════════════════
 
   Widget _buildInputDockHalo({
-    required double reservedHeight,
+    required double gapHeight,
     required double inputHeight,
     required bool keyboardVisible,
     required bool reduceEffects,
@@ -4147,12 +4221,14 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     final haloColor = isDark
         ? Color.lerp(materialTheme.scaffoldBackgroundColor, Colors.white, 0.08)!
         : Colors.white;
-    final visibleReservedHeight = keyboardVisible ? 0.0 : reservedHeight;
-    final haloBottom = keyboardVisible ? reservedHeight : 0.0;
+    final visibleReservedHeight = keyboardVisible ? 0.0 : gapHeight;
+    final haloBottom = keyboardVisible ? gapHeight : 0.0;
     final haloHeight = (visibleReservedHeight + (inputHeight * 0.56))
         .clamp(48.0, 420.0)
         .toDouble();
-    final blurSigma = keyboardVisible ? 1.6 : (reduceEffects ? 2.0 : 5.5);
+    final blurSigma = keyboardVisible
+        ? 1.6
+        : (reduceEffects ? 2.0 : 5.5);
     final gradientAlphas =
         isDark ? const [0.0, 0.08, 0.16, 0.24] : const [0.0, 0.14, 0.24, 0.36];
     final haloDecoration = BoxDecoration(
@@ -7229,7 +7305,7 @@ class _ChatMediaAlbumBubble extends StatelessWidget {
 
     return ConstrainedBox(
       constraints: BoxConstraints(
-        maxWidth: MediaQuery.of(context).size.width * 0.74,
+        maxWidth: MediaQuery.sizeOf(context).width * 0.74,
         minWidth: 140,
       ),
       child: Column(

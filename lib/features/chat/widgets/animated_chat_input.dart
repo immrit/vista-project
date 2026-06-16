@@ -127,11 +127,10 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
   bool get _isRecordingLocked => _voiceStateMachine.isLocked;
 
   VoiceGestureThresholds get _activeVoiceThresholds {
-    final mediaQuery = MediaQuery.of(context);
     return VoiceGestureThresholdsResolver.resolve(
       widget.voicePreset,
-      devicePixelRatio: mediaQuery.devicePixelRatio,
-      shortestSide: mediaQuery.size.shortestSide,
+      devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
+      shortestSide: MediaQuery.sizeOf(context).shortestSide,
     );
   }
 
@@ -445,8 +444,8 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
         !widget.allowHeavyEffects ||
         widget.blurSigma <= 0.1 ||
         isInputFocused ||
-        MediaQuery.of(context).disableAnimations ||
-        MediaQuery.of(context).accessibleNavigation;
+        MediaQuery.disableAnimationsOf(context) ||
+        MediaQuery.accessibleNavigationOf(context);
     final effectiveBlurSigma =
         shouldReduceEffects ? 0.0 : widget.blurSigma.clamp(0.0, 12.0);
     _reportHeightIfNeeded();

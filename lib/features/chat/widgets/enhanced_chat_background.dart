@@ -36,8 +36,8 @@ class _EnhancedChatBackgroundState
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final reduceEffects = MediaQuery.of(context).disableAnimations ||
-        MediaQuery.of(context).accessibleNavigation;
+    final reduceEffects = MediaQuery.disableAnimationsOf(context) ||
+        MediaQuery.accessibleNavigationOf(context);
 
     // تشخیص تم مشکی مطلق (AMOLED/Pure Black)
     // در تم مشکی مطلق، scaffoldBackgroundColor معمولاً 0xFF000000 است
