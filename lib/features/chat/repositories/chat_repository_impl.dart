@@ -661,7 +661,12 @@ class ChatRepositoryImpl implements ChatRepository {
     // optimistic local update
     final existing = await _local.getMessage(messageId, uid);
     if (existing != null) {
-      await _local.saveMessage(existing.copyWith(content: newContent));
+      await _local.saveMessage(
+        existing.copyWith(
+          content: newContent,
+          editedAt: DateTime.now(),
+        ),
+      );
     }
 
     try {
@@ -1453,7 +1458,8 @@ class ChatRepositoryImpl implements ChatRepository {
       'is_delivered': j['is_delivered'] ?? false,
       'is_read': j['is_read'] ?? false,
       'is_seen': j['is_seen'] ?? false,
-      'is_edited': j['is_edited'] ?? false,
+      'edited_at': j['edited_at'],
+      'is_edited': j['edited_at'] != null || (j['is_edited'] ?? false),
     }, currentUserId: uid);
   }
 

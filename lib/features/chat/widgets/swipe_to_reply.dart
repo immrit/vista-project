@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../utils/chat_text_direction.dart';
 
 class SwipeToReply extends StatefulWidget {
   final Widget child;
@@ -40,42 +41,20 @@ class _SwipeToReplyState extends State<SwipeToReply>
   }
 
   void _onHorizontalDragUpdate(DragUpdateDetails details) {
-    final isRTL = Directionality.of(context) == TextDirection.rtl;
-
     if (widget.isMe) {
-      // My messages: LTR swipe left to reply. RTL swipe right to reply.
-      if (!isRTL) {
-        if (details.primaryDelta! > 0 && _dragExtent == 0) return; // Prevent right swipe in LTR
-        _dragExtent += details.primaryDelta!;
-        if (_dragExtent > 0) _dragExtent = 0;
-      } else {
-        if (details.primaryDelta! < 0 && _dragExtent == 0) return; // Prevent left swipe in RTL
-        _dragExtent += details.primaryDelta!;
-        if (_dragExtent < 0) _dragExtent = 0;
-      }
-
-      if (_dragExtent.abs() > _triggerThreshold && !_triggered) {
-        _triggered = true;
-        HapticFeedback.lightImpact();
-        widget.onReply();
-      }
+      if (details.primaryDelta! > 0 && _dragExtent == 0) return;
+      _dragExtent += details.primaryDelta!;
+      if (_dragExtent > 0) _dragExtent = 0;
     } else {
-      // Other messages: LTR swipe right to reply. RTL swipe left to reply.
-      if (!isRTL) {
-        if (details.primaryDelta! < 0 && _dragExtent == 0) return; // Prevent left swipe in LTR
-        _dragExtent += details.primaryDelta!;
-        if (_dragExtent < 0) _dragExtent = 0;
-      } else {
-        if (details.primaryDelta! > 0 && _dragExtent == 0) return; // Prevent right swipe in RTL
-        _dragExtent += details.primaryDelta!;
-        if (_dragExtent > 0) _dragExtent = 0;
-      }
+      if (details.primaryDelta! < 0 && _dragExtent == 0) return;
+      _dragExtent += details.primaryDelta!;
+      if (_dragExtent < 0) _dragExtent = 0;
+    }
 
-      if (_dragExtent.abs() > _triggerThreshold && !_triggered) {
-        _triggered = true;
-        HapticFeedback.lightImpact();
-        widget.onReply();
-      }
+    if (_dragExtent.abs() > _triggerThreshold && !_triggered) {
+      _triggered = true;
+      HapticFeedback.lightImpact();
+      widget.onReply();
     }
 
     setState(() {});
@@ -108,7 +87,7 @@ class _SwipeToReplyState extends State<SwipeToReply>
               children: [
                 if (offset.abs() > 10)
                   Positioned.directional(
-                    textDirection: Directionality.of(context),
+                    textDirection: kChatLayoutTextDirection,
                     end: widget.isMe ? -40 - (offset.abs() * 0.1) : null,
                     start: !widget.isMe ? -40 - (offset.abs() * 0.1) : null,
                     child: Opacity(

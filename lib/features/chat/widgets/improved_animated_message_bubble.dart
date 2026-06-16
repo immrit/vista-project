@@ -108,6 +108,7 @@ class ImprovedAnimatedMessageBubble extends StatefulWidget {
   final String? forwardedFrom;
   final VoidCallback? onRetryUpload;
   final ChatEffectsLevel effectsLevel;
+  final bool isEdited;
 
   // Optional full message model to use status notifier and richer metadata.
   final MessageModel? message;
@@ -151,6 +152,7 @@ class ImprovedAnimatedMessageBubble extends StatefulWidget {
     this.forwardedFrom,
     this.onRetryUpload,
     this.effectsLevel = ChatEffectsLevel.high,
+    this.isEdited = false,
     this.message,
     this.recipientPublicKey,
   });
@@ -516,7 +518,7 @@ class _ImprovedAnimatedMessageBubbleState
       isMe: widget.isMe,
       isFirstInGroup: widget.isFirstInGroup,
       isLastInGroup: widget.isLastInGroup,
-      textDirection: Directionality.of(context),
+      textDirection: kChatLayoutTextDirection,
     );
   }
 
@@ -554,10 +556,7 @@ class _ImprovedAnimatedMessageBubbleState
             ? theme.myBubbleTextColor.withValues(alpha: 0.96)
             : theme.sendButtonColor)
         : theme.sendButtonColor;
-    final replyContentDirection = resolveChatTextDirection(
-      widget.replyToContent,
-      fallback: Directionality.of(context),
-    );
+    final replyContentDirection = kChatLayoutTextDirection;
     return GestureDetector(
       onTap: widget.onReplyTap,
       child: Container(
@@ -662,10 +661,7 @@ class _ImprovedAnimatedMessageBubbleState
             : 'کاربر');
     final content = postData.postContent.trim();
     final secondaryText = content.isNotEmpty ? content : 'پست ارسالی';
-    final textDirection = resolveChatTextDirection(
-      secondaryText,
-      fallback: Directionality.of(context),
-    );
+    final textDirection = kChatLayoutTextDirection;
 
     return GestureDetector(
       onTap: widget.onReplyTap,
@@ -706,7 +702,7 @@ class _ImprovedAnimatedMessageBubbleState
                       Flexible(
                         child: Text(
                           'پست ارسالی',
-                          textDirection: TextDirection.rtl,
+                          textDirection: kChatLayoutTextDirection,
                           style: TextStyle(
                             color: theme.sendButtonColor,
                             fontSize: 12,
@@ -721,7 +717,7 @@ class _ImprovedAnimatedMessageBubbleState
                   const SizedBox(height: 3),
                   Text(
                     author,
-                    textDirection: TextDirection.rtl,
+                    textDirection: kChatLayoutTextDirection,
                     style: TextStyle(
                       color: widget.isMe
                           ? theme.myBubbleTextColor.withValues(alpha: 0.78)
@@ -885,7 +881,7 @@ class _ImprovedAnimatedMessageBubbleState
                 children: [
                   Text(
                     effectiveHeaderText,
-                    textDirection: TextDirection.rtl,
+                    textDirection: kChatLayoutTextDirection,
                     style: TextStyle(
                       color: theme.sendButtonColor,
                       fontSize: 12,
@@ -897,7 +893,7 @@ class _ImprovedAnimatedMessageBubbleState
                   const SizedBox(height: 2),
                   Text(
                     effectiveSecondaryText,
-                    textDirection: TextDirection.rtl,
+                    textDirection: kChatLayoutTextDirection,
                     style: TextStyle(
                       color: widget.isMe
                           ? theme.myBubbleTextColor.withValues(alpha: 0.7)
@@ -911,7 +907,7 @@ class _ImprovedAnimatedMessageBubbleState
                     const SizedBox(height: 2),
                     Text(
                       answerPreview,
-                      textDirection: TextDirection.rtl,
+                      textDirection: kChatLayoutTextDirection,
                       style: TextStyle(
                         color: widget.isMe
                             ? theme.myBubbleTextColor.withValues(alpha: 0.8)
@@ -1074,10 +1070,7 @@ class _ImprovedAnimatedMessageBubbleState
       return _buildUnavailableMediaAttachment(theme, canonicalType);
     }
 
-    final contentDirection = resolveChatTextDirection(
-      caption,
-      fallback: Directionality.of(context),
-    );
+    final contentDirection = kChatLayoutTextDirection;
 
     return Padding(
       padding: const EdgeInsets.only(left: 12, right: 12, top: 8, bottom: 6),
@@ -1231,33 +1224,22 @@ class _ImprovedAnimatedMessageBubbleState
             '')
         .trim()
         .toLowerCase();
-    if (raw.isNotEmpty) {
-      if (raw == 'image') return 'image';
-      if (raw == 'video') return 'video';
-      if (raw == 'voice') return 'voice';
-      if (raw == 'audio') return 'audio';
-      if (raw == 'document' || raw == 'pdf' || raw == 'file') {
-        return 'document';
-      }
-      if (raw.startsWith('image/')) return 'image';
-      if (raw.startsWith('audio/')) return 'audio';
-      if (raw.startsWith('video/')) return 'video';
-    }
-
+        
     final mime =
         (widget.message?.attachmentMimeType ?? '').trim().toLowerCase();
-    if (mime.startsWith('image/')) return 'image';
-    if (mime.startsWith('audio/')) return 'audio';
-    if (mime.startsWith('video/')) return 'video';
-
+        
     final fileName = widget.message?.attachmentFileName ?? '';
     final url = widget.message?.resolvedMediaUrl ??
         widget.attachmentUrl ??
         '';
+    final localPath = widget.message?.localFilePath ?? '';
+    
+    // Attempt to extract extension from fileName, url, or localPath
     final ext = p
-        .extension(fileName.isNotEmpty ? fileName : url)
+        .extension(fileName.isNotEmpty ? fileName : (url.isNotEmpty ? url : localPath))
         .replaceFirst('.', '')
         .toLowerCase();
+
     const imageExts = {
       'jpg',
       'jpeg',
@@ -1271,9 +1253,20 @@ class _ImprovedAnimatedMessageBubbleState
     const audioExts = {'mp3', 'm4a', 'aac', 'wav', 'ogg', 'flac'};
     const videoExts = {'mp4', 'mov', 'm4v', 'webm', 'mkv', 'avi'};
 
-    if (imageExts.contains(ext)) return 'image';
-    if (audioExts.contains(ext)) return 'audio';
-    if (videoExts.contains(ext)) return 'video';
+    // 1. Force check extensions/mimes even if raw says 'document'
+    if (audioExts.contains(ext) || mime.startsWith('audio/')) return 'audio';
+    if (videoExts.contains(ext) || mime.startsWith('video/')) return 'video';
+    if (imageExts.contains(ext) || mime.startsWith('image/')) return 'image';
+    
+    // 2. Fallbacks to raw type if we couldn't confidently extract from extension
+    if (raw == 'image') return 'image';
+    if (raw == 'video') return 'video';
+    if (raw == 'voice') return 'voice';
+    if (raw == 'audio') return 'audio';
+    if (raw == 'document' || raw == 'pdf' || raw == 'file') return 'document';
+    if (raw.startsWith('image/')) return 'image';
+    if (raw.startsWith('audio/')) return 'audio';
+    if (raw.startsWith('video/')) return 'video';
 
     return 'unknown';
   }
@@ -1712,12 +1705,41 @@ class _ImprovedAnimatedMessageBubbleState
     ChatTheme theme,
     MessageDeliveryStatus deliveryStatus,
   ) {
+    final showEdited = widget.isEdited || (widget.message?.isEdited ?? false);
+
     return Directionality(
       textDirection: TextDirection.ltr,
       child: Row(
         mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
+          if (showEdited)
+            Padding(
+              padding: const EdgeInsetsDirectional.only(end: 4),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.edit_rounded,
+                    size: 10,
+                    color: widget.isMe
+                        ? theme.myBubbleTextColor.withValues(alpha: 0.55)
+                        : theme.otherBubbleTextColor.withValues(alpha: 0.5),
+                  ),
+                  const SizedBox(width: 2),
+                  Text(
+                    'ویرایش شده',
+                    style: TextStyle(
+                      color: widget.isMe
+                          ? theme.myBubbleTextColor.withValues(alpha: 0.55)
+                          : theme.otherBubbleTextColor.withValues(alpha: 0.5),
+                      fontSize: 10,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           Text(
             _formattedTime,
             style: TextStyle(

@@ -10,6 +10,7 @@
 
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../utils/chat_text_direction.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -141,7 +142,7 @@ class _GifPickerWidgetState extends State<GifPickerWidget>
             controller: _searchController,
             onChanged: _onSearchChanged,
             textAlignVertical: TextAlignVertical.center,
-            textDirection: TextDirection.rtl,
+            textDirection: kChatLayoutTextDirection,
             style: TextStyle(
               color: isDark ? Colors.white : Colors.black87,
               fontSize: 14,

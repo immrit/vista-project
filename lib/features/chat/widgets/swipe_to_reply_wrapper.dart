@@ -31,8 +31,7 @@ class _SwipeToReplyWrapperState extends State<SwipeToReplyWrapper> {
   bool _isDraggingHorizontally = false;
 
   bool _bubbleOnRight(BuildContext context) {
-    final textDirection = Directionality.of(context);
-    return textDirection == TextDirection.ltr ? widget.isMe : !widget.isMe;
+    return widget.isMe;
   }
 
   bool _isAllowedHorizontalDelta(bool bubbleOnRight, double delta) {

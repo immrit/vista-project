@@ -283,10 +283,7 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble>
     final showTrackMeta =
         (widget.attachmentType ?? '').toLowerCase() == 'audio' &&
             (playbackTitle.isNotEmpty || playbackArtist.isNotEmpty);
-    final captionDirection = resolveChatTextDirection(
-      widget.caption,
-      fallback: Directionality.of(context),
-    );
+    final captionDirection = kChatLayoutTextDirection;
 
     return Container(
       constraints: const BoxConstraints(maxWidth: 280, minWidth: 200),
@@ -454,15 +451,9 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble>
     final Color iconColor;
 
     if (widget.isMe) {
-      // پیام‌های من
-      if (theme.isDark) {
-        buttonColor = Colors.white.withValues(alpha: 0.15);
-        iconColor = Colors.white;
-      } else {
-        // تم روشن: از رنگ تیره‌تر استفاده میکنیم
-        buttonColor = theme.sendButtonColor.withValues(alpha: 0.15);
-        iconColor = theme.sendButtonColor;
-      }
+      // پیام‌های من: همیشه باید متضاد با رنگ پس‌زمینه حباب باشد
+      buttonColor = theme.myBubbleTextColor.withValues(alpha: 0.15);
+      iconColor = theme.myBubbleTextColor;
     } else {
       // پیام‌های دیگران
       buttonColor = theme.sendButtonColor.withValues(alpha: 0.15);
@@ -549,14 +540,9 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble>
     final Color inactiveColor;
 
     if (widget.isMe) {
-      if (theme.isDark) {
-        activeColor = Colors.white;
-        inactiveColor = Colors.white.withValues(alpha: 0.4);
-      } else {
-        // تم روشن: از رنگ اصلی استفاده میکنیم برای خوانایی بهتر
-        activeColor = theme.sendButtonColor;
-        inactiveColor = theme.sendButtonColor.withValues(alpha: 0.35);
-      }
+      // پیام‌های من: همیشه رنگ متضاد با حباب خروجی
+      activeColor = theme.myBubbleTextColor;
+      inactiveColor = theme.myBubbleTextColor.withValues(alpha: 0.35);
     } else {
       activeColor = theme.sendButtonColor;
       inactiveColor = theme.sendButtonColor.withValues(alpha: 0.35);

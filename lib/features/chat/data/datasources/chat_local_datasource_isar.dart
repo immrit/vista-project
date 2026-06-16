@@ -230,6 +230,7 @@ class ChatLocalDataSourceIsar {
           incoming.attachmentMimeType ?? existing.attachmentMimeType,
       attachmentSizeBytes:
           incoming.attachmentSizeBytes ?? existing.attachmentSizeBytes,
+      editedAt: incoming.editedAt ?? existing.editedAt,
       audioTitle: incoming.audioTitle ?? existing.audioTitle,
       audioArtist: incoming.audioArtist ?? existing.audioArtist,
       audioAlbum: incoming.audioAlbum ?? existing.audioAlbum,
@@ -915,6 +916,7 @@ bool _isMessageEffectivelySame(MessageModel a, MessageModel b) {
       a.senderId == b.senderId &&
       a.content == b.content &&
       a.createdAt == b.createdAt &&
+      a.editedAt == b.editedAt &&
       a.attachmentUrl == b.attachmentUrl &&
       a.attachmentType == b.attachmentType &&
       a.attachmentFileName == b.attachmentFileName &&

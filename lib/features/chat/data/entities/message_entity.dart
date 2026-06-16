@@ -22,6 +22,8 @@ class MessageEntity {
   @Index()
   late DateTime createdAt;
 
+  DateTime? editedAt;
+
   bool isMe = false;
   bool isRead = false;
   bool isSent = false;
@@ -77,6 +79,7 @@ class MessageEntity {
       ..senderId = model.senderId
       ..content = model.content
       ..createdAt = model.createdAt
+      ..editedAt = model.editedAt
       ..isMe = model.isMe
       ..isRead = model.isRead
       ..isSent = model.isSent
@@ -159,6 +162,7 @@ class MessageEntity {
       senderId: senderId,
       content: content,
       createdAt: createdAt,
+      editedAt: editedAt,
       isMe: isMe,
       isRead: isRead,
       isSent: isSent,

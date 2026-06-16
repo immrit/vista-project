@@ -726,10 +726,7 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
   }
 
   Widget _buildCaption(ChatTheme theme) {
-    final captionDirection = resolveChatTextDirection(
-      widget.caption,
-      fallback: Directionality.of(context),
-    );
+    final captionDirection = kChatLayoutTextDirection;
 
     return Container(
         padding: const EdgeInsets.fromLTRB(

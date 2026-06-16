@@ -17,6 +17,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../theme/chat_theme.dart';
+import '../utils/chat_text_direction.dart';
 import '../services/voice_recorder_service.dart';
 import 'liquid_glass_input_shell.dart';
 import 'modern_voice_recorder_bar.dart';
@@ -44,6 +45,10 @@ class AnimatedChatInput extends StatefulWidget {
   final String? replyToContent;
   final String? replyToSenderName;
   final VoidCallback? onCancelReply;
+  final String? editPreviewContent;
+  final String? editPreviewTitle;
+  final VoidCallback? onCancelEdit;
+  final bool isEditing;
   final Function(File file, int duration)? onVoiceRecorded;
   final Function(String gifUrl)? onGifSelected;
   final ValueChanged<bool>? onEmojiPickerToggled;
@@ -77,6 +82,10 @@ class AnimatedChatInput extends StatefulWidget {
     this.replyToContent,
     this.replyToSenderName,
     this.onCancelReply,
+    this.editPreviewContent,
+    this.editPreviewTitle,
+    this.onCancelEdit,
+    this.isEditing = false,
     this.onVoiceRecorded,
     this.onGifSelected,
     this.onEmojiPickerToggled,
@@ -280,16 +289,24 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
     }
   }
 
+  bool get _hasContextPreview =>
+      widget.editPreviewContent != null || widget.replyToContent != null;
+
   @override
   void didUpdateWidget(AnimatedChatInput oldWidget) {
     super.didUpdateWidget(oldWidget);
 
-    // انیمیشن Reply
-    if (widget.replyToContent != null && oldWidget.replyToContent == null) {
+    final hadPreview = oldWidget.editPreviewContent != null ||
+        oldWidget.replyToContent != null;
+    final hasPreview = _hasContextPreview;
+    if (hasPreview && !hadPreview) {
       _replyController.forward();
-    } else if (widget.replyToContent == null &&
-        oldWidget.replyToContent != null) {
+    } else if (!hasPreview && hadPreview) {
       _replyController.reverse();
+    }
+
+    if (widget.isEditing && !oldWidget.isEditing && widget.controller.text.isNotEmpty) {
+      _sendButtonController.forward();
     }
   }
 
@@ -489,7 +506,7 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      _buildReplyPreview(theme),
+                      _buildContextPreview(theme),
                       if (_isRecording)
                         _buildRecordingOverlay(theme)
                       else
@@ -524,7 +541,7 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
     );
   }
 
-  Widget _buildReplyPreview(ChatTheme theme) {
+  Widget _buildContextPreview(ChatTheme theme) {
     return ClipRect(
       child: AnimatedBuilder(
         animation: _replyController,
@@ -540,72 +557,93 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
             ),
           );
         },
-        child: widget.replyToContent != null
-            ? Container(
-                padding: const EdgeInsets.fromLTRB(
-                    12, 10, 12, 6), // پدینگ کمتر و باریک‌تر
-                decoration: BoxDecoration(
-                  color: theme.dividerColor
-                      .withValues(alpha: 0.05), // کمی رنگ پس زمینه برای ریپلای
-                  border: Border(
-                    bottom: BorderSide(
-                      color: theme.dividerColor
-                          .withValues(alpha: 0.1), // خط بسیار محو
-                      width: 1,
-                    ),
+        child: _hasContextPreview ? _buildContextPreviewBody(theme) : const SizedBox.shrink(),
+      ),
+    );
+  }
+
+  Widget _buildContextPreviewBody(ChatTheme theme) {
+    final isEditing = widget.editPreviewContent != null;
+    final previewTitle = isEditing
+        ? (widget.editPreviewTitle ?? 'ویرایش پیام')
+        : (widget.replyToSenderName ?? 'پاسخ به');
+    final previewContent = isEditing
+        ? widget.editPreviewContent!
+        : (widget.replyToContent ?? '');
+    final accentColor =
+        isEditing ? theme.sendButtonColor : theme.typingColor;
+    final onClose = isEditing ? widget.onCancelEdit : widget.onCancelReply;
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+      decoration: BoxDecoration(
+        color: theme.dividerColor.withValues(alpha: 0.05),
+        border: Border(
+          bottom: BorderSide(
+            color: theme.dividerColor.withValues(alpha: 0.1),
+            width: 1,
+          ),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 3,
+            height: 36,
+            decoration: BoxDecoration(
+              color: accentColor,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(width: 8),
+          if (isEditing)
+            Padding(
+              padding: const EdgeInsetsDirectional.only(end: 6),
+              child: Icon(
+                Icons.edit_rounded,
+                size: 16,
+                color: accentColor,
+              ),
+            ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  previewTitle,
+                  style: TextStyle(
+                    color: accentColor,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 3,
-                      height: 36, // ارتفاع کمتر
-                      decoration: BoxDecoration(
-                        color: theme.typingColor,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                    const SizedBox(width: 8), // فاصله کمتر
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            widget.replyToSenderName ?? 'پاسخ به',
-                            style: TextStyle(
-                              color: theme.typingColor,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            widget.replyToContent!,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: theme.secondaryTextColor,
-                              fontSize: 13,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      icon: Icon(
-                        Icons.close,
-                        size: 18,
-                        color: theme.iconColor,
-                      ),
-                      onPressed: () {
-                        HapticFeedback.lightImpact();
-                        widget.onCancelReply?.call();
-                      },
-                    ),
-                  ],
+                const SizedBox(height: 2),
+                Text(
+                  previewContent,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: theme.secondaryTextColor,
+                    fontSize: 13,
+                  ),
                 ),
-              )
-            : const SizedBox.shrink(),
+              ],
+            ),
+          ),
+          IconButton(
+            icon: Icon(
+              Icons.close,
+              size: 18,
+              color: theme.iconColor,
+            ),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(
+              minWidth: 32,
+              minHeight: 32,
+            ),
+            onPressed: onClose,
+          ),
+        ],
       ),
     );
   }
@@ -696,72 +734,8 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
     );
   }
 
-  /// Detect text direction based on first strong character
-  TextDirection _detectTextDirection(String text) {
-    if (text.isEmpty) return TextDirection.rtl; // Default for Persian app
-
-    // Skip whitespace and find first meaningful character
-    for (int i = 0; i < text.length; i++) {
-      final char = text[i];
-      final code = char.codeUnitAt(0);
-
-      // Skip whitespace
-      if (char == ' ' || char == '\n' || char == '\t') continue;
-
-      // Special characters @ # stay with their following content
-      if (char == '@' || char == '#') {
-        // Look at next char to determine direction
-        if (i + 1 < text.length) {
-          final nextChar = text[i + 1].codeUnitAt(0);
-          // If next char is RTL, use RTL
-          if ((nextChar >= 0x0600 && nextChar <= 0x06FF) || // Arabic
-              (nextChar >= 0x0750 && nextChar <= 0x077F) || // Arabic Supplement
-              (nextChar >= 0xFB50 &&
-                  nextChar <= 0xFDFF) || // Arabic Presentation Forms-A
-              (nextChar >= 0xFE70 && nextChar <= 0xFEFF)) {
-            // Arabic Presentation Forms-B
-            return TextDirection.rtl;
-          }
-          return TextDirection.ltr; // Otherwise LTR
-        }
-        return TextDirection.ltr; // Just @ or # alone - LTR
-      }
-
-      // Numbers - continue to next char
-      if (code >= 0x30 && code <= 0x39) continue; // 0-9
-
-      // Persian/Arabic digits
-      if ((code >= 0x06F0 && code <= 0x06F9) || // Persian digits
-          (code >= 0x0660 && code <= 0x0669)) {
-        // Arabic digits
-        return TextDirection.rtl;
-      }
-
-      // Check for RTL characters (Arabic, Persian, Hebrew, etc.)
-      if ((code >= 0x0600 && code <= 0x06FF) || // Arabic
-          (code >= 0x0750 && code <= 0x077F) || // Arabic Supplement
-          (code >= 0xFB50 && code <= 0xFDFF) || // Arabic Presentation Forms-A
-          (code >= 0xFE70 && code <= 0xFEFF) || // Arabic Presentation Forms-B
-          (code >= 0x0590 && code <= 0x05FF)) {
-        // Hebrew
-        return TextDirection.rtl;
-      }
-
-      // LTR characters (Latin)
-      if ((code >= 0x0041 && code <= 0x005A) || // A-Z
-          (code >= 0x0061 && code <= 0x007A)) {
-        // a-z
-        return TextDirection.ltr;
-      }
-
-      // Other punctuation - continue
-    }
-
-    return TextDirection.rtl; // Default for Persian app
-  }
-
   Widget _buildTextField(ChatTheme theme) {
-    final textDirection = _detectTextDirection(widget.controller.text);
+    const textDirection = kChatLayoutTextDirection;
 
     // TextAlign.start is direction-relative:
     //   RTL text → visually right-aligned  (correct for Persian)
@@ -950,8 +924,8 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
             ),
           ],
         ),
-        child: const Icon(
-          Icons.send_rounded,
+        child: Icon(
+          widget.isEditing ? Icons.check_rounded : Icons.send_rounded,
           color: Colors.white,
           size: 18, // آیکون کوچک‌تر
         ),

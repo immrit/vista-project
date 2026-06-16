@@ -14,6 +14,7 @@ import '../../../security/logging_utility.dart';
 enum TransferTaskStatus {
   queued,
   downloading,
+  uploading,
   paused,
   completed,
   failed,
@@ -176,7 +177,7 @@ class ChatTransferManager {
             );
             if (row == null) continue;
 
-            if (row.status == TransferTaskStatus.downloading) {
+            if (row.status == TransferTaskStatus.downloading || row.status == TransferTaskStatus.uploading) {
               row.status = TransferTaskStatus.paused;
             }
 
@@ -244,6 +245,105 @@ class ChatTransferManager {
     _emitMessageTask(row.messageId);
   }
 
+  /// Start or register an upload task
+  Future<String> startUploadTask(
+    String messageId,
+    String localPath,
+    String fileName, {
+    int totalBytes = 0,
+  }) async {
+    await _ensureInitialized();
+    final sanitizedName = _sanitizeFileName(fileName);
+
+    final existing = _recordForMessage(messageId);
+    if (existing != null) {
+      existing.localPath = localPath;
+      existing.fileName = sanitizedName;
+      existing.totalBytes = totalBytes > 0 ? totalBytes : existing.totalBytes;
+      existing.status = TransferTaskStatus.uploading;
+      _touch(existing);
+      return existing.taskId;
+    }
+
+    final taskId = '${messageId}_upload_${DateTime.now().millisecondsSinceEpoch}';
+    final row = _TransferTaskRecord(
+      taskId: taskId,
+      messageId: messageId,
+      url: '', // will be set upon completion
+      fileName: sanitizedName,
+      localPath: localPath,
+      status: TransferTaskStatus.uploading,
+      receivedBytes: 0,
+      totalBytes: totalBytes,
+      updatedAt: DateTime.now().toUtc(),
+    );
+
+    _tasksById[taskId] = row;
+    _messageToTaskId[messageId] = taskId;
+    _touch(row);
+    return taskId;
+  }
+
+  /// Update upload progress
+  void updateUploadProgress(String messageId, int sentBytes, int totalBytes) {
+    final row = _recordForMessage(messageId);
+    if (row == null) return;
+    
+    row.status = TransferTaskStatus.uploading;
+    row.receivedBytes = sentBytes;
+    row.totalBytes = totalBytes;
+    _touch(row);
+  }
+
+  /// Register upload completion and assign the final server URL
+  Future<void> registerCompletedUpload({
+    required String messageId,
+    required String url,
+    required String localPath,
+    required String fileName,
+    int? totalBytes,
+  }) async {
+    await _ensureInitialized();
+
+    int finalBytes = totalBytes ?? 0;
+    if (finalBytes == 0) {
+      final localFile = File(localPath);
+      if (localFile.existsSync()) {
+        finalBytes = localFile.lengthSync();
+      }
+    }
+
+    final sanitizedName = _sanitizeFileName(fileName);
+    final existing = _recordForMessage(messageId);
+    if (existing != null) {
+      existing.url = url;
+      existing.fileName = sanitizedName;
+      existing.localPath = localPath;
+      existing.receivedBytes = finalBytes;
+      existing.totalBytes = finalBytes;
+      existing.status = TransferTaskStatus.completed;
+      _touch(existing);
+      return;
+    }
+
+    final taskId = '${messageId}_local_${DateTime.now().millisecondsSinceEpoch}';
+    final row = _TransferTaskRecord(
+      taskId: taskId,
+      messageId: messageId,
+      url: url,
+      fileName: sanitizedName,
+      localPath: localPath,
+      status: TransferTaskStatus.completed,
+      receivedBytes: finalBytes,
+      totalBytes: finalBytes,
+      updatedAt: DateTime.now().toUtc(),
+    );
+
+    _tasksById[taskId] = row;
+    _messageToTaskId[messageId] = taskId;
+    _touch(row);
+  }
+
   Future<String> startDownload(
     String messageId,
     String url,
@@ -284,48 +384,20 @@ class ChatTransferManager {
     return taskId;
   }
 
+  // registerCompletedLocalUpload has been superseded by registerCompletedUpload,
+  // but kept for compatibility.
   Future<void> registerCompletedLocalUpload({
     required String messageId,
     required String url,
     required String localPath,
     required String fileName,
   }) async {
-    await _ensureInitialized();
-
-    final localFile = File(localPath);
-    if (!localFile.existsSync()) return;
-    final totalBytes = localFile.lengthSync();
-    final sanitizedName = _sanitizeFileName(fileName);
-
-    final existing = _recordForMessage(messageId);
-    if (existing != null) {
-      existing.url = url;
-      existing.fileName = sanitizedName;
-      existing.localPath = localPath;
-      existing.receivedBytes = totalBytes;
-      existing.totalBytes = totalBytes;
-      existing.status = TransferTaskStatus.completed;
-      _touch(existing);
-      return;
-    }
-
-    final taskId =
-        '${messageId}_local_${DateTime.now().millisecondsSinceEpoch}';
-    final row = _TransferTaskRecord(
-      taskId: taskId,
+    await registerCompletedUpload(
       messageId: messageId,
       url: url,
-      fileName: sanitizedName,
       localPath: localPath,
-      status: TransferTaskStatus.completed,
-      receivedBytes: totalBytes,
-      totalBytes: totalBytes,
-      updatedAt: DateTime.now().toUtc(),
+      fileName: fileName,
     );
-
-    _tasksById[taskId] = row;
-    _messageToTaskId[messageId] = taskId;
-    _touch(row);
   }
 
   Future<void> pause(String taskId) async {
@@ -563,6 +635,36 @@ class ChatTransferManager {
       await dir.create(recursive: true);
     }
     return dir;
+  }
+
+  /// Cleans up old cached files (e.g. older than 30 days) to prevent filling up storage.
+  /// This is similar to Telegram X's smart cache management.
+  Future<void> cleanupCache({int maxDays = 30}) async {
+    await _ensureInitialized();
+    try {
+      final dir = await _getDownloadDirectory();
+      final files = dir.listSync(recursive: true);
+      final cutoff = DateTime.now().subtract(Duration(days: maxDays));
+
+      int deletedCount = 0;
+      for (final entity in files) {
+        if (entity is File) {
+          final stat = entity.statSync();
+          if (stat.accessed.isBefore(cutoff) && stat.modified.isBefore(cutoff)) {
+            try {
+              entity.deleteSync();
+              deletedCount++;
+            } catch (_) {}
+          }
+        }
+      }
+      
+      if (deletedCount > 0) {
+        logInfo('cleanupCache: Deleted $deletedCount old cached files.');
+      }
+    } catch (e, s) {
+      logError('cleanupCache: Failed to cleanup cache', error: e, stackTrace: s);
+    }
   }
 
   Future<bool> _hasConnectivity() async {

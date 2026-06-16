@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../emoji/domain/emoji_render_policy.dart';
 import '../../emoji/domain/modern_emoji_lookup.dart';
 import '../../emoji/widgets/modern_emoji_inline.dart';
+import '../utils/chat_text_direction.dart';
 import '../utils/grapheme_text_editing.dart';
 import 'gif_picker_widget.dart';
 
@@ -358,7 +359,7 @@ class _VistaEmojiPanelState extends State<VistaEmojiPanel> {
           padding: const EdgeInsets.fromLTRB(10, 10, 10, 6),
           child: TextField(
             controller: _searchController,
-            textDirection: TextDirection.rtl,
+            textDirection: kChatLayoutTextDirection,
             style: TextStyle(
               color: isDark ? Colors.white : Colors.black87,
               fontSize: 14,

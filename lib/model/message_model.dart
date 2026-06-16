@@ -386,6 +386,7 @@ class MessageModel {
   final String? localFilePath; // مسیر محلی فایل (قبل از آپلود)
   final double? uploadProgress; // پیشرفت آپلود (0.0 تا 1.0)
   final bool isUploading; // آیا در حال آپلود است؟
+  final DateTime? editedAt;
 
   // ✅ ValueNotifier برای status - فقط این rebuild میشه
   late final ValueNotifier<MessageDeliveryStatus> _statusNotifier;
@@ -403,6 +404,8 @@ class MessageModel {
   }
 
   bool hasReactions() => reactions.isNotEmpty;
+
+  bool get isEdited => editedAt != null;
 
   /// بررسی اینکه آیا پیام یک پست اشتراک‌گذاری شده است
   bool get isSharedPost =>
@@ -591,6 +594,7 @@ class MessageModel {
     this.localFilePath,
     this.uploadProgress,
     this.isUploading = false,
+    this.editedAt,
   }) {
     // ✅ Initialize status notifier با مقدار محاسبه شده
     _statusNotifier = ValueNotifier(_calculateDeliveryStatus());
@@ -829,7 +833,23 @@ class MessageModel {
           ? (json['upload_progress'] as num).toDouble()
           : null,
       isUploading: json['is_uploading'] as bool? ?? false,
+      editedAt: _parseEditedAt(json),
     );
+  }
+
+  static DateTime? _parseEditedAt(Map<String, dynamic> json) {
+    final raw = json['edited_at'];
+    if (raw is String && raw.trim().isNotEmpty) {
+      try {
+        return DateTime.parse(raw);
+      } catch (_) {
+        return null;
+      }
+    }
+    if (json['is_edited'] == true) {
+      return DateTime.now();
+    }
+    return null;
   }
 
   factory MessageModel.temporary({
@@ -951,6 +971,7 @@ class MessageModel {
     String? localFilePath,
     double? uploadProgress,
     bool? isUploading,
+    DateTime? editedAt,
   }) {
     final newModel = MessageModel(
       id: id ?? this.id,
@@ -1001,6 +1022,7 @@ class MessageModel {
       localFilePath: localFilePath ?? this.localFilePath,
       uploadProgress: uploadProgress ?? this.uploadProgress,
       isUploading: isUploading ?? this.isUploading,
+      editedAt: editedAt ?? this.editedAt,
     );
 
     newModel._statusNotifier.value = newModel.resolvedDeliveryStatus;
@@ -1063,6 +1085,7 @@ class MessageModel {
       'local_file_path': localFilePath,
       'upload_progress': uploadProgress,
       'is_uploading': isUploading,
+      'edited_at': editedAt?.toIso8601String(),
     };
   }
 }

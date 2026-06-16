@@ -145,12 +145,9 @@ class _FileMessageBubbleState extends State<FileMessageBubble> {
     final hasOffline = _localFile != null && _localFile!.existsSync();
     final progress = _task?.progress ?? 0;
     final primaryForeground = widget.isMe
-        ? (isLightOutgoing ? const Color(0xFF1E293B) : Colors.white)
-        : theme.textColor;
-    final captionDirection = resolveChatTextDirection(
-      widget.caption,
-      fallback: Directionality.of(context),
-    );
+        ? theme.myBubbleTextColor
+        : theme.otherBubbleTextColor;
+    final captionDirection = kChatLayoutTextDirection;
 
     return Container(
       constraints: const BoxConstraints(maxWidth: 285, minWidth: 220),
@@ -261,12 +258,10 @@ class _FileMessageBubbleState extends State<FileMessageBubble> {
   ) {
     final isLightOutgoing = widget.isMe && !theme.isDark;
     final iconBgColor = widget.isMe
-        ? (isLightOutgoing
-            ? theme.sendButtonColor.withValues(alpha: 0.14)
-            : Colors.white.withValues(alpha: 0.18))
+        ? theme.myBubbleTextColor.withValues(alpha: 0.18)
         : fileInfo.color.withValues(alpha: 0.12);
     final iconColor = widget.isMe
-        ? (isLightOutgoing ? theme.sendButtonColor : Colors.white)
+        ? theme.myBubbleTextColor
         : fileInfo.color;
 
     IconData icon;

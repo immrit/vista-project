@@ -92,128 +92,133 @@ const MessageEntitySchema = CollectionSchema(
       name: r'duration',
       type: IsarType.long,
     ),
-    r'errorMessage': PropertySchema(
+    r'editedAt': PropertySchema(
       id: 15,
+      name: r'editedAt',
+      type: IsarType.dateTime,
+    ),
+    r'errorMessage': PropertySchema(
+      id: 16,
       name: r'errorMessage',
       type: IsarType.string,
     ),
     r'forwardedFromSenderName': PropertySchema(
-      id: 16,
+      id: 17,
       name: r'forwardedFromSenderName',
       type: IsarType.string,
     ),
     r'id': PropertySchema(
-      id: 17,
+      id: 18,
       name: r'id',
       type: IsarType.string,
     ),
     r'isDelivered': PropertySchema(
-      id: 18,
+      id: 19,
       name: r'isDelivered',
       type: IsarType.bool,
     ),
     r'isFailed': PropertySchema(
-      id: 19,
+      id: 20,
       name: r'isFailed',
       type: IsarType.bool,
     ),
     r'isForwarded': PropertySchema(
-      id: 20,
+      id: 21,
       name: r'isForwarded',
       type: IsarType.bool,
     ),
     r'isMe': PropertySchema(
-      id: 21,
+      id: 22,
       name: r'isMe',
       type: IsarType.bool,
     ),
     r'isPending': PropertySchema(
-      id: 22,
+      id: 23,
       name: r'isPending',
       type: IsarType.bool,
     ),
     r'isRead': PropertySchema(
-      id: 23,
+      id: 24,
       name: r'isRead',
       type: IsarType.bool,
     ),
     r'isSeen': PropertySchema(
-      id: 24,
+      id: 25,
       name: r'isSeen',
       type: IsarType.bool,
     ),
     r'isSent': PropertySchema(
-      id: 25,
+      id: 26,
       name: r'isSent',
       type: IsarType.bool,
     ),
     r'isUploading': PropertySchema(
-      id: 26,
+      id: 27,
       name: r'isUploading',
       type: IsarType.bool,
     ),
     r'localFilePath': PropertySchema(
-      id: 27,
+      id: 28,
       name: r'localFilePath',
       type: IsarType.string,
     ),
     r'localImagePath': PropertySchema(
-      id: 28,
+      id: 29,
       name: r'localImagePath',
       type: IsarType.string,
     ),
     r'messageType': PropertySchema(
-      id: 29,
+      id: 30,
       name: r'messageType',
       type: IsarType.string,
     ),
     r'originalMessageId': PropertySchema(
-      id: 30,
+      id: 31,
       name: r'originalMessageId',
       type: IsarType.string,
     ),
     r'originalSenderId': PropertySchema(
-      id: 31,
+      id: 32,
       name: r'originalSenderId',
       type: IsarType.string,
     ),
     r'reactionsJson': PropertySchema(
-      id: 32,
+      id: 33,
       name: r'reactionsJson',
       type: IsarType.string,
     ),
     r'replyToContent': PropertySchema(
-      id: 33,
+      id: 34,
       name: r'replyToContent',
       type: IsarType.string,
     ),
     r'replyToMessageId': PropertySchema(
-      id: 34,
+      id: 35,
       name: r'replyToMessageId',
       type: IsarType.string,
     ),
     r'replyToSenderName': PropertySchema(
-      id: 35,
+      id: 36,
       name: r'replyToSenderName',
       type: IsarType.string,
     ),
     r'senderId': PropertySchema(
-      id: 36,
+      id: 37,
       name: r'senderId',
       type: IsarType.string,
     ),
     r'sharedPostDataJson': PropertySchema(
-      id: 37,
+      id: 38,
       name: r'sharedPostDataJson',
       type: IsarType.string,
     ),
     r'storyReplyDataJson': PropertySchema(
-      id: 38,
+      id: 39,
       name: r'storyReplyDataJson',
       type: IsarType.string,
     ),
     r'uploadProgress': PropertySchema(
-      id: 39,
+      id: 40,
       name: r'uploadProgress',
       type: IsarType.double,
     )
@@ -444,31 +449,32 @@ void _messageEntitySerialize(
   writer.writeStringList(offsets[12], object.deletedForUserIds);
   writer.writeBool(offsets[13], object.deletedGlobally);
   writer.writeLong(offsets[14], object.duration);
-  writer.writeString(offsets[15], object.errorMessage);
-  writer.writeString(offsets[16], object.forwardedFromSenderName);
-  writer.writeString(offsets[17], object.id);
-  writer.writeBool(offsets[18], object.isDelivered);
-  writer.writeBool(offsets[19], object.isFailed);
-  writer.writeBool(offsets[20], object.isForwarded);
-  writer.writeBool(offsets[21], object.isMe);
-  writer.writeBool(offsets[22], object.isPending);
-  writer.writeBool(offsets[23], object.isRead);
-  writer.writeBool(offsets[24], object.isSeen);
-  writer.writeBool(offsets[25], object.isSent);
-  writer.writeBool(offsets[26], object.isUploading);
-  writer.writeString(offsets[27], object.localFilePath);
-  writer.writeString(offsets[28], object.localImagePath);
-  writer.writeString(offsets[29], object.messageType);
-  writer.writeString(offsets[30], object.originalMessageId);
-  writer.writeString(offsets[31], object.originalSenderId);
-  writer.writeString(offsets[32], object.reactionsJson);
-  writer.writeString(offsets[33], object.replyToContent);
-  writer.writeString(offsets[34], object.replyToMessageId);
-  writer.writeString(offsets[35], object.replyToSenderName);
-  writer.writeString(offsets[36], object.senderId);
-  writer.writeString(offsets[37], object.sharedPostDataJson);
-  writer.writeString(offsets[38], object.storyReplyDataJson);
-  writer.writeDouble(offsets[39], object.uploadProgress);
+  writer.writeDateTime(offsets[15], object.editedAt);
+  writer.writeString(offsets[16], object.errorMessage);
+  writer.writeString(offsets[17], object.forwardedFromSenderName);
+  writer.writeString(offsets[18], object.id);
+  writer.writeBool(offsets[19], object.isDelivered);
+  writer.writeBool(offsets[20], object.isFailed);
+  writer.writeBool(offsets[21], object.isForwarded);
+  writer.writeBool(offsets[22], object.isMe);
+  writer.writeBool(offsets[23], object.isPending);
+  writer.writeBool(offsets[24], object.isRead);
+  writer.writeBool(offsets[25], object.isSeen);
+  writer.writeBool(offsets[26], object.isSent);
+  writer.writeBool(offsets[27], object.isUploading);
+  writer.writeString(offsets[28], object.localFilePath);
+  writer.writeString(offsets[29], object.localImagePath);
+  writer.writeString(offsets[30], object.messageType);
+  writer.writeString(offsets[31], object.originalMessageId);
+  writer.writeString(offsets[32], object.originalSenderId);
+  writer.writeString(offsets[33], object.reactionsJson);
+  writer.writeString(offsets[34], object.replyToContent);
+  writer.writeString(offsets[35], object.replyToMessageId);
+  writer.writeString(offsets[36], object.replyToSenderName);
+  writer.writeString(offsets[37], object.senderId);
+  writer.writeString(offsets[38], object.sharedPostDataJson);
+  writer.writeString(offsets[39], object.storyReplyDataJson);
+  writer.writeDouble(offsets[40], object.uploadProgress);
 }
 
 MessageEntity _messageEntityDeserialize(
@@ -493,32 +499,33 @@ MessageEntity _messageEntityDeserialize(
   object.deletedForUserIds = reader.readStringList(offsets[12]);
   object.deletedGlobally = reader.readBool(offsets[13]);
   object.duration = reader.readLongOrNull(offsets[14]);
-  object.errorMessage = reader.readStringOrNull(offsets[15]);
-  object.forwardedFromSenderName = reader.readStringOrNull(offsets[16]);
-  object.id = reader.readString(offsets[17]);
-  object.isDelivered = reader.readBool(offsets[18]);
-  object.isFailed = reader.readBoolOrNull(offsets[19]);
-  object.isForwarded = reader.readBool(offsets[20]);
-  object.isMe = reader.readBool(offsets[21]);
-  object.isPending = reader.readBool(offsets[22]);
-  object.isRead = reader.readBool(offsets[23]);
-  object.isSeen = reader.readBool(offsets[24]);
-  object.isSent = reader.readBool(offsets[25]);
-  object.isUploading = reader.readBool(offsets[26]);
+  object.editedAt = reader.readDateTimeOrNull(offsets[15]);
+  object.errorMessage = reader.readStringOrNull(offsets[16]);
+  object.forwardedFromSenderName = reader.readStringOrNull(offsets[17]);
+  object.id = reader.readString(offsets[18]);
+  object.isDelivered = reader.readBool(offsets[19]);
+  object.isFailed = reader.readBoolOrNull(offsets[20]);
+  object.isForwarded = reader.readBool(offsets[21]);
+  object.isMe = reader.readBool(offsets[22]);
+  object.isPending = reader.readBool(offsets[23]);
+  object.isRead = reader.readBool(offsets[24]);
+  object.isSeen = reader.readBool(offsets[25]);
+  object.isSent = reader.readBool(offsets[26]);
+  object.isUploading = reader.readBool(offsets[27]);
   object.isarId = id;
-  object.localFilePath = reader.readStringOrNull(offsets[27]);
-  object.localImagePath = reader.readStringOrNull(offsets[28]);
-  object.messageType = reader.readStringOrNull(offsets[29]);
-  object.originalMessageId = reader.readStringOrNull(offsets[30]);
-  object.originalSenderId = reader.readStringOrNull(offsets[31]);
-  object.reactionsJson = reader.readStringOrNull(offsets[32]);
-  object.replyToContent = reader.readStringOrNull(offsets[33]);
-  object.replyToMessageId = reader.readStringOrNull(offsets[34]);
-  object.replyToSenderName = reader.readStringOrNull(offsets[35]);
-  object.senderId = reader.readString(offsets[36]);
-  object.sharedPostDataJson = reader.readStringOrNull(offsets[37]);
-  object.storyReplyDataJson = reader.readStringOrNull(offsets[38]);
-  object.uploadProgress = reader.readDoubleOrNull(offsets[39]);
+  object.localFilePath = reader.readStringOrNull(offsets[28]);
+  object.localImagePath = reader.readStringOrNull(offsets[29]);
+  object.messageType = reader.readStringOrNull(offsets[30]);
+  object.originalMessageId = reader.readStringOrNull(offsets[31]);
+  object.originalSenderId = reader.readStringOrNull(offsets[32]);
+  object.reactionsJson = reader.readStringOrNull(offsets[33]);
+  object.replyToContent = reader.readStringOrNull(offsets[34]);
+  object.replyToMessageId = reader.readStringOrNull(offsets[35]);
+  object.replyToSenderName = reader.readStringOrNull(offsets[36]);
+  object.senderId = reader.readString(offsets[37]);
+  object.sharedPostDataJson = reader.readStringOrNull(offsets[38]);
+  object.storyReplyDataJson = reader.readStringOrNull(offsets[39]);
+  object.uploadProgress = reader.readDoubleOrNull(offsets[40]);
   return object;
 }
 
@@ -560,17 +567,17 @@ P _messageEntityDeserializeProp<P>(
     case 14:
       return (reader.readLongOrNull(offset)) as P;
     case 15:
-      return (reader.readStringOrNull(offset)) as P;
+      return (reader.readDateTimeOrNull(offset)) as P;
     case 16:
       return (reader.readStringOrNull(offset)) as P;
     case 17:
-      return (reader.readString(offset)) as P;
+      return (reader.readStringOrNull(offset)) as P;
     case 18:
-      return (reader.readBool(offset)) as P;
+      return (reader.readString(offset)) as P;
     case 19:
-      return (reader.readBoolOrNull(offset)) as P;
-    case 20:
       return (reader.readBool(offset)) as P;
+    case 20:
+      return (reader.readBoolOrNull(offset)) as P;
     case 21:
       return (reader.readBool(offset)) as P;
     case 22:
@@ -584,7 +591,7 @@ P _messageEntityDeserializeProp<P>(
     case 26:
       return (reader.readBool(offset)) as P;
     case 27:
-      return (reader.readStringOrNull(offset)) as P;
+      return (reader.readBool(offset)) as P;
     case 28:
       return (reader.readStringOrNull(offset)) as P;
     case 29:
@@ -602,12 +609,14 @@ P _messageEntityDeserializeProp<P>(
     case 35:
       return (reader.readStringOrNull(offset)) as P;
     case 36:
-      return (reader.readString(offset)) as P;
-    case 37:
       return (reader.readStringOrNull(offset)) as P;
+    case 37:
+      return (reader.readString(offset)) as P;
     case 38:
       return (reader.readStringOrNull(offset)) as P;
     case 39:
+      return (reader.readStringOrNull(offset)) as P;
+    case 40:
       return (reader.readDoubleOrNull(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
@@ -2910,6 +2919,80 @@ extension MessageEntityQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(FilterCondition.between(
         property: r'duration',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      editedAtIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'editedAt',
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      editedAtIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'editedAt',
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      editedAtEqualTo(DateTime? value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'editedAt',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      editedAtGreaterThan(
+    DateTime? value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'editedAt',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      editedAtLessThan(
+    DateTime? value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'editedAt',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterFilterCondition>
+      editedAtBetween(
+    DateTime? lower,
+    DateTime? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'editedAt',
         lower: lower,
         includeLower: includeLower,
         upper: upper,
@@ -5655,6 +5738,19 @@ extension MessageEntityQuerySortBy
     });
   }
 
+  QueryBuilder<MessageEntity, MessageEntity, QAfterSortBy> sortByEditedAt() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'editedAt', Sort.asc);
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterSortBy>
+      sortByEditedAtDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'editedAt', Sort.desc);
+    });
+  }
+
   QueryBuilder<MessageEntity, MessageEntity, QAfterSortBy>
       sortByErrorMessage() {
     return QueryBuilder.apply(this, (query) {
@@ -6179,6 +6275,19 @@ extension MessageEntityQuerySortThenBy
     });
   }
 
+  QueryBuilder<MessageEntity, MessageEntity, QAfterSortBy> thenByEditedAt() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'editedAt', Sort.asc);
+    });
+  }
+
+  QueryBuilder<MessageEntity, MessageEntity, QAfterSortBy>
+      thenByEditedAtDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'editedAt', Sort.desc);
+    });
+  }
+
   QueryBuilder<MessageEntity, MessageEntity, QAfterSortBy>
       thenByErrorMessage() {
     return QueryBuilder.apply(this, (query) {
@@ -6635,6 +6744,12 @@ extension MessageEntityQueryWhereDistinct
     });
   }
 
+  QueryBuilder<MessageEntity, MessageEntity, QDistinct> distinctByEditedAt() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'editedAt');
+    });
+  }
+
   QueryBuilder<MessageEntity, MessageEntity, QDistinct> distinctByErrorMessage(
       {bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
@@ -6919,6 +7034,12 @@ extension MessageEntityQueryProperty
   QueryBuilder<MessageEntity, int?, QQueryOperations> durationProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'duration');
+    });
+  }
+
+  QueryBuilder<MessageEntity, DateTime?, QQueryOperations> editedAtProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'editedAt');
     });
   }
 

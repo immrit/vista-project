@@ -71,7 +71,6 @@ import '../../../services/user_profile_service.dart';
 // ✅ New Features
 import '../widgets/chat_attachment_sheet.dart';
 import '../widgets/message_search_bar.dart';
-import '../widgets/edit_message_dialog.dart';
 import '../widgets/forward_message_sheet.dart';
 import '../widgets/delete_message_dialog.dart';
 import '../widgets/floating_date_header.dart';
@@ -202,6 +201,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   // ═══════════════════════════════════════════════════════════════════════════
 
   MessageModel? _replyToMessage;
+  MessageModel? _editToMessage;
+  String? _preEditDraft;
   _PendingReplyContext? _pendingReplyContext;
   bool _isNearTop = false;
   final _showScrollToBottomNotifier = ValueNotifier<bool>(false);
@@ -568,7 +569,107 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     });
   }
 
+  void _clearEditContext({bool restoreDraft = true}) {
+    final draft = _preEditDraft;
+    setState(() {
+      _editToMessage = null;
+      _preEditDraft = null;
+      if (restoreDraft && draft != null) {
+        _messageController.text = draft;
+        _messageController.selection = TextSelection.collapsed(
+          offset: _messageController.text.length,
+        );
+      }
+    });
+  }
+
+  String? get _activeEditPreviewContent {
+    final message = _editToMessage;
+    if (message == null) return null;
+    final text = message.displayContent.trim();
+    return text.isNotEmpty ? text : 'پیام';
+  }
+
+  void _startEditMessage(MessageModel message) {
+    _clearReplyContext();
+    final currentDraft = _messageController.text;
+    setState(() {
+      _preEditDraft = currentDraft.trim().isNotEmpty ? currentDraft : null;
+      _editToMessage = message;
+      _messageController.text = message.displayContent;
+      _messageController.selection = TextSelection.collapsed(
+        offset: _messageController.text.length,
+      );
+    });
+    _focusNode.requestFocus();
+  }
+
+  Future<void> _saveEditedMessage() async {
+    if (!mounted || _editToMessage == null) return;
+
+    var content = _messageController.text.trim();
+    if (content.isEmpty) {
+      _showErrorSnackBar('متن پیام نمی‌تواند خالی باشد');
+      return;
+    }
+
+    final target = _editToMessage!;
+    final original = target.displayContent.trim();
+    if (content == original) {
+      _messageController.clear();
+      _clearEditContext(restoreDraft: true);
+      return;
+    }
+
+    if (widget.args.isSecret) {
+      final prefs = await SharedPreferences.getInstance();
+      final peerPubB64 =
+          prefs.getString('e2e_peer_pub_${widget.args.conversationId}');
+      if (peerPubB64 == null) {
+        _showErrorSnackBar(
+            'درحال تبادل کلید امنیتی با مخاطب هستیم... لطفاً کمی صبر کنید');
+        return;
+      }
+
+      final e2e = E2EEncryptionService();
+      final myKeyPair = await e2e.getSavedKeyPair(_currentUserId!);
+      if (myKeyPair == null) {
+        _showErrorSnackBar('خطا: کلید امنیتی محلی یافت نشد.');
+        return;
+      }
+
+      final sharedSecret = await e2e.computeSharedSecret(
+        myKeyPair: myKeyPair,
+        peerPublicKeyBytes: base64Decode(peerPubB64),
+      );
+      content = await e2e.encryptMessage(content, sharedSecret);
+    }
+
+    final messageId = target.id;
+    _messageController.clear();
+    _clearEditContext(restoreDraft: false);
+
+    final result =
+        await ref.read(chatRepositoryProvider).editMessage(messageId, content);
+    if (!mounted) return;
+
+    if (result.isSuccess) {
+      _showSuccessSnackBar('پیام ویرایش شد');
+    } else {
+      _showErrorSnackBar(result.error ?? 'خطا در ویرایش پیام');
+      setState(() {
+        _editToMessage = target;
+        _messageController.text = original;
+        _messageController.selection = TextSelection.collapsed(
+          offset: _messageController.text.length,
+        );
+      });
+      _focusNode.requestFocus();
+    }
+  }
+
   void _setReplyToMessage(MessageModel message) {
+    _clearEditContext(restoreDraft: false);
     setState(() {
       _pendingReplyContext = null;
       _replyToMessage = message;
@@ -2137,7 +2238,9 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     final showConnectionBanner =
         !isConnected && _showConnectionBannerAfterDelay;
 
-    return Stack(
+    return Directionality(
+      textDirection: kChatLayoutTextDirection,
+      child: Stack(
       children: [
         // والپیپر + لیست — ایزوله از viewInsets کیبورد (Flutter #170592)
         KeyboardStableMediaQuery(
@@ -2360,6 +2463,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
           },
         ),
       ],
+    ),
     );
   }
 
@@ -4277,15 +4381,20 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     return AnimatedChatInput(
       controller: _messageController,
       focusNode: _focusNode,
-      onSend: _sendMessage,
+      onSend: _editToMessage != null ? _saveEditedMessage : _sendMessage,
       onAttachment: _handleAttachment,
       onVoice: _handleVoice,
       onScheduleMessage: _scheduleMessage,
       onChanged: _onTextChanged,
       onGifSelected: _handleGifSelected,
-      replyToContent: _activeReplyContent,
-      replyToSenderName: _activeReplySenderName,
+      replyToContent: _editToMessage == null ? _activeReplyContent : null,
+      replyToSenderName: _editToMessage == null ? _activeReplySenderName : null,
       onCancelReply: _clearReplyContext,
+      editPreviewContent: _activeEditPreviewContent,
+      editPreviewTitle: 'ویرایش پیام',
+      onCancelEdit: () => _clearEditContext(restoreDraft: true),
+      isEditing: _editToMessage != null,
+      hint: _editToMessage != null ? 'ویرایش پیام...' : null,
       onVoiceRecorded: _handleVoiceRecorded,
       onAutocomplete: _handleAutocomplete,
       onHeightChanged: _onInputHeightChanged,
@@ -6001,8 +6110,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                 },
               ),
 
-              // ویرایش فقط برای پیام‌های متنی خودم (نه GIF)
-              if (isMe && !isGif && message.attachmentUrl == null)
+              // ویرایش برای پیام‌های متنی و فایل‌های کپشن‌دار (نه GIF و Voice)
+              if (isMe && !isGif && message.attachmentType?.toLowerCase() != 'voice' && message.attachmentType?.toLowerCase() != 'audio')
                 _buildOptionTile(
                   icon: _canEditMessages
                       ? Icons.edit_rounded
@@ -6080,19 +6189,13 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     );
   }
 
-  /// ویرایش پیام
-  Future<void> _editMessage(MessageModel message) async {
-    final result = await EditMessageDialog.show(
-      context,
-      messageId: message.id,
-      currentContent: message.content,
-    );
-
-    if (result == true) {
-      _showSuccessSnackBar('پیام ویرایش شد');
-      // Refresh messages
-      ref.invalidate(chatMessagesProvider(widget.args.conversationId));
+  /// ویرایش پیام — حالت inline مثل Telegram X
+  void _editMessage(MessageModel message) {
+    if (message.isPending || message.isUploading) {
+      _showErrorSnackBar('تا پایان ارسال پیام، ویرایش امکان‌پذیر نیست');
+      return;
     }
+    _startEditMessage(message);
   }
 
   /// فوروارد پیام
@@ -6705,6 +6808,17 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                   status: _getMessageStatus(message),
                   // callbacks داخلی را هم به همان هندلرها وصل می‌کنیم تا tap حتماً کار کند
                   onTap: () => handlePostTap(postContext),
+                  onViewPost: () {
+                    if (!_selection.isSelectionMode) {
+                      Navigator.pushNamed(
+                        postContext,
+                        '/post-detail',
+                        arguments: {'postId': postId},
+                      );
+                    } else {
+                      handlePostTap(postContext);
+                    }
+                  },
                   onLongPress: handlePostLongPress,
                   onShare: () async {
                     if (!_selection.isSelectionMode) {
@@ -6905,6 +7019,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         initialGalleryIndex:
             conversationGalleryIndexByMessageId?[message.id],
         message: message,
+        isEdited: message.isEdited,
       );
     }
 
@@ -7298,10 +7413,7 @@ class _ChatMediaAlbumBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = context.chatTheme;
     final hasCaption = caption != null && caption!.trim().isNotEmpty;
-    final captionDirection = resolveChatTextDirection(
-      caption,
-      fallback: Directionality.of(context),
-    );
+    final captionDirection = kChatLayoutTextDirection;
 
     return ConstrainedBox(
       constraints: BoxConstraints(
