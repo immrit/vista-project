@@ -184,10 +184,21 @@ class ChatTheme {
     final double mergedRadius = bubbleMergedRadius.clamp(0.0, baseRadius);
     final Radius r = Radius.circular(baseRadius);
     final Radius mr = Radius.circular(mergedRadius);
-    final Radius tail = const Radius.elliptical(12, 2);
     
-    final bool topMerged = !isFirstInGroup;
-    final bool bottomMerged = !isLastInGroup;
+    // In reverse ListView:
+    // isFirstInGroup = true for the NEWEST message (visually at the BOTTOM).
+    // isLastInGroup = true for the OLDEST message (visually at the TOP).
+    
+    final bool isVisuallyTop = isLastInGroup && !isFirstInGroup;
+    final bool isVisuallyBottom = isFirstInGroup && !isLastInGroup;
+
+    // Based on Telegram X design & user feedback:
+    // - Visually Top: Top edge is fully rounded, bottom is merged.
+    // - Visually Bottom: Top edge is merged, bottom is fully rounded.
+    // - Middle & Single messages: Both top and bottom are merged (less rounded on the wall side).
+    final bool topMerged = !isVisuallyTop;
+    final bool bottomMerged = !isVisuallyBottom;
+    
     final bool bubbleOnRight =
         textDirection == TextDirection.ltr ? isMe : !isMe;
 
@@ -196,13 +207,13 @@ class ChatTheme {
         topLeft: r,
         topRight: topMerged ? mr : r,
         bottomLeft: r,
-        bottomRight: bottomMerged ? mr : tail,
+        bottomRight: bottomMerged ? mr : r,
       );
     } else {
       return BorderRadius.only(
         topLeft: topMerged ? mr : r,
         topRight: r,
-        bottomLeft: bottomMerged ? mr : tail,
+        bottomLeft: bottomMerged ? mr : r,
         bottomRight: r,
       );
     }

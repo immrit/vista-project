@@ -381,20 +381,23 @@ class _ImprovedAnimatedMessageBubbleState
       crossAxisAlignment:
           widget.isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
       children: [
-        Row(
-          mainAxisAlignment:
-              widget.isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Flexible(
-              child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  maxWidth: MediaQuery.of(context).size.width * 0.82,
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 3.0),
+          child: Row(
+            mainAxisAlignment:
+                widget.isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Flexible(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: MediaQuery.of(context).size.width * 0.82,
+                  ),
+                  child: _buildMessageBubble(theme),
                 ),
-                child: _buildMessageBubble(theme),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ],
     );
@@ -629,20 +632,17 @@ class _ImprovedAnimatedMessageBubbleState
             const SizedBox(height: 4),
             Directionality(
               textDirection: replyContentDirection,
-              child: Align(
-                alignment: AlignmentDirectional.centerStart,
-                child: Text(
-                  widget.replyToContent ?? '',
-                  textAlign: TextAlign.start,
-                  style: TextStyle(
-                    color: widget.isMe
-                        ? theme.myBubbleTextColor.withValues(alpha: 0.8)
-                        : theme.otherBubbleTextColor.withValues(alpha: 0.8),
-                    fontSize: 13,
-                  ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
+              child: Text(
+                widget.replyToContent ?? '',
+                textAlign: TextAlign.start,
+                style: TextStyle(
+                  color: widget.isMe
+                      ? theme.myBubbleTextColor.withValues(alpha: 0.8)
+                      : theme.otherBubbleTextColor.withValues(alpha: 0.8),
+                  fontSize: 13,
                 ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
           ],
@@ -1075,15 +1075,16 @@ class _ImprovedAnimatedMessageBubbleState
       fallback: Directionality.of(context),
     );
 
-    return Directionality(
-      textDirection: contentDirection,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        child: Row(
+    return Padding(
+      padding: const EdgeInsets.only(left: 12, right: 12, top: 8, bottom: 6),
+      child: Directionality(
+        textDirection: TextDirection.ltr,
+        child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            Flexible(
+            Directionality(
+              textDirection: contentDirection,
               child: _isDecrypting
                   ? Row(
                       mainAxisSize: MainAxisSize.min,
@@ -1147,7 +1148,7 @@ class _ImprovedAnimatedMessageBubbleState
                         )
                       : const SizedBox.shrink(),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(height: 2),
             _buildTimeAndStatus(theme),
           ],
         ),
@@ -1682,24 +1683,27 @@ class _ImprovedAnimatedMessageBubbleState
     ChatTheme theme,
     MessageDeliveryStatus deliveryStatus,
   ) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      mainAxisAlignment: MainAxisAlignment.end,
-      children: [
-        Text(
-          _formattedTime,
-          style: TextStyle(
-            color: widget.isMe
-                ? theme.myBubbleTextColor.withValues(alpha: 0.7)
-                : theme.otherBubbleTextColor.withValues(alpha: 0.6),
-            fontSize: 11,
+    return Directionality(
+      textDirection: TextDirection.ltr,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          Text(
+            _formattedTime,
+            style: TextStyle(
+              color: widget.isMe
+                  ? theme.myBubbleTextColor.withValues(alpha: 0.7)
+                  : theme.otherBubbleTextColor.withValues(alpha: 0.6),
+              fontSize: 11,
+            ),
           ),
-        ),
-        if (widget.isMe) ...[
-          const SizedBox(width: 3),
-          _buildStatusIconFromDeliveryStatus(theme, deliveryStatus),
+          if (widget.isMe) ...[
+            const SizedBox(width: 3),
+            _buildStatusIconFromDeliveryStatus(theme, deliveryStatus),
+          ],
         ],
-      ],
+      ),
     );
   }
 
