@@ -110,7 +110,6 @@ class _ChatConversationsScreenState
           _isConversationSelectionMode ? null : _buildComposeFab(theme),
       body: Column(
         children: [
-          if (_isSearchVisible) _buildSearchSection(theme),
           Expanded(
             child: ValueListenableBuilder<String>(
               valueListenable: _searchQueryNotifier,
@@ -136,17 +135,52 @@ class _ChatConversationsScreenState
       elevation: 0,
       scrolledUnderElevation: 0,
       systemOverlayStyle: overlayStyle,
-      title: Text(
-        AppLocalizations.of(context)?.messages ?? 'پیام‌ها',
-        style: theme.appBarTheme.titleTextStyle?.copyWith(
-              fontSize: 22,
-              fontWeight: FontWeight.w700,
-            ) ??
-            TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.w700,
-              color: theme.textTheme.titleLarge?.color,
-            ),
+      title: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 220),
+        switchInCurve: Curves.easeOutCubic,
+        switchOutCurve: Curves.easeInCubic,
+        transitionBuilder: (child, animation) => SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(0, -0.5),
+            end: Offset.zero,
+          ).animate(animation),
+          child: FadeTransition(opacity: animation, child: child),
+        ),
+        child: _isSearchVisible
+            ? TextField(
+                key: const ValueKey('search-field'),
+                autofocus: true,
+                onChanged: (v) {
+                  _searchDebounce?.cancel();
+                  _searchDebounce = Timer(
+                    const Duration(milliseconds: 300),
+                    () => _searchQueryNotifier.value = v,
+                  );
+                },
+                style: theme.textTheme.bodyMedium,
+                decoration: InputDecoration(
+                  hintText: AppLocalizations.of(context)?.search ?? 'جستجو...',
+                  hintStyle: TextStyle(
+                    color: theme.textTheme.bodySmall?.color,
+                    fontSize: 16,
+                  ),
+                  border: InputBorder.none,
+                  contentPadding: EdgeInsets.zero,
+                ),
+              )
+            : Text(
+                key: const ValueKey('title-text'),
+                AppLocalizations.of(context)?.messages ?? 'پیام‌ها',
+                style: theme.appBarTheme.titleTextStyle?.copyWith(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w700,
+                    ) ??
+                    TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w700,
+                      color: theme.textTheme.titleLarge?.color,
+                    ),
+              ),
       ),
       centerTitle: false,
       actions: [
@@ -168,26 +202,20 @@ class _ChatConversationsScreenState
                     indicatorColor = Colors.red;
                     break;
                 }
-                return Container(
-                  width: 10,
+                final isConnecting =
+                    status == ConnectionStatus.connecting;
+                return AnimatedContainer(
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeInOut,
+                  width: isConnecting ? null : 10,
                   height: 10,
-                  margin: const EdgeInsetsDirectional.only(
-                      start:
-                          8), // Start margin in directional applies spacing consistently
-                  // In RTL (Persian), actions are on the LEFT.
-                  // EdgeInsets.only(left: 8) seems correct for spacing from the edge or next icon?
-                  // Wait, actions are usually [Search, Menu, Gap].
-                  // I should place it BEFORE Search or AFTER Menu?
-                  // User "inside the AppBar actions".
-                  // Let's put it as the first item in actions list so it is rightmost in RTL? No, leftmost in RTL?
-                  // AppBar actions order: start to end. In RTL: Right to Left? No, AppBar actions are usually at the "End" of the bar.
-                  // In RTL, "End" is Left.
-                  // So items are [1, 2, 3] -> displayed [1] [2] [3] from Right to Left? Or Left to Right?
-                  // Flutter AppBar actions: "A list of Widgets to display in a row after the [title] widget."
-                  // Usually [Search, Menu].
-                  // I'll add it to the list.
+                  margin: const EdgeInsetsDirectional.only(start: 8),
+                  padding: isConnecting
+                      ? const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 1)
+                      : EdgeInsets.zero,
                   decoration: BoxDecoration(
-                    shape: BoxShape.circle,
+                    borderRadius: BorderRadius.circular(6),
                     color: indicatorColor,
                     boxShadow: [
                       BoxShadow(
@@ -197,6 +225,16 @@ class _ChatConversationsScreenState
                       ),
                     ],
                   ),
+                  child: isConnecting
+                      ? const Text(
+                          'در حال اتصال...',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        )
+                      : null,
                 );
               },
               loading: () => const SizedBox(),

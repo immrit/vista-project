@@ -24,7 +24,6 @@ import '../../../../services/current_user_service.dart';
 import '../../../chat/screens/modern_chat_screen.dart';
 import '../../../../model/message_model.dart';
 import '../../../chat/utils/story_reply_media_utils.dart';
-import '../../../chat/providers/chat_action_controller.dart';
 import '../../../chat/providers/chat_providers.dart';
 import '../../../../provider/optimized_conversations_provider.dart';
 
@@ -178,8 +177,7 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
     }
 
     final repository = ref.read(storyRepositoryProvider);
-    final accessResult =
-        await repository.getStoryReplyAccess(_currentStory.id);
+    final accessResult = await repository.getStoryReplyAccess(_currentStory.id);
 
     if (!mounted) return;
     accessResult.fold(
@@ -706,7 +704,8 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
         final optionTexts = _extractPollOptions(rawData);
         final rawQuestion = rawData['question']?.toString().trim() ?? '';
         final enriched = result.data!.copyWith(
-          question: rawQuestion.isNotEmpty ? rawQuestion : result.data!.question,
+          question:
+              rawQuestion.isNotEmpty ? rawQuestion : result.data!.question,
           options: result.data!.options.map((opt) {
             final label = opt.optionIndex < optionTexts.length
                 ? optionTexts[opt.optionIndex]
@@ -1522,16 +1521,15 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
     if (conversationId != null && mounted) {
       final ownerUsername = _currentUser.username;
       final storyReplyMeta = _buildStoryReplyMeta();
-      final dmResult = await ref
-          .read(chatActionControllerProvider.notifier)
-          .sendMessage(
-            conversationId: conversationId,
-            content: trimmed,
-            replyToMessageId: 'story:${_currentStory.id}',
-            replyToContent: jsonEncode(storyReplyMeta.toJson()),
-            replyToSenderName: 'استوری $ownerUsername',
-            replyToKind: 'story',
-          );
+      final dmResult =
+          await ref.read(chatActionControllerProvider.notifier).sendMessage(
+                conversationId: conversationId,
+                content: trimmed,
+                replyToMessageId: 'story:${_currentStory.id}',
+                replyToContent: jsonEncode(storyReplyMeta.toJson()),
+                replyToSenderName: 'استوری $ownerUsername',
+                replyToKind: 'story',
+              );
 
       if (!mounted) return;
       if (!dmResult.isSuccess) {
@@ -1555,8 +1553,7 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
   }
 
   StoryReplyData _buildStoryReplyMeta() {
-    final thumbnailUrl =
-        StoryReplyMediaUtils.thumbnailFromStory(_currentStory);
+    final thumbnailUrl = StoryReplyMediaUtils.thumbnailFromStory(_currentStory);
 
     return StoryReplyData(
       storyId: _currentStory.id,
@@ -1564,8 +1561,7 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
       storyOwnerUsername: _currentUser.username,
       storyOwnerAvatarUrl: _currentUser.avatarUrl,
       storyThumbnailUrl: thumbnailUrl,
-      storyMediaType:
-          _currentStory.media.isVideo ? 'video' : 'image',
+      storyMediaType: _currentStory.media.isVideo ? 'video' : 'image',
       storyCreatedAt: _currentStory.createdAt,
       storyExpiresAt: _currentStory.expiresAt,
       replyKind: 'reply',
@@ -1578,7 +1574,8 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
     final ownerId = _currentStory.userId.trim();
     if (ownerId.isEmpty) return null;
 
-    final conversations = ref.read(optimizedConversationsProvider).conversations;
+    final conversations =
+        ref.read(optimizedConversationsProvider).conversations;
     for (final conversation in conversations) {
       if (conversation.otherUserId == ownerId) {
         return conversation.id;

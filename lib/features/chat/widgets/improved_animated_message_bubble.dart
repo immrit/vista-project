@@ -72,6 +72,7 @@ class ImprovedAnimatedMessageBubble extends StatefulWidget {
   // Reactions
   final List<MessageReaction> reactions;
   final Function(String emoji)? onAddReaction;
+  final VoidCallback? onReactionDetailTap;
 
   // Interactions
   final void Function(BuildContext context, MessageModel message)? onTap;
@@ -128,6 +129,7 @@ class ImprovedAnimatedMessageBubble extends StatefulWidget {
     this.onStoryReplyTap,
     this.reactions = const [],
     this.onAddReaction,
+    this.onReactionDetailTap,
     this.onTap,
     this.onLongPress,
     this.onDoubleTap,
@@ -251,17 +253,21 @@ class _ImprovedAnimatedMessageBubbleState
       },
     ));
 
+    // Telegram X style: subtle 8% vertical slide (not the old 90% banner effect)
+    final slideBegin = widget.isMe
+        ? const Offset(0.05, 0.05)
+        : const Offset(0, 0.08);
     _slideAnimation = Tween<Offset>(
-      begin: const Offset(0, 0.9),
+      begin: slideBegin,
       end: Offset.zero,
     ).animate(CurvedAnimation(
       parent: _controller,
       curve: switch (widget.effectsLevel) {
         ChatEffectsLevel.low => const Interval(0.0, 0.5, curve: Curves.linear),
         ChatEffectsLevel.medium =>
-          const Interval(0.0, 0.65, curve: Curves.easeOutQuart),
+          const Interval(0.0, 0.65, curve: Curves.easeOutCubic),
         ChatEffectsLevel.high =>
-          const Interval(0.0, 1.0, curve: Curves.easeOutQuart),
+          const Interval(0.0, 1.0, curve: Curves.easeOutCubic),
       },
     ));
 
@@ -332,20 +338,22 @@ class _ImprovedAnimatedMessageBubbleState
     super.build(context);
     final theme = context.chatTheme;
 
-    final child = _staticPresentation
-        ? _buildInteractiveBubble(theme)
-        : FadeTransition(
-            opacity: _fadeAnimation,
-            child: SlideTransition(
-              position: _slideAnimation,
-              child: ScaleTransition(
-                scale: _scaleAnimation,
-                child: _buildInteractiveBubble(theme),
-              ),
-            ),
-          );
+    if (_staticPresentation) {
+      return RepaintBoundary(child: _buildInteractiveBubble(theme));
+    }
 
-    return child;
+    return RepaintBoundary(
+      child: FadeTransition(
+        opacity: _fadeAnimation,
+        child: SlideTransition(
+          position: _slideAnimation,
+          child: ScaleTransition(
+            scale: _scaleAnimation,
+            child: _buildInteractiveBubble(theme),
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _buildInteractiveBubble(ChatTheme theme) {
@@ -381,26 +389,25 @@ class _ImprovedAnimatedMessageBubbleState
   }
 
   Widget _buildBubbleBody(ChatTheme theme) {
+    // Column fills full viewport width (from ListView constraint).
+    // crossAxisAlignment.end/start anchors the bubble to the correct screen edge.
     Widget child = Column(
       crossAxisAlignment:
           widget.isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
       children: [
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 3.0),
-          child: Row(
-            mainAxisAlignment:
-                widget.isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Flexible(
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(
-                    maxWidth: MediaQuery.sizeOf(context).width * 0.82,
-                  ),
-                  child: _buildMessageBubble(theme),
-                ),
+          // IntrinsicWidth turns the bubble's natural content width into a tight
+          // constraint so that crossAxisAlignment.stretch in _buildMessageBubble
+          // can give every child the same width (fixing RTL text alignment and
+          // timestamp position for reply/short-text bubbles).
+          child: IntrinsicWidth(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: MediaQuery.sizeOf(context).width * 0.82,
               ),
-            ],
+              child: _buildMessageBubble(theme),
+            ),
           ),
         ),
       ],
@@ -426,7 +433,13 @@ class _ImprovedAnimatedMessageBubbleState
     final sharedPostReply =
         storyReply == null ? _effectiveSharedPostReplyData() : null;
 
-    return Container(
+    final bubbleColor = widget.isMe && theme.myBubbleGradient == null
+        ? theme.myBubbleColor
+        : (widget.isMe
+            ? (theme.myBubbleGradient?.colors.last ?? theme.myBubbleColor)
+            : theme.otherBubbleColor);
+
+    final bubble = Container(
       clipBehavior: isMedia ? Clip.hardEdge : Clip.none,
       decoration: BoxDecoration(
         color: widget.isMe && theme.myBubbleGradient == null
@@ -436,7 +449,10 @@ class _ImprovedAnimatedMessageBubbleState
         borderRadius: _getBorderRadius(theme),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        // stretch gives every child the same tight width (= bubble intrinsic width
+        // established by IntrinsicWidth above), so short RTL text fills the row and
+        // Positioned(right:0) timestamps always land at the right bubble edge.
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: [
           if (_shouldShowSenderName())
@@ -453,6 +469,32 @@ class _ImprovedAnimatedMessageBubbleState
           if (widget.reactions.isNotEmpty) _buildReactionsSection(theme),
         ],
       ),
+    );
+
+    // Telegram X-style tail only on the last message in a group
+    if (!widget.isLastInGroup) return bubble;
+
+    return Stack(
+      clipBehavior: Clip.none,
+      // passthrough keeps the tight width from IntrinsicWidth flowing into the
+      // bubble Container → Column(stretch) → _buildContent, so RTL text alignment
+      // is visible. Without this, the default StackFit.loose breaks the chain.
+      fit: StackFit.passthrough,
+      children: [
+        bubble,
+        Positioned(
+          bottom: 0,
+          right: widget.isMe ? -6 : null,
+          left: widget.isMe ? null : -6,
+          child: CustomPaint(
+            size: const Size(8, 10),
+            painter: _BubbleTailPainter(
+              color: bubbleColor,
+              isMe: widget.isMe,
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -556,7 +598,8 @@ class _ImprovedAnimatedMessageBubbleState
             ? theme.myBubbleTextColor.withValues(alpha: 0.96)
             : theme.sendButtonColor)
         : theme.sendButtonColor;
-    final replyContentDirection = kChatLayoutTextDirection;
+    final replyContentDirection =
+        resolveChatTextDirection(widget.replyToContent);
     return GestureDetector(
       onTap: widget.onReplyTap,
       child: Container(
@@ -661,7 +704,7 @@ class _ImprovedAnimatedMessageBubbleState
             : 'کاربر');
     final content = postData.postContent.trim();
     final secondaryText = content.isNotEmpty ? content : 'پست ارسالی';
-    final textDirection = kChatLayoutTextDirection;
+    final textDirection = resolveChatTextDirection(content);
 
     return GestureDetector(
       onTap: widget.onReplyTap,
@@ -881,7 +924,7 @@ class _ImprovedAnimatedMessageBubbleState
                 children: [
                   Text(
                     effectiveHeaderText,
-                    textDirection: kChatLayoutTextDirection,
+                    textDirection: resolveChatTextDirection(effectiveHeaderText),
                     style: TextStyle(
                       color: theme.sendButtonColor,
                       fontSize: 12,
@@ -893,7 +936,8 @@ class _ImprovedAnimatedMessageBubbleState
                   const SizedBox(height: 2),
                   Text(
                     effectiveSecondaryText,
-                    textDirection: kChatLayoutTextDirection,
+                    textDirection:
+                        resolveChatTextDirection(effectiveSecondaryText),
                     style: TextStyle(
                       color: widget.isMe
                           ? theme.myBubbleTextColor.withValues(alpha: 0.7)
@@ -907,7 +951,7 @@ class _ImprovedAnimatedMessageBubbleState
                     const SizedBox(height: 2),
                     Text(
                       answerPreview,
-                      textDirection: kChatLayoutTextDirection,
+                      textDirection: resolveChatTextDirection(answerPreview),
                       style: TextStyle(
                         color: widget.isMe
                             ? theme.myBubbleTextColor.withValues(alpha: 0.8)
@@ -1070,85 +1114,88 @@ class _ImprovedAnimatedMessageBubbleState
       return _buildUnavailableMediaAttachment(theme, canonicalType);
     }
 
-    final contentDirection = kChatLayoutTextDirection;
+    final contentDirection = resolveChatTextDirection(caption);
+
+    // Text-only: overlay timestamp at bottom-right (Telegram X inline style)
+    final textWidget = Directionality(
+      textDirection: contentDirection,
+      child: _isDecrypting
+          ? Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      widget.isMe
+                          ? theme.myBubbleTextColor
+                          : theme.otherBubbleTextColor,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'در حال رمزگشایی...',
+                  style: TextStyle(
+                    color: widget.isMe
+                        ? theme.myBubbleTextColor
+                        : theme.otherBubbleTextColor,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            )
+          : caption.isNotEmpty
+              ? ModernEmojiRichText(
+                  text: caption,
+                  useModernEmoji:
+                      EmojiRenderPolicy.useModernEmojiRenderer(),
+                  textDirection: contentDirection,
+                  textAlign: TextAlign.start,
+                  baseStyle: TextStyle(
+                    color: widget.isMe
+                        ? theme.myBubbleTextColor
+                        : theme.otherBubbleTextColor,
+                    fontSize: 14.5,
+                    height: 1.5,
+                    fontFamily: 'Vazirmatn',
+                    fontFamilyFallback: const [
+                      'Apple Color Emoji',
+                      'Segoe UI Emoji',
+                      'Noto Color Emoji',
+                    ],
+                  ),
+                  linkColor: theme.sendButtonColor,
+                  mentionColor: theme.sendButtonColor,
+                  hashtagColor: theme.sendButtonColor,
+                  onMentionTap: (username) {
+                    NavigationHelper.navigateToUserProfile(
+                        context, username);
+                  },
+                  onHashtagTap: (tag) {
+                    NavigationHelper.navigateToHashtagPosts(
+                        context, tag);
+                  },
+                  onLinkTap: widget.onLinkTap,
+                )
+              : const SizedBox.shrink(),
+    );
 
     return Padding(
       padding: const EdgeInsets.only(left: 12, right: 12, top: 8, bottom: 6),
-      child: Directionality(
-        textDirection: TextDirection.ltr,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Directionality(
-              textDirection: contentDirection,
-              child: _isDecrypting
-                  ? Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        SizedBox(
-                          width: 14,
-                          height: 14,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              widget.isMe
-                                  ? theme.myBubbleTextColor
-                                  : theme.otherBubbleTextColor,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          'در حال رمزگشایی...',
-                          style: TextStyle(
-                            color: widget.isMe
-                                ? theme.myBubbleTextColor
-                                : theme.otherBubbleTextColor,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    )
-                  : caption.isNotEmpty
-                      ? ModernEmojiRichText(
-                          text: caption,
-                          useModernEmoji:
-                              EmojiRenderPolicy.useModernEmojiRenderer(),
-                          textDirection: contentDirection,
-                          textAlign: TextAlign.start,
-                          baseStyle: TextStyle(
-                            color: widget.isMe
-                                ? theme.myBubbleTextColor
-                                : theme.otherBubbleTextColor,
-                            fontSize: 14.5,
-                            height: 1.5,
-                            fontFamily: 'Vazirmatn',
-                            fontFamilyFallback: const [
-                              'Apple Color Emoji',
-                              'Segoe UI Emoji',
-                              'Noto Color Emoji',
-                            ],
-                          ),
-                          linkColor: theme.sendButtonColor,
-                          mentionColor: theme.sendButtonColor,
-                          hashtagColor: theme.sendButtonColor,
-                          onMentionTap: (username) {
-                            NavigationHelper.navigateToUserProfile(
-                                context, username);
-                          },
-                          onHashtagTap: (tag) {
-                            NavigationHelper.navigateToHashtagPosts(
-                                context, tag);
-                          },
-                          onLinkTap: widget.onLinkTap,
-                        )
-                      : const SizedBox.shrink(),
-            ),
-            const SizedBox(height: 2),
-            _buildTimeAndStatus(theme),
-          ],
-        ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          textWidget,
+          const SizedBox(height: 2),
+          Align(
+            alignment: AlignmentDirectional.centerEnd,
+            child: _buildTimeAndStatus(theme),
+          ),
+        ],
       ),
     );
   }
@@ -1833,6 +1880,10 @@ class _ImprovedAnimatedMessageBubbleState
                 HapticFeedback.selectionClick();
                 widget.onAddReaction?.call(reaction.emoji);
               },
+              onLongPress: () {
+                HapticFeedback.mediumImpact();
+                widget.onReactionDetailTap?.call();
+              },
               child: AnimatedScale(
                 duration: const Duration(milliseconds: 160),
                 curve: Curves.easeOutBack,
@@ -1896,4 +1947,43 @@ class _ImprovedAnimatedMessageBubbleState
       ),
     );
   }
+}
+
+/// Draws the small Telegram-style curved tail on the last bubble in a group.
+class _BubbleTailPainter extends CustomPainter {
+  final Color color;
+  final bool isMe;
+
+  const _BubbleTailPainter({required this.color, required this.isMe});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.fill;
+
+    final path = Path();
+    if (isMe) {
+      // Outgoing: tail points bottom-right
+      path.moveTo(0, 0);
+      path.quadraticBezierTo(size.width * 0.2, size.height * 0.6,
+          size.width, size.height);
+      path.quadraticBezierTo(size.width * 0.5, size.height * 0.5, 0,
+          size.height * 0.5);
+      path.close();
+    } else {
+      // Incoming: tail points bottom-left (mirrored)
+      path.moveTo(size.width, 0);
+      path.quadraticBezierTo(size.width * 0.8, size.height * 0.6,
+          0, size.height);
+      path.quadraticBezierTo(size.width * 0.5, size.height * 0.5,
+          size.width, size.height * 0.5);
+      path.close();
+    }
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(_BubbleTailPainter old) =>
+      old.color != color || old.isMe != isMe;
 }

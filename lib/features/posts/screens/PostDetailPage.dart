@@ -10,7 +10,6 @@ import 'package:shamsi_date/shamsi_date.dart';
 import '../../../model/publicPostModel.dart';
 import 'package:Vista/utils/widgets.dart';
 import 'package:Vista/features/search/screens/searchPage.dart';
-import 'profileScreen.dart';
 import '../../../model/CommentModel.dart';
 import '../../../model/UserModel.dart';
 import '../../../provider/provider.dart';
@@ -25,7 +24,6 @@ import '../providers/saved_posts_provider.dart';
 import '../data/go_posts_repository.dart';
 import '../widgets/standard_edit_post_dialog.dart';
 import '../widgets/post_feed_video.dart';
-import 'package:Vista/features/auth/providers/auth_controller.dart';
 import 'package:Vista/widgets/verification_badge_icon.dart';
 import 'package:Vista/widgets/comment_input_field.dart';
 import 'package:Vista/utils/comments_bottom_sheet.dart';
@@ -961,7 +959,6 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
     );
   }
 
-
   void _sendComment() async {
     final content = commentController.text.trim();
     final mentionedUserIds = mentionedUsers.map((user) => user.id).toList();
@@ -1006,7 +1003,8 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
   Widget _buildCommentInputArea(
       BuildContext context, List<UserModel> mentionNotifier) {
     return Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      padding:
+          EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: CommentInputField(
         controller: commentController,
         focusNode: commentFocusNode,

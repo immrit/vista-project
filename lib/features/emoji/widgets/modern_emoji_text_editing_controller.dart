@@ -1,8 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../domain/modern_emoji_lookup.dart';
-import 'modern_emoji_inline.dart';
-
 /// TextEditingController that renders supported emojis using Modern assets
 /// inside EditableText/TextField.
 class ModernEmojiTextEditingController extends TextEditingController {

@@ -21,7 +21,6 @@ import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gal/gal.dart';
@@ -50,6 +49,7 @@ import '../widgets/modern_reaction_picker.dart'
 import '../widgets/retry_indicator_widget.dart' show ModernConnectionBanner;
 import '../widgets/improved_animated_message_bubble.dart';
 import '../widgets/reaction_reactor_avatar_stack.dart';
+import '../widgets/reactions_detail_sheet.dart';
 import '../widgets/modern_context_menu.dart';
 import '../widgets/animated_chat_input.dart';
 import '../widgets/vista_emoji_panel.dart';
@@ -363,6 +363,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   bool _showConnectionBannerAfterDelay = false;
   Timer? _connectionBannerDelayTimer;
   bool _didInitialJumpToBottom = false;
+  int _pinnedMessageCount = 0;
 
   @override
   void initState() {
@@ -376,6 +377,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     _loadCurrentUser();
     _checkBlockStatus();
     _loadHiddenMessages();
+    _loadPinnedMessageCount();
     _bootstrapInitialReplyContext();
 
     // ✅ شروع گوش دادن به Read Receipts
@@ -1260,14 +1262,24 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       final tombstoneIds = await _tombstoneService
           .getDeletedMessageIds(widget.args.conversationId);
       if (mounted) {
-        setState(() {
-          _hiddenMessageIds = {...hiddenIds, ...tombstoneIds};
-        });
+        _hiddenMessageIds = {...hiddenIds, ...tombstoneIds};
         _bumpListOverlay();
       }
     } catch (e) {
       debugPrint('Error loading hidden messages: $e');
     }
+  }
+
+  Future<void> _loadPinnedMessageCount() async {
+    try {
+      final actionsService = ref.read(messageActionsServiceProvider);
+      final pinned = await actionsService.getPinnedMessages(
+        widget.args.conversationId,
+      );
+      if (mounted) {
+        setState(() => _pinnedMessageCount = pinned.length);
+      }
+    } catch (_) {}
   }
 
   Future<void> _initSecretChatPolicy() async {
@@ -1500,10 +1512,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     }
     _secretAutoDeletingIds.add(messageId);
     if (mounted) {
-      setState(() {
-        _deletingMessageIds.add(messageId);
-        _hiddenMessageIds.add(messageId);
-      });
+      _deletingMessageIds.add(messageId);
+      _hiddenMessageIds.add(messageId);
       _bumpListOverlay();
     }
     await Future.delayed(const Duration(milliseconds: 340));
@@ -1522,9 +1532,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     } finally {
       _secretAutoDeletingIds.remove(messageId);
       if (mounted) {
-        setState(() {
-          _deletingMessageIds.remove(messageId);
-        });
+        _deletingMessageIds.remove(messageId);
         _bumpListOverlay();
       }
     }
@@ -1679,8 +1687,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     if (force || dockLayout != _inputDockLayoutNotifier.value) {
       _inputDockLayoutNotifier.value = dockLayout;
     }
-    if (force ||
-        reduceEffectsFromKeyboard != _keyboardEffectsNotifier.value) {
+    if (force || reduceEffectsFromKeyboard != _keyboardEffectsNotifier.value) {
       _keyboardEffectsNotifier.value = reduceEffectsFromKeyboard;
     }
   }
@@ -1715,8 +1722,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         }
       }
 
-      if (_isKeyboardOpening &&
-          h >= _cachedKeyboardHeight * 0.95) {
+      if (_isKeyboardOpening && h >= _cachedKeyboardHeight * 0.95) {
         _keyboardOpeningTimer?.cancel();
         _isKeyboardOpening = false;
         layoutChanged = true;
@@ -2241,229 +2247,234 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     return Directionality(
       textDirection: kChatLayoutTextDirection,
       child: Stack(
-      children: [
-        // والپیپر + لیست — ایزوله از viewInsets کیبورد (Flutter #170592)
-        KeyboardStableMediaQuery(
-          child: Stack(
-            children: [
-              Positioned.fill(
-                child: ChatAdaptiveBlurScope(
-                  builder: (context, blurSigma, allowHeavyBlur, effectsLevel) {
-                    return ValueListenableBuilder<bool>(
-                      valueListenable: _keyboardEffectsNotifier,
-                      builder: (context, reduceEffectsFromKeyboard, _) {
-                        return ValueListenableBuilder<bool>(
-                          valueListenable: _isScrollingNotifier,
-                          builder: (context, isScrolling, _) {
-                            final reduceEffects =
-                                reduceEffectsFromKeyboard || isScrolling;
-                            return RepaintBoundary(
-                              child: EnhancedChatBackground(
-                                enablePattern: true,
-                                blurIntensity: blurSigma,
-                                allowHeavyEffects:
-                                    !reduceEffects && allowHeavyBlur,
-                                child: const SizedBox.expand(),
-                              ),
-                            );
-                          },
-                        );
-                      },
-                    );
-                  },
-                ),
-              ),
-              Scaffold(
-                backgroundColor: Colors.transparent,
-                extendBody: true,
-                extendBodyBehindAppBar: true,
-                resizeToAvoidBottomInset: false,
-                appBar: _isSearchMode
-                    ? null
-                    : PreferredSize(
-                        preferredSize: const Size.fromHeight(kToolbarHeight),
-                        child: Consumer(
-                          builder: (context, ref, _) {
-                            final selection = ref.watch(
-                              conversationChatSelectionProvider(
-                                  _conversationId),
-                            );
-                            return ModernChatAppBar(
-                              theme: theme,
-                              isSelectionMode: selection.isSelectionMode,
-                              selectedMessagesCount:
-                                  selection.selectedMessageIds.length,
-                              args: widget.args,
-                              isOtherUserTyping: _otherUserTypingNotifier,
-                              appBarAnimation: _appBarAnimation,
-                              secretAutoDeleteSeconds:
-                                  _secretAutoDeleteSeconds,
-                              secretAutoDeleteLabel: _secretAutoDeleteLabel(
-                                  _secretAutoDeleteSeconds),
-                              secretAutoDeleteStatusText:
-                                  _secretAutoDeleteStatusText(),
-                              onExitSelectionMode: _exitSelectionMode,
-                              onForwardSelected:
-                                  selection.selectedMessageIds.isEmpty
-                                      ? null
-                                      : _forwardSelectedMessages,
-                              onCopySelected:
-                                  selection.selectedMessageIds.isEmpty
-                                      ? null
-                                      : _copySelectedMessages,
-                              onDeleteSelected:
-                                  selection.selectedMessageIds.isEmpty
-                                      ? null
-                                      : _deleteSelectedMessages,
-                              onMenuAction: _handleMenuAction,
-                              onBack: () => Navigator.of(context).pop(),
-                              otherUserProfile: _otherUserProfile,
-                              isOtherUserBlocked: _isOtherUserBlocked,
-                              isCurrentUserBlocked: _isCurrentUserBlocked,
-                              isLoadingGroupMembers: _isLoadingGroupMembers,
-                              groupMembers: _groupMembers,
-                              onTitleTap: _navigateToChatDetails,
-                            );
-                          },
-                        ),
-                      ),
-                body: Stack(
-                  children: [
-                    Positioned.fill(
-                      child: ValueListenableBuilder<double>(
-                        valueListenable: _inputHeightNotifier,
-                        builder: (context, inputHeight, _) {
-                          return ValueListenableBuilder<double>(
-                            valueListenable: _listBottomGapNotifier,
-                            builder: (context, listBottomGap, _) {
-                              return ValueListenableBuilder<DateTime?>(
-                                valueListenable: _visibleDateNotifier,
-                                builder: (context, currentDate, _) {
-                                  return ValueListenableBuilder<bool>(
-                                    valueListenable: _isScrollingNotifier,
-                                    builder: (context, isScrolling, _) {
-                                      return FloatingDateHeader(
-                                        currentDate: currentDate,
-                                        isScrolling: isScrolling,
-                                        child: _isTransitioning
-                                            ? const SizedBox.shrink()
-                                            : ChatMessageListScope(
-                                                conversationId: _conversationId,
-                                                buildList: (context,
-                                                        paginationState) =>
-                                                    _buildMessageList(
-                                                  paginationState,
-                                                  theme,
-                                                  bottomPadding: inputHeight +
-                                                      listBottomGap +
-                                                      8,
-                                                ),
-                                              ),
-                                      );
-                                    },
-                                  );
-                                },
+        children: [
+          // والپیپر + لیست — ایزوله از viewInsets کیبورد (Flutter #170592)
+          KeyboardStableMediaQuery(
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: ChatAdaptiveBlurScope(
+                    builder:
+                        (context, blurSigma, allowHeavyBlur, effectsLevel) {
+                      return ValueListenableBuilder<bool>(
+                        valueListenable: _keyboardEffectsNotifier,
+                        builder: (context, reduceEffectsFromKeyboard, _) {
+                          return ValueListenableBuilder<bool>(
+                            valueListenable: _isScrollingNotifier,
+                            builder: (context, isScrolling, _) {
+                              final reduceEffects =
+                                  reduceEffectsFromKeyboard || isScrolling;
+                              return RepaintBoundary(
+                                child: EnhancedChatBackground(
+                                  enablePattern: true,
+                                  blurIntensity: blurSigma,
+                                  allowHeavyEffects:
+                                      !reduceEffects && allowHeavyBlur,
+                                  child: const SizedBox.expand(),
+                                ),
                               );
                             },
                           );
                         },
+                      );
+                    },
+                  ),
+                ),
+                Scaffold(
+                  backgroundColor: Colors.transparent,
+                  extendBody: true,
+                  extendBodyBehindAppBar: true,
+                  resizeToAvoidBottomInset: false,
+                  appBar: _isSearchMode
+                      ? null
+                      : PreferredSize(
+                          preferredSize: const Size.fromHeight(kToolbarHeight),
+                          child: Consumer(
+                            builder: (context, ref, _) {
+                              final selection = ref.watch(
+                                conversationChatSelectionProvider(
+                                    _conversationId),
+                              );
+                              return ModernChatAppBar(
+                                theme: theme,
+                                isSelectionMode: selection.isSelectionMode,
+                                selectedMessagesCount:
+                                    selection.selectedMessageIds.length,
+                                args: widget.args,
+                                isOtherUserTyping: _otherUserTypingNotifier,
+                                appBarAnimation: _appBarAnimation,
+                                secretAutoDeleteSeconds:
+                                    _secretAutoDeleteSeconds,
+                                secretAutoDeleteLabel: _secretAutoDeleteLabel(
+                                    _secretAutoDeleteSeconds),
+                                secretAutoDeleteStatusText:
+                                    _secretAutoDeleteStatusText(),
+                                onExitSelectionMode: _exitSelectionMode,
+                                onForwardSelected:
+                                    selection.selectedMessageIds.isEmpty
+                                        ? null
+                                        : _forwardSelectedMessages,
+                                onCopySelected:
+                                    selection.selectedMessageIds.isEmpty
+                                        ? null
+                                        : _copySelectedMessages,
+                                onDeleteSelected:
+                                    selection.selectedMessageIds.isEmpty
+                                        ? null
+                                        : _deleteSelectedMessages,
+                                onMenuAction: _handleMenuAction,
+                                onBack: () => Navigator.of(context).pop(),
+                                otherUserProfile: _otherUserProfile,
+                                isOtherUserBlocked: _isOtherUserBlocked,
+                                isCurrentUserBlocked: _isCurrentUserBlocked,
+                                isLoadingGroupMembers: _isLoadingGroupMembers,
+                                groupMembers: _groupMembers,
+                                onTitleTap: _navigateToChatDetails,
+                                pinnedMessageCount: _pinnedMessageCount,
+                                onPinnedMessageTap:
+                                    _scrollToLatestPinnedMessage,
+                              );
+                            },
+                          ),
+                        ),
+                  body: Stack(
+                    children: [
+                      Positioned.fill(
+                        child: ValueListenableBuilder<double>(
+                          valueListenable: _inputHeightNotifier,
+                          builder: (context, inputHeight, _) {
+                            return ValueListenableBuilder<double>(
+                              valueListenable: _listBottomGapNotifier,
+                              builder: (context, listBottomGap, _) {
+                                return ValueListenableBuilder<DateTime?>(
+                                  valueListenable: _visibleDateNotifier,
+                                  builder: (context, currentDate, _) {
+                                    return ValueListenableBuilder<bool>(
+                                      valueListenable: _isScrollingNotifier,
+                                      builder: (context, isScrolling, _) {
+                                        return FloatingDateHeader(
+                                          currentDate: currentDate,
+                                          isScrolling: isScrolling,
+                                          child: _isTransitioning
+                                              ? const SizedBox.shrink()
+                                              : ChatMessageListScope(
+                                                  conversationId:
+                                                      _conversationId,
+                                                  buildList: (context,
+                                                          paginationState) =>
+                                                      _buildMessageList(
+                                                    paginationState,
+                                                    theme,
+                                                    bottomPadding: inputHeight +
+                                                        listBottomGap +
+                                                        8,
+                                                  ),
+                                                ),
+                                        );
+                                      },
+                                    );
+                                  },
+                                );
+                              },
+                            );
+                          },
+                        ),
                       ),
-                    ),
-                    if (_isCurrentUserBlocked || _isOtherUserBlocked)
+                      if (_isCurrentUserBlocked || _isOtherUserBlocked)
+                        Positioned(
+                          top: kToolbarHeight + 30,
+                          left: 0,
+                          right: 0,
+                          child: _buildBlockedBanner(theme),
+                        ),
                       Positioned(
                         top: kToolbarHeight + 30,
                         left: 0,
                         right: 0,
-                        child: _buildBlockedBanner(theme),
-                      ),
-                    Positioned(
-                      top: kToolbarHeight + 30,
-                      left: 0,
-                      right: 0,
-                      child: ModernConnectionBanner(
-                        isConnected: !showConnectionBanner,
-                        onRetry: !showConnectionBanner
-                            ? null
-                            : () {
-                                unawaited(_triggerPollingRefresh());
-                              },
-                      ),
-                    ),
-                    if (_isSearchMode)
-                      Positioned(
-                        top: 0,
-                        left: 0,
-                        right: 0,
-                        child: SafeArea(
-                          child: MessageSearchBar(
-                            conversationId: widget.args.conversationId,
-                            onClose: () => setState(() {
-                              _isSearchMode = false;
-                              _highlightedMessageId = null;
-                            }),
-                            onResultSelected: (id) {
-                              setState(() => _highlightedMessageId = id);
-                              _scrollToMessage(id);
-                            },
-                          ),
+                        child: ModernConnectionBanner(
+                          isConnected: !showConnectionBanner,
+                          onRetry: !showConnectionBanner
+                              ? null
+                              : () {
+                                  unawaited(_triggerPollingRefresh());
+                                },
                         ),
                       ),
-                  ],
+                      if (_isSearchMode)
+                        Positioned(
+                          top: 0,
+                          left: 0,
+                          right: 0,
+                          child: SafeArea(
+                            child: MessageSearchBar(
+                              conversationId: widget.args.conversationId,
+                              onClose: () => setState(() {
+                                _isSearchMode = false;
+                                _highlightedMessageId = null;
+                              }),
+                              onResultSelected: (id) {
+                                setState(() => _highlightedMessageId = id);
+                                _scrollToMessage(id);
+                              },
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
-          ),
-        ),
-
-        // اینپوت — خارج از KeyboardStableMediaQuery → viewInsets زنده = چسبیده به IME
-        Positioned.fill(
-          child: Material(
-            type: MaterialType.transparency,
-            child: ChatInputDock(
-              inputHeightListenable: _inputHeightNotifier,
-              layoutListenable: _inputDockLayoutNotifier,
-              keyboardEffectsListenable: _keyboardEffectsNotifier,
-              isScrollingListenable: _isScrollingNotifier,
-              showScrollToBottomListenable: _showScrollToBottomNotifier,
-              showInput: !_isCurrentUserBlocked && !_isOtherUserBlocked,
-              onScrollToBottom: _scrollToBottom,
-              themeBackgroundColor: theme.backgroundColor,
-              themeIconColor: theme.iconColor,
-              inputHaloBuilder: (reduceEffects,
-                      {required gapHeight, required keyboardVisible}) =>
-                  _buildInputDockHalo(
-                gapHeight: gapHeight,
-                inputHeight: _inputHeight,
-                keyboardVisible: keyboardVisible,
-                reduceEffects: reduceEffects,
-              ),
-              inputAreaBuilder: (reduceEffects) => _buildInputArea(
-                theme,
-                reduceEffects: reduceEffects,
-                allowHeavyEffects:
-                    blurConfig.allowHeavyBlur && !reduceEffects,
-                blurSigma: blurConfig.blurSigma,
-              ),
-              emojiPanel: _buildEmojiPanel(theme),
+              ],
             ),
           ),
-        ),
 
-        Consumer(
-          builder: (context, ref, _) {
-            final selection = ref.watch(
-              conversationChatSelectionProvider(_conversationId),
-            );
-            if (_reactionPickerMessageId == null ||
-                _reactionPickerPosition == null ||
-                selection.isSelectionMode) {
-              return const SizedBox.shrink();
-            }
-            return _buildReactionPickerOverlay();
-          },
-        ),
-      ],
-    ),
+          // اینپوت — خارج از KeyboardStableMediaQuery → viewInsets زنده = چسبیده به IME
+          Positioned.fill(
+            child: Material(
+              type: MaterialType.transparency,
+              child: ChatInputDock(
+                inputHeightListenable: _inputHeightNotifier,
+                layoutListenable: _inputDockLayoutNotifier,
+                keyboardEffectsListenable: _keyboardEffectsNotifier,
+                isScrollingListenable: _isScrollingNotifier,
+                showScrollToBottomListenable: _showScrollToBottomNotifier,
+                showInput: !_isCurrentUserBlocked && !_isOtherUserBlocked,
+                onScrollToBottom: _scrollToBottom,
+                themeBackgroundColor: theme.backgroundColor,
+                themeIconColor: theme.iconColor,
+                inputHaloBuilder: (reduceEffects,
+                        {required gapHeight, required keyboardVisible}) =>
+                    _buildInputDockHalo(
+                  gapHeight: gapHeight,
+                  inputHeight: _inputHeight,
+                  keyboardVisible: keyboardVisible,
+                  reduceEffects: reduceEffects,
+                ),
+                inputAreaBuilder: (reduceEffects) => _buildInputArea(
+                  theme,
+                  reduceEffects: reduceEffects,
+                  allowHeavyEffects:
+                      blurConfig.allowHeavyBlur && !reduceEffects,
+                  blurSigma: blurConfig.blurSigma,
+                ),
+                emojiPanel: _buildEmojiPanel(theme),
+              ),
+            ),
+          ),
+
+          Consumer(
+            builder: (context, ref, _) {
+              final selection = ref.watch(
+                conversationChatSelectionProvider(_conversationId),
+              );
+              if (_reactionPickerMessageId == null ||
+                  _reactionPickerPosition == null ||
+                  selection.isSelectionMode) {
+                return const SizedBox.shrink();
+              }
+              return _buildReactionPickerOverlay();
+            },
+          ),
+        ],
+      ),
     );
   }
 
@@ -2733,10 +2744,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       final id = messageIds[i];
       Future.delayed(Duration(milliseconds: i * 36), () {
         if (!mounted) return;
-        setState(() {
-          _deletingMessageIds.add(id);
-          _hiddenMessageIds.add(id);
-        });
+        _deletingMessageIds.add(id);
+        _hiddenMessageIds.add(id);
         _bumpListOverlay();
       });
     }
@@ -2763,9 +2772,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     final wait = 260 + (messageIds.length * 36);
     await Future.delayed(Duration(milliseconds: wait));
     if (!mounted) return;
-    setState(() {
-      _deletingMessageIds.removeAll(messageIds);
-    });
+    _deletingMessageIds.removeAll(messageIds);
   }
 
   Future<void> _confirmAndDeleteMessages(
@@ -2831,10 +2838,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
               final timer = _pendingDeleteTimers.remove(batchId);
               timer?.cancel();
               if (!mounted) return;
-              setState(() {
-                _deletingMessageIds.removeAll(messageIds);
-                _hiddenMessageIds.removeAll(messageIds);
-              });
+              _deletingMessageIds.removeAll(messageIds);
+              _hiddenMessageIds.removeAll(messageIds);
               _bumpListOverlay();
             },
           ),
@@ -4330,9 +4335,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     final haloHeight = (visibleReservedHeight + (inputHeight * 0.56))
         .clamp(48.0, 420.0)
         .toDouble();
-    final blurSigma = keyboardVisible
-        ? 1.6
-        : (reduceEffects ? 2.0 : 5.5);
+    final blurSigma = keyboardVisible ? 1.6 : (reduceEffects ? 2.0 : 5.5);
     final gradientAlphas =
         isDark ? const [0.0, 0.08, 0.16, 0.24] : const [0.0, 0.14, 0.24, 0.36];
     final haloDecoration = BoxDecoration(
@@ -5572,9 +5575,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     final previewWidget = _buildMessagePreviewWidget(message, isMe);
 
     // 3. مخفی کردن پیام اصلی در لیست
-    setState(() {
-      _temporarilyHiddenMessages.add(message.id);
-    });
+    _temporarilyHiddenMessages.add(message.id);
     _bumpListOverlay();
 
     // 4. ساخت آیتم‌های منو
@@ -5769,9 +5770,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       onDismiss: () {
         // 6. وقتی منو بسته شد، پیام اصلی را برگردان
         if (mounted) {
-          setState(() {
-            _temporarilyHiddenMessages.remove(message.id);
-          });
+          _temporarilyHiddenMessages.remove(message.id);
           _bumpListOverlay();
         }
       },
@@ -5996,6 +5995,18 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       stories: stories,
       lastStoryAt:
           stories.isNotEmpty ? stories.last.createdAt : data.storyCreatedAt,
+    );
+  }
+
+  void _showReactionDetailSheet(MessageModel message) {
+    if (!mounted) return;
+    final rawReactions =
+        _convertToOldReactionFormat(_reactionNotifierFor(message.id).value);
+    if (rawReactions.isEmpty) return;
+    showReactionsDetailSheet(
+      context: context,
+      reactions: rawReactions,
+      theme: context.chatTheme,
     );
   }
 
@@ -6780,6 +6791,9 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       // ✅ ساختار جدید برای کنترل کامل کلیک‌ها
       return Builder(
         builder: (postContext) => Stack(
+          alignment: isMe
+              ? AlignmentDirectional.topEnd
+              : AlignmentDirectional.topStart,
           children: [
             // ویجت پست
             GestureDetector(
@@ -6808,6 +6822,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                   status: _getMessageStatus(message),
                   // callbacks داخلی را هم به همان هندلرها وصل می‌کنیم تا tap حتماً کار کند
                   onTap: () => handlePostTap(postContext),
+                  onViewPost: () => _navigateToPostScreen(postId),
                   onLongPress: handlePostLongPress,
                   onShare: () async {
                     if (!_selection.isSelectionMode) {
@@ -6883,6 +6898,19 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   // ═══════════════════════════════════════════════════════════════════════════
 
   /// اسکرول به پیام خاص
+  Future<void> _scrollToLatestPinnedMessage() async {
+    try {
+      final actionsService = ref.read(messageActionsServiceProvider);
+      final pinned = await actionsService.getPinnedMessages(
+        widget.args.conversationId,
+      );
+      if (!mounted || pinned.isEmpty) return;
+      final latest = pinned.last;
+      final id = latest['message_id']?.toString() ?? latest['id']?.toString();
+      _scrollToMessage(id);
+    } catch (_) {}
+  }
+
   void _scrollToMessage(String? messageId) {
     if (messageId == null) return;
 
@@ -6992,6 +7020,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         onLongPress: (ctx, msg) => _handleMessageLongPress(ctx, msg),
         onDoubleTap: () => _onMessageDoubleTap(message),
         onAddReaction: (emoji) => _onAddReaction(message, emoji),
+        onReactionDetailTap: () => _showReactionDetailSheet(message),
         animate: shouldAnimateEntry &&
             adaptiveEffects.enableMessageEntryAnimation &&
             !adaptiveEffects.isFastScrolling,
@@ -7005,8 +7034,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
             ? () => _retryFailedMessage(message)
             : null,
         conversationGalleryItems: conversationGalleryItems,
-        initialGalleryIndex:
-            conversationGalleryIndexByMessageId?[message.id],
+        initialGalleryIndex: conversationGalleryIndexByMessageId?[message.id],
         message: message,
         isEdited: message.isEdited,
       );

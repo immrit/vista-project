@@ -55,7 +55,30 @@ class E2EEService {
 
     logInfo('✅ New E2EE KeyPair generated and securely stored.');
 
-    // TODO: Send pubBytes to Backend API to register public key for current user
+    // Register the new public key with the backend (best-effort, non-blocking).
+    final pubBase64 = base64Encode(pubBytes);
+    _registerPublicKey(pubBase64);
+  }
+
+  /// Sends the public key to the profile update endpoint.
+  /// Called after key generation — failures are logged but not fatal.
+  Future<void> _registerPublicKey(String pubBase64) async {
+    try {
+      if (_onRegisterPublicKey != null) {
+        await _onRegisterPublicKey!(pubBase64);
+        logInfo('✅ E2EE public key registered with backend.');
+      }
+    } catch (e) {
+      logError('⚠️ E2EE public key registration failed (will retry on next launch): $e');
+    }
+  }
+
+  /// Inject a registration callback from app startup (avoids circular imports).
+  static Future<void> Function(String pubBase64)? _onRegisterPublicKey;
+
+  static void setPublicKeyRegistrar(
+      Future<void> Function(String pubBase64) registrar) {
+    _onRegisterPublicKey = registrar;
   }
 
   /// دریافت کلید عمومی کاربر جاری به صورت Base64

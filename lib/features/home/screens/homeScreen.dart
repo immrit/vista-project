@@ -418,13 +418,28 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final unreadCount = ref.watch(unreadConversationsCountProvider);
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final statusBarColor =
+        theme.appBarTheme.backgroundColor ?? theme.colorScheme.surface;
 
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) _goHomeOrExit();
-      },
-      child: Scaffold(
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle(
+        statusBarColor: statusBarColor,
+        statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
+        statusBarBrightness: isDark ? Brightness.dark : Brightness.light,
+        systemStatusBarContrastEnforced: false,
+        systemNavigationBarColor: isDark
+            ? theme.scaffoldBackgroundColor
+            : Colors.white,
+        systemNavigationBarContrastEnforced: false,
+        systemNavigationBarIconBrightness:
+            isDark ? Brightness.light : Brightness.dark,
+      ),
+      child: PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop) _goHomeOrExit();
+        },
+        child: Scaffold(
         extendBody: true,
         backgroundColor: theme.scaffoldBackgroundColor,
         body: Stack(
@@ -454,6 +469,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           unreadCount: unreadCount,
           theme: theme,
         ),
+      ),
       ),
     );
   }

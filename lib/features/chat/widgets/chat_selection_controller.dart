@@ -9,7 +9,9 @@ class ChatSelectionState implements ChatSelectionStateLike {
     this.selectedMessageIds = const {},
   });
 
+  @override
   final bool isSelectionMode;
+  @override
   final Set<String> selectedMessageIds;
 
   const ChatSelectionState.empty() : this();

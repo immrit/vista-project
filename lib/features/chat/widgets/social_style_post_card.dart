@@ -28,6 +28,7 @@ class SocialStylePostCard extends StatefulWidget {
   final int commentsCount;
   final DateTime createdAt;
   final VoidCallback onTap;
+  final VoidCallback onViewPost;
   final VoidCallback? onShare;
   final VoidCallback? onLongPress;
   final bool isMine;
@@ -50,6 +51,7 @@ class SocialStylePostCard extends StatefulWidget {
     required this.commentsCount,
     required this.createdAt,
     required this.onTap,
+    required this.onViewPost,
     this.onShare,
     this.onLongPress,
     required this.isMine,
@@ -144,10 +146,10 @@ class _SocialStylePostCardState extends State<SocialStylePostCard>
           widget.onLongPress?.call();
         },
         child: Padding(
-          padding: EdgeInsets.only(
-            left: widget.isMine ? 12 : 0,
-            right: widget.isMine ? 0 : 12,
-            bottom: 8,
+          padding: EdgeInsetsDirectional.only(
+            start: widget.isMine ? 15 : 9,
+            end: widget.isMine ? 9 : 15,
+            bottom: 4,
             top: 4,
           ),
           child: Column(
@@ -179,10 +181,12 @@ class _SocialStylePostCardState extends State<SocialStylePostCard>
                           ),
                         ],
                 ),
-                child: ClipRRect(
+                child: Directionality(
+                  textDirection: TextDirection.rtl,
+                  child: ClipRRect(
                   borderRadius: BorderRadius.circular(16),
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       // هدر پست
@@ -201,6 +205,7 @@ class _SocialStylePostCardState extends State<SocialStylePostCard>
                       _buildEngagementSection(theme),
                     ],
                   ),
+                ),
                 ),
               ),
             ],
@@ -271,7 +276,7 @@ class _SocialStylePostCardState extends State<SocialStylePostCard>
           const SizedBox(width: 10),
 
           // نام و نام کاربری
-          Expanded(
+          Flexible(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -363,7 +368,7 @@ class _SocialStylePostCardState extends State<SocialStylePostCard>
         ),
         maxLines: 5,
         overflow: TextOverflow.ellipsis,
-        textDirection: kChatLayoutTextDirection,
+        textDirection: resolveChatTextDirection(_cleanContent),
       ),
     );
   }
@@ -419,25 +424,29 @@ class _SocialStylePostCardState extends State<SocialStylePostCard>
         mainAxisSize: MainAxisSize.min,
         children: [
           Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              // لایک
-              _buildEngagementItem(
-                icon: Icons.favorite_rounded,
-                count: widget.likesCount,
-                color: Colors.red.shade400,
-                theme: theme,
-              ),
-              const SizedBox(width: 16),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // لایک
+                  _buildEngagementItem(
+                    icon: Icons.favorite_rounded,
+                    count: widget.likesCount,
+                    color: Colors.red.shade400,
+                    theme: theme,
+                  ),
+                  const SizedBox(width: 16),
 
-              // کامنت
-              _buildEngagementItem(
-                icon: Icons.chat_bubble_rounded,
-                count: widget.commentsCount,
-                color: theme.secondaryTextColor,
-                theme: theme,
+                  // کامنت
+                  _buildEngagementItem(
+                    icon: Icons.chat_bubble_rounded,
+                    count: widget.commentsCount,
+                    color: theme.secondaryTextColor,
+                    theme: theme,
+                  ),
+                ],
               ),
-
-              const Spacer(),
 
               // دکمه مشاهده پست
               _buildViewPostButton(theme),
@@ -507,7 +516,7 @@ class _SocialStylePostCardState extends State<SocialStylePostCard>
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: widget.onTap,
+        onTap: widget.onViewPost,
         borderRadius: BorderRadius.circular(8),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),

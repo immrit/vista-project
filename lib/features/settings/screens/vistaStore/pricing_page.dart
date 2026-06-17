@@ -294,7 +294,7 @@ class _PricingPageState extends ConsumerState<PricingPage>
                 shape: BoxShape.circle,
                 gradient: RadialGradient(
                   colors: [
-                    _goldStart.withOpacity(0.15),
+                    _goldStart.withValues(alpha: 0.15),
                     Colors.transparent,
                   ],
                 ),
@@ -338,7 +338,7 @@ class _PricingPageState extends ConsumerState<PricingPage>
                             ),
                             boxShadow: [
                               BoxShadow(
-                                color: _goldStart.withOpacity(0.4),
+                                color: _goldStart.withValues(alpha: 0.4),
                                 blurRadius: 25,
                                 spreadRadius: 2,
                               ),
@@ -373,7 +373,7 @@ class _PricingPageState extends ConsumerState<PricingPage>
                         'بالاترین سطح تجربه در ویستا',
                         style: TextStyle(
                           fontSize: 14,
-                          color: Colors.white.withOpacity(0.7),
+                          color: Colors.white.withValues(alpha: 0.7),
                           letterSpacing: 0.5,
                         ),
                       ),
@@ -403,7 +403,7 @@ class _PricingPageState extends ConsumerState<PricingPage>
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w800,
-                          color: Colors.white.withOpacity(0.95),
+                          color: Colors.white.withValues(alpha: 0.95),
                         ),
                       ),
                     ],
@@ -430,13 +430,14 @@ class _PricingPageState extends ConsumerState<PricingPage>
                       Row(
                         children: [
                           Icon(Icons.shield_rounded,
-                              size: 16, color: Colors.white.withOpacity(0.5)),
+                              size: 16,
+                              color: Colors.white.withValues(alpha: 0.5)),
                           const SizedBox(width: 6),
                           Text(
                             'پرداخت امن کافه‌بازار',
                             style: TextStyle(
                               fontSize: 13,
-                              color: Colors.white.withOpacity(0.6),
+                              color: Colors.white.withValues(alpha: 0.6),
                               fontWeight: FontWeight.bold,
                             ),
                           ),
@@ -448,7 +449,7 @@ class _PricingPageState extends ConsumerState<PricingPage>
                         style: TextStyle(
                           fontSize: 12,
                           height: 1.6,
-                          color: Colors.white.withOpacity(0.5),
+                          color: Colors.white.withValues(alpha: 0.5),
                         ),
                       ),
                       if (!isPremium && savingsPercent > 0) ...[
@@ -457,10 +458,10 @@ class _PricingPageState extends ConsumerState<PricingPage>
                           padding: const EdgeInsets.symmetric(
                               horizontal: 14, vertical: 10),
                           decoration: BoxDecoration(
-                            color: _goldStart.withOpacity(0.1),
+                            color: _goldStart.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(12),
-                            border:
-                                Border.all(color: _goldStart.withOpacity(0.3)),
+                            border: Border.all(
+                                color: _goldStart.withValues(alpha: 0.3)),
                           ),
                           child: Row(
                             children: [
@@ -500,14 +501,14 @@ class _PricingPageState extends ConsumerState<PricingPage>
                 child: Container(
                   padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF1A1A20).withOpacity(0.85),
+                    color: const Color(0xFF1A1A20).withValues(alpha: 0.85),
                     border: Border(
                       top: BorderSide(
-                          color: Colors.white.withOpacity(0.1), width: 1),
+                          color: Colors.white.withValues(alpha: 0.1), width: 1),
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.4),
+                        color: Colors.black.withValues(alpha: 0.4),
                         blurRadius: 20,
                         offset: const Offset(0, -5),
                       ),
@@ -538,20 +539,20 @@ class _PricingPageState extends ConsumerState<PricingPage>
                                       vertical: 14, horizontal: 8),
                                   decoration: BoxDecoration(
                                     color: isSelected
-                                        ? _goldStart.withOpacity(0.12)
-                                        : Colors.white.withOpacity(0.03),
+                                        ? _goldStart.withValues(alpha: 0.12)
+                                        : Colors.white.withValues(alpha: 0.03),
                                     borderRadius: BorderRadius.circular(16),
                                     border: Border.all(
                                       color: isSelected
                                           ? _goldStart
-                                          : Colors.white.withOpacity(0.1),
+                                          : Colors.white.withValues(alpha: 0.1),
                                       width: isSelected ? 2 : 1,
                                     ),
                                     boxShadow: isSelected
                                         ? [
                                             BoxShadow(
-                                                color: _goldStart
-                                                    .withOpacity(0.15),
+                                                color: _goldStart.withValues(
+                                                    alpha: 0.15),
                                                 blurRadius: 12)
                                           ]
                                         : [],
@@ -606,7 +607,8 @@ class _PricingPageState extends ConsumerState<PricingPage>
                                         textAlign: TextAlign.center,
                                         style: TextStyle(
                                           fontSize: 10,
-                                          color: Colors.white.withOpacity(0.4),
+                                          color: Colors.white
+                                              .withValues(alpha: 0.4),
                                         ),
                                       ),
                                     ],
@@ -623,7 +625,7 @@ class _PricingPageState extends ConsumerState<PricingPage>
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               fontSize: 12,
-                              color: Colors.white.withOpacity(0.7),
+                              color: Colors.white.withValues(alpha: 0.7),
                             ),
                           ),
                           const SizedBox(height: 6),
@@ -656,7 +658,8 @@ class _PricingPageState extends ConsumerState<PricingPage>
                                   ? []
                                   : [
                                       BoxShadow(
-                                        color: _goldStart.withOpacity(0.4),
+                                        color:
+                                            _goldStart.withValues(alpha: 0.4),
                                         blurRadius: 16,
                                         offset: const Offset(0, 4),
                                       )
@@ -739,10 +742,10 @@ class _ActivePremiumBanner extends StatelessWidget {
         color: const Color(0xFF1E1C18),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-            color: const Color(0xFFFFD700).withOpacity(0.3), width: 1.5),
+            color: const Color(0xFFFFD700).withValues(alpha: 0.3), width: 1.5),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFFFFD700).withOpacity(0.1),
+            color: const Color(0xFFFFD700).withValues(alpha: 0.1),
             blurRadius: 20,
             spreadRadius: 1,
           )
@@ -775,7 +778,7 @@ class _ActivePremiumBanner extends StatelessWidget {
               child: LinearProgressIndicator(
                 value: (days / 365).clamp(0.05, 1.0),
                 minHeight: 8,
-                backgroundColor: Colors.white.withOpacity(0.1),
+                backgroundColor: Colors.white.withValues(alpha: 0.1),
                 valueColor:
                     const AlwaysStoppedAnimation<Color>(Color(0xFFFFD700)),
               ),
@@ -787,7 +790,7 @@ class _ActivePremiumBanner extends StatelessWidget {
               'اعتبار تا: $expiry',
               style: TextStyle(
                   fontSize: 13,
-                  color: Colors.white.withOpacity(0.7),
+                  color: Colors.white.withValues(alpha: 0.7),
                   fontWeight: FontWeight.w600),
             ),
           ],
@@ -807,9 +810,9 @@ class _FeatureTileUI extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.04),
+        color: Colors.white.withValues(alpha: 0.04),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withOpacity(0.08)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -819,15 +822,15 @@ class _FeatureTileUI extends StatelessWidget {
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [
-                  const Color(0xFFFFD700).withOpacity(0.2),
-                  const Color(0xFFFDB931).withOpacity(0.05),
+                  const Color(0xFFFFD700).withValues(alpha: 0.2),
+                  const Color(0xFFFDB931).withValues(alpha: 0.05),
                 ],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
               borderRadius: BorderRadius.circular(14),
-              border:
-                  Border.all(color: const Color(0xFFFFD700).withOpacity(0.3)),
+              border: Border.all(
+                  color: const Color(0xFFFFD700).withValues(alpha: 0.3)),
             ),
             child: Icon(
               feature['icon'] as IconData,
@@ -855,7 +858,7 @@ class _FeatureTileUI extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 13,
                     height: 1.5,
-                    color: Colors.white.withOpacity(0.6),
+                    color: Colors.white.withValues(alpha: 0.6),
                   ),
                 ),
               ],

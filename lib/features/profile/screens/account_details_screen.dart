@@ -8,10 +8,7 @@ import '../../../widgets/profile_avatar_widget.dart';
 import '../../../widgets/verification_badge_icon.dart';
 import 'package:shamsi_date/shamsi_date.dart';
 
-/// صفحه جزییات اکانت — مشابه X (توییتر)
-import 'package:dio/dio.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../data/profile_repository.dart';
 
 class AccountDetailsScreen extends StatefulWidget {
   final ProfileModel profile;

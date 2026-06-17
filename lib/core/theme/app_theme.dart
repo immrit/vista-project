@@ -28,7 +28,7 @@ class AppColors {
   static const Color glassBackgroundLight = Color(0x99FFFFFF); // 60% white
   static const Color glassBorderLight = Color(0x4DFFFFFF); // 30% white
   static const Color glassBackgroundDark =
-      Color(0x990A0A0A); // 60% almost black
+      Color(0xEB1C1C2E); // 92% dark indigo (Telegram X dark input)
   static const Color glassBorderDark = Color(0x33FFFFFF); // 20% white
 
   // ── Light Mode ──────────────────────────────────────────────────────────────

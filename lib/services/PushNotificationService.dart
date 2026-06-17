@@ -13,7 +13,6 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
-import '../model/notificationModel.dart';
 import '../model/message_model.dart';
 import 'package:image/image.dart' as img;
 import '../provider/notification_provider.dart';
@@ -57,8 +56,7 @@ class PushNotificationService {
   static Future<bool>? _syncInFlight;
   static const int _maxPendingActions = 30;
   static const Uuid _uuid = Uuid();
-  static String get _backendUrl =>
-      EnvConfig.apiBaseUrl;
+  static String get _backendUrl => EnvConfig.apiBaseUrl;
 
   static FlutterLocalNotificationsPlugin get notificationsPlugin =>
       LocalNotificationCenter.plugin;
@@ -242,7 +240,8 @@ class PushNotificationService {
     if (_isInitialized) return; // جلوگیری از initialize چندگانه
 
     // تنظیمات Android برای Local Notification
-    const androidInit = AndroidInitializationSettings('@drawable/ic_notification');
+    const androidInit =
+        AndroidInitializationSettings('@drawable/ic_notification');
     final iOSInit = DarwinInitializationSettings(
       notificationCategories: <DarwinNotificationCategory>[
         DarwinNotificationCategory(
@@ -322,7 +321,8 @@ class PushNotificationService {
   }
 
   void _handleTapWithContext(Map<String, dynamic> data, [int attempts = 0]) {
-    final navContext = navigatorKey.currentContext ?? navigatorKey.currentState?.context;
+    final navContext =
+        navigatorKey.currentContext ?? navigatorKey.currentState?.context;
     if (navContext != null) {
       NotificationNavigationService.handleFCMPayload(
         context: navContext,
@@ -333,7 +333,8 @@ class PushNotificationService {
         _handleTapWithContext(data, attempts + 1);
       });
     } else {
-      logInfo('❌ Failed to handle notification tap: context is null after retries');
+      logInfo(
+          '❌ Failed to handle notification tap: context is null after retries');
     }
   }
 
@@ -544,8 +545,8 @@ class PushNotificationService {
       final senderName = data['sender_name']?.toString() ?? 'User';
       final attachmentType = data['attachment_type']?.toString() ??
           data['message_type']?.toString();
-      final mediaUrl = data['media_url']?.toString() ??
-          data['attachment_url']?.toString();
+      final mediaUrl =
+          data['media_url']?.toString() ?? data['attachment_url']?.toString();
       final audioUrl = data['audio_url']?.toString();
       final resolvedAttachmentUrl = (mediaUrl?.trim().isNotEmpty == true)
           ? mediaUrl!.trim()
@@ -624,7 +625,9 @@ class PushNotificationService {
         try {
           final decodedImage = img.decodeImage(bytes);
           if (decodedImage != null) {
-            final int size = decodedImage.width < decodedImage.height ? decodedImage.width : decodedImage.height;
+            final int size = decodedImage.width < decodedImage.height
+                ? decodedImage.width
+                : decodedImage.height;
             final squared = img.copyCrop(
               decodedImage,
               x: (decodedImage.width - size) ~/ 2,
@@ -751,7 +754,9 @@ class PushNotificationService {
         try {
           final decodedImage = img.decodeImage(bytes);
           if (decodedImage != null) {
-            final int size = decodedImage.width < decodedImage.height ? decodedImage.width : decodedImage.height;
+            final int size = decodedImage.width < decodedImage.height
+                ? decodedImage.width
+                : decodedImage.height;
             final squared = img.copyCrop(
               decodedImage,
               x: (decodedImage.width - size) ~/ 2,
@@ -1052,7 +1057,8 @@ class PushNotificationService {
       }
 
       // در صورت شکست session touch، مستقیم با endpoint اختصاصی تلاش کن
-      logInfo('FCM session touch failed, attempting direct token registration...');
+      logInfo(
+          'FCM session touch failed, attempting direct token registration...');
       final directOk = await _registerFcmTokenDirect(fcmToken);
       if (directOk) {
         logInfo('FCM token registered via direct endpoint.');
@@ -1082,18 +1088,20 @@ class PushNotificationService {
               : 'unknown';
 
       final uri = Uri.parse('${EnvConfig.apiBaseUrl}/v1/fcm/token');
-      final response = await http.post(
-        uri,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $accessToken',
-        },
-        body: jsonEncode({
-          'token': fcmToken,
-          'platform': platform,
-          'device_type': 'mobile',
-        }),
-      ).timeout(const Duration(seconds: 10));
+      final response = await http
+          .post(
+            uri,
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $accessToken',
+            },
+            body: jsonEncode({
+              'token': fcmToken,
+              'platform': platform,
+              'device_type': 'mobile',
+            }),
+          )
+          .timeout(const Duration(seconds: 10));
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         logInfo('✅ FCM token registered via /v1/fcm/token');
@@ -1343,7 +1351,8 @@ class PushNotificationService {
       return null;
     }
     if (!sessionReady) {
-      logInfo('quick reply auth session not fully refreshed; using cached token');
+      logInfo(
+          'quick reply auth session not fully refreshed; using cached token');
     }
     return token;
   }

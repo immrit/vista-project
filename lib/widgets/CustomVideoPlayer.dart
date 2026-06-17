@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
@@ -431,149 +430,149 @@ class _CustomVideoPlayerState extends ConsumerState<CustomVideoPlayer>
             width: width,
             height: height,
             child: GestureDetector(
-                  onTap: _handlePrimaryTap,
-                  onDoubleTap: _showLikeAnimation,
-                  child: Stack(
-                    fit: StackFit.expand,
-                    alignment: Alignment.center,
-                    children: [
-                      if (!_isPlayerInitialized) ...[
-                        _buildPreviewBackground(),
-                        Center(
-                          child: IconButton(
-                            icon: const Icon(Icons.play_circle_fill),
-                            color: Colors.white.withValues(alpha: 0.9),
-                            iconSize: 60,
-                            onPressed: _handlePrimaryTap,
+              onTap: _handlePrimaryTap,
+              onDoubleTap: _showLikeAnimation,
+              child: Stack(
+                fit: StackFit.expand,
+                alignment: Alignment.center,
+                children: [
+                  if (!_isPlayerInitialized) ...[
+                    _buildPreviewBackground(),
+                    Center(
+                      child: IconButton(
+                        icon: const Icon(Icons.play_circle_fill),
+                        color: Colors.white.withValues(alpha: 0.9),
+                        iconSize: 60,
+                        onPressed: _handlePrimaryTap,
+                      ),
+                    ),
+                  ] else ...[
+                    if (_isInitialized && _controller != null)
+                      FittedBox(
+                        fit: BoxFit.cover,
+                        clipBehavior: Clip.hardEdge,
+                        child: SizedBox(
+                          width: _controller!.value.size.width,
+                          height: _controller!.value.size.height,
+                          child: VideoPlayer(_controller!),
+                        ),
+                      )
+                    else
+                      ColoredBox(
+                        color: Colors.grey[900]!,
+                        child: const Center(
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
                           ),
                         ),
-                      ] else ...[
-                        if (_isInitialized && _controller != null)
-                          FittedBox(
-                            fit: BoxFit.cover,
-                            clipBehavior: Clip.hardEdge,
-                            child: SizedBox(
-                              width: _controller!.value.size.width,
-                              height: _controller!.value.size.height,
-                              child: VideoPlayer(_controller!),
-                            ),
-                          )
-                        else
-                          ColoredBox(
-                            color: Colors.grey[900]!,
-                            child: const Center(
-                              child: CircularProgressIndicator(
-                                color: Colors.white,
-                              ),
-                            ),
-                          ),
-                        if (_isBuffering)
-                          const Center(
-                            child: CircularProgressIndicator(
-                              color: Colors.white,
-                            ),
-                          ),
-                        if (!_isPlaying && !_isBuffering && _isInitialized)
-                          AbsorbPointer(
-                            absorbing: false,
-                            child: GestureDetector(
-                              onTap: _handlePrimaryTap,
-                              child: Center(
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    color: Colors.black.withValues(alpha: 0.3),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  padding: const EdgeInsets.all(16),
-                                  child: Icon(
-                                    Icons.play_arrow,
-                                    color: Colors.white.withValues(alpha: 0.9),
-                                    size: 48,
-                                    semanticLabel: 'پخش ویدیو',
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        if (_showLikeAnim)
-                          Center(
-                            child: TweenAnimationBuilder<double>(
-                              tween: Tween<double>(begin: 0.5, end: 1.2),
-                              duration: const Duration(milliseconds: 400),
-                              curve: Curves.elasticOut,
-                              builder: (context, value, child) {
-                                return Transform.scale(
-                                  scale: value,
-                                  child: Icon(
-                                    Icons.favorite,
-                                    color: Colors.red.withValues(alpha: 0.9),
-                                    size: 100,
-                                  ),
-                                );
-                              },
-                            ),
-                          ),
-                        if (_isAnimating)
-                          AnimatedOpacity(
-                            opacity: _isAnimating ? 0.7 : 0.0,
-                            duration: const Duration(milliseconds: 200),
+                      ),
+                    if (_isBuffering)
+                      const Center(
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                        ),
+                      ),
+                    if (!_isPlaying && !_isBuffering && _isInitialized)
+                      AbsorbPointer(
+                        absorbing: false,
+                        child: GestureDetector(
+                          onTap: _handlePrimaryTap,
+                          child: Center(
                             child: Container(
-                              padding: const EdgeInsets.all(20),
                               decoration: BoxDecoration(
-                                color: Colors.black.withValues(alpha: 0.4),
+                                color: Colors.black.withValues(alpha: 0.3),
                                 shape: BoxShape.circle,
                               ),
+                              padding: const EdgeInsets.all(16),
                               child: Icon(
-                                _isPlaying ? Icons.pause : Icons.play_arrow,
-                                color: Colors.white,
-                                size: 40,
-                              ),
-                            ),
-                          ),
-                        Positioned(
-                          top: 8,
-                          right: 8,
-                          child: GestureDetector(
-                            onTap: _toggleMute,
-                            child: Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(
-                                color: Colors.black.withValues(alpha: 0.6),
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: Icon(
-                                _isMuted ? Icons.volume_off : Icons.volume_up,
-                                color: Colors.white,
-                                size: 20,
+                                Icons.play_arrow,
+                                color: Colors.white.withValues(alpha: 0.9),
+                                size: 48,
+                                semanticLabel: 'پخش ویدیو',
                               ),
                             ),
                           ),
                         ),
-                        if (widget.showProgress && _isInitialized)
-                          Positioned(
-                            left: 0,
-                            right: 0,
-                            bottom: 0,
-                            child: SizedBox(
-                              height: 3,
-                              child: LinearProgressIndicator(
-                                value: _videoDuration.inMilliseconds > 0
-                                    ? _currentPosition.inMilliseconds /
-                                        _videoDuration.inMilliseconds
-                                    : 0.0,
-                                backgroundColor:
-                                    Colors.white.withValues(alpha: 0.3),
-                                valueColor: const AlwaysStoppedAnimation<Color>(
-                                  Colors.white,
-                                ),
-                                minHeight: 3,
+                      ),
+                    if (_showLikeAnim)
+                      Center(
+                        child: TweenAnimationBuilder<double>(
+                          tween: Tween<double>(begin: 0.5, end: 1.2),
+                          duration: const Duration(milliseconds: 400),
+                          curve: Curves.elasticOut,
+                          builder: (context, value, child) {
+                            return Transform.scale(
+                              scale: value,
+                              child: Icon(
+                                Icons.favorite,
+                                color: Colors.red.withValues(alpha: 0.9),
+                                size: 100,
                               ),
-                            ),
+                            );
+                          },
+                        ),
+                      ),
+                    if (_isAnimating)
+                      AnimatedOpacity(
+                        opacity: _isAnimating ? 0.7 : 0.0,
+                        duration: const Duration(milliseconds: 200),
+                        child: Container(
+                          padding: const EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.4),
+                            shape: BoxShape.circle,
                           ),
-                      ],
-                    ],
-                  ),
-                ),
+                          child: Icon(
+                            _isPlaying ? Icons.pause : Icons.play_arrow,
+                            color: Colors.white,
+                            size: 40,
+                          ),
+                        ),
+                      ),
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: GestureDetector(
+                        onTap: _toggleMute,
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.6),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Icon(
+                            _isMuted ? Icons.volume_off : Icons.volume_up,
+                            color: Colors.white,
+                            size: 20,
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (widget.showProgress && _isInitialized)
+                      Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        child: SizedBox(
+                          height: 3,
+                          child: LinearProgressIndicator(
+                            value: _videoDuration.inMilliseconds > 0
+                                ? _currentPosition.inMilliseconds /
+                                    _videoDuration.inMilliseconds
+                                : 0.0,
+                            backgroundColor:
+                                Colors.white.withValues(alpha: 0.3),
+                            valueColor: const AlwaysStoppedAnimation<Color>(
+                              Colors.white,
+                            ),
+                            minHeight: 3,
+                          ),
+                        ),
+                      ),
+                  ],
+                ],
+              ),
+            ),
           );
         },
       ),
@@ -645,7 +644,8 @@ class _CustomVideoPlayerState extends ConsumerState<CustomVideoPlayer>
       child: Center(
         child: showSpinner
             ? const CircularProgressIndicator(color: Colors.white54)
-            : const Icon(Icons.videocam_outlined, color: Colors.white24, size: 48),
+            : const Icon(Icons.videocam_outlined,
+                color: Colors.white24, size: 48),
       ),
     );
   }

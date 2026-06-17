@@ -33,6 +33,8 @@ class ModernChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
   final bool isLoadingGroupMembers;
   final List<dynamic> groupMembers;
   final VoidCallback onTitleTap;
+  final int pinnedMessageCount;
+  final VoidCallback? onPinnedMessageTap;
 
   const ModernChatAppBar({
     super.key,
@@ -57,10 +59,14 @@ class ModernChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
     required this.isLoadingGroupMembers,
     required this.groupMembers,
     required this.onTitleTap,
+    this.pinnedMessageCount = 0,
+    this.onPinnedMessageTap,
   });
 
   @override
-  Size get preferredSize => const Size.fromHeight(kToolbarHeight);
+  Size get preferredSize => Size.fromHeight(
+        kToolbarHeight + (pinnedMessageCount > 0 ? 18.0 : 0.0),
+      );
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -68,8 +74,9 @@ class ModernChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
       return _buildSelectionAppBar(context);
     }
 
-    final appBarColor = args.isSecret ? const Color(0xFF1B3D2F) : theme.appBarColor;
-    
+    final appBarColor =
+        args.isSecret ? const Color(0xFF1B3D2F) : theme.appBarColor;
+
     return AppBar(
       elevation: 0,
       backgroundColor: appBarColor,
@@ -104,7 +111,8 @@ class ModernChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
                 value: 'group_manage',
                 child: Row(
                   children: [
-                    Icon(Icons.admin_panel_settings_rounded, color: theme.iconColor, size: 20),
+                    Icon(Icons.admin_panel_settings_rounded,
+                        color: theme.iconColor, size: 20),
                     const SizedBox(width: 12),
                     const Text('مدیریت گروه'),
                   ],
@@ -126,7 +134,8 @@ class ModernChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
                 value: 'group_add_members',
                 child: Row(
                   children: [
-                    Icon(Icons.person_add_alt_1_rounded, color: theme.iconColor, size: 20),
+                    Icon(Icons.person_add_alt_1_rounded,
+                        color: theme.iconColor, size: 20),
                     const SizedBox(width: 12),
                     const Text('افزودن عضو'),
                   ],
@@ -139,7 +148,8 @@ class ModernChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
                   children: [
                     Icon(Icons.lock_rounded, color: Colors.green, size: 20),
                     SizedBox(width: 12),
-                    Text('شروع گفتگوی محرمانه', style: TextStyle(color: Colors.green)),
+                    Text('شروع گفتگوی محرمانه',
+                        style: TextStyle(color: Colors.green)),
                   ],
                 ),
               ),
@@ -148,9 +158,11 @@ class ModernChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
                 value: 'secret_timer',
                 child: Row(
                   children: [
-                    const Icon(Icons.timer_outlined, color: Colors.green, size: 20),
+                    const Icon(Icons.timer_outlined,
+                        color: Colors.green, size: 20),
                     const SizedBox(width: 12),
-                    Text('تایمر حذف خودکار ($secretAutoDeleteLabel)', style: const TextStyle(color: Colors.green)),
+                    Text('تایمر حذف خودکار ($secretAutoDeleteLabel)',
+                        style: const TextStyle(color: Colors.green)),
                   ],
                 ),
               ),
@@ -168,7 +180,8 @@ class ModernChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
               value: 'details',
               child: Row(
                 children: [
-                  Icon(Icons.info_outline_rounded, color: theme.iconColor, size: 20),
+                  Icon(Icons.info_outline_rounded,
+                      color: theme.iconColor, size: 20),
                   const SizedBox(width: 12),
                   Text(args.isGroup ? 'اطلاعات گروه' : 'جزئیات چت'),
                 ],
@@ -181,7 +194,8 @@ class ModernChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
                   children: [
                     Icon(Icons.block_rounded, color: Colors.red, size: 20),
                     const SizedBox(width: 12),
-                    const Text('مسدود کردن', style: TextStyle(color: Colors.red)),
+                    const Text('مسدود کردن',
+                        style: TextStyle(color: Colors.red)),
                   ],
                 ),
               ),
@@ -252,7 +266,10 @@ class ModernChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
                   children: [
                     Flexible(
                       child: Text(
-                        args.isGroup ? args.otherUserName : (otherUserProfile?.fullName ?? args.otherUserName),
+                        args.isGroup
+                            ? args.otherUserName
+                            : (otherUserProfile?.fullName ??
+                                args.otherUserName),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
@@ -264,13 +281,16 @@ class ModernChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
                     ),
                     if (args.isSecret) ...[
                       const SizedBox(width: 4),
-                      const Icon(Icons.lock_rounded, color: Colors.green, size: 14),
+                      const Icon(Icons.lock_rounded,
+                          color: Colors.green, size: 14),
                     ],
                   ],
                 ),
                 if (isOtherUserBlocked || isCurrentUserBlocked)
                   Text(
-                    isCurrentUserBlocked ? 'شما مسدود شده‌اید' : 'کاربر مسدود شده',
+                    isCurrentUserBlocked
+                        ? 'شما مسدود شده‌اید'
+                        : 'کاربر مسدود شده',
                     style: const TextStyle(color: Colors.red, fontSize: 12),
                   )
                 else if (args.isSecret)
@@ -316,6 +336,33 @@ class ModernChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
                         ),
                       );
                     },
+                  ),
+                if (pinnedMessageCount > 0)
+                  GestureDetector(
+                    onTap: onPinnedMessageTap,
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.push_pin_rounded,
+                            size: 11,
+                            color: theme.sendButtonColor.withValues(alpha: 0.8),
+                          ),
+                          const SizedBox(width: 3),
+                          Text(
+                            '$pinnedMessageCount پیام پین شده',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color:
+                                  theme.sendButtonColor.withValues(alpha: 0.8),
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
               ],
             ),
@@ -368,8 +415,6 @@ class ModernChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
     );
   }
 
-
-
   Widget _buildAvatar() {
     if (args.isGroup) {
       if (args.otherUserAvatar != null && args.otherUserAvatar!.isNotEmpty) {
@@ -395,14 +440,15 @@ class ModernChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
         width: 42,
         height: 42,
         decoration: BoxDecoration(
-          color: theme.sendButtonColor.withOpacity(0.1),
+          color: theme.sendButtonColor.withValues(alpha: 0.1),
           shape: BoxShape.circle,
         ),
         child: Icon(Icons.group, color: theme.sendButtonColor),
       );
     }
 
-    if (otherUserProfile?.avatarUrl != null && otherUserProfile!.avatarUrl!.isNotEmpty) {
+    if (otherUserProfile?.avatarUrl != null &&
+        otherUserProfile!.avatarUrl!.isNotEmpty) {
       final avatarUrl = otherUserProfile!.avatarUrl!;
       return Hero(
         tag: 'avatar_${args.otherUserId}',
@@ -445,7 +491,9 @@ class ModernChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
         ),
         alignment: Alignment.center,
         child: Text(
-          args.otherUserName.isNotEmpty ? args.otherUserName.substring(0, 1).toUpperCase() : '?',
+          args.otherUserName.isNotEmpty
+              ? args.otherUserName.substring(0, 1).toUpperCase()
+              : '?',
           style: const TextStyle(
             color: Colors.white,
             fontWeight: FontWeight.bold,

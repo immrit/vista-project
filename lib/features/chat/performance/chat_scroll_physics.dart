@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
@@ -17,6 +16,13 @@ class ChatScrollPhysics extends ScrollPhysics {
 
   @override
   double get minFlingVelocity => 30.0;
+
+  /// Cap momentum on 120Hz/144Hz displays to prevent unrealistically fast scroll.
+  @override
+  double carriedMomentum(double velocity) {
+    const maxVelocity = 8000.0;
+    return super.carriedMomentum(velocity).clamp(-maxVelocity, maxVelocity);
+  }
 }
 
 ScrollPhysics chatListScrollPhysics(BuildContext context) {

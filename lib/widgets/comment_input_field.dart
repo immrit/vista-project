@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:Vista/features/auth/providers/auth_controller.dart';
 import 'package:Vista/features/profile/providers/user_profile_provider.dart';
 import 'package:Vista/utils/comments_bottom_sheet.dart'; // for getDirection
 
@@ -61,7 +60,8 @@ class CommentInputField extends ConsumerWidget {
             // نوار نشان‌دهنده حالت ریپلای
             if (replyingToCommentId != null) ...[
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 decoration: BoxDecoration(
                   color: isDark ? Colors.grey[800] : Colors.grey[100],
                   borderRadius: BorderRadius.circular(12),
@@ -109,10 +109,12 @@ class CommentInputField extends ConsumerWidget {
                 // آواتار کاربر جاری
                 CircleAvatar(
                   radius: 18,
-                  backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.1),
+                  backgroundColor:
+                      theme.colorScheme.primary.withValues(alpha: 0.1),
                   backgroundImage: currentUserProfile?.avatarUrl != null &&
                           currentUserProfile!.avatarUrl!.isNotEmpty
-                      ? CachedNetworkImageProvider(currentUserProfile.avatarUrl!)
+                      ? CachedNetworkImageProvider(
+                          currentUserProfile.avatarUrl!)
                       : const AssetImage('lib/utils/images/default-avatar.jpg')
                           as ImageProvider,
                 ),
@@ -142,26 +144,30 @@ class CommentInputField extends ConsumerWidget {
                             ? 'پاسخ خود را بنویسید...'
                             : 'نظر خود را بنویسید...',
                         hintStyle: TextStyle(
-                          color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                          color: theme.colorScheme.onSurface
+                              .withValues(alpha: 0.5),
                         ),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(20),
                           borderSide: BorderSide(
-                            color: theme.colorScheme.outline.withValues(alpha: 0.2),
+                            color: theme.colorScheme.outline
+                                .withValues(alpha: 0.2),
                             width: 1,
                           ),
                         ),
                         enabledBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(20),
                           borderSide: BorderSide(
-                            color: theme.colorScheme.outline.withValues(alpha: 0.2),
+                            color: theme.colorScheme.outline
+                                .withValues(alpha: 0.2),
                             width: 1,
                           ),
                         ),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(20),
                           borderSide: BorderSide(
-                            color: theme.colorScheme.outline.withValues(alpha: 0.2),
+                            color: theme.colorScheme.outline
+                                .withValues(alpha: 0.2),
                             width: 1,
                           ),
                         ),
@@ -189,8 +195,10 @@ class CommentInputField extends ConsumerWidget {
                       width: 40,
                       height: 40,
                       decoration: BoxDecoration(
-                        color: controller.text.trim().isNotEmpty && !isSubmitting
-                            ? const Color(0xFF007AFF) // Same blue for both themes
+                        color: controller.text.trim().isNotEmpty &&
+                                !isSubmitting
+                            ? const Color(
+                                0xFF007AFF) // Same blue for both themes
                             : theme.colorScheme.outline.withValues(alpha: 0.2),
                         borderRadius: BorderRadius.circular(20),
                       ),
@@ -200,15 +208,18 @@ class CommentInputField extends ConsumerWidget {
                               height: 20,
                               child: CircularProgressIndicator(
                                 strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                valueColor:
+                                    AlwaysStoppedAnimation<Color>(Colors.white),
                               ),
                             )
                           : Icon(
                               Icons.send_rounded,
                               size: 20,
-                              color: controller.text.trim().isNotEmpty && !isSubmitting
+                              color: controller.text.trim().isNotEmpty &&
+                                      !isSubmitting
                                   ? Colors.white
-                                  : theme.colorScheme.onSurface.withValues(alpha: 0.4),
+                                  : theme.colorScheme.onSurface
+                                      .withValues(alpha: 0.4),
                             ),
                     ),
                   ),

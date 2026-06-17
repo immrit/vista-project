@@ -83,8 +83,11 @@ class _SwipeToReplyState extends State<SwipeToReply>
             offset: Offset(offset, 0),
             child: Stack(
               clipBehavior: Clip.none,
-              alignment: Alignment.center,
               children: [
+                // SizedBox.expand gives the Column tight screen-width constraints so
+                // crossAxisAlignment.end in _buildBubbleBody anchors the bubble to the
+                // correct screen edge instead of centering it.
+                SizedBox(width: double.infinity, child: widget.child),
                 if (offset.abs() > 10)
                   Positioned.directional(
                     textDirection: kChatLayoutTextDirection,
@@ -109,7 +112,6 @@ class _SwipeToReplyState extends State<SwipeToReply>
                       ),
                     ),
                   ),
-                widget.child,
               ],
             ),
           );

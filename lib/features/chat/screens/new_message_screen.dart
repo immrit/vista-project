@@ -132,7 +132,7 @@ class _NewMessageScreenState extends ConsumerState<NewMessageScreen> {
       context,
       ChatScreenRoute(
         args: ChatScreenArgs(
-          conversationId: conversationId!,
+          conversationId: conversationId,
           otherUserName: user.displayName,
           otherUserAvatar: user.avatarUrl,
           otherUserId: user.id,

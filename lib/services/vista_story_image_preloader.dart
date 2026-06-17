@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import 'package:flutter/services.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:get_thumbnail_video/video_thumbnail.dart';
@@ -26,9 +24,8 @@ class StoryPostAuthor {
   factory StoryPostAuthor.fromPost(PublicPostModel post) {
     final profiles = post.profiles;
     final nestedAuthor = profiles?['author'];
-    final authorMap = nestedAuthor is Map
-        ? nestedAuthor.cast<String, dynamic>()
-        : null;
+    final authorMap =
+        nestedAuthor is Map ? nestedAuthor.cast<String, dynamic>() : null;
 
     String pickUsername() {
       final values = [
@@ -199,9 +196,8 @@ class VistaStoryImagePreloader {
     } catch (_) {}
 
     try {
-      final response = await http
-          .get(Uri.parse(value))
-          .timeout(const Duration(seconds: 12));
+      final response =
+          await http.get(Uri.parse(value)).timeout(const Duration(seconds: 12));
       if (response.statusCode == 200 && response.bodyBytes.isNotEmpty) {
         return response.bodyBytes;
       }

@@ -5,7 +5,6 @@ import 'package:Vista/model/message_model.dart';
 
 import 'improved_error_handler.dart';
 import 'package:Vista/features/chat/providers/chat_providers.dart';
-import 'package:Vista/features/chat/providers/chat_messages_provider.dart';
 
 /// سیستم حذف فوری پیام‌ها و گفتگوها - بدون تأخیر
 class InstantMessageDeletion {
@@ -29,8 +28,7 @@ class InstantMessageDeletion {
     bool enableAnimation = true,
   }) async {
     try {
-      final notifier =
-          ref.read(chatMessagesProvider(conversationId).notifier);
+      final notifier = ref.read(chatMessagesProvider(conversationId).notifier);
       final currentMessages =
           ref.read(chatMessagesProvider(conversationId)).valueOrNull ?? [];
       MessageModel? targetMessage;
@@ -94,18 +92,18 @@ class InstantMessageDeletion {
     VoidCallback? onError,
   }) async {
     try {
-      final notifier =
-          ref.read(chatMessagesProvider(conversationId).notifier);
+      final notifier = ref.read(chatMessagesProvider(conversationId).notifier);
       final currentMessages =
           ref.read(chatMessagesProvider(conversationId)).valueOrNull ?? [];
 
-      _deletionBackup['conversation_$conversationId'] = currentMessages.isNotEmpty
-          ? currentMessages.first
-          : MessageModel.temporary(
-              tempId: 'backup',
-              conversationId: conversationId,
-              senderId: '',
-              content: '');
+      _deletionBackup['conversation_$conversationId'] =
+          currentMessages.isNotEmpty
+              ? currentMessages.first
+              : MessageModel.temporary(
+                  tempId: 'backup',
+                  conversationId: conversationId,
+                  senderId: '',
+                  content: '');
 
       notifier.clearMessagesLocally();
       logDebug('✅ گفتگو فوراً از UI پاک شد: $conversationId');

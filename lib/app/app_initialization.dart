@@ -24,6 +24,9 @@ import 'package:Vista/features/chat/performance/frame_budget_service.dart';
 import 'package:Vista/services/device_id_service.dart';
 import 'package:Vista/services/retry_queue_service.dart';
 import 'package:Vista/services/crash_reporting_service.dart';
+import 'package:Vista/security/e2ee_service.dart';
+import 'package:Vista/features/profile/data/profile_repository.dart';
+import 'package:Vista/features/auth/providers/auth_controller.dart' show TokenStorage;
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -92,6 +95,13 @@ class AppInitialization {
 
     // مدیر نشست ضروری است تا بدانیم کاربر لاگین هست یا خیر
     await SessionManagerServiceV2().initialize();
+
+    // ثبت callback برای sync کردن کلید عمومی E2EE به backend
+    E2EEService.setPublicKeyRegistrar((pubBase64) async {
+      final userId = await TokenStorage.getUserId();
+      if (userId == null || userId.isEmpty) return;
+      await ProfileRepository().updateProfile(userId, {'public_key': pubBase64});
+    });
 
     // شناسایی دستگاه برای سیستم Firewall و پایش
     await DeviceIdService.getDeviceId();

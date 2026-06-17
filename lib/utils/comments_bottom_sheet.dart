@@ -132,14 +132,14 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet>
       if (!success) {
         // Restore text if failed
         _commentController.text = content;
-        
+
         // Get the error message from the provider state
         final error = ref.read(commentsProvider(widget.postId)).error;
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-                content:
-                    Text(error ?? 'خطا در ارسال کامنت. لطفا دوباره تلاش کنید.')),
+                content: Text(
+                    error ?? 'خطا در ارسال کامنت. لطفا دوباره تلاش کنید.')),
           );
         }
       }
@@ -180,11 +180,9 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet>
         child: Column(
           children: [
             _buildHeader(theme, commentsState),
-
             Expanded(
               child: _buildCommentsContent(commentsState, theme),
             ),
-
             AnimatedPadding(
               duration: const Duration(milliseconds: 200),
               curve: Curves.easeOutCubic,
@@ -228,7 +226,6 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet>
             ),
           ),
           const SizedBox(height: 16),
-
           Row(
             children: [
               Icon(
@@ -245,13 +242,13 @@ class _CommentsBottomSheetState extends ConsumerState<CommentsBottomSheet>
                       'نظرات',
                       style: theme.textTheme.titleLarge?.copyWith(
                         fontWeight: FontWeight.bold,
-                        color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                        color:
+                            theme.colorScheme.onSurface.withValues(alpha: 0.6),
                       ),
                     ),
                   ],
                 ),
               ),
-
             ],
           ),
           const SizedBox(height: 8),
@@ -371,7 +368,7 @@ class _CommentItemState extends ConsumerState<CommentItem>
   // Add this controller
   final TextEditingController _editController = TextEditingController();
   bool _isEditing = false;
-  bool _isSavingEdit = false;
+  final bool _isSavingEdit = false;
 
   List<CommentModel> _getFlattenedReplies(CommentModel root) {
     final List<CommentModel> flat = [];
@@ -381,6 +378,7 @@ class _CommentItemState extends ConsumerState<CommentItem>
         flatten(reply);
       }
     }
+
     flatten(root);
     return flat;
   }
@@ -634,12 +632,14 @@ class _CommentItemState extends ConsumerState<CommentItem>
     final currentUserId = ref.watch(activeUserProvider)?.id;
     final isOwner = currentUserId == widget.comment.userId;
     final commentsState = ref.watch(commentsProvider(widget.postId));
-    
+
     final currentComment = commentsState.comments.firstWhere(
       (c) => c.id == widget.comment.id,
       orElse: () => widget.comment,
     );
-    final flatReplies = widget.isReply ? <CommentModel>[] : _getFlattenedReplies(currentComment);
+    final flatReplies = widget.isReply
+        ? <CommentModel>[]
+        : _getFlattenedReplies(currentComment);
     final shownReplies = flatReplies.take(_loadedRepliesCount).toList();
     final bool showThreadLineBelowRoot = shownReplies.isNotEmpty;
     final isLoading = commentsState.loadingReplies[widget.comment.id] ?? false;
@@ -683,13 +683,16 @@ class _CommentItemState extends ConsumerState<CommentItem>
                   ),
                 ),
               Container(
-                padding: const EdgeInsets.only(left: 16, right: 16, top: 12, bottom: 8),
+                padding: const EdgeInsets.only(
+                    left: 16, right: 16, top: 12, bottom: 8),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     // آواتار
                     Padding(
-                      padding: EdgeInsets.only(right: widget.isReply ? 4 : 0, left: widget.isReply ? 4 : 0),
+                      padding: EdgeInsets.only(
+                          right: widget.isReply ? 4 : 0,
+                          left: widget.isReply ? 4 : 0),
                       child: GestureDetector(
                         onTap: () {
                           ContentNavigation.pushProfile(
@@ -701,10 +704,12 @@ class _CommentItemState extends ConsumerState<CommentItem>
                         child: CircleAvatar(
                           radius: widget.isReply ? 16 : 20,
                           backgroundImage: widget.comment.avatarUrl.isEmpty
-                              ? const AssetImage('lib/utils/images/default-avatar.jpg')
-                              : CachedNetworkImageProvider(widget.comment.avatarUrl)
-                                  as ImageProvider,
-                          backgroundColor: theme.colorScheme.surfaceContainerHighest,
+                              ? const AssetImage(
+                                  'lib/utils/images/default-avatar.jpg')
+                              : CachedNetworkImageProvider(
+                                  widget.comment.avatarUrl) as ImageProvider,
+                          backgroundColor:
+                              theme.colorScheme.surfaceContainerHighest,
                         ),
                       ),
                     ),
@@ -744,7 +749,8 @@ class _CommentItemState extends ConsumerState<CommentItem>
                                 Icon(
                                   Icons.person,
                                   size: 14,
-                                  color: theme.colorScheme.primary.withValues(alpha: 0.7),
+                                  color: theme.colorScheme.primary
+                                      .withValues(alpha: 0.7),
                                 ),
                               ],
                             ],
@@ -756,7 +762,8 @@ class _CommentItemState extends ConsumerState<CommentItem>
                             _buildEditingField(theme)
                           else
                             Directionality(
-                              textDirection: getDirection(widget.comment.content),
+                              textDirection:
+                                  getDirection(widget.comment.content),
                               child: Text(
                                 widget.comment.content,
                                 style: theme.textTheme.bodyMedium?.copyWith(
@@ -773,7 +780,8 @@ class _CommentItemState extends ConsumerState<CommentItem>
                               Text(
                                 _getTimeAgo(widget.comment.createdAt),
                                 style: theme.textTheme.bodySmall?.copyWith(
-                                  color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                                  color: theme.colorScheme.onSurface
+                                      .withValues(alpha: 0.6),
                                 ),
                               ),
                               const SizedBox(width: 16),
@@ -787,7 +795,8 @@ class _CommentItemState extends ConsumerState<CommentItem>
                                 child: Text(
                                   'پاسخ',
                                   style: theme.textTheme.bodySmall?.copyWith(
-                                    color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                                    color: theme.colorScheme.onSurface
+                                        .withValues(alpha: 0.6),
                                     fontWeight: FontWeight.bold,
                                   ),
                                 ),
@@ -800,7 +809,8 @@ class _CommentItemState extends ConsumerState<CommentItem>
                                   child: Text(
                                     'ویرایش',
                                     style: theme.textTheme.bodySmall?.copyWith(
-                                      color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                                      color: theme.colorScheme.onSurface
+                                          .withValues(alpha: 0.6),
                                       fontWeight: FontWeight.bold,
                                     ),
                                   ),
@@ -814,7 +824,8 @@ class _CommentItemState extends ConsumerState<CommentItem>
                                 icon: Icon(
                                   Icons.more_horiz,
                                   size: 18,
-                                  color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                                  color: theme.colorScheme.onSurface
+                                      .withValues(alpha: 0.5),
                                 ),
                                 onSelected: (value) async {
                                   switch (value) {
@@ -822,15 +833,25 @@ class _CommentItemState extends ConsumerState<CommentItem>
                                       _startEditing();
                                       break;
                                     case 'delete':
-                                      final notifier = ref.read(commentsProvider(widget.postId).notifier);
-                                      final success = await notifier.deleteComment(
+                                      final notifier = ref.read(
+                                          commentsProvider(widget.postId)
+                                              .notifier);
+                                      final success =
+                                          await notifier.deleteComment(
                                         widget.comment.id,
-                                        parentCommentId: widget.comment.parentCommentId,
+                                        parentCommentId:
+                                            widget.comment.parentCommentId,
                                       );
                                       if (!success && mounted) {
-                                        final error = ref.read(commentsProvider(widget.postId)).error;
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          SnackBar(content: Text(error ?? 'خطا در حذف کامنت. لطفا دوباره تلاش کنید.')),
+                                        final error = ref
+                                            .read(
+                                                commentsProvider(widget.postId))
+                                            .error;
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                          SnackBar(
+                                              content: Text(error ??
+                                                  'خطا در حذف کامنت. لطفا دوباره تلاش کنید.')),
                                         );
                                       }
                                       break;
@@ -838,17 +859,35 @@ class _CommentItemState extends ConsumerState<CommentItem>
                                 },
                                 itemBuilder: (context) {
                                   final canEdit = widget.comment.isVerified ||
-                                      [VerificationType.blackTick, VerificationType.goldTick, VerificationType.blueTick]
-                                          .contains(widget.comment.verificationType);
+                                      [
+                                        VerificationType.blackTick,
+                                        VerificationType.goldTick,
+                                        VerificationType.blueTick
+                                      ].contains(
+                                          widget.comment.verificationType);
                                   return [
                                     if (isOwner) ...[
                                       PopupMenuItem(
                                         value: 'edit',
                                         child: Row(
                                           children: [
-                                            Icon(Icons.edit, size: 18, color: canEdit ? theme.colorScheme.primary : theme.colorScheme.onSurface.withValues(alpha: 0.3)),
+                                            Icon(Icons.edit,
+                                                size: 18,
+                                                color: canEdit
+                                                    ? theme.colorScheme.primary
+                                                    : theme
+                                                        .colorScheme.onSurface
+                                                        .withValues(
+                                                            alpha: 0.3)),
                                             const SizedBox(width: 8),
-                                            Text('ویرایش', style: TextStyle(color: canEdit ? null : theme.colorScheme.onSurface.withValues(alpha: 0.3))),
+                                            Text('ویرایش',
+                                                style: TextStyle(
+                                                    color: canEdit
+                                                        ? null
+                                                        : theme.colorScheme
+                                                            .onSurface
+                                                            .withValues(
+                                                                alpha: 0.3))),
                                           ],
                                         ),
                                       ),
@@ -856,9 +895,12 @@ class _CommentItemState extends ConsumerState<CommentItem>
                                         value: 'delete',
                                         child: Row(
                                           children: [
-                                            Icon(Icons.delete, size: 18, color: Colors.red),
-                                            const SizedBox(width: 8),
-                                            Text('حذف', style: TextStyle(color: Colors.red)),
+                                            Icon(Icons.delete,
+                                                size: 18, color: Colors.red),
+                                            SizedBox(width: 8),
+                                            Text('حذف',
+                                                style: TextStyle(
+                                                    color: Colors.red)),
                                           ],
                                         ),
                                       ),
@@ -868,7 +910,7 @@ class _CommentItemState extends ConsumerState<CommentItem>
                                         child: Row(
                                           children: [
                                             Icon(Icons.report, size: 18),
-                                            const SizedBox(width: 8),
+                                            SizedBox(width: 8),
                                             Text('گزارش'),
                                           ],
                                         ),
@@ -887,7 +929,6 @@ class _CommentItemState extends ConsumerState<CommentItem>
               ),
             ],
           ),
-
           if (!widget.isReply) ...[
             if (shownReplies.isNotEmpty) ...[
               ...shownReplies.asMap().entries.map((entry) {
@@ -902,9 +943,9 @@ class _CommentItemState extends ConsumerState<CommentItem>
                   hasLineAbove: true,
                   hasLineBelow: !isLast && !isLoading,
                 );
-              }).toList(),
+              }),
             ],
-            
+
             if (isLoading)
               const Padding(
                 padding: EdgeInsets.all(16.0),
@@ -931,7 +972,8 @@ class _CommentItemState extends ConsumerState<CommentItem>
                   alignment: Alignment.centerRight,
                   child: InkWell(
                     onTap: () {
-                      if (_loadedRepliesCount == 0 || _loadedRepliesCount < flatReplies.length) {
+                      if (_loadedRepliesCount == 0 ||
+                          _loadedRepliesCount < flatReplies.length) {
                         _loadMoreReplies();
                       } else {
                         _hideReplies();
@@ -939,14 +981,16 @@ class _CommentItemState extends ConsumerState<CommentItem>
                     },
                     borderRadius: BorderRadius.circular(16),
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                      padding: const EdgeInsets.symmetric(
+                          vertical: 4, horizontal: 8),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Container(
                             width: 24,
                             height: 1,
-                            color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                            color: theme.colorScheme.onSurface
+                                .withValues(alpha: 0.5),
                           ),
                           const SizedBox(width: 8),
                           Text(
@@ -956,7 +1000,8 @@ class _CommentItemState extends ConsumerState<CommentItem>
                                     ? 'مشاهده ${flatReplies.length - _loadedRepliesCount} پاسخ دیگر'
                                     : 'پنهان کردن پاسخ‌ها',
                             style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                              color: theme.colorScheme.onSurface
+                                  .withValues(alpha: 0.6),
                               fontWeight: FontWeight.bold,
                             ),
                           ),

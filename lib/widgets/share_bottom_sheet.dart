@@ -1,6 +1,5 @@
 import '../../security/logging_utility.dart';
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -90,7 +89,8 @@ class _ShareBottomSheetState extends ConsumerState<ShareBottomSheet> {
 
               // Action buttons row
               Padding(
-                padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 12),
+                padding:
+                    const EdgeInsets.symmetric(vertical: 20, horizontal: 12),
                 child: Row(
                   children: [
                     Expanded(
@@ -140,7 +140,8 @@ class _ShareBottomSheetState extends ConsumerState<ShareBottomSheet> {
 
               // App icons row
               Padding(
-                padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 12),
+                padding:
+                    const EdgeInsets.symmetric(vertical: 20, horizontal: 12),
                 child: Row(
                   children: [
                     Expanded(
@@ -301,7 +302,8 @@ class _ShareBottomSheetState extends ConsumerState<ShareBottomSheet> {
   Future<File?> _prepareAndGenerateStory({
     required VistaStoryShareTheme theme,
   }) async {
-    final preloaded = await VistaStoryImagePreloader.preloadForPost(widget.post);
+    final preloaded =
+        await VistaStoryImagePreloader.preloadForPost(widget.post);
 
     if (!mounted) return null;
 
@@ -495,7 +497,8 @@ class _ShareBottomSheetState extends ConsumerState<ShareBottomSheet> {
       if (storyFile == null) {
         messenger.showSnackBar(
           const SnackBar(
-            content: Text('خطا در تولید تصویر استوری. لطفاً دوباره امتحان کنید.'),
+            content:
+                Text('خطا در تولید تصویر استوری. لطفاً دوباره امتحان کنید.'),
             backgroundColor: Colors.red,
           ),
         );
@@ -519,13 +522,11 @@ class _ShareBottomSheetState extends ConsumerState<ShareBottomSheet> {
         mediaFile: result['media'] as File,
         mediaType: StoryMediaType.image,
         caption: result['caption'] as String?,
-        interactiveElements:
-            result['elements'] as List<StoryElement>?,
+        interactiveElements: result['elements'] as List<StoryElement>?,
         duration:
             (result['duration'] as StoryDuration?) ?? StoryDuration.hours24,
-        privacyType:
-            (result['privacy'] as StoryPrivacyType?) ??
-                StoryPrivacyType.everyone,
+        privacyType: (result['privacy'] as StoryPrivacyType?) ??
+            StoryPrivacyType.everyone,
       );
 
       uploadNotifier.uploadStory(params);

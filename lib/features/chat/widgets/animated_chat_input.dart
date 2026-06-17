@@ -17,7 +17,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../theme/chat_theme.dart';
-import '../utils/chat_text_direction.dart';
 import '../services/voice_recorder_service.dart';
 import 'liquid_glass_input_shell.dart';
 import 'modern_voice_recorder_bar.dart';
@@ -114,6 +113,8 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
   late AnimationController _replyController;
   late Animation<Offset> _replySlide;
   late Animation<double> _replyFade;
+  late AnimationController _attachRotationController;
+  late Animation<double> _attachRotation;
 
   // Voice recording - با استفاده از VoiceRecorderService
   final _voiceRecorder = VoiceRecorderService();
@@ -199,6 +200,18 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
     _sendButtonRotation = Tween<double>(begin: 0.5, end: 0.0).animate(
       CurvedAnimation(
         parent: _sendButtonController,
+        curve: Curves.easeOutBack,
+      ),
+    );
+
+    // انیمیشن دکمه Attach (چرخش ۱۵ درجه روی tap)
+    _attachRotationController = AnimationController(
+      duration: const Duration(milliseconds: 220),
+      vsync: this,
+    );
+    _attachRotation = Tween<double>(begin: 0.0, end: 15 / 360).animate(
+      CurvedAnimation(
+        parent: _attachRotationController,
         curve: Curves.easeOutBack,
       ),
     );
@@ -317,6 +330,7 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
     widget.controller.removeListener(_onTextChanged);
     _sendButtonController.dispose();
     _replyController.dispose();
+    _attachRotationController.dispose();
     _durationTimer?.cancel();
     _amplitudeSub?.cancel();
     _voiceRecorder.dispose();
@@ -655,7 +669,7 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center, // تراز وسط برای دکمه‌ها
         children: [
-          // دکمه Attachment
+          // دکمه Attachment با چرخش ۱۵ درجه‌ای روی tap
           AnimatedSize(
             duration: const Duration(milliseconds: 200),
             curve: Curves.easeInOut,
@@ -663,21 +677,38 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
               width: _hasText ? 0 : null,
               child: _hasText
                   ? const SizedBox.shrink()
-                  : _buildIconButton(
-                      icon: Icons.attach_file_rounded,
-                      onTap: widget.onAttachment,
-                      theme: theme,
+                  : RotationTransition(
+                      turns: _attachRotation,
+                      child: _buildIconButton(
+                        icon: Icons.attach_file_rounded,
+                        onTap: () {
+                          _attachRotationController.forward().then(
+                              (_) => _attachRotationController.reverse());
+                          widget.onAttachment?.call();
+                        },
+                        theme: theme,
+                      ),
                     ),
             ),
           ),
 
-          // دکمه Emoji
-          _buildIconButton(
-            icon: widget.isEmojiPanelOpen
-                ? Icons.keyboard_rounded
-                : Icons.emoji_emotions_outlined,
-            onTap: _toggleEmojiPicker,
-            theme: theme,
+          // دکمه Emoji با انیمیشن تغییر آیکون
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 200),
+            switchInCurve: Curves.easeOutBack,
+            switchOutCurve: Curves.easeIn,
+            transitionBuilder: (child, animation) => ScaleTransition(
+              scale: animation,
+              child: child,
+            ),
+            child: _buildIconButton(
+              key: ValueKey(widget.isEmojiPanelOpen),
+              icon: widget.isEmojiPanelOpen
+                  ? Icons.keyboard_rounded
+                  : Icons.emoji_emotions_outlined,
+              onTap: _toggleEmojiPicker,
+              theme: theme,
+            ),
           ),
 
           AnimatedSize(
@@ -712,11 +743,13 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
   }
 
   Widget _buildIconButton({
+    Key? key,
     required IconData icon,
     required VoidCallback? onTap,
     required ChatTheme theme,
   }) {
     return Material(
+      key: key,
       color: Colors.transparent,
       borderRadius: BorderRadius.circular(18),
       child: InkWell(
@@ -735,14 +768,11 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
   }
 
   Widget _buildTextField(ChatTheme theme) {
-    const textDirection = kChatLayoutTextDirection;
-
-    // TextAlign.start is direction-relative:
-    //   RTL text → visually right-aligned  (correct for Persian)
-    //   LTR text → visually left-aligned   (correct for Latin)
-    // Using TextAlign.right / TextAlign.left (absolute) can shift the cursor
-    // rendering by one logical position on some Android IMEs.
-    final textAlign = TextAlign.start;
+    // Use RTL as the paragraph direction for a Persian app:
+    //   TextAlign.start + TextDirection.rtl → right-aligned (correct for Persian)
+    //   Bidi algorithm handles mixed Persian/Latin content automatically.
+    const textDirection = TextDirection.rtl;
+    const textAlign = TextAlign.start;
 
     // NOTE: The Focus wrapper that previously surrounded this TextField has
     // been removed. It created a second, anonymous FocusNode in the subtree
@@ -756,6 +786,20 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
       enabled: widget.enabled,
       maxLines: 5,
       minLines: 1,
+      maxLength: 4000,
+      maxLengthEnforcement: MaxLengthEnforcement.enforced,
+      buildCounter: (_, {required currentLength, required isFocused, maxLength}) {
+        if (!isFocused || currentLength < 3800) return null;
+        return Text(
+          '$currentLength / $maxLength',
+          style: TextStyle(
+            fontSize: 10,
+            color: currentLength >= 4000
+                ? Colors.red
+                : Colors.grey,
+          ),
+        );
+      },
       textInputAction: TextInputAction.newline,
       textDirection: textDirection,
       textAlign: textAlign,
@@ -783,8 +827,8 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
         focusedErrorBorder: InputBorder.none,
         disabledBorder: InputBorder.none,
         contentPadding: const EdgeInsets.symmetric(
-          horizontal: 6,
-          vertical: 12,
+          horizontal: 12,
+          vertical: 10,
         ),
         isDense: true,
       ),

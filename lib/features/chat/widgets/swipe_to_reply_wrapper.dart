@@ -98,8 +98,17 @@ class _SwipeToReplyWrapperState extends State<SwipeToReplyWrapper> {
       onPointerUp: (_) => _onPointerEnd(),
       onPointerCancel: (_) => _onPointerEnd(),
       child: Stack(
-        alignment: Alignment.center,
         children: [
+          // SizedBox.expand gives the Column tight screen-width constraints so
+          // crossAxisAlignment.end in _buildBubbleBody anchors the bubble to the
+          // correct screen edge instead of centering it.
+          SizedBox(
+            width: double.infinity,
+            child: Transform.translate(
+              offset: Offset(_dragOffset, 0),
+              child: widget.child,
+            ),
+          ),
           if (_dragOffset.abs() > 10)
             Positioned(
               right: bubbleOnRight ? 20 : null,
@@ -130,10 +139,6 @@ class _SwipeToReplyWrapperState extends State<SwipeToReplyWrapper> {
                 ),
               ),
             ),
-          Transform.translate(
-            offset: Offset(_dragOffset, 0),
-            child: widget.child,
-          ),
         ],
       ),
     );

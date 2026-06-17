@@ -3,6 +3,7 @@
 // جداکننده تاریخ بین پیام‌ها - یکسان با FloatingDateHeader
 //
 
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:shamsi_date/shamsi_date.dart';
 import '../theme/chat_theme.dart';
@@ -17,14 +18,16 @@ class DateChipStyle {
 
   static BoxDecoration getDecoration(ChatTheme theme) {
     return BoxDecoration(
-      color: Colors.black.withValues(alpha: 0.4),
+      color: theme.isDark
+          ? Colors.black.withValues(alpha: 0.22)
+          : Colors.white.withValues(alpha: 0.22),
       borderRadius: BorderRadius.circular(borderRadius),
     );
   }
 
   static TextStyle getTextStyle(ChatTheme theme) {
-    return const TextStyle(
-      color: Colors.white,
+    return TextStyle(
+      color: theme.isDark ? Colors.white : Colors.black87,
       fontSize: fontSize,
       fontWeight: fontWeight,
     );
@@ -46,15 +49,22 @@ class DateDivider extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 16),
       child: Center(
-        child: Container(
-          padding: const EdgeInsets.symmetric(
-            horizontal: DateChipStyle.horizontalPadding,
-            vertical: DateChipStyle.verticalPadding,
-          ),
-          decoration: DateChipStyle.getDecoration(theme),
-          child: Text(
-            formatPersianDate(date),
-            style: DateChipStyle.getTextStyle(theme),
+        child: ClipRRect(
+          borderRadius:
+              BorderRadius.circular(DateChipStyle.borderRadius),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 4, sigmaY: 4),
+            child: Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: DateChipStyle.horizontalPadding,
+                vertical: DateChipStyle.verticalPadding,
+              ),
+              decoration: DateChipStyle.getDecoration(theme),
+              child: Text(
+                formatPersianDate(date),
+                style: DateChipStyle.getTextStyle(theme),
+              ),
+            ),
           ),
         ),
       ),
