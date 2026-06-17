@@ -1224,22 +1224,33 @@ class _ImprovedAnimatedMessageBubbleState
             '')
         .trim()
         .toLowerCase();
-        
+    if (raw.isNotEmpty) {
+      if (raw == 'image') return 'image';
+      if (raw == 'video') return 'video';
+      if (raw == 'voice') return 'voice';
+      if (raw == 'audio') return 'audio';
+      if (raw == 'document' || raw == 'pdf' || raw == 'file') {
+        return 'document';
+      }
+      if (raw.startsWith('image/')) return 'image';
+      if (raw.startsWith('audio/')) return 'audio';
+      if (raw.startsWith('video/')) return 'video';
+    }
+
     final mime =
         (widget.message?.attachmentMimeType ?? '').trim().toLowerCase();
-        
+    if (mime.startsWith('image/')) return 'image';
+    if (mime.startsWith('audio/')) return 'audio';
+    if (mime.startsWith('video/')) return 'video';
+
     final fileName = widget.message?.attachmentFileName ?? '';
     final url = widget.message?.resolvedMediaUrl ??
         widget.attachmentUrl ??
         '';
-    final localPath = widget.message?.localFilePath ?? '';
-    
-    // Attempt to extract extension from fileName, url, or localPath
     final ext = p
-        .extension(fileName.isNotEmpty ? fileName : (url.isNotEmpty ? url : localPath))
+        .extension(fileName.isNotEmpty ? fileName : url)
         .replaceFirst('.', '')
         .toLowerCase();
-
     const imageExts = {
       'jpg',
       'jpeg',
@@ -1253,20 +1264,9 @@ class _ImprovedAnimatedMessageBubbleState
     const audioExts = {'mp3', 'm4a', 'aac', 'wav', 'ogg', 'flac'};
     const videoExts = {'mp4', 'mov', 'm4v', 'webm', 'mkv', 'avi'};
 
-    // 1. Force check extensions/mimes even if raw says 'document'
-    if (audioExts.contains(ext) || mime.startsWith('audio/')) return 'audio';
-    if (videoExts.contains(ext) || mime.startsWith('video/')) return 'video';
-    if (imageExts.contains(ext) || mime.startsWith('image/')) return 'image';
-    
-    // 2. Fallbacks to raw type if we couldn't confidently extract from extension
-    if (raw == 'image') return 'image';
-    if (raw == 'video') return 'video';
-    if (raw == 'voice') return 'voice';
-    if (raw == 'audio') return 'audio';
-    if (raw == 'document' || raw == 'pdf' || raw == 'file') return 'document';
-    if (raw.startsWith('image/')) return 'image';
-    if (raw.startsWith('audio/')) return 'audio';
-    if (raw.startsWith('video/')) return 'video';
+    if (imageExts.contains(ext)) return 'image';
+    if (audioExts.contains(ext)) return 'audio';
+    if (videoExts.contains(ext)) return 'video';
 
     return 'unknown';
   }

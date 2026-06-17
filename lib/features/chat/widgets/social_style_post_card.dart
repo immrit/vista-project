@@ -27,10 +27,9 @@ class SocialStylePostCard extends StatefulWidget {
   final int likesCount;
   final int commentsCount;
   final DateTime createdAt;
-  final VoidCallback? onTap;
-  final VoidCallback? onLongPress;
+  final VoidCallback onTap;
   final VoidCallback? onShare;
-  final VoidCallback? onViewPost;
+  final VoidCallback? onLongPress;
   final bool isMine;
   final DateTime sentAt;
   final bool isVerified;
@@ -50,10 +49,9 @@ class SocialStylePostCard extends StatefulWidget {
     required this.likesCount,
     required this.commentsCount,
     required this.createdAt,
-    this.onTap,
-    this.onLongPress,
+    required this.onTap,
     this.onShare,
-    this.onViewPost,
+    this.onLongPress,
     required this.isMine,
     required this.sentAt,
     this.isVerified = false,
@@ -132,15 +130,14 @@ class _SocialStylePostCardState extends State<SocialStylePostCard>
     final cardBorderColor = widget.isMine
         ? theme.myBubbleTextColor.withValues(alpha: 0.16)
         : theme.otherBubbleTextColor.withValues(alpha: 0.12);
-    final cardShadow =
-        widget.isMine ? theme.myBubbleShadow : theme.otherBubbleShadow;
+    final cardShadow = widget.isMine ? theme.myBubbleShadow : theme.otherBubbleShadow;
 
     return ScaleTransition(
       scale: _scaleAnimation,
       child: GestureDetector(
         onTap: () {
           HapticFeedback.selectionClick();
-          widget.onTap?.call();
+          widget.onTap();
         },
         onLongPress: () {
           HapticFeedback.mediumImpact();
@@ -175,8 +172,8 @@ class _SocialStylePostCardState extends State<SocialStylePostCard>
                       ? [cardShadow]
                       : [
                           BoxShadow(
-                            color: Colors.black
-                                .withValues(alpha: theme.isDark ? 0.26 : 0.08),
+                            color: Colors.black.withValues(
+                                alpha: theme.isDark ? 0.26 : 0.08),
                             blurRadius: 14,
                             offset: const Offset(0, 3),
                           ),
@@ -255,19 +252,19 @@ class _SocialStylePostCardState extends State<SocialStylePostCard>
                         widget.authorAvatar!.isNotEmpty
                     ? CachedNetworkImageProvider(widget.authorAvatar!)
                     : null,
-                child:
-                    widget.authorAvatar == null || widget.authorAvatar!.isEmpty
-                        ? Text(
-                            widget.authorName.isNotEmpty
-                                ? widget.authorName[0].toUpperCase()
-                                : '?',
-                            style: TextStyle(
-                              color: primaryTextColor,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          )
-                        : null,
+                child: widget.authorAvatar == null ||
+                        widget.authorAvatar!.isEmpty
+                    ? Text(
+                        widget.authorName.isNotEmpty
+                            ? widget.authorName[0].toUpperCase()
+                            : '?',
+                        style: TextStyle(
+                          color: primaryTextColor,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      )
+                    : null,
               ),
             ),
           ),
@@ -510,7 +507,7 @@ class _SocialStylePostCardState extends State<SocialStylePostCard>
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: widget.onViewPost ?? widget.onTap,
+        onTap: widget.onTap,
         borderRadius: BorderRadius.circular(8),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),

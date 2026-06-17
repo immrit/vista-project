@@ -451,9 +451,15 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble>
     final Color iconColor;
 
     if (widget.isMe) {
-      // پیام‌های من: همیشه باید متضاد با رنگ پس‌زمینه حباب باشد
-      buttonColor = theme.myBubbleTextColor.withValues(alpha: 0.15);
-      iconColor = theme.myBubbleTextColor;
+      // پیام‌های من
+      if (theme.isDark) {
+        buttonColor = Colors.white.withValues(alpha: 0.15);
+        iconColor = Colors.white;
+      } else {
+        // تم روشن: از رنگ تیره‌تر استفاده میکنیم
+        buttonColor = theme.sendButtonColor.withValues(alpha: 0.15);
+        iconColor = theme.sendButtonColor;
+      }
     } else {
       // پیام‌های دیگران
       buttonColor = theme.sendButtonColor.withValues(alpha: 0.15);
@@ -540,9 +546,14 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble>
     final Color inactiveColor;
 
     if (widget.isMe) {
-      // پیام‌های من: همیشه رنگ متضاد با حباب خروجی
-      activeColor = theme.myBubbleTextColor;
-      inactiveColor = theme.myBubbleTextColor.withValues(alpha: 0.35);
+      if (theme.isDark) {
+        activeColor = Colors.white;
+        inactiveColor = Colors.white.withValues(alpha: 0.4);
+      } else {
+        // تم روشن: از رنگ اصلی استفاده میکنیم برای خوانایی بهتر
+        activeColor = theme.sendButtonColor;
+        inactiveColor = theme.sendButtonColor.withValues(alpha: 0.35);
+      }
     } else {
       activeColor = theme.sendButtonColor;
       inactiveColor = theme.sendButtonColor.withValues(alpha: 0.35);

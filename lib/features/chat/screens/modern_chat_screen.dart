@@ -6110,8 +6110,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                 },
               ),
 
-              // ویرایش برای پیام‌های متنی و فایل‌های کپشن‌دار (نه GIF و Voice)
-              if (isMe && !isGif && message.attachmentType?.toLowerCase() != 'voice' && message.attachmentType?.toLowerCase() != 'audio')
+              // ویرایش فقط برای پیام‌های متنی خودم (نه GIF)
+              if (isMe && !isGif && message.attachmentUrl == null)
                 _buildOptionTile(
                   icon: _canEditMessages
                       ? Icons.edit_rounded
@@ -6808,17 +6808,6 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                   status: _getMessageStatus(message),
                   // callbacks داخلی را هم به همان هندلرها وصل می‌کنیم تا tap حتماً کار کند
                   onTap: () => handlePostTap(postContext),
-                  onViewPost: () {
-                    if (!_selection.isSelectionMode) {
-                      Navigator.pushNamed(
-                        postContext,
-                        '/post-detail',
-                        arguments: {'postId': postId},
-                      );
-                    } else {
-                      handlePostTap(postContext);
-                    }
-                  },
                   onLongPress: handlePostLongPress,
                   onShare: () async {
                     if (!_selection.isSelectionMode) {
