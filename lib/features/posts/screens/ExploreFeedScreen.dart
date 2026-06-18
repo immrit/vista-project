@@ -18,6 +18,7 @@ import '../../../provider/notification_provider.dart';
 // Import Screens (for navigation)
 import 'package:Vista/features/posts/navigation/content_routes.dart';
 import 'notificationScreen.dart';
+import 'package:Vista/features/posts/screens/AddPost.dart';
 
 import 'package:Vista/features/posts/widgets/standard_edit_post_dialog.dart';
 import 'package:flutter/services.dart';
@@ -129,6 +130,35 @@ class _ExploreFeedScreenState extends ConsumerState<ExploreFeedScreen>
       length: 2,
       child: Scaffold(
         backgroundColor: bgColor,
+        floatingActionButton: Padding(
+          padding: const EdgeInsets.only(bottom: 90.0),
+          child: Container(
+            height: 56,
+            width: 56,
+            decoration: BoxDecoration(
+              gradient: AppColors.primaryGradient,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.primary.withValues(alpha: 0.35),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: FloatingActionButton(
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (context) => const AddPublicPostScreen()),
+                );
+              },
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              highlightElevation: 0,
+              child: const Icon(Icons.add_rounded, color: Colors.white, size: 32),
+            ),
+          ),
+        ),
         body: Column(
           children: [
             _FeedConnectionBanner(

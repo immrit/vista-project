@@ -80,5 +80,7 @@
 	<array>
 		<string>applinks:cafevista.ir</string>
 	</array>
+	<key>NSContactsUsageDescription</key>
+	<string>ویستا از دسترسی به مخاطبین برای نمایش دوستانتان در ویستا استفاده می‌کند.</string>
 </dict>
 </plist>

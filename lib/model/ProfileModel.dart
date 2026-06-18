@@ -49,6 +49,7 @@ class ProfileModel extends Equatable {
   final String? subscriptionPlan;
   final DateTime? subscriptionExpiresAt;
   final int? premiumDaysRemaining;
+  final String messagePrivacy;
 
   const ProfileModel({
     required this.id,
@@ -85,6 +86,7 @@ class ProfileModel extends Equatable {
     this.subscriptionPlan,
     this.subscriptionExpiresAt,
     this.premiumDaysRemaining,
+    this.messagePrivacy = 'everyone',
   });
 
   static String _trimmed(dynamic value) => value?.toString().trim() ?? '';
@@ -183,6 +185,7 @@ class ProfileModel extends Equatable {
       premiumDaysRemaining: map['premium_days_remaining'] != null
           ? int.tryParse(map['premium_days_remaining'].toString())
           : null,
+      messagePrivacy: map['message_privacy']?.toString() ?? 'everyone',
     );
   }
 
@@ -314,6 +317,7 @@ class ProfileModel extends Equatable {
       subscriptionExpiresAt:
           subscriptionExpiresAt ?? this.subscriptionExpiresAt,
       premiumDaysRemaining: premiumDaysRemaining ?? this.premiumDaysRemaining,
+      messagePrivacy: messagePrivacy ?? this.messagePrivacy,
     );
   }
 
@@ -350,6 +354,10 @@ class ProfileModel extends Equatable {
         showMaritalStatus,
         usernameChangesCount,
         registrationCountry,
+        subscriptionPlan,
+        subscriptionExpiresAt,
+        premiumDaysRemaining,
+        messagePrivacy,
       ];
   bool get hasBlueBadge =>
       isVerified && verificationType == VerificationType.blueTick;

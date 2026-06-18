@@ -215,8 +215,8 @@ class ConversationModel {
         isMessageRequest: (json['is_message_request'] as bool?) ??
             (json['message_request'] as bool?) ??
             false,
-        messageRequestStatus: (json['message_request_status'] ??
-                json['request_status'] ??
+        messageRequestStatus: (json['status'] ??
+                json['message_request_status'] ??
                 json['messageRequestStatus'])
             ?.toString(),
       );

@@ -101,8 +101,8 @@ class _PrivacySecurityPageState extends ConsumerState<PrivacySecurityPage> {
                   options: const [
                     VistaChoiceOption(value: 'everyone', label: 'همه'),
                     VistaChoiceOption(
-                      value: 'followers',
-                      label: 'فقط دنبال‌کننده‌ها',
+                      value: 'friends',
+                      label: 'دوستان من',
                     ),
                     VistaChoiceOption(value: 'nobody', label: 'هیچکس'),
                   ],

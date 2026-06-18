@@ -14,6 +14,7 @@ import 'package:Vista/features/posts/screens/AddPost.dart';
 import 'package:Vista/features/posts/screens/profileScreen.dart';
 import 'package:Vista/features/posts/screens/ExploreFeedScreen.dart';
 import 'package:Vista/features/search/screens/searchPage.dart';
+import 'package:Vista/features/services/screens/services_screen.dart';
 import 'package:Vista/features/profile/data/profile_repository.dart';
 import 'package:Vista/provider/optimized_conversations_provider.dart';
 import 'package:Vista/core/security/input_policy.dart';
@@ -69,6 +70,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   late final List<Widget> _persistentTabs = const [
     ExploreFeedScreen(),
     SearchPage(),
+    ServicesScreen(),
     ChatConversationsScreen(),
   ];
 
@@ -330,9 +332,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   int _stackIndexForNav(int navIndex) {
-    if (navIndex <= 1) return navIndex;
-    if (navIndex >= 3) return navIndex - 1;
-    return _selectedIndex;
+    return navIndex;
   }
 
   Future<void> _openComposer() async {
@@ -348,11 +348,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   void _onItemTapped(int index) {
-    if (index == 2) {
-      unawaited(_openComposer());
-      return;
-    }
-
     final targetIndex = _stackIndexForNav(index);
     if (targetIndex == _selectedIndex) return;
 
@@ -550,7 +545,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       inactiveIcon: _NavIcons.search,
                       isDark: isDark,
                     ),
-                    _buildPremiumAddButton(isDark),
+                    _buildPremiumServicesButton(isDark),
                     _buildPremiumNavItemWithBadge(
                       index: 3,
                       activeIcon: _NavIcons.chatActive,
@@ -680,45 +675,32 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
-  /// دکمه Add ساده و شیک
-  Widget _buildPremiumAddButton(bool isDark) {
+  /// دکمه سرویس‌ها شیک
+  Widget _buildPremiumServicesButton(bool isDark) {
+    final isSelected = _selectedIndex == _stackIndexForNav(2);
     return GestureDetector(
       onTap: () => _onItemTapped(2),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
         decoration: BoxDecoration(
-          gradient: AppColors.primaryGradient, // ✅ Gradient برند
+          gradient: isSelected ? AppColors.primaryGradient : null, // ✅ Gradient برند
+          color: isSelected ? null : (isDark ? Colors.grey[800] : Colors.grey[200]),
           borderRadius: BorderRadius.circular(14),
-          boxShadow: [
+          boxShadow: isSelected ? [
             BoxShadow(
               color: AppColors.primary.withValues(alpha: 0.35),
               blurRadius: 12,
               offset: const Offset(0, 4),
             ),
-          ],
+          ] : null,
         ),
-        child: ColorFiltered(
-          colorFilter: const ColorFilter.mode(
-            Colors.white,
-            BlendMode.srcIn,
-          ),
-          child: Image.asset(
-            _NavIcons.add,
-            width: 24,
-            height: 24,
-            filterQuality: FilterQuality.high,
-            gaplessPlayback: true,
-            errorBuilder: (context, error, stackTrace) {
-              return const Icon(
-                Icons.add_rounded,
-                size: 24,
-                color: Colors.white,
-              );
-            },
-          ),
+        child: Icon(
+          Icons.grid_view_rounded,
+          size: 24,
+          color: isSelected ? Colors.white : (isDark ? Colors.grey[400] : Colors.grey[600]),
         ),
-      ).animate().scaleXY(
-          begin: 0.9, end: 1.0, duration: 300.ms, curve: Curves.easeOutBack),
+      ).animate(target: isSelected ? 1 : 0).scaleXY(
+          end: 1.05, duration: 250.ms, curve: Curves.easeOutBack),
     );
   }
 }

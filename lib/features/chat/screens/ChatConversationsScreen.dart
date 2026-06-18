@@ -204,37 +204,40 @@ class _ChatConversationsScreenState
                 }
                 final isConnecting =
                     status == ConnectionStatus.connecting;
-                return AnimatedContainer(
+                return AnimatedSize(
                   duration: const Duration(milliseconds: 300),
                   curve: Curves.easeInOut,
-                  width: isConnecting ? null : 10,
-                  height: 10,
-                  margin: const EdgeInsetsDirectional.only(start: 8),
-                  padding: isConnecting
-                      ? const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 1)
-                      : EdgeInsets.zero,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(6),
-                    color: indicatorColor,
-                    boxShadow: [
-                      BoxShadow(
-                        color: indicatorColor.withValues(alpha: 0.4),
-                        blurRadius: 4,
-                        spreadRadius: 1,
-                      ),
-                    ],
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeInOut,
+                    height: 10,
+                    margin: const EdgeInsetsDirectional.only(start: 8),
+                    padding: isConnecting
+                        ? const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 1)
+                        : EdgeInsets.zero,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(6),
+                      color: indicatorColor,
+                      boxShadow: [
+                        BoxShadow(
+                          color: indicatorColor.withValues(alpha: 0.4),
+                          blurRadius: 4,
+                          spreadRadius: 1,
+                        ),
+                      ],
+                    ),
+                    child: isConnecting
+                        ? const Text(
+                            'در حال اتصال...',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          )
+                        : const SizedBox(width: 10),
                   ),
-                  child: isConnecting
-                      ? const Text(
-                          'در حال اتصال...',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        )
-                      : null,
                 );
               },
               loading: () => const SizedBox(),

@@ -48,6 +48,8 @@ import '../../../utils/user_friendly_error_utils.dart';
 import 'package:Vista/features/posts/widgets/standard_edit_post_dialog.dart';
 import 'package:Vista/features/posts/widgets/profile_lazy_tab_gate.dart';
 import 'package:Vista/features/posts/navigation/content_routes.dart';
+import 'package:Vista/features/posts/screens/AddPost.dart';
+import 'package:Vista/core/theme/app_theme.dart';
 import 'package:Vista/features/posts/data/go_posts_repository.dart';
 import 'package:Vista/features/search/screens/searchPage.dart';
 import 'package:Vista/features/posts/widgets/hashtag_rich_text.dart';
@@ -118,6 +120,35 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      floatingActionButton: isCurrentUserProfile ? Padding(
+        padding: const EdgeInsets.only(bottom: 90.0),
+        child: Container(
+          height: 56,
+          width: 56,
+          decoration: BoxDecoration(
+            gradient: AppColors.primaryGradient,
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.primary.withValues(alpha: 0.35),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: FloatingActionButton(
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (context) => const AddPublicPostScreen()),
+              );
+            },
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            highlightElevation: 0,
+            child: const Icon(Icons.add_rounded, color: Colors.white, size: 32),
+          ),
+        ),
+      ) : null,
       appBar: _buildAppBar(profileState, isDark, isCurrentUserProfile),
       body: profileState == null
           ? _ProfilePageShimmer(isDark: isDark)
@@ -1254,6 +1285,8 @@ class _ProfileActionBar extends ConsumerWidget {
       ),
     );
 
+    final hideMessageButton = profile.messagePrivacy == 'nobody';
+
     if (isPending == null) {
       return Row(
         children: [
@@ -1264,15 +1297,17 @@ class _ProfileActionBar extends ConsumerWidget {
               enabled: false,
             ),
           ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: _ActionButton(
-              label: 'پیام',
-              isDark: isDark,
-              icon: Icons.mail_outline,
-              onTap: onMessageTap,
+          if (!hideMessageButton) ...[
+            const SizedBox(width: 8),
+            Expanded(
+              child: _ActionButton(
+                label: 'پیام',
+                isDark: isDark,
+                icon: Icons.mail_outline,
+                onTap: onMessageTap,
+              ),
             ),
-          ),
+          ],
         ],
       );
     }
@@ -1287,15 +1322,17 @@ class _ProfileActionBar extends ConsumerWidget {
             onTap: onFollowTap,
           ),
         ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: _ActionButton(
-            label: 'پیام',
-            isDark: isDark,
-            icon: Icons.mail_outline,
-            onTap: onMessageTap,
+        if (!hideMessageButton) ...[
+          const SizedBox(width: 8),
+          Expanded(
+            child: _ActionButton(
+              label: 'پیام',
+              isDark: isDark,
+              icon: Icons.mail_outline,
+              onTap: onMessageTap,
+            ),
           ),
-        ),
+        ],
       ],
     );
   }
@@ -1991,28 +2028,36 @@ class _PostsGridViewState extends ConsumerState<_PostsGridView> {
     final notifier = ref.read(profilePostsProvider(widget.profileId).notifier);
     final hasMore = notifier.hasMore;
     final isLoading = notifier.isLoading;
-    final reelsPlaylist = ReelsViewerLauncher.videoPlaylist(widget.posts);
+
+    // Deduplicate posts to prevent Hero tag collisions (duplicate IDs)
+    final uniquePostsMap = <String, PublicPostModel>{};
+    for (final p in widget.posts) {
+      uniquePostsMap[p.id] = p;
+    }
+    final displayPosts = uniquePostsMap.values.toList();
+
+    final reelsPlaylist = ReelsViewerLauncher.videoPlaylist(displayPosts);
 
     return ListView.separated(
       controller: _scrollController,
       padding: EdgeInsets.only(
         bottom: MediaQuery.of(context).viewPadding.bottom + 110,
       ),
-      itemCount: widget.posts.length + 1,
+      itemCount: displayPosts.length + 1,
       separatorBuilder: (context, index) => Divider(
         height: 1,
         color:
             widget.isDark ? const Color(0xFF303D4F) : const Color(0xFFE4E6E9),
       ),
       itemBuilder: (context, index) {
-        if (index == widget.posts.length) {
+        if (index == displayPosts.length) {
           if (isLoading && hasMore) {
             return const Padding(
               padding: EdgeInsets.symmetric(vertical: 16),
               child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
             );
           }
-          if (!hasMore && widget.posts.isNotEmpty) {
+          if (!hasMore && displayPosts.isNotEmpty) {
             return Padding(
               padding: const EdgeInsets.symmetric(vertical: 16),
               child: Center(
@@ -2028,7 +2073,7 @@ class _PostsGridViewState extends ConsumerState<_PostsGridView> {
           }
           return const SizedBox.shrink();
         }
-        final post = widget.posts[index];
+        final post = displayPosts[index];
         return KeyedSubtree(
           key: ValueKey<String>(post.id),
           child: _PostListItem(

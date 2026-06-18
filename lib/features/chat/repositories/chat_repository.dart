@@ -138,6 +138,10 @@ abstract class ChatRepository {
     int limit = 50,
   });
 
+  Future<ChatResult<void>> acceptMessageRequest(String conversationId);
+
+  Future<ChatResult<void>> rejectMessageRequest(String conversationId);
+
   // ═══════════════════════════════════════════════════════════════════
   // 😀 REACTIONS
   // ═══════════════════════════════════════════════════════════════════

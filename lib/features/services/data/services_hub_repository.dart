@@ -1,0 +1,48 @@
+import 'package:dio/dio.dart';
+import 'package:Vista/utils/env_config.dart';
+import 'package:Vista/features/auth/providers/auth_controller.dart';
+import 'package:Vista/services/session_manager_service_v2.dart';
+import '../models/services_hub_model.dart';
+
+class ServicesHubRepository {
+  static String get _baseUrl => EnvConfig.apiBaseUrl;
+
+  late final Dio _dio;
+
+  ServicesHubRepository() {
+    _dio = Dio(BaseOptions(
+      baseUrl: '$_baseUrl/v1',
+      connectTimeout: const Duration(seconds: 15),
+      receiveTimeout: const Duration(seconds: 15),
+      headers: {'Content-Type': 'application/json'},
+    ));
+  }
+
+  Future<Options> _authOptions() async {
+    final sessionReady =
+        await SessionManagerServiceV2.instance.ensureValidAuthSession();
+    if (!sessionReady) throw 'User is not logged in';
+    final token = await TokenStorage.getAccessToken();
+    if (token == null || token.isEmpty) throw 'User is not logged in';
+    return Options(headers: {'Authorization': 'Bearer $token'});
+  }
+
+  Future<ServicesHubData> getHub() async {
+    final resp = await _dio.get('/services-hub');
+    return ServicesHubData.fromJson(resp.data as Map<String, dynamic>);
+  }
+
+  Future<List<ContactVistaUser>> findContacts(List<String> phones) async {
+    final options = await _authOptions();
+    final resp = await _dio.post(
+      '/services-hub/contacts',
+      data: {'phone_numbers': phones},
+      options: options,
+    );
+    final data = resp.data as Map<String, dynamic>;
+    final users = data['users'] as List<dynamic>? ?? [];
+    return users
+        .map((e) => ContactVistaUser.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+}

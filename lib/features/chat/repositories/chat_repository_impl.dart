@@ -742,9 +742,45 @@ class ChatRepositoryImpl implements ChatRepository {
     }
   }
 
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-  // ðŸ˜€ REACTIONS
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  @override
+  Future<ChatResult<void>> acceptMessageRequest(String conversationId) async {
+    final opts = await _authOptions();
+    if (opts == null) {
+      return ChatResult.failure('کاربر وارد نشده است');
+    }
+
+    try {
+      await _dio.post(
+        '/chat/conversations/$conversationId/accept',
+        options: opts,
+      );
+      return ChatResult.success(null);
+    } on DioException catch (e) {
+      return ChatResult.failure(_dioError(e));
+    }
+  }
+
+  @override
+  Future<ChatResult<void>> rejectMessageRequest(String conversationId) async {
+    final opts = await _authOptions();
+    if (opts == null) {
+      return ChatResult.failure('کاربر وارد نشده است');
+    }
+
+    try {
+      await _dio.post(
+        '/chat/conversations/$conversationId/reject',
+        options: opts,
+      );
+      return ChatResult.success(null);
+    } on DioException catch (e) {
+      return ChatResult.failure(_dioError(e));
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 😀 REACTIONS
+  // ═══════════════════════════════════════════════════════════════════════════
 
   @override
   Future<ChatResult<void>> toggleReaction({

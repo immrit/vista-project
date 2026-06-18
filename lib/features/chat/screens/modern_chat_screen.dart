@@ -2243,6 +2243,18 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     final isConnected = _latestConnectionStatus == ConnectionStatus.connected;
     final showConnectionBanner =
         !isConnected && _showConnectionBannerAfterDelay;
+        
+    final allConversations =
+        ref.watch(optimizedConversationsProvider).conversations;
+    var currentConversation;
+    for (final c in allConversations) {
+      if (c.id == widget.args.conversationId) {
+        currentConversation = c;
+        break;
+      }
+    }
+    final isPendingRequest =
+        currentConversation?.messageRequestStatus == 'pending';
 
     return Directionality(
       textDirection: kChatLayoutTextDirection,
@@ -2448,13 +2460,15 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                   keyboardVisible: keyboardVisible,
                   reduceEffects: reduceEffects,
                 ),
-                inputAreaBuilder: (reduceEffects) => _buildInputArea(
-                  theme,
-                  reduceEffects: reduceEffects,
-                  allowHeavyEffects:
-                      blurConfig.allowHeavyBlur && !reduceEffects,
-                  blurSigma: blurConfig.blurSigma,
-                ),
+                inputAreaBuilder: (reduceEffects) => isPendingRequest
+                    ? _buildMessageRequestOverlay(theme)
+                    : _buildInputArea(
+                        theme,
+                        reduceEffects: reduceEffects,
+                        allowHeavyEffects:
+                            blurConfig.allowHeavyBlur && !reduceEffects,
+                        blurSigma: blurConfig.blurSigma,
+                      ),
                 emojiPanel: _buildEmojiPanel(theme),
               ),
             ),
@@ -4373,6 +4387,106 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         ),
       ),
     );
+  }
+
+  Widget _buildMessageRequestOverlay(ChatTheme theme) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: theme.backgroundColor,
+        border: Border(
+          top: BorderSide(
+            color: theme.dividerColor,
+            width: 0.5,
+          ),
+        ),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            'درخواست پیام',
+            style: TextStyle(
+              color: theme.textColor,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'اگر درخواست را قبول کنید، این شخص می‌تواند به شما پیام دهد و متوجه خوانده شدن پیام‌هایش می‌شود.',
+            style: TextStyle(
+              color: theme.textColor.withOpacity(0.7),
+              fontSize: 12,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: TextButton(
+                  onPressed: () => _handleMessageRequest('accept'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    backgroundColor: theme.myBubbleColor,
+                  ),
+                  child: const Text('قبول درخواست'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: TextButton(
+                  onPressed: () => _handleMessageRequest('reject'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.red,
+                  ),
+                  child: const Text('رد درخواست و حذف گفتگو'),
+                ),
+              ),
+              Expanded(
+                child: TextButton(
+                  onPressed: () => _handleMessageRequest('block'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.red,
+                  ),
+                  child: const Text('گزارش و بلاک کردن'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _handleMessageRequest(String action) async {
+    try {
+      if (action == 'accept') {
+        await ref.read(chatRepositoryProvider).acceptMessageRequest(widget.args.conversationId);
+      } else if (action == 'reject') {
+        await ref.read(chatRepositoryProvider).rejectMessageRequest(widget.args.conversationId);
+        if (mounted) Navigator.of(context).pop();
+        return;
+      } else if (action == 'block') {
+        await ref.read(chatRepositoryProvider).rejectMessageRequest(widget.args.conversationId);
+        await _moderationService.blockUser(widget.args.otherUserId);
+        if (mounted) Navigator.of(context).pop();
+        return;
+      }
+      
+      // Refresh to hide the overlay and show input
+      ref.invalidate(optimizedConversationsProvider);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('خطا در انجام عملیات: $e')),
+        );
+      }
+    }
   }
 
   Widget _buildInputArea(

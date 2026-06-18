@@ -42,9 +42,9 @@ class MessagePrivacyModel {
 
 /// سطوح حریم خصوصی پیام‌ها
 enum MessagePrivacyLevel {
-  nobody('nobody', 'هیچکس', 'فقط شما می‌توانید پیام ارسال کنید'),
-  followers('followers', 'دنبال کنندگان',
-      'فقط دنبال کنندگان شما می‌توانند پیام ارسال کنند'),
+  nobody('nobody', 'هیچکس', 'هیچکس نمی‌تواند به شما پیام ارسال کند'),
+  friends('friends', 'دوستان من',
+      'فقط کاربرانی که یکدیگر را دنبال می‌کنید می‌توانند پیام ارسال کنند'),
   everyone('everyone', 'همه', 'همه کاربران می‌توانند پیام ارسال کنند');
 
   const MessagePrivacyLevel(this.value, this.title, this.description);
@@ -57,8 +57,8 @@ enum MessagePrivacyLevel {
     switch (value) {
       case 'nobody':
         return MessagePrivacyLevel.nobody;
-      case 'followers':
-        return MessagePrivacyLevel.followers;
+      case 'friends':
+        return MessagePrivacyLevel.friends;
       case 'everyone':
         return MessagePrivacyLevel.everyone;
       default:
@@ -68,7 +68,7 @@ enum MessagePrivacyLevel {
 
   static List<MessagePrivacyLevel> get allLevels => [
         MessagePrivacyLevel.nobody,
-        MessagePrivacyLevel.followers,
+        MessagePrivacyLevel.friends,
         MessagePrivacyLevel.everyone,
       ];
 }
