@@ -433,13 +433,7 @@ class _ImprovedAnimatedMessageBubbleState
     final sharedPostReply =
         storyReply == null ? _effectiveSharedPostReplyData() : null;
 
-    final bubbleColor = widget.isMe && theme.myBubbleGradient == null
-        ? theme.myBubbleColor
-        : (widget.isMe
-            ? (theme.myBubbleGradient?.colors.last ?? theme.myBubbleColor)
-            : theme.otherBubbleColor);
-
-    final bubble = Container(
+    return Container(
       clipBehavior: isMedia ? Clip.hardEdge : Clip.none,
       decoration: BoxDecoration(
         color: widget.isMe && theme.myBubbleGradient == null
@@ -449,9 +443,6 @@ class _ImprovedAnimatedMessageBubbleState
         borderRadius: _getBorderRadius(theme),
       ),
       child: Column(
-        // stretch gives every child the same tight width (= bubble intrinsic width
-        // established by IntrinsicWidth above), so short RTL text fills the row and
-        // Positioned(right:0) timestamps always land at the right bubble edge.
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -466,35 +457,9 @@ class _ImprovedAnimatedMessageBubbleState
               widget.replyToContent != null)
             _buildReplySection(theme),
           _buildContent(theme),
-          if (widget.reactions.isNotEmpty) _buildReactionsSection(theme),
+          if (widget.reactions.isNotEmpty && !_handlesReactionsInternally()) _buildReactionsSection(theme),
         ],
       ),
-    );
-
-    // Telegram X-style tail only on the last message in a group
-    if (!widget.isLastInGroup) return bubble;
-
-    return Stack(
-      clipBehavior: Clip.none,
-      // passthrough keeps the tight width from IntrinsicWidth flowing into the
-      // bubble Container → Column(stretch) → _buildContent, so RTL text alignment
-      // is visible. Without this, the default StackFit.loose breaks the chain.
-      fit: StackFit.passthrough,
-      children: [
-        bubble,
-        Positioned(
-          bottom: 0,
-          right: widget.isMe ? -6 : null,
-          left: widget.isMe ? null : -6,
-          child: CustomPaint(
-            size: const Size(8, 10),
-            painter: _BubbleTailPainter(
-              color: bubbleColor,
-              isMe: widget.isMe,
-            ),
-          ),
-        ),
-      ],
     );
   }
 
@@ -1060,7 +1025,7 @@ class _ImprovedAnimatedMessageBubbleState
           ),
           Padding(
             padding: const EdgeInsets.only(left: 12, right: 12, bottom: 6),
-            child: _buildTimeAndStatus(theme),
+            child: _buildBottomRow(theme),
           ),
         ],
       );
@@ -1098,15 +1063,25 @@ class _ImprovedAnimatedMessageBubbleState
           : ((widget.message?.attachmentFileName?.trim().isNotEmpty ?? false)
               ? widget.message!.attachmentFileName!.trim()
               : 'File');
-      return FileMessageBubble(
-        messageId: widget.messageId,
-        fileUrl: mediaUrl,
-        fileName: resolvedFileName,
-        fileSizeBytes: widget.message?.attachmentSizeBytes,
-        localFilePath: widget.message?.localFilePath,
-        caption: caption.isNotEmpty ? caption : null,
-        isMe: widget.isMe,
-        time: widget.time,
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          FileMessageBubble(
+            messageId: widget.messageId,
+            fileUrl: mediaUrl,
+            fileName: resolvedFileName,
+            fileSizeBytes: widget.message?.attachmentSizeBytes,
+            localFilePath: widget.message?.localFilePath,
+            caption: caption.isNotEmpty ? caption : null,
+            isMe: widget.isMe,
+            time: widget.time,
+          ),
+          Padding(
+            padding: const EdgeInsets.only(left: 12, right: 12, bottom: 6),
+            child: _buildBottomRow(theme),
+          ),
+        ],
       );
     }
 
@@ -1191,10 +1166,7 @@ class _ImprovedAnimatedMessageBubbleState
         children: [
           textWidget,
           const SizedBox(height: 2),
-          Align(
-            alignment: AlignmentDirectional.centerEnd,
-            child: _buildTimeAndStatus(theme),
-          ),
+          _buildBottomRow(theme),
         ],
       ),
     );
@@ -1238,27 +1210,35 @@ class _ImprovedAnimatedMessageBubbleState
     };
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      child: Row(
+      padding: const EdgeInsets.only(left: 12, right: 12, top: 10, bottom: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            icon,
-            size: 18,
-            color: widget.isMe
-                ? theme.myBubbleTextColor.withValues(alpha: 0.7)
-                : theme.otherBubbleTextColor.withValues(alpha: 0.7),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                size: 18,
+                color: widget.isMe
+                    ? theme.myBubbleTextColor.withValues(alpha: 0.7)
+                    : theme.otherBubbleTextColor.withValues(alpha: 0.7),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: TextStyle(
+                  color: widget.isMe
+                      ? theme.myBubbleTextColor.withValues(alpha: 0.85)
+                      : theme.otherBubbleTextColor.withValues(alpha: 0.85),
+                  fontSize: 13,
+                ),
+              ),
+            ],
           ),
-          const SizedBox(width: 8),
-          Text(
-            label,
-            style: TextStyle(
-              color: widget.isMe
-                  ? theme.myBubbleTextColor.withValues(alpha: 0.85)
-                  : theme.otherBubbleTextColor.withValues(alpha: 0.85),
-              fontSize: 13,
-            ),
-          ),
+          const SizedBox(height: 6),
+          _buildBottomRow(theme),
         ],
       ),
     );
@@ -1422,7 +1402,7 @@ class _ImprovedAnimatedMessageBubbleState
               ),
             Padding(
               padding: const EdgeInsets.fromLTRB(10, 4, 10, 6),
-              child: _buildTimeAndStatus(theme),
+              child: _buildBottomRow(theme),
             ),
           ],
         );
@@ -1495,7 +1475,7 @@ class _ImprovedAnimatedMessageBubbleState
             ),
           ],
           const SizedBox(height: 6),
-          _buildTimeAndStatus(theme),
+          _buildBottomRow(theme),
         ],
       ),
     );
@@ -1858,132 +1838,161 @@ class _ImprovedAnimatedMessageBubbleState
     }
   }
 
-  Widget _buildReactionsSection(ChatTheme theme) {
+  Widget _buildBottomRow(ChatTheme theme) {
+    return Row(
+      mainAxisSize: MainAxisSize.max,
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        if (widget.reactions.isNotEmpty)
+          Flexible(
+            child: Padding(
+              padding: const EdgeInsetsDirectional.only(end: 8.0),
+              child: _buildReactionsWrap(theme),
+            ),
+          )
+        else
+          const SizedBox(width: 0),
+        _buildTimeAndStatus(theme),
+      ],
+    );
+  }
+
+  Widget _buildReactionsWrap(ChatTheme theme) {
     final reactionsKey = widget.reactions
         .map((reaction) =>
             '${reaction.emoji}:${reaction.count}:${reaction.isMyReaction}')
         .join('|');
 
-    return Padding(
-      padding: const EdgeInsets.only(left: 8, right: 8, bottom: 4),
-      child: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 220),
-        switchInCurve: Curves.easeOutBack,
-        switchOutCurve: Curves.easeInCubic,
-        child: Wrap(
-          key: ValueKey(reactionsKey),
-          spacing: 4,
-          runSpacing: 4,
-          children: widget.reactions.map((reaction) {
-            return GestureDetector(
-              onTap: () {
-                HapticFeedback.selectionClick();
-                widget.onAddReaction?.call(reaction.emoji);
-              },
-              onLongPress: () {
-                HapticFeedback.mediumImpact();
-                widget.onReactionDetailTap?.call();
-              },
-              child: AnimatedScale(
-                duration: const Duration(milliseconds: 160),
-                curve: Curves.easeOutBack,
-                scale: reaction.isMyReaction ? 1.06 : 1.0,
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 180),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 220),
+      switchInCurve: Curves.easeOutBack,
+      switchOutCurve: Curves.easeInCubic,
+      child: Wrap(
+        key: ValueKey(reactionsKey),
+        spacing: 4,
+        runSpacing: 4,
+        children: widget.reactions.map((reaction) {
+          return GestureDetector(
+            onTap: () {
+              HapticFeedback.selectionClick();
+              widget.onAddReaction?.call(reaction.emoji);
+            },
+            onLongPress: () {
+              HapticFeedback.mediumImpact();
+              widget.onReactionDetailTap?.call();
+            },
+            child: AnimatedScale(
+              duration: const Duration(milliseconds: 160),
+              curve: Curves.easeOutBack,
+              scale: reaction.isMyReaction ? 1.06 : 1.0,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: reaction.isMyReaction
+                      ? theme.sendButtonColor.withValues(alpha: 0.2)
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
                     color: reaction.isMyReaction
-                        ? theme.sendButtonColor.withValues(alpha: 0.2)
-                        : Colors.transparent,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: reaction.isMyReaction
-                          ? theme.sendButtonColor
-                          : theme.dividerColor.withValues(alpha: 0.3),
-                      width: 1,
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(reaction.emoji,
-                          style: const TextStyle(fontSize: 12)),
-                      if (widget.showReactionAvatars &&
-                          reaction.reactors.isNotEmpty) ...[
-                        const SizedBox(width: 4),
-                        ReactionReactorAvatarStack(
-                          reactors: reaction.reactors,
-                          theme: theme,
-                        ),
-                      ] else if (reaction.count > 1) ...[
-                        const SizedBox(width: 4),
-                        AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 160),
-                          transitionBuilder: (child, animation) =>
-                              ScaleTransition(scale: animation, child: child),
-                          child: Text(
-                            reaction.count.toString().toPersianDigit(),
-                            key:
-                                ValueKey('${reaction.emoji}:${reaction.count}'),
-                            style: TextStyle(
-                              fontSize: 10,
-                              color: widget.isMe
-                                  ? theme.myBubbleTextColor
-                                      .withValues(alpha: 0.7)
-                                  : theme.otherBubbleTextColor
-                                      .withValues(alpha: 0.7),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
+                        ? theme.sendButtonColor
+                        : theme.dividerColor.withValues(alpha: 0.3),
+                    width: 1,
                   ),
                 ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(reaction.emoji,
+                        style: const TextStyle(fontSize: 12)),
+                    if (widget.showReactionAvatars &&
+                        reaction.reactors.isNotEmpty) ...[
+                      const SizedBox(width: 4),
+                      ReactionReactorAvatarStack(
+                        reactors: reaction.reactors,
+                        theme: theme,
+                      ),
+                    ] else if (reaction.count > 1) ...[
+                      const SizedBox(width: 4),
+                      AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 160),
+                        transitionBuilder: (child, animation) =>
+                            ScaleTransition(scale: animation, child: child),
+                        child: Text(
+                          reaction.count.toString().toPersianDigit(),
+                          key:
+                              ValueKey('${reaction.emoji}:${reaction.count}'),
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: widget.isMe
+                                ? theme.myBubbleTextColor
+                                    .withValues(alpha: 0.7)
+                                : theme.otherBubbleTextColor
+                                    .withValues(alpha: 0.7),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
               ),
-            );
-          }).toList(),
-        ),
+            ),
+          );
+        }).toList(),
       ),
     );
   }
-}
 
-/// Draws the small Telegram-style curved tail on the last bubble in a group.
-class _BubbleTailPainter extends CustomPainter {
-  final Color color;
-  final bool isMe;
-
-  const _BubbleTailPainter({required this.color, required this.isMe});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.fill;
-
-    final path = Path();
-    if (isMe) {
-      // Outgoing: tail points bottom-right
-      path.moveTo(0, 0);
-      path.quadraticBezierTo(size.width * 0.2, size.height * 0.6,
-          size.width, size.height);
-      path.quadraticBezierTo(size.width * 0.5, size.height * 0.5, 0,
-          size.height * 0.5);
-      path.close();
-    } else {
-      // Incoming: tail points bottom-left (mirrored)
-      path.moveTo(size.width, 0);
-      path.quadraticBezierTo(size.width * 0.8, size.height * 0.6,
-          0, size.height);
-      path.quadraticBezierTo(size.width * 0.5, size.height * 0.5,
-          size.width, size.height * 0.5);
-      path.close();
-    }
-    canvas.drawPath(path, paint);
+  Widget _buildReactionsSection(ChatTheme theme) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 8, right: 8, bottom: 4),
+      child: _buildReactionsWrap(theme),
+    );
   }
 
-  @override
-  bool shouldRepaint(_BubbleTailPainter old) =>
-      old.color != color || old.isMe != isMe;
+  bool _handlesReactionsInternally() {
+    final mediaUrl = _resolvedMediaUrl();
+    final isLocalPendingUpload = (widget.message?.isUploading ?? false) &&
+        mediaUrl == null &&
+        ((widget.message?.localFilePath?.isNotEmpty ?? false) ||
+            (widget.message?.localImagePath?.isNotEmpty ?? false));
+    if (isLocalPendingUpload) return true;
+
+    final isLocalFailedUpload = (widget.message?.isFailed ?? false) &&
+        mediaUrl == null &&
+        ((widget.message?.localFilePath?.isNotEmpty ?? false) ||
+            (widget.message?.localImagePath?.isNotEmpty ?? false));
+    if (isLocalFailedUpload) return true;
+
+    final canonicalType = _canonicalAttachmentType();
+    if ((widget.attachmentType == 'gif' ||
+            widget.message?.messageType == 'gif') &&
+        mediaUrl != null) {
+      return false;
+    }
+
+    if ((canonicalType == 'audio' || canonicalType == 'voice') &&
+        mediaUrl != null) {
+      return true;
+    }
+
+    if ((canonicalType == 'image' || canonicalType == 'video') &&
+        mediaUrl != null) {
+      return false;
+    }
+
+    if (mediaUrl != null &&
+        (canonicalType == 'document' || canonicalType == 'unknown')) {
+      return true;
+    }
+
+    if (_isKnownMediaType(canonicalType) && mediaUrl == null) {
+      return true;
+    }
+
+    return true;
+  }
 }
+

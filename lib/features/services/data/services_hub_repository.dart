@@ -32,6 +32,20 @@ class ServicesHubRepository {
     return ServicesHubData.fromJson(resp.data as Map<String, dynamic>);
   }
 
+  /// Requests a one-time game-SSO ticket for the current user. The ticket is
+  /// handed to the web game section inside a webview, which exchanges it for a
+  /// scoped (game-only) session. Returns the opaque ticket string.
+  Future<String> createGameSsoTicket() async {
+    final options = await _authOptions();
+    final resp = await _dio.post('/game-sso/ticket', options: options);
+    final data = resp.data as Map<String, dynamic>;
+    final ticket = data['ticket'] as String?;
+    if (ticket == null || ticket.isEmpty) {
+      throw 'Failed to create game session';
+    }
+    return ticket;
+  }
+
   Future<List<ContactVistaUser>> findContacts(List<String> phones) async {
     final options = await _authOptions();
     final resp = await _dio.post(
@@ -44,5 +58,11 @@ class ServicesHubRepository {
     return users
         .map((e) => ContactVistaUser.fromJson(e as Map<String, dynamic>))
         .toList();
+  }
+
+  Future<List<dynamic>> getTopGroupsRaw() async {
+    final resp = await _dio.get('/services-hub/top-groups');
+    final data = resp.data as Map<String, dynamic>;
+    return data['groups'] as List<dynamic>? ?? [];
   }
 }

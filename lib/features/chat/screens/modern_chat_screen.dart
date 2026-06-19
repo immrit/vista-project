@@ -3086,10 +3086,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         child: Row(
           children: [
             // آواتار با نقطه آنلاین
-            Hero(
-              tag: 'avatar_${widget.args.otherUserId}',
-              child: _buildAvatarWithOnlineIndicator(theme),
-            ),
+            _buildAvatarWithOnlineIndicator(theme),
 
             const SizedBox(width: 12),
 
@@ -7845,7 +7842,7 @@ class _ChatMediaAlbumBubble extends StatelessWidget {
     return GestureDetector(
       onTap: () => onImageTap(index),
       child: Hero(
-        tag: '${item.message.id}_${item.source.hashCode}',
+        tag: '${item.message.id}_${item.source.hashCode}_$index',
         child: ClipRRect(
           borderRadius: borderRadius,
           child: _isNetworkUrl(item.source)

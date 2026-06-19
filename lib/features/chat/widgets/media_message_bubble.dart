@@ -401,8 +401,8 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
 
     // ✅ ساخت تگ یکتا برای جلوگیری از خطای Multiple Heroes
     final String uniqueHeroTag = widget.message != null
-        ? '${widget.message!.id}_${widget.mediaUrl.hashCode}'
-        : 'media_${widget.mediaUrl.hashCode}';
+        ? 'media_${widget.message!.id}_${widget.mediaUrl.hashCode}'
+        : 'media_${widget.mediaUrl.hashCode}_${hashCode}';
 
     // ✅ شرط مهم: بررسی اینکه آیا واقعاً متنی برای نمایش وجود دارد یا خیر
     final bool hasCaption =

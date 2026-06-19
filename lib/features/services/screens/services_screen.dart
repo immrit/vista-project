@@ -3,13 +3,18 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_contacts/flutter_contacts.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_contacts/flutter_contacts.dart';
+import 'package:Vista/widgets/skeleton_loading.dart';
 
 import 'package:Vista/core/theme/app_theme.dart';
+import 'package:Vista/core/app_config.dart';
+import 'package:Vista/features/nearby/screens/nearby_screen.dart';
 import '../models/services_hub_model.dart';
 import '../providers/services_hub_provider.dart';
+import 'contacts_screen.dart';
 import 'in_app_web_screen.dart';
+import 'top_groups_screen.dart';
 
 // ── color helper ──────────────────────────────────────────────────────────────
 Color _hex(String hex) {
@@ -44,8 +49,7 @@ class ServicesScreen extends ConsumerStatefulWidget {
 }
 
 class _ServicesScreenState extends ConsumerState<ServicesScreen> {
-  bool _contactsLoaded = false;
-  bool _contactsLoading = false;
+  bool _openingGame = false;
 
   // Lazily build buttons so we have BuildContext for navigation
   List<_QuickBtn> _buttons(BuildContext ctx) => [
@@ -53,33 +57,77 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
           label: 'اطراف من',
           icon: Icons.radar_rounded,
           gradient: const [Color(0xFF6366F1), Color(0xFF8B5CF6)],
-          onTap: (_) => () => ScaffoldMessenger.of(ctx).showSnackBar(
-                const SnackBar(content: Text('بزودی...')),
+          onTap: (c) => () => Navigator.push(
+                c,
+                MaterialPageRoute(builder: (_) => const NearbyScreen()),
               ),
         ),
         _QuickBtn(
           label: 'بازی',
           icon: Icons.sports_esports_rounded,
           gradient: const [Color(0xFFFF416C), Color(0xFFFF4B2B)],
-          onTap: (_) => () => ScaffoldMessenger.of(ctx).showSnackBar(
-                const SnackBar(content: Text('بزودی...')),
-              ),
+          onTap: (_) => _openGame,
         ),
         _QuickBtn(
           label: 'گروه‌ها',
           icon: Icons.groups_rounded,
           gradient: const [Color(0xFF11998E), Color(0xFF38EF7D)],
-          onTap: (_) => () => ScaffoldMessenger.of(ctx).showSnackBar(
-                const SnackBar(content: Text('بزودی...')),
-              ),
+          onTap: (_) => () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const TopGroupsScreen()),
+            );
+          },
         ),
         _QuickBtn(
           label: 'مخاطبین',
           icon: Icons.contacts_rounded,
           gradient: const [Color(0xFF2196F3), Color(0xFF21CBF3)],
-          onTap: (_) => _loadContacts,
+          onTap: (_) => () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const ContactsScreen()),
+            );
+          },
         ),
       ];
+
+  /// Opens the web game section inside an in-app webview, silently logging the
+  /// current user in via a one-time scoped SSO ticket. The webview is confined
+  /// to the web /game section; no other part of the account is reachable.
+  Future<void> _openGame() async {
+    if (_openingGame) return;
+    setState(() => _openingGame = true);
+    try {
+      final ticket =
+          await ref.read(servicesHubRepositoryProvider).createGameSsoTicket();
+      if (!mounted) return;
+
+      final host = Uri.parse(webUrl).host;
+      final url =
+          '$webUrl/game/sso?ticket=${Uri.encodeQueryComponent(ticket)}';
+
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => InAppWebScreen(
+            url: url,
+            title: 'بازی',
+            restrictHost: host,
+            allowedPathPrefix: '/game',
+          ),
+        ),
+      );
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('ورود به بازی ممکن نشد، دوباره تلاش کنید')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _openingGame = false);
+    }
+  }
 
   void _openBanner(ServiceBanner banner) {
     if (banner.link.isEmpty || banner.linkType == 'none') return;
@@ -95,35 +143,6 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
         ),
       );
     }
-  }
-
-  Future<void> _loadContacts() async {
-    if (_contactsLoading || _contactsLoaded) return;
-    setState(() => _contactsLoading = true);
-
-    final granted = await FlutterContacts.requestPermission(readonly: true);
-    if (!granted) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text('برای نمایش مخاطبین، دسترسی به مخاطبین لازم است')),
-        );
-      }
-      setState(() => _contactsLoading = false);
-      return;
-    }
-
-    final contacts = await FlutterContacts.getContacts(withProperties: true);
-    final phones = <String>{};
-    for (final c in contacts) {
-      for (final p in c.phones) phones.add(p.number);
-    }
-
-    await ref.read(contactsProvider.notifier).load(phones.toList());
-    if (mounted) setState(() {
-      _contactsLoading = false;
-      _contactsLoaded = true;
-    });
   }
 
   @override
@@ -176,6 +195,9 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
           ),
         ),
 
+        // ── Contacts Horizontal List
+        const SliverToBoxAdapter(child: _ContactsHorizontalList()),
+
         // ── 2×2 quick-access grid (hardcoded)
         SliverToBoxAdapter(child: _quickGrid(isDark)),
 
@@ -193,11 +215,6 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
               ),
             ),
           ),
-
-        // ── Contacts section (shown after user triggers load from Contacts button)
-        if (_contactsLoaded || _contactsLoading)
-          SliverToBoxAdapter(
-              child: _contactsSection(ref.watch(contactsProvider), isDark)),
 
         const SliverToBoxAdapter(child: SizedBox(height: 120)),
       ],
@@ -437,205 +454,6 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
     );
   }
 
-  // ── Contacts section ──────────────────────────────────────────────────────
-  Widget _contactsSection(
-      AsyncValue<List<ContactVistaUser>> state, bool isDark) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF2196F3), Color(0xFF21CBF3)],
-                  ),
-                  borderRadius: BorderRadius.circular(11),
-                ),
-                child: const Icon(Icons.contacts_rounded,
-                    color: Colors.white, size: 18),
-              ),
-              const SizedBox(width: 10),
-              Text(
-                'مخاطبین در ویستا',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: isDark
-                      ? AppColors.darkTextPrimary
-                      : AppColors.lightTextPrimary,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          if (_contactsLoading)
-            const Center(
-              child: Padding(
-                padding: EdgeInsets.all(24),
-                child: CircularProgressIndicator(
-                    strokeWidth: 2.5, color: AppColors.primary),
-              ),
-            )
-          else
-            state.when(
-              loading: () => const Center(
-                child: Padding(
-                  padding: EdgeInsets.all(24),
-                  child: CircularProgressIndicator(
-                      strokeWidth: 2.5, color: AppColors.primary),
-                ),
-              ),
-              error: (_, __) => _contactsError(isDark),
-              data: (users) => users.isEmpty
-                  ? _noContacts(isDark)
-                  : _contactsGrid(users, isDark),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _contactsGrid(List<ContactVistaUser> users, bool isDark) {
-    final count = users.length > 20 ? 20 : users.length;
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        color: isDark ? AppColors.darkSurfaceVariant : Colors.white,
-        border: Border.all(
-            color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
-      ),
-      padding: const EdgeInsets.all(14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            '${users.length} نفر از مخاطبینت ویستا دارن',
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: isDark
-                  ? AppColors.darkTextSecondary
-                  : AppColors.lightTextSecondary,
-            ),
-          ),
-          const SizedBox(height: 12),
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 4,
-              crossAxisSpacing: 8,
-              mainAxisSpacing: 12,
-              childAspectRatio: 0.75,
-            ),
-            itemCount: count,
-            itemBuilder: (_, i) => _contactItem(users[i], isDark),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _contactItem(ContactVistaUser u, bool isDark) {
-    return GestureDetector(
-      onTap: () => Navigator.pushNamed(context, '/profile/${u.id}'),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          CircleAvatar(
-            radius: 28,
-            backgroundColor: AppColors.primary.withValues(alpha: 0.12),
-            backgroundImage: u.avatarUrl.isNotEmpty
-                ? NetworkImage(u.avatarUrl)
-                : null,
-            child: u.avatarUrl.isEmpty
-                ? Text(
-                    u.fullName.isNotEmpty ? u.fullName[0] : '?',
-                    style: const TextStyle(
-                        color: AppColors.primary,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 18),
-                  )
-                : null,
-          ),
-          const SizedBox(height: 6),
-          Text(
-            u.username.isNotEmpty ? '@${u.username}' : u.fullName,
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: isDark
-                  ? AppColors.darkTextSecondary
-                  : AppColors.lightTextPrimary,
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _noContacts(bool isDark) {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        color: isDark ? AppColors.darkSurfaceVariant : Colors.white,
-        border: Border.all(
-            color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
-      ),
-      child: Column(
-        children: [
-          Icon(Icons.group_off_rounded,
-              size: 40,
-              color: isDark
-                  ? AppColors.darkTextTertiary
-                  : AppColors.lightTextSecondary),
-          const SizedBox(height: 10),
-          Text(
-            'هنوز کسی از مخاطبینت ویستا نصب نکرده',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-                fontSize: 13,
-                color: isDark
-                    ? AppColors.darkTextSecondary
-                    : AppColors.lightTextSecondary),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _contactsError(bool isDark) {
-    return Row(
-      children: [
-        const Icon(Icons.error_outline_rounded, color: AppColors.error),
-        const SizedBox(width: 8),
-        Text('خطا در بارگذاری مخاطبین',
-            style: TextStyle(
-                color: isDark
-                    ? AppColors.darkTextSecondary
-                    : AppColors.lightTextSecondary)),
-        const Spacer(),
-        TextButton(
-          onPressed: () => setState(() {
-            _contactsLoaded = false;
-            _contactsLoading = false;
-          }),
-          child: const Text('تلاش مجدد',
-              style: TextStyle(color: AppColors.primary)),
-        ),
-      ],
-    );
-  }
-
   // ── Skeleton / Error ──────────────────────────────────────────────────────
   Widget _skeleton(bool isDark) {
     final c =
@@ -712,6 +530,170 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
           ),
         ],
       ),
+    );
+  }
+}
+
+// ── Horizontal Contacts List ────────────────────────────────────────────────
+class _ContactsHorizontalList extends ConsumerStatefulWidget {
+  const _ContactsHorizontalList();
+
+  @override
+  ConsumerState<_ContactsHorizontalList> createState() =>
+      _ContactsHorizontalListState();
+}
+
+class _ContactsHorizontalListState
+    extends ConsumerState<_ContactsHorizontalList> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(contactsProvider.notifier).load();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final state = ref.watch(contactsProvider);
+
+    return state.when(
+      loading: () => Container(
+        margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          color: isDark ? AppColors.darkSurfaceVariant : Colors.white,
+          border: Border.all(color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
+        ),
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 14),
+              child: BaseSkeletonWidget(width: 150, height: 14),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              height: 90,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                physics: const NeverScrollableScrollPhysics(),
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                itemCount: 5,
+                itemBuilder: (_, __) => Container(
+                  width: 70,
+                  margin: const EdgeInsets.symmetric(horizontal: 4),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: const [
+                      BaseSkeletonWidget(width: 52, height: 52, borderRadius: BorderRadius.all(Radius.circular(26))),
+                      SizedBox(height: 6),
+                      BaseSkeletonWidget(width: 50, height: 10),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+      error: (_, __) => const SizedBox.shrink(),
+      data: (users) {
+        if (users.isEmpty) return const SizedBox.shrink();
+
+        return Container(
+          margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            color: isDark ? AppColors.darkSurfaceVariant : Colors.white,
+            border: Border.all(
+                color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
+          ),
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                child: Text(
+                  '${users.length} نفر از مخاطبینت ویستا دارن',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: isDark
+                        ? AppColors.darkTextSecondary
+                        : AppColors.lightTextSecondary,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                height: 90,
+                child: ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  physics: const BouncingScrollPhysics(),
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  itemCount: users.length,
+                  itemBuilder: (context, index) {
+                    final u = users[index];
+                    return GestureDetector(
+                      onTap: () =>
+                          Navigator.pushNamed(context, '/profile', arguments: u.id),
+                      child: Container(
+                        width: 70,
+                        margin: const EdgeInsets.symmetric(horizontal: 4),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            CircleAvatar(
+                              radius: 26,
+                              backgroundColor:
+                                  AppColors.primary.withValues(alpha: 0.12),
+                              backgroundImage: u.avatarUrl.isNotEmpty
+                                  ? NetworkImage(u.avatarUrl)
+                                  : null,
+                              child: u.avatarUrl.isEmpty
+                                  ? Text(
+                                      u.fullName.isNotEmpty
+                                          ? u.fullName[0]
+                                          : '?',
+                                      style: const TextStyle(
+                                        color: AppColors.primary,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 18,
+                                      ),
+                                    )
+                                  : null,
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              u.username.isNotEmpty
+                                  ? '@${u.username}'
+                                  : u.fullName,
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: isDark
+                                    ? AppColors.darkTextSecondary
+                                    : AppColors.lightTextPrimary,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

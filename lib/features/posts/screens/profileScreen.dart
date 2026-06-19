@@ -137,6 +137,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
             ],
           ),
           child: FloatingActionButton(
+            heroTag: null,
             onPressed: () {
               Navigator.of(context).push(
                 MaterialPageRoute(builder: (context) => const AddPublicPostScreen()),

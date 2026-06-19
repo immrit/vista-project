@@ -65,6 +65,7 @@ import 'package:Vista/features/settings/screens/Settings.dart';
 import 'package:Vista/features/settings/screens/vistaStore/store.dart';
 import 'package:Vista/features/settings/screens/vistaStore/pricing_page.dart';
 import 'package:Vista/features/posts/screens/ExploreFeedScreen.dart';
+import 'package:Vista/features/nearby/screens/nearby_screen.dart';
 import 'package:Vista/features/posts/screens/PostDetailPage.dart';
 import 'package:Vista/features/posts/screens/profileScreen.dart';
 import 'package:Vista/features/emoji/domain/modern_emoji_lookup.dart';
@@ -620,6 +621,8 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
                   const SessionMiddleware(child: Settings()),
               '/feed': (context) =>
                   const SessionMiddleware(child: ExploreFeedScreen()),
+              '/nearby': (context) =>
+                  const SessionMiddleware(child: NearbyScreen()),
               '/verification-store': (context) => VerificationBadgeStore(),
               '/premium': (context) =>
                   const SessionMiddleware(child: PricingPage()),

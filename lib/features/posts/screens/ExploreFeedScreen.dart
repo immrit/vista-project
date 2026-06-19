@@ -147,6 +147,7 @@ class _ExploreFeedScreenState extends ConsumerState<ExploreFeedScreen>
               ],
             ),
             child: FloatingActionButton(
+              heroTag: null,
               onPressed: () {
                 Navigator.of(context).push(
                   MaterialPageRoute(builder: (context) => const AddPublicPostScreen()),

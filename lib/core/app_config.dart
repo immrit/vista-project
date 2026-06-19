@@ -10,3 +10,10 @@ const String backendUrl = String.fromEnvironment(
   'BACKEND_URL',
   defaultValue: 'https://api.coffevista.ir',
 );
+
+/// Base URL of the Vista web app (Next.js). Used for in-app webview handoffs
+/// such as the game SSO flow.
+const String webUrl = String.fromEnvironment(
+  'WEB_URL',
+  defaultValue: 'https://cafevista.ir',
+);

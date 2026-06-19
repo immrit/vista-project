@@ -150,6 +150,7 @@ class ChatInputDock extends StatelessWidget {
                               right: 16,
                               bottom: dockBottomSpace + 12,
                               child: FloatingActionButton.small(
+                                heroTag: null,
                                 onPressed: onScrollToBottom,
                                 backgroundColor: themeBackgroundColor,
                                 foregroundColor: themeIconColor,
