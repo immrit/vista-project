@@ -61,4 +61,8 @@ class EnvConfig {
   static const String supabaseAnonKey = String.fromEnvironment(
       'SUPABASE_ANON_KEY',
       defaultValue: 'YOUR_SUPABASE_ANON_KEY');
+
+  static const String paymentGateway = String.fromEnvironment(
+      'PAYMENT_GATEWAY',
+      defaultValue: 'bazaar'); // values: bazaar | zibal
 }

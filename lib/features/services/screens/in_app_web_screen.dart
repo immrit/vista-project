@@ -16,12 +16,24 @@ class InAppWebScreen extends StatefulWidget {
   /// from leaving the allowed section even if a link points away from it.
   final String? allowedPathPrefix;
 
+  /// Custom AppBar background color. Defaults to theme background.
+  final Color? appBarColor;
+
+  /// Custom AppBar foreground (icon + title) color. Defaults to theme text.
+  final Color? appBarForegroundColor;
+
+  /// Use back arrow instead of close (×) icon.
+  final bool useBackButton;
+
   const InAppWebScreen({
     super.key,
     required this.url,
     this.title = '',
     this.restrictHost,
     this.allowedPathPrefix,
+    this.appBarColor,
+    this.appBarForegroundColor,
+    this.useBackButton = false,
   });
 
   @override
@@ -93,24 +105,36 @@ class _InAppWebScreenState extends State<InAppWebScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final barBg = widget.appBarColor ??
+        (isDark ? AppColors.darkBackground : AppColors.lightBackground);
+    final fgColor = widget.appBarForegroundColor ??
+        (isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary);
+    // Status bar icons should be light on dark AppBar, dark on light AppBar.
+    final statusIconBrightness = widget.appBarColor != null
+        ? Brightness.light
+        : (isDark ? Brightness.light : Brightness.dark);
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
-        statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
+        statusBarIconBrightness: statusIconBrightness,
+        statusBarBrightness:
+            statusIconBrightness == Brightness.light ? Brightness.dark : Brightness.light,
       ),
       child: Scaffold(
         backgroundColor:
             isDark ? AppColors.darkBackground : AppColors.lightBackground,
         appBar: AppBar(
-          backgroundColor:
-              isDark ? AppColors.darkBackground : AppColors.lightBackground,
+          backgroundColor: barBg,
           surfaceTintColor: Colors.transparent,
           elevation: 0,
+          iconTheme: IconThemeData(color: fgColor),
           leading: IconButton(
             icon: Icon(
-              Icons.close_rounded,
-              color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
+              widget.useBackButton
+                  ? Icons.arrow_back_ios_new_rounded
+                  : Icons.close_rounded,
+              color: fgColor,
             ),
             onPressed: () => Navigator.pop(context),
           ),
@@ -119,10 +143,8 @@ class _InAppWebScreenState extends State<InAppWebScreen> {
                   widget.title,
                   style: TextStyle(
                     fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: isDark
-                        ? AppColors.darkTextPrimary
-                        : AppColors.lightTextPrimary,
+                    fontWeight: FontWeight.w700,
+                    color: fgColor,
                   ),
                 )
               : null,
@@ -132,7 +154,9 @@ class _InAppWebScreenState extends State<InAppWebScreen> {
                   child: LinearProgressIndicator(
                     value: _loadingProgress / 100,
                     backgroundColor: Colors.transparent,
-                    color: AppColors.primary,
+                    color: widget.appBarColor != null
+                        ? Colors.white38
+                        : AppColors.primary,
                     minHeight: 3,
                   ),
                 )

@@ -6,7 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:Vista/DB/profile_cache_service.dart';
 import 'package:Vista/features/profile/providers/profile_controller.dart';
-import 'package:Vista/services/BazaarPaymentService.dart';
+import 'package:Vista/services/payment_service.dart';
 import 'package:Vista/services/current_user_service.dart';
 import 'package:Vista/services/sensitive_action_guard.dart';
 import 'package:Vista/services/system_ui_bar_service.dart';
@@ -28,7 +28,7 @@ class _PricingPageState extends ConsumerState<PricingPage>
   static const Color _goldEnd = Color(0xFFFDB931);
   static const Color _darkBg = Color(0xFF0F0F13);
 
-  final BazaarPaymentService _bazaarService = BazaarPaymentService();
+  final PaymentService _paymentService = PaymentService();
   bool _isBazaarConnected = false;
   bool _isLoading = true;
   bool _isPurchasing = false;
@@ -143,7 +143,7 @@ class _PricingPageState extends ConsumerState<PricingPage>
   }
 
   Future<void> _initBazaar() async {
-    final connected = await _bazaarService.init();
+    final connected = await _paymentService.init();
     if (mounted) {
       setState(() {
         _isBazaarConnected = connected;
@@ -182,7 +182,7 @@ class _PricingPageState extends ConsumerState<PricingPage>
     setState(() => _isPurchasing = true);
 
     final selectedPlan = _plans[_selectedPlanIndex];
-    final result = await _bazaarService.purchaseSubscription(
+    final result = await _paymentService.purchaseSubscription(
       selectedPlan['productId'] as String,
     );
 

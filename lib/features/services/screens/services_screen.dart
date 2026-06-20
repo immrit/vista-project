@@ -13,6 +13,7 @@ import 'package:Vista/features/nearby/screens/nearby_screen.dart';
 import '../models/services_hub_model.dart';
 import '../providers/services_hub_provider.dart';
 import 'contacts_screen.dart';
+import 'game_launch_screen.dart';
 import 'in_app_web_screen.dart';
 import 'top_groups_screen.dart';
 
@@ -49,8 +50,6 @@ class ServicesScreen extends ConsumerStatefulWidget {
 }
 
 class _ServicesScreenState extends ConsumerState<ServicesScreen> {
-  bool _openingGame = false;
-
   // Lazily build buttons so we have BuildContext for navigation
   List<_QuickBtn> _buttons(BuildContext ctx) => [
         _QuickBtn(
@@ -92,41 +91,14 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
         ),
       ];
 
-  /// Opens the web game section inside an in-app webview, silently logging the
-  /// current user in via a one-time scoped SSO ticket. The webview is confined
-  /// to the web /game section; no other part of the account is reachable.
-  Future<void> _openGame() async {
-    if (_openingGame) return;
-    setState(() => _openingGame = true);
-    try {
-      final ticket =
-          await ref.read(servicesHubRepositoryProvider).createGameSsoTicket();
-      if (!mounted) return;
-
-      final host = Uri.parse(webUrl).host;
-      final url =
-          '$webUrl/game/sso?ticket=${Uri.encodeQueryComponent(ticket)}';
-
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => InAppWebScreen(
-            url: url,
-            title: 'بازی',
-            restrictHost: host,
-            allowedPathPrefix: '/game',
-          ),
-        ),
-      );
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('ورود به بازی ممکن نشد، دوباره تلاش کنید')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _openingGame = false);
-    }
+  /// Immediately opens the animated game launch screen which silently mints
+  /// an SSO ticket, bootstraps a scoped session, and transitions into the
+  /// in-app webview game lobby — all without the user seeing a login form.
+  void _openGame() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const GameLaunchScreen()),
+    );
   }
 
   void _openBanner(ServiceBanner banner) {

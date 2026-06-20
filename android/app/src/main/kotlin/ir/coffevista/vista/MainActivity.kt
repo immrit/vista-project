@@ -11,6 +11,10 @@ import ir.cafebazaar.poolakey.Payment
 import ir.cafebazaar.poolakey.config.PaymentConfiguration
 import ir.cafebazaar.poolakey.config.SecurityCheck
 import ir.cafebazaar.poolakey.request.PurchaseRequest
+import android.content.Intent
+import android.net.Uri
+import androidx.core.content.FileProvider
+import java.io.File
 
 class MainActivity: AudioServiceFragmentActivity() {
     private val CHANNEL = "ir.coffevista.vista/bazaar_native"
@@ -53,6 +57,20 @@ class MainActivity: AudioServiceFragmentActivity() {
                     result.success(null)
                 }
                 else -> result.notImplemented()
+            }
+        }
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "ir.coffevista.updater").setMethodCallHandler { call, result ->
+            if (call.method == "installApk") {
+                val filePath = call.argument<String>("filePath")
+                if (filePath != null) {
+                    installApk(filePath)
+                    result.success(null)
+                } else {
+                    result.error("INVALID_ARGS", "filePath is null", null)
+                }
+            } else {
+                result.notImplemented()
             }
         }
     }
@@ -141,6 +159,23 @@ class MainActivity: AudioServiceFragmentActivity() {
                 purchaseCanceled(onCancel)
                 purchaseFailed(onFailure)
             }
+        }
+    }
+
+    private fun installApk(filePath: String) {
+        try {
+            val file = File(filePath)
+            if (!file.exists()) return
+
+            val intent = Intent(Intent.ACTION_VIEW)
+            intent.setDataAndType(
+                FileProvider.getUriForFile(this, "${applicationContext.packageName}.fileprovider", file),
+                "application/vnd.android.package-archive"
+            )
+            intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
+            startActivity(intent)
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 }

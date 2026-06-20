@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:Vista/utils/env_config.dart';
 import 'current_user_service.dart';
 import '../features/auth/providers/auth_controller.dart';
@@ -8,16 +9,20 @@ import '../security/logging_utility.dart';
 import 'device_id_service.dart';
 import 'system_status_service.dart';
 
-class BazaarPaymentService {
+class PaymentService {
   static const platform = MethodChannel('ir.coffevista.vista/bazaar_native');
 
   bool _isConnected = false;
 
-  static String get _backendUrl =>
-      EnvConfig.apiBaseUrl;
+  static String get _backendUrl => EnvConfig.apiBaseUrl;
 
   Future<bool> init() async {
-    print('🔄 [Flutter] Connecting to Native Poolakey...');
+    // If Zibal, we don't need native Bazaar connection
+    if (EnvConfig.paymentGateway == 'zibal') {
+      return true;
+    }
+
+    print('🔄 [Flutter] Connecting to Native Poolakey (Bazaar)...');
     try {
       final bool result = await platform.invokeMethod('connect');
       _isConnected = result;
@@ -50,30 +55,87 @@ class BazaarPaymentService {
       if (!connected) {
         return {
           'success': false,
-          'message':
-              'اتصال به بازار برقرار نشد. لطفاً از نصب بودن بازار اطمینان حاصل کنید.'
+          'message': 'اتصال به درگاه پرداخت برقرار نشد.'
         };
       }
     }
 
+    if (EnvConfig.paymentGateway == 'zibal') {
+      return _processZibalPurchase(productId);
+    } else {
+      return _processBazaarPurchase(productId);
+    }
+  }
+
+  Future<Map<String, dynamic>> _processZibalPurchase(String productId) async {
+    print("💳 [Flutter] Processing via Zibal for product: $productId");
     try {
-      // 1. انجام خرید و دریافت نتیجه کامل از کاتلین
+      final accessToken = await TokenStorage.getAccessToken();
+      if (accessToken == null || accessToken.isEmpty) {
+        return {'success': false, 'message': 'توکن احراز هویت یافت نشد.'};
+      }
+
+      final dio = Dio(BaseOptions(
+        baseUrl: '$_backendUrl/v1',
+        connectTimeout: const Duration(seconds: 15),
+        receiveTimeout: const Duration(seconds: 15),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $accessToken',
+          'X-Device-ID': DeviceIdService.id,
+        },
+      ));
+
+      // Callback URL needs to be your vista-web payment verification page.
+      final callbackUrl = 'https://cafevista.ir/payment/callback';
+
+      final response = await dio.post(
+        '/payment/zibal/request',
+        data: {
+          'package_id': productId,
+          'callback_url': callbackUrl,
+        },
+      );
+
+      final data = response.data;
+      if (data['success'] == true || data['track_id'] != null) {
+        final paymentUrl = data['url'] ?? 'https://gateway.zibal.ir/start/${data["track_id"]}';
+        
+        final uri = Uri.parse(paymentUrl);
+        if (await canLaunchUrl(uri)) {
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+          return {
+            'success': true,
+            'message': 'در حال انتقال به درگاه پرداخت زیبال...',
+            'pending_web_flow': true // Indicates to UI that payment is completing via browser
+          };
+        } else {
+          return {'success': false, 'message': 'امکان باز کردن درگاه پرداخت وجود ندارد.'};
+        }
+      } else {
+         return {'success': false, 'message': data['message'] ?? 'خطا در ایجاد تراکنش'};
+      }
+    } catch (e) {
+      logWarning('Zibal request failed', error: e);
+      return {'success': false, 'message': 'خطا در ارتباط با سرور پرداخت زیبال.'};
+    }
+  }
+
+  Future<Map<String, dynamic>> _processBazaarPurchase(String productId) async {
+    try {
       final userId = await CurrentUserService.instance.resolveUserId();
-      final Map<dynamic, dynamic> result =
-          await platform.invokeMethod('subscribe', {
+      final Map<dynamic, dynamic> result = await platform.invokeMethod('subscribe', {
         'productId': productId,
         'payload': 'user_$userId',
       });
 
-      // 2. استخراج اطلاعات دقیق (شامل پکیج نیمی که واقعا خرید کرده)
       final String purchaseToken = result['purchaseToken'];
       final String packageName = result['packageName'];
 
       print("💎 [Flutter] Token: $purchaseToken");
       print("📦 [Flutter] Package: $packageName");
 
-      // 3. ارسال به سرور Go
-      return await _verifyOnServer(purchaseToken, productId, packageName);
+      return await _verifyBazaarOnServer(purchaseToken, productId, packageName);
     } catch (e) {
       if (e is PlatformException) {
         if (e.code == 'CANCELED') {
@@ -88,8 +150,7 @@ class BazaarPaymentService {
     }
   }
 
-  /// ارسال درخواست تأیید به سرور Go
-  Future<Map<String, dynamic>> _verifyOnServer(
+  Future<Map<String, dynamic>> _verifyBazaarOnServer(
       String token, String productId, String packageName) async {
     final userId = await CurrentUserService.instance.resolveUserId();
     if (userId == null) {
