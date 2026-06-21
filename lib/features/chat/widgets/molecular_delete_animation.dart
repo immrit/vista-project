@@ -21,77 +21,70 @@ class MolecularDeleteAnimation extends StatefulWidget {
 
 class _MolecularDeleteAnimationState extends State<MolecularDeleteAnimation>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
-  late final Animation<double> _fade;
-  late final Animation<double> _size;
-  late final Animation<Offset> _slide;
+  AnimationController? _controller;
+  Animation<double>? _fade;
+  Animation<double>? _size;
+  Animation<Offset>? _slide;
+
+  void _setupAnimations() {
+    final ctrl = AnimationController(duration: widget.duration, vsync: this);
+    _fade = Tween<double>(begin: 1, end: 0).animate(
+      CurvedAnimation(parent: ctrl, curve: const Interval(0.0, 0.75, curve: Curves.easeOut)),
+    );
+    _size = Tween<double>(begin: 1, end: 0).animate(
+      CurvedAnimation(parent: ctrl, curve: const Interval(0.12, 1.0, curve: Curves.easeInCubic)),
+    );
+    _slide = Tween<Offset>(begin: Offset.zero, end: const Offset(0.06, 0.0)).animate(
+      CurvedAnimation(parent: ctrl, curve: const Interval(0.0, 0.8, curve: Curves.easeOutCubic)),
+    );
+    ctrl.addStatusListener((status) {
+      if (status == AnimationStatus.completed) widget.onAnimationComplete();
+    });
+    _controller = ctrl;
+  }
 
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
-      duration: widget.duration,
-      vsync: this,
-    );
-    _fade = Tween<double>(begin: 1, end: 0).animate(
-      CurvedAnimation(
-        parent: _controller,
-        curve: const Interval(0.0, 0.75, curve: Curves.easeOut),
-      ),
-    );
-    _size = Tween<double>(begin: 1, end: 0).animate(
-      CurvedAnimation(
-        parent: _controller,
-        curve: const Interval(0.12, 1.0, curve: Curves.easeInCubic),
-      ),
-    );
-    _slide = Tween<Offset>(
-      begin: Offset.zero,
-      end: const Offset(0.06, 0.0),
-    ).animate(
-      CurvedAnimation(
-        parent: _controller,
-        curve: const Interval(0.0, 0.8, curve: Curves.easeOutCubic),
-      ),
-    );
-
-    _controller.addStatusListener((status) {
-      if (status == AnimationStatus.completed) {
-        widget.onAnimationComplete();
-      }
-    });
+    // Controller only created when actually deleting — skips 5 allocations per static row.
+    if (widget.isDeleting) {
+      _setupAnimations();
+      _controller!.forward(from: 0);
+    }
   }
 
   @override
   void didUpdateWidget(covariant MolecularDeleteAnimation oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.isDeleting && !oldWidget.isDeleting) {
-      _controller.forward(from: 0);
+      _setupAnimations();
+      _controller!.forward(from: 0);
     } else if (!widget.isDeleting && oldWidget.isDeleting) {
-      _controller.reset();
+      _controller?.reset();
     }
   }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _controller?.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!widget.isDeleting) return widget.child;
+    final ctrl = _controller;
+    if (!widget.isDeleting || ctrl == null) return widget.child;
 
     return AnimatedBuilder(
-      animation: _controller,
+      animation: ctrl,
       builder: (_, child) {
         return FadeTransition(
-          opacity: _fade,
+          opacity: _fade!,
           child: SlideTransition(
-            position: _slide,
+            position: _slide!,
             child: Align(
               alignment: Alignment.topCenter,
-              heightFactor: _size.value,
+              heightFactor: _size!.value,
               child: child,
             ),
           ),

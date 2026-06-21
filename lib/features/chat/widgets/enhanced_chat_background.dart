@@ -1,18 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'dart:ui';
-import '../../../provider/settings_providers.dart';
 
-/// Enhanced Chat Background با الهام از ویستا
-/// این ویجت به صورت خودکار تنظیمات بلور را از provider می‌خواند
-/// و در هر دو تم روشن و تاریک (به جز تم مشکی مطلق) بلور را اعمال می‌کند
-class EnhancedChatBackground extends ConsumerStatefulWidget {
+class EnhancedChatBackground extends StatelessWidget {
   final Widget child;
+  // allowHeavyEffects / forceEnableBlur / blurIntensity kept for call-site
+  // compatibility but have no effect — BackdropFilter removed entirely.
   final bool enablePattern;
   final bool allowHeavyEffects;
-
-  /// اگر null باشد، از تنظیمات کاربر استفاده می‌شود
-  /// اگر مقدار مشخص شود، آن مقدار استفاده می‌شود (برای override)
   final bool? forceEnableBlur;
   final double blurIntensity;
 
@@ -26,46 +19,15 @@ class EnhancedChatBackground extends ConsumerStatefulWidget {
   });
 
   @override
-  ConsumerState<EnhancedChatBackground> createState() =>
-      _EnhancedChatBackgroundState();
-}
-
-class _EnhancedChatBackgroundState
-    extends ConsumerState<EnhancedChatBackground> {
-  @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final reduceEffects = MediaQuery.disableAnimationsOf(context) ||
-        MediaQuery.accessibleNavigationOf(context);
-
-    // تشخیص تم مشکی مطلق (AMOLED/Pure Black)
-    // در تم مشکی مطلق، scaffoldBackgroundColor معمولاً 0xFF000000 است
-    final isPitchBlack = theme.scaffoldBackgroundColor.toARGB32() == 0xFF000000;
-
-    // خواندن تنظیمات کاربر از provider
-    final userSettingEnabled = ref.watch(chatBlurBackgroundProvider);
-
-    // منطق نهایی اعمال بلور:
-    // 1. اگر forceEnableBlur داده شده، از آن استفاده کن، وگرنه از تنظیمات کاربر
-    // 2. حتماً نباید تم مشکی مطلق باشد (برای حفظ سیاهی مطلق در AMOLED)
-    // ✅ حذف شرط isDark - بلور در هر دو تم روشن و تاریک اعمال می‌شود
-    final shouldApplyBlur = (widget.forceEnableBlur ?? userSettingEnabled) &&
-        !isPitchBlack &&
-        widget.allowHeavyEffects;
-    final effectiveBlur = widget.allowHeavyEffects
-        ? widget.blurIntensity
-        : widget.blurIntensity.clamp(0.0, 2.0);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Stack(
       fit: StackFit.expand,
       children: [
-        // 1️⃣ Base Color (فوری نمایش داده می‌شود)
         Container(
           color: isDark ? const Color(0xFF0F0F0F) : const Color(0xFFDFE5E9),
         ),
-
-        // 2️⃣ Vista Custom Doodle Wallpaper
         Image.asset(
           isDark
               ? 'assets/images/vista_custom_bg_dark.png'
@@ -78,25 +40,7 @@ class _EnhancedChatBackgroundState
               : Colors.white.withValues(alpha: 0.2),
           colorBlendMode: isDark ? BlendMode.darken : BlendMode.lighten,
         ),
-
-        // 3️⃣ Blur Effect
-        if (shouldApplyBlur && !reduceEffects)
-          ClipRect(
-            child: BackdropFilter(
-              filter: ImageFilter.blur(
-                sigmaX: effectiveBlur,
-                sigmaY: effectiveBlur,
-              ),
-              child: Container(
-                color: isDark
-                    ? Colors.black.withValues(alpha: 0.1)
-                    : Colors.white.withValues(alpha: 0.1),
-              ),
-            ),
-          ),
-
-        // 4️⃣ محتوای اصلی
-        widget.child,
+        child,
       ],
     );
   }

@@ -3,7 +3,21 @@ import 'package:Vista/DB/advanced_settings_service.dart';
 class EmojiRenderPolicy {
   const EmojiRenderPolicy._();
 
+  // Cached per session — settings don't change mid-session without app restart.
+  // Call invalidateCache() after user changes emoji style in settings.
+  static bool? _cachedUseModernPanel;
+  static bool? _cachedUseModernRenderer;
+
+  static void invalidateCache() {
+    _cachedUseModernPanel = null;
+    _cachedUseModernRenderer = null;
+  }
+
   static bool useModernEmojiPanel() {
+    return _cachedUseModernPanel ??= _computeUseModernPanel();
+  }
+
+  static bool _computeUseModernPanel() {
     final service = AdvancedSettingsService();
     final app = service.getAdvancedAppSettings();
     final performance = service.getPerformanceSettings();
@@ -20,6 +34,10 @@ class EmojiRenderPolicy {
   }
 
   static bool useModernEmojiRenderer() {
+    return _cachedUseModernRenderer ??= _computeUseModernRenderer();
+  }
+
+  static bool _computeUseModernRenderer() {
     final service = AdvancedSettingsService();
     final app = service.getAdvancedAppSettings();
     final performance = service.getPerformanceSettings();

@@ -179,14 +179,13 @@ class _ProfileSetupWizardScreenState
 
   Future<void> _pickBirthDate() async {
     final locale = _effectiveLocale;
-    final isPersian = isPersianLocale(locale);
     final picked = await pickBirthDate(
       context,
       locale: locale,
       initialDate: _birthDate,
-      helpText: isPersian ? 'تاریخ تولد' : 'Date of Birth',
-      confirmText: isPersian ? 'تایید' : 'OK',
-      cancelText: isPersian ? 'انصراف' : 'Cancel',
+      helpText: 'تاریخ تولد',
+      confirmText: 'تایید',
+      cancelText: 'انصراف',
     );
     if (picked == null) return;
     setState(() {

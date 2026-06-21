@@ -25,7 +25,7 @@ bool isPersianLocale(Locale locale) =>
     locale.languageCode == 'fa' || locale.languageCode == 'fa-IR';
 
 /// تقویم شمسی برای فارسی؛ در غیر این صورت میلادی.
-bool useJalaliCalendar(Locale locale) => locale.languageCode == 'fa';
+bool useJalaliCalendar(Locale locale) => true;
 
 /// ترجیح زبان اپ، در صورت نبود از locale ویجت.
 Locale resolveBirthDateLocale(BuildContext context, Locale appLocale) {
@@ -85,7 +85,8 @@ String formatBirthDateForDisplay(DateTime date, Locale locale) {
   if (useJalaliCalendar(locale)) {
     final jalali = Jalali.fromDateTime(date);
     final year = TimeUtils.replaceEnglishdigits(jalali.year.toString());
-    return '${jalali.day} ${_persianMonthNames[jalali.month - 1]} $year';
+    final day = TimeUtils.replaceEnglishdigits(jalali.day.toString());
+    return '$day ${_persianMonthNames[jalali.month - 1]} $year';
   }
 
   return DateFormat.yMMMd(locale.toString()).format(date);
@@ -97,7 +98,7 @@ DateTime _clampBirthDate(DateTime date, DateTime min, DateTime max) {
   return date;
 }
 
-/// Shows a Jalali picker for Persian and a Gregorian picker for other locales.
+/// Shows Jalali (Shamsi) date picker. Always uses Persian calendar regardless of locale.
 Future<DateTime?> pickBirthDate(
   BuildContext context, {
   required Locale locale,
@@ -115,29 +116,16 @@ Future<DateTime?> pickBirthDate(
     lastDate,
   );
 
-  if (useJalaliCalendar(locale)) {
-    final picked = await showPersianDatePicker(
-      context: context,
-      initialDate: Jalali.fromDateTime(initial),
-      firstDate: Jalali.fromDateTime(firstDate),
-      lastDate: Jalali.fromDateTime(lastDate),
-      helpText: helpText ?? 'تاریخ تولد',
-      confirmText: confirmText ?? 'تایید',
-      cancelText: cancelText ?? 'انصراف',
-      locale: const Locale('fa', 'IR'),
-      textDirection: ui.TextDirection.rtl,
-    );
-    return picked?.toDateTime();
-  }
-
-  return showDatePicker(
+  final picked = await showPersianDatePicker(
     context: context,
-    initialDate: initial,
-    firstDate: firstDate,
-    lastDate: lastDate,
-    locale: locale,
-    helpText: helpText ?? 'Date of birth',
-    confirmText: confirmText ?? 'OK',
-    cancelText: cancelText ?? 'Cancel',
+    initialDate: Jalali.fromDateTime(initial),
+    firstDate: Jalali.fromDateTime(firstDate),
+    lastDate: Jalali.fromDateTime(lastDate),
+    helpText: helpText ?? 'تاریخ تولد',
+    confirmText: confirmText ?? 'تایید',
+    cancelText: cancelText ?? 'انصراف',
+    locale: const Locale('fa', 'IR'),
+    textDirection: ui.TextDirection.rtl,
   );
+  return picked?.toDateTime();
 }

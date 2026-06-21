@@ -538,9 +538,9 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
             locale: currentLocale,
             supportedLocales: AppLocalizations.supportedLocales,
             localizationsDelegates: const [
-              ...AppLocalizations.localizationsDelegates,
               PersianMaterialLocalizations.delegate,
               PersianCupertinoLocalizations.delegate,
+              ...AppLocalizations.localizationsDelegates,
             ],
             localeResolutionCallback: (deviceLocale, supportedLocales) {
               if (deviceLocale == null) return const Locale('fa', 'IR');

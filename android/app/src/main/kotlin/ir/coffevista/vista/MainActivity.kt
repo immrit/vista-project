@@ -17,6 +17,30 @@ import androidx.core.content.FileProvider
 import java.io.File
 
 class MainActivity: AudioServiceFragmentActivity() {
+
+    // Request highest available refresh rate (120Hz on supported displays).
+    // flutter_displaymode is unavailable; we call WindowManager directly.
+    // Sets both preferredDisplayModeId (exact mode) and preferredRefreshRate (hint)
+    // so MIUI/HyperOS "Smart Refresh Rate" honours at least one of the two APIs.
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val params = window.attributes
+            @Suppress("DEPRECATION")
+            val modes = windowManager.defaultDisplay.supportedModes
+            if (modes.size > 1) {
+                val highest = modes.maxByOrNull { it.refreshRate }
+                if (highest != null) {
+                    params.preferredDisplayModeId = highest.modeId
+                }
+            }
+            // Fallback rate hint: MIUI may honour this even if mode enumeration
+            // returns only one mode for non-whitelisted apps.
+            params.preferredRefreshRate = 120f
+            window.attributes = params
+        }
+    }
+
     private val CHANNEL = "ir.coffevista.vista/bazaar_native"
     private val SYSTEM_UI_CHANNEL = "ir.coffevista.vista/system_ui"
     private lateinit var payment: Payment

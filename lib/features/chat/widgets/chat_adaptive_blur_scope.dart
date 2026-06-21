@@ -24,19 +24,27 @@ class ChatAdaptiveBlurScope extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final config = ref.watch(
       adaptiveEffectsProvider.select(
+        // allowHeavyBlur intentionally excluded: it's velocity-driven and would cause
+        // a rebuild on every fast-scroll threshold crossing. The blur on/off during
+        // scroll is already handled by _isScrollingNotifier at the call site.
+        // allowHeavyBlur is derived from effectsLevel: high ↔ heavy blur allowed.
         (state) => (
           state.blurSigma,
-          state.allowHeavyBlur,
           state.effectsLevel,
         ),
       ),
     );
 
+    // effectsLevel==high already implies gpuEnabled && !reduceMotion (those degrade
+    // effectsLevel), so this derivation is equivalent to the original allowHeavyBlur
+    // minus the isFastScrolling factor (which is handled by _isScrollingNotifier).
+    final allowHeavyBlur = config.$2 == ChatEffectsLevel.high;
+
     return builder(
       context,
       config.$1,
+      allowHeavyBlur,
       config.$2,
-      config.$3,
     );
   }
 }

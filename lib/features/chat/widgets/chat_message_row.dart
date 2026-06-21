@@ -55,13 +55,14 @@ class ChatMessageRow extends ConsumerWidget {
     );
     final isRowSelected = rowSelection.isRowSelected;
 
+    // Selector limited to fields that change only from settings/profile, never from
+    // scroll velocity. isFastScrolling, chatEntryMode, enableMessageEntryAnimation
+    // are velocity-driven and would cause mass rebuilds on every fling threshold
+    // crossing — new messages read current state via ref.read below.
     ref.watch(
       adaptiveEffectsProvider.select(
         (state) => (
-          state.isFastScrolling,
-          state.enableMessageEntryAnimation,
           state.effectsLevel,
-          state.chatEntryMode,
           state.motionTokensEnabled,
         ),
       ),
@@ -70,7 +71,6 @@ class ChatMessageRow extends ConsumerWidget {
 
     final primary = rowMessages.first;
     final isMe = primary.senderId == bindings.currentUserId;
-    final fastScroll = effects.isFastScrolling;
     final isDeleting =
         rowMessages.any((message) => bindings.isMessageDeleting(message.id));
 
@@ -92,7 +92,7 @@ class ChatMessageRow extends ConsumerWidget {
           conversationGalleryIndexByMessageId: gallery.indexByMessageId,
         ),
       );
-    } else if (!selection.isSelectionMode && !fastScroll) {
+    } else if (!selection.isSelectionMode) {
       bubble = SwipeToReplyWrapper(
         isMe: isMe,
         onReply: () => bindings.onReplyToMessage(primary),
@@ -187,8 +187,7 @@ class ChatMessageRow extends ConsumerWidget {
     );
 
     return ChatMessageListTile(
-      keepAlive: !fastScroll &&
-          ChatMessageRenderWindow.shouldKeepAliveMessages(rowMessages),
+      keepAlive: ChatMessageRenderWindow.shouldKeepAliveMessages(rowMessages),
       child: KeyedSubtree(
         key: ValueKey<String>(descriptor.key),
         child: MolecularDeleteAnimation(

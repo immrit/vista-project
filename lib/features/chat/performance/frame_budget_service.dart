@@ -12,7 +12,18 @@ class FrameBudgetService {
   static final FrameBudgetService instance = FrameBudgetService._();
 
   static const int _windowSize = 180;
-  static const int _targetFrameMicros = 16667; // 60 FPS
+
+  // Target frame budget derived from the display's actual refresh rate.
+  // 60Hz → 16 667 µs, 90Hz → 11 111 µs, 120Hz → 8 333 µs.
+  // Using the real budget so the profile engine detects jank at the actual Hz
+  // (not just 60Hz baseline), preventing heavy effects from stalling 120Hz.
+  static int get _targetFrameMicros {
+    final views = ui.PlatformDispatcher.instance.views;
+    if (views.isEmpty) return 16667;
+    final hz = views.first.display.refreshRate;
+    if (!hz.isFinite || hz <= 0) return 16667;
+    return (1000000.0 / hz).round();
+  }
 
   final List<int> _framesMicros = <int>[];
   bool _isMonitoring = false;
@@ -98,24 +109,28 @@ class FrameBudgetService {
     required double jankRatio,
     required ChatPerformanceProfile currentProfile,
   }) {
-    // Hard guard for obvious instability.
-    if (jankRatio >= 0.25 || p95Ms >= 32.0) {
+    // Scale all thresholds relative to the actual display frame budget.
+    // Multipliers derived from the original 60Hz baseline values so behaviour
+    // on 60Hz devices is unchanged; on 120Hz (8.33ms budget) the thresholds
+    // tighten proportionally, letting the engine detect and adapt to 120Hz jank.
+    final tMs = _targetFrameMicros / 1000.0; // e.g. 8.33ms at 120Hz
+
+    if (jankRatio >= 0.25 || p95Ms >= tMs * 1.92) {
       return ChatPerformanceProfile.low;
     }
 
-    // Hysteresis: avoid profile flapping on noisy frame windows.
     switch (currentProfile) {
       case ChatPerformanceProfile.high:
-        if (p95Ms > 19.0) return ChatPerformanceProfile.medium;
+        if (p95Ms > tMs * 1.14) return ChatPerformanceProfile.medium;
         return ChatPerformanceProfile.high;
       case ChatPerformanceProfile.medium:
-        if (p95Ms > 27.0) return ChatPerformanceProfile.low;
-        if (p95Ms < 15.5 && jankRatio < 0.08) {
+        if (p95Ms > tMs * 1.62) return ChatPerformanceProfile.low;
+        if (p95Ms < tMs * 0.93 && jankRatio < 0.08) {
           return ChatPerformanceProfile.high;
         }
         return ChatPerformanceProfile.medium;
       case ChatPerformanceProfile.low:
-        if (p95Ms < 22.0 && jankRatio < 0.14) {
+        if (p95Ms < tMs * 1.32 && jankRatio < 0.14) {
           return ChatPerformanceProfile.medium;
         }
         return ChatPerformanceProfile.low;

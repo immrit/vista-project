@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../../model/ProfileModel.dart';
 import '../../../utils/birth_date_picker.dart';
+import '../../../utils/time_utils.dart';
 import '../../../utils/verification_badge_utils.dart';
 import '../../../widgets/profile_avatar_widget.dart';
 import '../../../widgets/verification_badge_icon.dart';
@@ -375,7 +376,8 @@ class _MembershipCard extends StatelessWidget {
         'بهمن',
         'اسفند'
       ];
-      return '${persianMonths[jDate.month - 1]} ${jDate.year}';
+      final pYear = TimeUtils.replaceEnglishdigits(jDate.year.toString());
+      return '${persianMonths[jDate.month - 1]} $pYear';
     } else {
       const gregorianMonths = [
         'January',

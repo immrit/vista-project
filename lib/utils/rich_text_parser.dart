@@ -26,8 +26,23 @@ class RichTextParser {
   static final _hashtagRegex =
       RegExp(r'#[a-zA-Z0-9_\u0600-\u06FF]+'); // Includes Persian char support
 
+  // LRU parse cache \u2014 bubble rebuilds (read receipt, status change) hit the same text.
+  static final _parseCache = <String, List<ParsedTextSpan>>{};
+  static const _maxCacheEntries = 256;
+
   /// Parses text and returns a list of ParsedTextSpan
   static List<ParsedTextSpan> parse(String text) {
+    final hit = _parseCache[text];
+    if (hit != null) return hit;
+    final result = _doParse(text);
+    if (_parseCache.length >= _maxCacheEntries) {
+      _parseCache.remove(_parseCache.keys.first);
+    }
+    _parseCache[text] = result;
+    return result;
+  }
+
+  static List<ParsedTextSpan> _doParse(String text) {
     final List<ParsedTextSpan> spans = [];
     final matches = <_TextMatch>[];
 

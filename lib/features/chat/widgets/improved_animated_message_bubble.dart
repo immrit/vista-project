@@ -169,11 +169,14 @@ class _ImprovedAnimatedMessageBubbleState
     with SingleTickerProviderStateMixin, AutomaticKeepAliveClientMixin {
   static final Set<String> _shownMessages = {};
 
-  late AnimationController _controller;
+  // Nullable — only allocated when entry animation is needed (new incoming messages).
+  // Static/historical messages skip controller creation entirely, saving ~4 objects
+  // per item on initial render (96+ items = 384+ fewer allocations).
+  AnimationController? _controller;
+  Animation<double>? _fadeAnimation;
+  Animation<Offset>? _slideAnimation;
+  Animation<double>? _scaleAnimation;
   late String _formattedTime;
-  late Animation<double> _fadeAnimation;
-  late Animation<Offset> _slideAnimation;
-  late Animation<double> _scaleAnimation;
 
   String _currentContent = "";
   bool _isDecrypting = false;
@@ -192,40 +195,32 @@ class _ImprovedAnimatedMessageBubbleState
     _currentContent = widget.content;
     _checkEncryption();
     _formattedTime = widget.time.toFixedTimeLabel();
-    _setupAnimations();
 
     final uniqueId = widget.messageId;
-
     bool shouldAnimate = widget.animate;
 
     if (shouldAnimate) {
       if (widget.isMe) {
-        if (widget.status != MessageStatus.pending) {
-          shouldAnimate = false;
-        }
+        if (widget.status != MessageStatus.pending) shouldAnimate = false;
       } else {
-        if (_shownMessages.contains(uniqueId)) {
-          shouldAnimate = false;
-        }
+        if (_shownMessages.contains(uniqueId)) shouldAnimate = false;
       }
-
-      final isRecent = DateTime.now().difference(widget.time).inSeconds < 60;
-      if (!isRecent) {
-        shouldAnimate = false;
+      if (shouldAnimate) {
+        final isRecent = DateTime.now().difference(widget.time).inSeconds < 60;
+        if (!isRecent) shouldAnimate = false;
       }
     }
 
+    _shownMessages.add(uniqueId);
+
     if (shouldAnimate) {
-      _shownMessages.add(uniqueId);
+      _setupAnimations();
       Future.delayed(Duration(milliseconds: widget.index * 30), () {
-        if (mounted) {
-          _controller.forward();
-        }
+        if (mounted) _controller!.forward();
       });
     } else {
       _staticPresentation = true;
-      _controller.value = 1.0;
-      _shownMessages.add(uniqueId);
+      // No controller needed — skip 4 object allocations per static bubble.
     }
   }
 
@@ -239,11 +234,13 @@ class _ImprovedAnimatedMessageBubbleState
       vsync: this,
     );
 
+    final ctrl = _controller!;
+
     _fadeAnimation = Tween<double>(
       begin: 0.0,
       end: 1.0,
     ).animate(CurvedAnimation(
-      parent: _controller,
+      parent: ctrl,
       curve: switch (widget.effectsLevel) {
         ChatEffectsLevel.low => const Interval(0.0, 0.3, curve: Curves.linear),
         ChatEffectsLevel.medium =>
@@ -261,7 +258,7 @@ class _ImprovedAnimatedMessageBubbleState
       begin: slideBegin,
       end: Offset.zero,
     ).animate(CurvedAnimation(
-      parent: _controller,
+      parent: ctrl,
       curve: switch (widget.effectsLevel) {
         ChatEffectsLevel.low => const Interval(0.0, 0.5, curve: Curves.linear),
         ChatEffectsLevel.medium =>
@@ -275,7 +272,7 @@ class _ImprovedAnimatedMessageBubbleState
       begin: 0.0,
       end: 1.0,
     ).animate(CurvedAnimation(
-      parent: _controller,
+      parent: ctrl,
       curve: switch (widget.effectsLevel) {
         ChatEffectsLevel.low => const Interval(0.0, 0.4, curve: Curves.linear),
         ChatEffectsLevel.medium =>
@@ -329,7 +326,7 @@ class _ImprovedAnimatedMessageBubbleState
 
   @override
   void dispose() {
-    _controller.dispose();
+    _controller?.dispose();
     super.dispose();
   }
 
@@ -338,17 +335,17 @@ class _ImprovedAnimatedMessageBubbleState
     super.build(context);
     final theme = context.chatTheme;
 
-    if (_staticPresentation) {
+    if (_staticPresentation || _controller == null) {
       return RepaintBoundary(child: _buildInteractiveBubble(theme));
     }
 
     return RepaintBoundary(
       child: FadeTransition(
-        opacity: _fadeAnimation,
+        opacity: _fadeAnimation!,
         child: SlideTransition(
-          position: _slideAnimation,
+          position: _slideAnimation!,
           child: ScaleTransition(
-            scale: _scaleAnimation,
+            scale: _scaleAnimation!,
             child: _buildInteractiveBubble(theme),
           ),
         ),
@@ -391,24 +388,33 @@ class _ImprovedAnimatedMessageBubbleState
   Widget _buildBubbleBody(ChatTheme theme) {
     // Column fills full viewport width (from ListView constraint).
     // crossAxisAlignment.end/start anchors the bubble to the correct screen edge.
+    final canonicalType = _canonicalAttachmentType();
+    // image/video/document/voice/audio fill the max-width box naturally —
+    // IntrinsicWidth's 2-pass layout is only needed for variable-width text bubbles.
+    final needsIntrinsicWidth = canonicalType != 'image' &&
+        canonicalType != 'video' &&
+        canonicalType != 'document' &&
+        canonicalType != 'voice' &&
+        canonicalType != 'audio';
+
+    Widget bubble = ConstrainedBox(
+      constraints: BoxConstraints(
+        maxWidth: MediaQuery.sizeOf(context).width * 0.82,
+      ),
+      child: _buildMessageBubble(theme),
+    );
+
+    if (needsIntrinsicWidth) {
+      bubble = IntrinsicWidth(child: bubble);
+    }
+
     Widget child = Column(
       crossAxisAlignment:
           widget.isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
       children: [
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 3.0),
-          // IntrinsicWidth turns the bubble's natural content width into a tight
-          // constraint so that crossAxisAlignment.stretch in _buildMessageBubble
-          // can give every child the same width (fixing RTL text alignment and
-          // timestamp position for reply/short-text bubbles).
-          child: IntrinsicWidth(
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                maxWidth: MediaQuery.sizeOf(context).width * 0.82,
-              ),
-              child: _buildMessageBubble(theme),
-            ),
-          ),
+          child: bubble,
         ),
       ],
     );

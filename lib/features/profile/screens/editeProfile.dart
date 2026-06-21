@@ -111,11 +111,9 @@ class _EditProfileState extends ConsumerState<EditProfile> {
       context,
       locale: locale,
       initialDate: _selectedDate,
-      helpText: isPersianLocale(locale)
-          ? 'تاریخ تولد خود را انتخاب کنید'
-          : 'Select your date of birth',
-      confirmText: isPersianLocale(locale) ? 'تایید' : 'OK',
-      cancelText: isPersianLocale(locale) ? 'لغو' : 'Cancel',
+      helpText: 'تاریخ تولد خود را انتخاب کنید',
+      confirmText: 'تایید',
+      cancelText: 'لغو',
     );
     if (picked == null) return;
     setState(() {

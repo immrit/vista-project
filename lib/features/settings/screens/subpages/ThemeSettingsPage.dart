@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:Vista/DB/advanced_settings_service.dart';
 import 'package:Vista/features/chat/performance/adaptive_effects_provider.dart';
+import 'package:Vista/features/emoji/domain/emoji_render_policy.dart';
 import 'package:Vista/provider/settings_providers.dart';
 import 'package:Vista/provider/theme_provider.dart';
 import 'package:Vista/services/animation_controller_service.dart';
@@ -124,6 +125,7 @@ class ThemeSettingsPage extends ConsumerWidget {
                       ...appearance,
                       'emoji_style': value,
                     });
+                    EmojiRenderPolicy.invalidateCache();
                     ref.invalidate(advancedAppSettingsProvider);
                   },
                 ),

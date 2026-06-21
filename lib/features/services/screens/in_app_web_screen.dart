@@ -22,6 +22,9 @@ class InAppWebScreen extends StatefulWidget {
   /// Custom AppBar foreground (icon + title) color. Defaults to theme text.
   final Color? appBarForegroundColor;
 
+  /// Custom background color for the Scaffold and WebView. Defaults to [appBarColor] or theme background.
+  final Color? backgroundColor;
+
   /// Use back arrow instead of close (×) icon.
   final bool useBackButton;
 
@@ -33,6 +36,7 @@ class InAppWebScreen extends StatefulWidget {
     this.allowedPathPrefix,
     this.appBarColor,
     this.appBarForegroundColor,
+    this.backgroundColor,
     this.useBackButton = false,
   });
 
@@ -49,11 +53,22 @@ class _InAppWebScreenState extends State<InAppWebScreen> {
   void initState() {
     super.initState();
     _controller = WebViewController()
+      ..setBackgroundColor(Colors.transparent)
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setNavigationDelegate(NavigationDelegate(
         onProgress: (p) => setState(() => _loadingProgress = p),
         onPageStarted: (_) => setState(() => _isLoading = true),
-        onPageFinished: (_) => setState(() => _isLoading = false),
+        onPageFinished: (_) {
+          setState(() => _isLoading = false);
+          // Inject CSS to fix any black gaps caused by the web page's own styling
+          _controller.runJavaScript('''
+            try {
+              var style = document.createElement('style');
+              style.innerHTML = 'html, body { background-color: transparent !important; padding-top: 0 !important; margin-top: 0 !important; } #root, #__next, #app { padding-top: 0 !important; margin-top: 0 !important; }';
+              document.head.appendChild(style);
+            } catch(e) {}
+          ''');
+        },
         onNavigationRequest: (request) => _isNavigationAllowed(request.url)
             ? NavigationDecision.navigate
             : NavigationDecision.prevent,
@@ -122,8 +137,9 @@ class _InAppWebScreenState extends State<InAppWebScreen> {
             statusIconBrightness == Brightness.light ? Brightness.dark : Brightness.light,
       ),
       child: Scaffold(
-        backgroundColor:
-            isDark ? AppColors.darkBackground : AppColors.lightBackground,
+        backgroundColor: widget.backgroundColor ??
+            widget.appBarColor ??
+            (isDark ? AppColors.darkBackground : AppColors.lightBackground),
         appBar: AppBar(
           backgroundColor: barBg,
           surfaceTintColor: Colors.transparent,

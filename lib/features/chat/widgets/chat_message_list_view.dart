@@ -111,7 +111,7 @@ class ChatMessageListView extends ConsumerWidget {
                   physics: chatListScrollPhysics(context),
                   padding: EdgeInsets.only(bottom: bottomPadding + 10),
                   addAutomaticKeepAlives: false,
-                  addRepaintBoundaries: true,
+                  addRepaintBoundaries: false,
                   itemCount: itemCount,
                   itemBuilder: (context, index) {
                     if (index >= descriptors.length) {
@@ -153,6 +153,7 @@ class ChatMessageListView extends ConsumerWidget {
                         );
 
                     return ChatMessageRow(
+                      key: ValueKey(descriptor.primaryMessageId),
                       descriptor: descriptor,
                       layout: ChatMessageRowLayout(
                         isFirstInGroup: isFirstInGroup,
@@ -198,11 +199,15 @@ class ChatMessageListView extends ConsumerWidget {
   ) {
     if (index < 0 || index >= messages.length) return (true, true);
     final current = messages[index];
+    // List is reverse-chronological (index 0 = newest, shown at bottom).
+    // "newer" (lower index) is below current; "older" (higher index) is above current.
+    // isFirstInGroup = top of group visually = no same-sender ABOVE = check older.
+    // isLastInGroup  = bottom of group visually = no same-sender BELOW = check newer.
     final newer = index > 0 ? messages[index - 1] : null;
     final olderIndex = index + spanLength;
     final older = olderIndex < messages.length ? messages[olderIndex] : null;
-    final isFirst = newer == null || newer.senderId != current.senderId;
-    final isLast = older == null || older.senderId != current.senderId;
+    final isFirst = older == null || older.senderId != current.senderId;
+    final isLast = newer == null || newer.senderId != current.senderId;
     return (isFirst, isLast);
   }
 }

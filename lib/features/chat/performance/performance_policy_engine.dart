@@ -148,12 +148,9 @@ class PerformancePolicyEngine {
       ChatPerformanceProfile.low => ChatEffectsLevel.low,
     };
 
-    if (isFastScrolling && level != ChatEffectsLevel.low) {
-      level = ChatEffectsLevel.medium;
-    }
-    if (isFastScrolling && profile == ChatPerformanceProfile.low) {
-      level = ChatEffectsLevel.low;
-    }
+    // effectsLevel is NOT reduced on fast scroll: velocity changes would trigger
+    // mass row rebuilds via the selector in ChatMessageRow. Fast-scroll behaviour
+    // is handled via chatEntryMode (new messages only) and allowHeavyBlur (background).
     if (!gpuAccelerationEnabled && level == ChatEffectsLevel.high) {
       level = ChatEffectsLevel.medium;
     }

@@ -185,12 +185,12 @@ class ChatTheme {
     final Radius r = Radius.circular(baseRadius);
     final Radius mr = Radius.circular(mergedRadius);
     
-    // In reverse ListView:
-    // isFirstInGroup = true for the NEWEST message (visually at the BOTTOM).
-    // isLastInGroup = true for the OLDEST message (visually at the TOP).
-    
-    final bool isVisuallyTop = isLastInGroup && !isFirstInGroup;
-    final bool isVisuallyBottom = isFirstInGroup && !isLastInGroup;
+    // In reverse ListView (index 0 = newest = bottom):
+    // isFirstInGroup = true for the OLDEST message in group (visually at the TOP, no same-sender above).
+    // isLastInGroup = true for the NEWEST message in group (visually at the BOTTOM, no same-sender below).
+
+    final bool isVisuallyTop = isFirstInGroup && !isLastInGroup;
+    final bool isVisuallyBottom = isLastInGroup; // single messages (both true) also get bottom style
 
     // Based on Telegram X design & user feedback:
     // - Visually Top: Top edge is fully rounded, bottom is merged.
