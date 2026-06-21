@@ -1597,7 +1597,11 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       notifier.dispose();
     }
     _messageReactionNotifiers.clear();
-    _adaptiveEffectsController.updateScrollVelocity(0);
+    // FIX: نباید state یک provider را داخل dispose (فاز قفل unmount درخت) تغییر داد —
+    // وگرنه StateNotifierListenerError. controller سینگلتون long-lived است، پس reset
+    // velocity را به microtask موکول می‌کنیم تا بعد از پایان finalizeTree اجرا شود.
+    final adaptiveEffectsController = _adaptiveEffectsController;
+    scheduleMicrotask(() => adaptiveEffectsController.updateScrollVelocity(0));
 
     _keyboardRequestTimeoutTimer?.cancel();
     _lockEmojiPanelTimer?.cancel();
@@ -2243,7 +2247,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     final isConnected = _latestConnectionStatus == ConnectionStatus.connected;
     final showConnectionBanner =
         !isConnected && _showConnectionBannerAfterDelay;
-        
+
     final allConversations =
         ref.watch(optimizedConversationsProvider).conversations;
     var currentConversation;
@@ -4463,18 +4467,24 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   Future<void> _handleMessageRequest(String action) async {
     try {
       if (action == 'accept') {
-        await ref.read(chatRepositoryProvider).acceptMessageRequest(widget.args.conversationId);
+        await ref
+            .read(chatRepositoryProvider)
+            .acceptMessageRequest(widget.args.conversationId);
       } else if (action == 'reject') {
-        await ref.read(chatRepositoryProvider).rejectMessageRequest(widget.args.conversationId);
+        await ref
+            .read(chatRepositoryProvider)
+            .rejectMessageRequest(widget.args.conversationId);
         if (mounted) Navigator.of(context).pop();
         return;
       } else if (action == 'block') {
-        await ref.read(chatRepositoryProvider).rejectMessageRequest(widget.args.conversationId);
+        await ref
+            .read(chatRepositoryProvider)
+            .rejectMessageRequest(widget.args.conversationId);
         await _moderationService.blockUser(widget.args.otherUserId);
         if (mounted) Navigator.of(context).pop();
         return;
       }
-      
+
       // Refresh to hide the overlay and show input
       ref.invalidate(optimizedConversationsProvider);
     } catch (e) {

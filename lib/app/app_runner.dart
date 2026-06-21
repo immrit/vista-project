@@ -370,7 +370,8 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
       );
       if (status != null && status.fcmResyncEpoch > 0) {
         unawaited(
-          PushNotificationService.handleSystemResyncEpoch(status.fcmResyncEpoch),
+          PushNotificationService.handleSystemResyncEpoch(
+              status.fcmResyncEpoch),
         );
       }
       if (status?.maintenance == true) {
@@ -390,7 +391,8 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
       unawaited(Future.microtask(() => networkService.initialize()));
       networkService.stateStream.listen((state) {
         if (state.isConnected) {
-          debugPrint('🟢 [Network] Connection restored — triggering session sync');
+          debugPrint(
+              '🟢 [Network] Connection restored — triggering session sync');
           Future.delayed(const Duration(seconds: 2), () {
             try {
               SessionManagerServiceV2().onNetworkRestored();
@@ -442,7 +444,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
               ],
             ),
             content: const Text(
-              'نشست شما توسط یک دستگاه دیگر خاتمه یافت. '  
+              'نشست شما توسط یک دستگاه دیگر خاتمه یافت. '
               'اگر شما نبودید، این می‌تواند نشانه نفوذ به حساب شما باشد.',
               style: TextStyle(
                 color: Color(0xFFAAAAAA),
@@ -456,8 +458,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
                 onPressed: () {
                   Navigator.of(ctx).pop();
                   Navigator.of(context).pushAndRemoveUntil(
-                    MaterialPageRoute(
-                        builder: (_) => const AuthWizardScreen()),
+                    MaterialPageRoute(builder: (_) => const AuthWizardScreen()),
                     (r) => false,
                   );
                 },
@@ -574,8 +575,10 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
                 systemStatusBarContrastEnforced: false,
                 systemNavigationBarContrastEnforced: false,
               );
-              // اعمال مستقیم استایل سیستم برای جلوگیری از باقی‌ماندن استایل قبلی route
-              SystemChrome.setSystemUIOverlayStyle(overlayStyle);
+              // PERF: فراخوانی امری SystemChrome.setSystemUIOverlayStyle حذف شد —
+              // روی هر rebuild اجرا می‌شد (platform-channel بدون dedup وسط فریم).
+              // AnnotatedRegion پایین همان استایل را با dedup فریم‌ورک اعمال می‌کند.
+              // SystemUiBarService.sync خودش با _lastSignature dedup دارد و backup نیتیو است.
               SystemUiBarService.sync(overlayStyle);
               final safeChild = child ?? const SizedBox.shrink();
               final content = colorBlindMatrix == null
@@ -608,7 +611,8 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
               '/reset-password-confirm': (context) =>
                   const PasswordRecoveryConfirmScreen(),
               '/reset-password-set': (context) => const PasswordSetScreen(),
-              '/mandatory-password': (context) => const MandatoryPasswordScreen(),
+              '/mandatory-password': (context) =>
+                  const MandatoryPasswordScreen(),
               '/biometric-login': (context) => BiometricLoginScreen(
                     onSuccess: () =>
                         Navigator.pushReplacementNamed(context, '/home'),

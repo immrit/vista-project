@@ -121,51 +121,57 @@ class _OnlineStatusDotState extends State<OnlineStatusDot>
     final borderColor =
         widget.borderColor ?? Theme.of(context).scaffoldBackgroundColor;
 
-    return AnimatedBuilder(
-      animation: _pulseController,
-      builder: (context, child) {
-        return Stack(
-          alignment: Alignment.center,
-          children: [
-            // Pulse ring (فقط برای آنلاین)
-            if (widget.status == UserPresenceStatus.online)
-              Transform.scale(
-                scale: _pulseAnimation.value,
-                child: Container(
-                  width: widget.size,
-                  height: widget.size,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: color.withValues(alpha: _opacityAnimation.value),
-                  ),
+    final isOnline = widget.status == UserPresenceStatus.online;
+
+    // Main dot ثابت است — بیرون از AnimatedBuilder تا هر فریم rebuild نشود.
+    final mainDot = AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOutCubic,
+      width: widget.size,
+      height: widget.size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: color,
+        border:
+            widget.showBorder ? Border.all(color: borderColor, width: 2) : null,
+        boxShadow: isOnline
+            ? [
+                BoxShadow(
+                  color: color.withValues(alpha: 0.4),
+                  blurRadius: 4,
+                  spreadRadius: 1,
                 ),
-              ),
-            // Main dot
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeOutCubic,
-              width: widget.size,
-              height: widget.size,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: color,
-                border: widget.showBorder
-                    ? Border.all(color: borderColor, width: 2)
-                    : null,
-                boxShadow: widget.status == UserPresenceStatus.online
-                    ? [
-                        BoxShadow(
-                          color: color.withValues(alpha: 0.4),
-                          blurRadius: 4,
-                          spreadRadius: 1,
-                        ),
-                      ]
-                    : null,
-              ),
+              ]
+            : null,
+      ),
+    );
+
+    // PERF: فقط pulse ring انیمیشن دارد. RepaintBoundary تا repaint دائمی نقطه‌ی
+    // آنلاین، AppBar/آواتار اطراف را dirty نکند.
+    return RepaintBoundary(
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          if (isOnline)
+            AnimatedBuilder(
+              animation: _pulseController,
+              builder: (context, child) {
+                return Transform.scale(
+                  scale: _pulseAnimation.value,
+                  child: Container(
+                    width: widget.size,
+                    height: widget.size,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: color.withValues(alpha: _opacityAnimation.value),
+                    ),
+                  ),
+                );
+              },
             ),
-          ],
-        );
-      },
+          mainDot,
+        ],
+      ),
     );
   }
 }

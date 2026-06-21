@@ -3,7 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/nearby_repository.dart';
 import '../models/nearby_models.dart';
 
-final nearbyRepositoryProvider = Provider<NearbyRepository>((_) => NearbyRepository());
+final nearbyRepositoryProvider =
+    Provider<NearbyRepository>((_) => NearbyRepository());
 
 final nearbyPreferencesProvider =
     FutureProvider.autoDispose<NearbyPreferences>((ref) async {
@@ -13,6 +14,11 @@ final nearbyPreferencesProvider =
 final nearbyMatchesProvider =
     FutureProvider.autoDispose<List<NearbyMatch>>((ref) async {
   return ref.watch(nearbyRepositoryProvider).matches();
+});
+
+final nearbyReceivedLikesProvider =
+    FutureProvider.autoDispose<NearbyReceivedLikes>((ref) async {
+  return ref.watch(nearbyRepositoryProvider).likesReceived();
 });
 
 /// Discovery deck state. Holds the current stack of candidate cards plus
@@ -60,7 +66,8 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
     if (_fetching) return;
     _fetching = true;
     final randomOnline = setRandomOnline ?? state.isRandomOnline;
-    state = state.copyWith(loading: true, clearError: true, isRandomOnline: randomOnline);
+    state = state.copyWith(
+        loading: true, clearError: true, isRandomOnline: randomOnline);
     try {
       final cards = randomOnline
           ? await _repo.discoverRandomOnline(limit: 20)
@@ -90,16 +97,44 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
     }
   }
 
-  Future<NearbyLikeResult?> act(String targetId, String action) async {
+  /// Puts a card back on top of the deck — used to rewind a swipe whose action
+  /// the server rejected (e.g. daily-like limit reached).
+  void reinsertTop(NearbyCandidate card) {
+    state = state.copyWith(cards: [card, ...state.cards]);
+  }
+
+  /// Manual rewind: ask the server to undo the last swipe toward [card], then
+  /// put it back on top. Returns false if the server rejected the undo.
+  Future<bool> undo(NearbyCandidate card) async {
     try {
-      return await _repo.like(targetId, action);
-    } on NearbyException catch (e) {
-      state = state.copyWith(errorCode: e.code);
-      return null;
+      await _repo.undoLike(card.userId);
+      reinsertTop(card);
+      return true;
     } catch (_) {
-      return null;
+      return false;
+    }
+  }
+
+  Future<NearbyActResult> act(String targetId, String action) async {
+    try {
+      final res = await _repo.like(targetId, action);
+      return NearbyActResult(result: res);
+    } on NearbyException catch (e) {
+      return NearbyActResult(errorCode: e.code);
+    } catch (_) {
+      return const NearbyActResult(errorCode: 'network_error');
     }
   }
 
   void clearError() => state = state.copyWith(clearError: true);
+}
+
+/// Outcome of a swipe action — either a server [result] or a user-facing
+/// [errorCode] the screen can surface (and rewind the swipe for).
+class NearbyActResult {
+  final NearbyLikeResult? result;
+  final String? errorCode;
+  const NearbyActResult({this.result, this.errorCode});
+
+  bool get ok => errorCode == null;
 }

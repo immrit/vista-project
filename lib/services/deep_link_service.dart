@@ -91,6 +91,9 @@ class DeepLinkService {
       } else if (host == 'notifications') {
         logInfo('Navigating to notifications via vista scheme');
         navigatorKey.currentState?.pushNamedAndRemoveUntil('/home', (route) => false);
+      } else if (host == 'nearby') {
+        logInfo('Navigating to nearby via vista scheme');
+        navigatorKey.currentState?.pushNamed('/nearby');
       } else {
         logInfo('Unsupported vista scheme host: $host');
       }

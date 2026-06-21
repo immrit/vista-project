@@ -12,7 +12,8 @@ class NearbyMatchesScreen extends ConsumerWidget {
   Future<void> _openChat(
       BuildContext context, WidgetRef ref, NearbyMatch m) async {
     try {
-      final convId = await ref.read(nearbyRepositoryProvider).openChat(m.matchId);
+      final convId =
+          await ref.read(nearbyRepositoryProvider).openChat(m.matchId);
       if (!context.mounted || convId.isEmpty) return;
       Navigator.pushNamed(context, '/chat', arguments: {
         'conversationId': convId,
@@ -41,13 +42,21 @@ class NearbyMatchesScreen extends ConsumerWidget {
               child: const Text('انصراف')),
           TextButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('حذف', style: TextStyle(color: AppColors.error))),
+              child:
+                  const Text('حذف', style: TextStyle(color: AppColors.error))),
         ],
       ),
     );
     if (ok != true) return;
-    await ref.read(nearbyRepositoryProvider).unmatch(m.matchId);
-    ref.invalidate(nearbyMatchesProvider);
+    try {
+      await ref.read(nearbyRepositoryProvider).unmatch(m.matchId);
+      ref.invalidate(nearbyMatchesProvider);
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('خطا در حذف مَچ')));
+      }
+    }
   }
 
   @override
@@ -73,7 +82,8 @@ class NearbyMatchesScreen extends ConsumerWidget {
               child: CircularProgressIndicator(color: AppColors.primary)),
           error: (_, __) => _message(isDark, 'خطا در بارگذاری مَچ‌ها'),
           data: (list) => list.isEmpty
-              ? _message(isDark, 'هنوز مَچی نداری!\nبا کاوش در «اطراف من» شروع کن')
+              ? _message(
+                  isDark, 'هنوز مَچی نداری!\nبا کاوش در «اطراف من» شروع کن')
               : ListView.separated(
                   physics: const AlwaysScrollableScrollPhysics(),
                   padding: const EdgeInsets.all(16),
@@ -104,7 +114,8 @@ class NearbyMatchesScreen extends ConsumerWidget {
             backgroundImage:
                 m.avatarUrl.isNotEmpty ? NetworkImage(m.avatarUrl) : null,
             child: m.avatarUrl.isEmpty
-                ? Text(m.fullName.isNotEmpty ? m.fullName.characters.first : '?',
+                ? Text(
+                    m.fullName.isNotEmpty ? m.fullName.characters.first : '?',
                     style: const TextStyle(
                         color: AppColors.primary,
                         fontWeight: FontWeight.bold,
@@ -143,7 +154,8 @@ class NearbyMatchesScreen extends ConsumerWidget {
             ),
           ),
           IconButton(
-            icon: const Icon(Icons.chat_bubble_rounded, color: AppColors.primary),
+            icon:
+                const Icon(Icons.chat_bubble_rounded, color: AppColors.primary),
             onPressed: () => _openChat(context, ref, m),
           ),
           IconButton(

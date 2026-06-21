@@ -85,6 +85,8 @@ class AdaptiveEffectsController extends StateNotifier<AdaptiveEffectsState> {
     required ChatPerformanceProfile profile,
     required double velocity,
   }) {
+    // پس از dispose شدن notifier، تغییر state ممنوع است (StateNotifierListenerError).
+    if (!mounted) return;
     final systemReduceMotion =
         ui.PlatformDispatcher.instance.accessibilityFeatures.disableAnimations;
     final policy = PerformancePolicyEngine.resolve(

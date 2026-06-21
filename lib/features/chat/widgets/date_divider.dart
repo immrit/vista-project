@@ -3,7 +3,6 @@
 // جداکننده تاریخ بین پیام‌ها - یکسان با FloatingDateHeader
 //
 
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:shamsi_date/shamsi_date.dart';
 import '../theme/chat_theme.dart';
@@ -17,10 +16,11 @@ class DateChipStyle {
   static const FontWeight fontWeight = FontWeight.w500;
 
   static BoxDecoration getDecoration(ChatTheme theme) {
+    // PERF: blur حذف شد (زیر) → alpha بالاتر تا چیپ بدون BackdropFilter هم خوانا بماند.
     return BoxDecoration(
       color: theme.isDark
-          ? Colors.black.withValues(alpha: 0.22)
-          : Colors.white.withValues(alpha: 0.22),
+          ? Colors.black.withValues(alpha: 0.40)
+          : Colors.white.withValues(alpha: 0.55),
       borderRadius: BorderRadius.circular(borderRadius),
     );
   }
@@ -46,25 +46,21 @@ class DateDivider extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = context.chatTheme;
 
+    // PERF: BackdropFilter حذف شد — هر چیپ تاریخ داخل ListView یک saveLayer در هر
+    // فریم می‌ساخت (بدون گارد perf، حتی حین اسکرول/low-tier). چیپ solid نیمه‌شفاف
+    // عملاً از blur قابل‌تفکیک نیست ولی صدها برابر ارزان‌تر است (مثل تلگرام).
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 16),
       child: Center(
-        child: ClipRRect(
-          borderRadius:
-              BorderRadius.circular(DateChipStyle.borderRadius),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 4, sigmaY: 4),
-            child: Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: DateChipStyle.horizontalPadding,
-                vertical: DateChipStyle.verticalPadding,
-              ),
-              decoration: DateChipStyle.getDecoration(theme),
-              child: Text(
-                formatPersianDate(date),
-                style: DateChipStyle.getTextStyle(theme),
-              ),
-            ),
+        child: Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: DateChipStyle.horizontalPadding,
+            vertical: DateChipStyle.verticalPadding,
+          ),
+          decoration: DateChipStyle.getDecoration(theme),
+          child: Text(
+            formatPersianDate(date),
+            style: DateChipStyle.getTextStyle(theme),
           ),
         ),
       ),

@@ -8,6 +8,7 @@ import 'package:Vista/core/theme/app_theme.dart';
 import '../models/nearby_models.dart';
 import '../providers/nearby_provider.dart';
 import '../widgets/nearby_card.dart';
+import 'nearby_likes_screen.dart';
 import 'nearby_matches_screen.dart';
 
 class NearbyScreen extends ConsumerStatefulWidget {
@@ -30,6 +31,8 @@ class _NearbyScreenState extends ConsumerState<NearbyScreen>
   Animation<Offset>? _flyAnim;
   bool _animatingOut = false;
   String? _pendingAction; // action committed after fly-out
+  NearbyCandidate? _lastSwiped; // last committed swipe, for manual rewind
+  bool _rewinding = false;
 
   @override
   void initState() {
@@ -145,14 +148,29 @@ class _NearbyScreenState extends ConsumerState<NearbyScreen>
   void _onPanEnd(DragEndDetails d) {
     if (_animatingOut) return;
     final w = _screen.width;
+    final h = _screen.height;
     final dx = _drag.dx;
     final dy = _drag.dy;
-    if (dx > w * 0.28) {
-      _flyOut('like');
-    } else if (dx < -w * 0.28) {
-      _flyOut('pass');
-    } else if (dy < -_screen.height * 0.18 && dx.abs() < w * 0.2) {
+    final v = d.velocity.pixelsPerSecond;
+    const flingV = 800.0; // px/s threshold for a deliberate fling
+
+    // Position-based commit (card dragged past the threshold).
+    final pastRight = dx > w * 0.28;
+    final pastLeft = dx < -w * 0.28;
+    final pastUp = dy < -h * 0.18 && dx.abs() < w * 0.2;
+
+    // Velocity-based commit — only when the fling direction matches the drag
+    // direction, so a card thrown back toward center just snaps back.
+    final flingRight = v.dx > flingV && dx > w * 0.04;
+    final flingLeft = v.dx < -flingV && dx < -w * 0.04;
+    final flingUp = v.dy < -flingV && v.dx.abs() < flingV && dy < -h * 0.04;
+
+    if (pastUp || flingUp) {
       _flyOut('superlike');
+    } else if (pastRight || flingRight) {
+      _flyOut('like');
+    } else if (pastLeft || flingLeft) {
+      _flyOut('pass');
     } else {
       _snapBack();
     }
@@ -200,16 +218,155 @@ class _NearbyScreenState extends ConsumerState<NearbyScreen>
     final top = cards.first;
     notifier.popTop();
 
-    final result = await notifier.act(top.userId, action);
+    final res = await notifier.act(top.userId, action);
     if (!mounted) return;
+    if (!res.ok) {
+      // Server rejected the swipe — rewind the card and tell the user why.
+      notifier.reinsertTop(top);
+      _showActError(res.errorCode);
+      return;
+    }
+    // Remember this card so the rewind button can undo it.
+    setState(() => _lastSwiped = top);
+    final result = res.result;
     if (result != null && result.matched) {
       _showMatchDialog(result, top);
     }
   }
 
+  Future<void> _rewind() async {
+    final card = _lastSwiped;
+    if (card == null || _rewinding || _animatingOut) return;
+    setState(() => _rewinding = true);
+    final ok = await ref.read(discoverProvider.notifier).undo(card);
+    if (!mounted) return;
+    setState(() {
+      _rewinding = false;
+      if (ok) _lastSwiped = null; // one-level undo
+    });
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('بازگرداندن ممکن نشد'),
+            behavior: SnackBarBehavior.floating),
+      );
+    }
+  }
+
+  void _showActError(String? code) {
+    final msg = switch (code) {
+      'daily_like_limit' => 'سقف لایک روزانه‌ات پر شد. فردا دوباره سر بزن!',
+      'user_blocked' => 'امکان لایک این کاربر وجود ندارد',
+      'banned_from_nearby' => 'دسترسی تو به این بخش محدود شده',
+      _ => 'ثبت نشد، دوباره تلاش کن',
+    };
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(msg), behavior: SnackBarBehavior.floating),
+    );
+  }
+
   void _buttonAction(String action) {
     if (_animatingOut || ref.read(discoverProvider).cards.isEmpty) return;
     _flyOut(action);
+  }
+
+  // ── Report (F5) ─────────────────────────────────────────────────────────
+  void _showCardMenu(NearbyCandidate card) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Theme.of(context).brightness == Brightness.dark
+          ? AppColors.darkSurface
+          : Colors.white,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 12),
+            ListTile(
+              leading: const Icon(Icons.flag_rounded, color: AppColors.error),
+              title: const Text('گزارش و رد کردن'),
+              subtitle: const Text('این کاربر از کاوش تو حذف می‌شود'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _pickReportReason(card);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.close_rounded),
+              title: const Text('انصراف'),
+              onTap: () => Navigator.pop(ctx),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _pickReportReason(NearbyCandidate card) {
+    const reasons = [
+      'پروفایل جعلی یا فیک',
+      'محتوای نامناسب',
+      'مزاحمت و توهین',
+      'تبلیغات و اسپم',
+      'سایر موارد',
+    ];
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Theme.of(context).brightness == Brightness.dark
+          ? AppColors.darkSurface
+          : Colors.white,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text('علت گزارش',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+            ),
+            for (final r in reasons)
+              ListTile(
+                title: Text(r),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _reportUser(card, r);
+                },
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _reportUser(NearbyCandidate card, String reason) async {
+    final notifier = ref.read(discoverProvider.notifier);
+    try {
+      await ref.read(nearbyRepositoryProvider).report(card.userId, reason);
+      // Server auto-passes the user; drop them locally too.
+      final cards = ref.read(discoverProvider).cards;
+      if (cards.isNotEmpty && cards.first.userId == card.userId) {
+        notifier.popTop();
+        _lastSwiped = null; // a reported user can't be rewound
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('گزارش ثبت شد. ممنون که گزارش دادی'),
+            behavior: SnackBarBehavior.floating),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('ثبت گزارش ناموفق بود'),
+            behavior: SnackBarBehavior.floating),
+      );
+    }
   }
 
   // ── Match popup ─────────────────────────────────────────────────────────
@@ -242,8 +399,7 @@ class _NearbyScreenState extends ConsumerState<NearbyScreen>
             CircleAvatar(
               radius: 56,
               backgroundColor: Colors.white24,
-              backgroundImage:
-                  avatar.isNotEmpty ? NetworkImage(avatar) : null,
+              backgroundImage: avatar.isNotEmpty ? NetworkImage(avatar) : null,
               child: avatar.isEmpty
                   ? Text(name.isNotEmpty ? name.characters.first : '?',
                       style: const TextStyle(
@@ -266,7 +422,8 @@ class _NearbyScreenState extends ConsumerState<NearbyScreen>
                   Navigator.pop(ctx);
                   await _openChat(result.matchId, name, avatar, top.userId);
                 },
-                icon: const Icon(Icons.chat_bubble_rounded, color: Colors.white),
+                icon:
+                    const Icon(Icons.chat_bubble_rounded, color: Colors.white),
                 label: const Text('شروع گفتگو',
                     style: TextStyle(
                         color: Colors.white,
@@ -288,6 +445,13 @@ class _NearbyScreenState extends ConsumerState<NearbyScreen>
 
   Future<void> _openChat(
       String matchId, String name, String avatar, String userId) async {
+    if (matchId.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('خطا در باز کردن گفتگو')));
+      }
+      return;
+    }
     try {
       final convId = await ref.read(nearbyRepositoryProvider).openChat(matchId);
       if (!mounted || convId.isEmpty) return;
@@ -344,13 +508,18 @@ class _NearbyScreenState extends ConsumerState<NearbyScreen>
             tooltip: 'قاطی پاتی (آنلاین‌های رندوم)',
             icon: Icon(
               Icons.shuffle_rounded,
-              color: ref.watch(discoverProvider).isRandomOnline ? AppColors.success : AppColors.lightTextSecondary,
+              color: ref.watch(discoverProvider).isRandomOnline
+                  ? AppColors.success
+                  : AppColors.lightTextSecondary,
             ),
             onPressed: () {
               final current = ref.read(discoverProvider).isRandomOnline;
-              ref.read(discoverProvider.notifier).load(reset: true, setRandomOnline: !current);
+              ref
+                  .read(discoverProvider.notifier)
+                  .load(reset: true, setRandomOnline: !current);
             },
           ),
+          _likesBadge(),
           IconButton(
             tooltip: 'مَچ‌ها',
             icon: const Icon(Icons.favorite_rounded, color: AppColors.primary),
@@ -367,6 +536,52 @@ class _NearbyScreenState extends ConsumerState<NearbyScreen>
         ],
       ),
       body: SafeArea(child: _content(isDark)),
+    );
+  }
+
+  // Star icon with a count badge of people who liked the viewer (F3).
+  Widget _likesBadge() {
+    final async = ref.watch(nearbyReceivedLikesProvider);
+    final count = async.maybeWhen(data: (d) => d.count, orElse: () => 0);
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        IconButton(
+          tooltip: 'لایک‌های دریافتی',
+          icon: const Icon(Icons.bolt_rounded, color: Color(0xFF3B82F6)),
+          onPressed: () async {
+            await Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const NearbyLikesScreen()),
+            );
+            if (mounted) {
+              ref.invalidate(nearbyReceivedLikesProvider);
+              ref.read(discoverProvider.notifier).load(reset: true);
+            }
+          },
+        ),
+        if (count > 0)
+          Positioned(
+            top: 6,
+            right: 6,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+              decoration: BoxDecoration(
+                color: AppColors.error,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              constraints: const BoxConstraints(minWidth: 16),
+              child: Text(
+                count > 99 ? '۹۹+' : '$count',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold),
+              ),
+            ),
+          ),
+      ],
     );
   }
 
@@ -420,11 +635,13 @@ class _NearbyScreenState extends ConsumerState<NearbyScreen>
                         child: GestureDetector(
                           onPanUpdate: _onPanUpdate,
                           onPanEnd: _onPanEnd,
+                          onLongPress: () => _showCardMenu(visible[0]),
                           child: _shadowed(NearbyCard(
                             candidate: visible[0],
                             dragX: (_drag.dx / w).clamp(-1, 1).toDouble(),
-                            dragY:
-                                (_drag.dy / _screen.height).clamp(-1, 1).toDouble(),
+                            dragY: (_drag.dy / _screen.height)
+                                .clamp(-1, 1)
+                                .toDouble(),
                           )),
                         ),
                       ),
@@ -464,30 +681,63 @@ class _NearbyScreenState extends ConsumerState<NearbyScreen>
   }
 
   Widget _actionBar() {
+    final mainDisabled =
+        _animatingOut || ref.watch(discoverProvider).cards.isEmpty;
+    final canRewind = _lastSwiped != null && !_rewinding && !_animatingOut;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 6, 24, 18),
+      padding: const EdgeInsets.fromLTRB(20, 6, 20, 18),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
-          _actionButton(
-            icon: Icons.close_rounded,
-            color: AppColors.error,
-            size: 64,
-            onTap: () => _buttonAction('pass'),
+          // Rewind — enabled independently of the deck state (F1).
+          _gatedButton(
+            enabled: canRewind,
+            child: _actionButton(
+              icon: Icons.undo_rounded,
+              color: const Color(0xFFF59E0B),
+              size: 48,
+              onTap: _rewind,
+            ),
           ),
-          _actionButton(
-            icon: Icons.star_rounded,
-            color: const Color(0xFF3B82F6),
-            size: 52,
-            onTap: () => _buttonAction('superlike'),
+          _gatedButton(
+            enabled: !mainDisabled,
+            child: _actionButton(
+              icon: Icons.close_rounded,
+              color: AppColors.error,
+              size: 60,
+              onTap: () => _buttonAction('pass'),
+            ),
           ),
-          _actionButton(
-            icon: Icons.favorite_rounded,
-            color: AppColors.success,
-            size: 64,
-            onTap: () => _buttonAction('like'),
+          _gatedButton(
+            enabled: !mainDisabled,
+            child: _actionButton(
+              icon: Icons.star_rounded,
+              color: const Color(0xFF3B82F6),
+              size: 50,
+              onTap: () => _buttonAction('superlike'),
+            ),
+          ),
+          _gatedButton(
+            enabled: !mainDisabled,
+            child: _actionButton(
+              icon: Icons.favorite_rounded,
+              color: AppColors.success,
+              size: 60,
+              onTap: () => _buttonAction('like'),
+            ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _gatedButton({required bool enabled, required Widget child}) {
+    return IgnorePointer(
+      ignoring: !enabled,
+      child: AnimatedOpacity(
+        opacity: enabled ? 1 : 0.4,
+        duration: const Duration(milliseconds: 150),
+        child: child,
       ),
     );
   }
@@ -581,7 +831,8 @@ class _NearbyScreenState extends ConsumerState<NearbyScreen>
   Widget _emptyView(bool isDark) {
     return _centeredMessage(
       icon: Icons.radar_rounded,
-      message: 'فعلا کسی این اطراف نیست!\nبعدا دوباره سر بزن یا محدوده رو بیشتر کن',
+      message:
+          'فعلا کسی این اطراف نیست!\nبعدا دوباره سر بزن یا محدوده رو بیشتر کن',
       actionLabel: 'تنظیم محدوده',
       onAction: _openPreferences,
       isDark: isDark,
@@ -607,7 +858,8 @@ class _NearbyScreenState extends ConsumerState<NearbyScreen>
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 64, color: AppColors.primary.withValues(alpha: 0.7)),
+            Icon(icon,
+                size: 64, color: AppColors.primary.withValues(alpha: 0.7)),
             const SizedBox(height: 18),
             Text(message,
                 textAlign: TextAlign.center,
@@ -658,13 +910,22 @@ class _PreferencesSheet extends ConsumerStatefulWidget {
 class _PreferencesSheetState extends ConsumerState<_PreferencesSheet> {
   NearbyPreferences? _prefs;
   bool _saving = false;
+  bool _loadError = false;
 
   @override
   void initState() {
     super.initState();
-    ref.read(nearbyRepositoryProvider).getPreferences().then((p) {
+    _loadPrefs();
+  }
+
+  Future<void> _loadPrefs() async {
+    setState(() => _loadError = false);
+    try {
+      final p = await ref.read(nearbyRepositoryProvider).getPreferences();
       if (mounted) setState(() => _prefs = p);
-    });
+    } catch (_) {
+      if (mounted) setState(() => _loadError = true);
+    }
   }
 
   Future<void> _save() async {
@@ -677,7 +938,10 @@ class _PreferencesSheetState extends ConsumerState<_PreferencesSheet> {
       Navigator.pop(context);
       widget.onSaved();
     } catch (_) {
-      if (mounted) setState(() => _saving = false);
+      if (!mounted) return;
+      setState(() => _saving = false);
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('خطا در ذخیره تنظیمات')));
     }
   }
 
@@ -706,11 +970,33 @@ class _PreferencesSheetState extends ConsumerState<_PreferencesSheet> {
       padding: EdgeInsets.fromLTRB(
           24, 16, 24, 24 + MediaQuery.of(context).viewInsets.bottom),
       child: p == null
-          ? const Padding(
-              padding: EdgeInsets.all(40),
-              child: Center(
-                  child: CircularProgressIndicator(color: AppColors.primary)),
-            )
+          ? _loadError
+              ? Padding(
+                  padding: const EdgeInsets.all(32),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.error_outline_rounded,
+                          size: 48,
+                          color: AppColors.error.withValues(alpha: 0.8)),
+                      const SizedBox(height: 12),
+                      const Text('خطا در بارگذاری تنظیمات',
+                          style: TextStyle(fontSize: 15)),
+                      const SizedBox(height: 16),
+                      TextButton(
+                        onPressed: _loadPrefs,
+                        child: const Text('تلاش مجدد',
+                            style: TextStyle(color: AppColors.primary)),
+                      ),
+                    ],
+                  ),
+                )
+              : const Padding(
+                  padding: EdgeInsets.all(40),
+                  child: Center(
+                      child:
+                          CircularProgressIndicator(color: AppColors.primary)),
+                )
           : Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -727,12 +1013,14 @@ class _PreferencesSheetState extends ConsumerState<_PreferencesSheet> {
                 ),
                 const SizedBox(height: 18),
                 const Text('تنظیمات کاوش',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                    style:
+                        TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
                 const SizedBox(height: 16),
 
                 // ── Enable / disable discovery for this user
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                   decoration: BoxDecoration(
                     color: AppColors.primary.withValues(alpha: 0.06),
                     borderRadius: BorderRadius.circular(14),
@@ -779,6 +1067,19 @@ class _PreferencesSheetState extends ConsumerState<_PreferencesSheet> {
                 ),
                 const SizedBox(height: 20),
 
+                _label('وضعیت تأهل'),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    _maritalChip('all', 'فرقی نداره', p),
+                    const SizedBox(width: 8),
+                    _maritalChip('single', 'مجرد', p),
+                    const SizedBox(width: 8),
+                    _maritalChip('married', 'متاهل', p),
+                  ],
+                ),
+                const SizedBox(height: 20),
+
                 _label('بازه سنی: ${p.minAge} تا ${p.maxAge} سال'),
                 RangeSlider(
                   values: RangeValues(p.minAge.toDouble(), p.maxAge.toDouble()),
@@ -800,8 +1101,8 @@ class _PreferencesSheetState extends ConsumerState<_PreferencesSheet> {
                   divisions: 199,
                   activeColor: AppColors.primary,
                   label: '${p.maxDistanceKm}',
-                  onChanged: (v) =>
-                      setState(() => _prefs = p.copyWith(maxDistanceKm: v.round())),
+                  onChanged: (v) => setState(
+                      () => _prefs = p.copyWith(maxDistanceKm: v.round())),
                 ),
                 const SizedBox(height: 20),
 
@@ -838,11 +1139,28 @@ class _PreferencesSheetState extends ConsumerState<_PreferencesSheet> {
             style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
       );
 
-  Widget _genderChip(String value, String label, NearbyPreferences p) {
-    final selected = p.interestedIn == value;
+  Widget _genderChip(String value, String label, NearbyPreferences p) =>
+      _choiceChip(
+        label: label,
+        selected: p.interestedIn == value,
+        onTap: () => setState(() => _prefs = p.copyWith(interestedIn: value)),
+      );
+
+  Widget _maritalChip(String value, String label, NearbyPreferences p) =>
+      _choiceChip(
+        label: label,
+        selected: p.maritalPref == value,
+        onTap: () => setState(() => _prefs = p.copyWith(maritalPref: value)),
+      );
+
+  Widget _choiceChip({
+    required String label,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
     return Expanded(
       child: GestureDetector(
-        onTap: () => setState(() => _prefs = p.copyWith(interestedIn: value)),
+        onTap: onTap,
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 12),
           alignment: Alignment.center,

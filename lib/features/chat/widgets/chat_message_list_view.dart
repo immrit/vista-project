@@ -75,6 +75,12 @@ class ChatMessageListView extends ConsumerWidget {
       for (var i = 0; i < uiMessages.length; i++) uiMessages[i].id: i,
     };
 
+    // PERF: descriptors فقط به (uiMessages, renderCap) وابسته‌اند، نه overlayRevision.
+    // قبلاً هر tick از overlayRevision (reaction/edit/...) کل clip+build را دوباره
+    // اجرا می‌کرد. memoize با کلید renderCap: تا وقتی build() دوباره اجرا نشده
+    // (یعنی uiMessages عوض نشده)، تغییر overlay دیگر descriptors را بازنمی‌سازد.
+    final descriptorCache = <int, List<ChatRenderDescriptor>>{};
+
     return ValueListenableBuilder<int>(
       valueListenable: overlayRevisionListenable,
       builder: (context, overlayRevision, _) {
@@ -83,8 +89,12 @@ class ChatMessageListView extends ConsumerWidget {
           builder: (context, renderCap, __) {
             final _ = structureVersion + overlayRevision;
 
-            final clipped = ChatMessageRenderWindow.clip(uiMessages, renderCap);
-            final descriptors = ChatRenderItemBuilder.build(clipped);
+            final descriptors = descriptorCache.putIfAbsent(
+              renderCap,
+              () => ChatRenderItemBuilder.build(
+                ChatMessageRenderWindow.clip(uiMessages, renderCap),
+              ),
+            );
 
             if (descriptors.isEmpty) {
               return buildEmptyState(theme);
@@ -141,8 +151,7 @@ class ChatMessageListView extends ConsumerWidget {
                     final nextOldestCreatedAt = nextDescriptor == null
                         ? null
                         : storeState
-                            .byId[nextDescriptor.messageIds.last]
-                            ?.createdAt;
+                            .byId[nextDescriptor.messageIds.last]?.createdAt;
 
                     final oldestMessage =
                         storeState.byId[descriptor.messageIds.last];

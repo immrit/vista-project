@@ -108,7 +108,9 @@ class NearbyCard extends StatelessWidget {
                           color: Colors.white,
                           fontSize: 26,
                           fontWeight: FontWeight.w800,
-                          shadows: [Shadow(color: Colors.black54, blurRadius: 8)],
+                          shadows: [
+                            Shadow(color: Colors.black54, blurRadius: 8)
+                          ],
                         ),
                       ),
                     ),
@@ -197,7 +199,7 @@ class NearbyCard extends StatelessWidget {
             opacity: (-dragY * 2).clamp(0, 1).toDouble(),
             label: 'سوپرلایک',
             color: const Color(0xFF3B82F6),
-            alignment: Alignment.bottomCenter,
+            alignment: Alignment.topCenter,
             angle: 0,
           ),
         ],
@@ -253,9 +255,7 @@ class NearbyCard extends StatelessWidget {
     if (!visible) return const SizedBox.shrink();
     return Positioned.fill(
       child: Align(
-        alignment: alignment == Alignment.bottomCenter
-            ? Alignment.bottomCenter
-            : alignment,
+        alignment: alignment,
         child: Padding(
           padding: const EdgeInsets.all(28),
           child: Opacity(
