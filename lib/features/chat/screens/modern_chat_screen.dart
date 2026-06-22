@@ -22,6 +22,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gal/gal.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -1668,16 +1669,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     return _cachedSafeBottom;
   }
 
-  void _beginKeyboardOpening() {
-    _keyboardOpeningTimer?.cancel();
-    _isKeyboardOpening = true;
-    _keyboardOpeningTimer = Timer(const Duration(milliseconds: 800), () {
-      if (!mounted) return;
-      _isKeyboardOpening = false;
-      _publishKeyboardLayout(force: true);
-    });
-    _publishKeyboardLayout(force: true);
-  }
+
 
   void _publishKeyboardLayout({bool force = false}) {
     final bottomGap = _reservedHeightForInset(_lastViewInsetBottom);
@@ -1989,61 +1981,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     return a.year == b.year && a.month == b.month && a.day == b.day;
   }
 
-  List<_ChatRenderItem> _buildRenderItems(List<MessageModel> messages) {
-    if (messages.isEmpty) return const <_ChatRenderItem>[];
 
-    final renderItems = <_ChatRenderItem>[];
-    var index = 0;
-
-    while (index < messages.length) {
-      final current = messages[index];
-
-      if (_isAlbumImageMessage(current)) {
-        final grouped = <MessageModel>[current];
-        var lookAhead = index + 1;
-        final currentGroupId = current.mediaGroupId?.trim();
-        final hasExplicitGroupId =
-            currentGroupId != null && currentGroupId.isNotEmpty;
-
-        while (lookAhead < messages.length && grouped.length < 10) {
-          final candidate = messages[lookAhead];
-          if (hasExplicitGroupId) {
-            final candidateGroupId = candidate.mediaGroupId?.trim();
-            if (!_isAlbumImageMessage(candidate) ||
-                candidate.senderId != current.senderId ||
-                candidateGroupId != currentGroupId) {
-              break;
-            }
-          } else if (!_canAppendToAlbum(grouped.last, candidate, current)) {
-            break;
-          }
-          grouped.add(candidate);
-          lookAhead++;
-        }
-
-        if (grouped.length > 1) {
-          renderItems.add(
-            _ChatRenderItem(
-              primaryIndex: index,
-              messages: grouped,
-            ),
-          );
-          index = lookAhead;
-          continue;
-        }
-      }
-
-      renderItems.add(
-        _ChatRenderItem(
-          primaryIndex: index,
-          messages: [current],
-        ),
-      );
-      index++;
-    }
-
-    return renderItems;
-  }
 
   bool _isAlbumImageMessage(MessageModel message) {
     final hasMediaSource =
@@ -2248,17 +2186,16 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     final showConnectionBanner =
         !isConnected && _showConnectionBannerAfterDelay;
 
-    final allConversations =
-        ref.watch(optimizedConversationsProvider).conversations;
-    var currentConversation;
-    for (final c in allConversations) {
-      if (c.id == widget.args.conversationId) {
-        currentConversation = c;
-        break;
-      }
-    }
-    final isPendingRequest =
-        currentConversation?.messageRequestStatus == 'pending';
+    final isPendingRequest = ref.watch(
+      optimizedConversationsProvider.select((state) {
+        for (final c in state.conversations) {
+          if (c.id == widget.args.conversationId) {
+            return c.messageRequestStatus == 'pending';
+          }
+        }
+        return false;
+      }),
+    );
 
     return Directionality(
       textDirection: kChatLayoutTextDirection,
@@ -2359,35 +2296,27 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                         child: ValueListenableBuilder<double>(
                           valueListenable: _inputHeightNotifier,
                           builder: (context, inputHeight, _) {
-                            return ValueListenableBuilder<double>(
-                              valueListenable: _listBottomGapNotifier,
-                              builder: (context, listBottomGap, _) {
-                                return ValueListenableBuilder<DateTime?>(
-                                  valueListenable: _visibleDateNotifier,
-                                  builder: (context, currentDate, _) {
-                                    return ValueListenableBuilder<bool>(
-                                      valueListenable: _isScrollingNotifier,
-                                      builder: (context, isScrolling, _) {
-                                        return FloatingDateHeader(
-                                          currentDate: currentDate,
-                                          isScrolling: isScrolling,
-                                          child: _isTransitioning
-                                              ? const SizedBox.shrink()
-                                              : ChatMessageListScope(
-                                                  conversationId:
-                                                      _conversationId,
-                                                  buildList: (context,
-                                                          paginationState) =>
-                                                      _buildMessageList(
-                                                    paginationState,
-                                                    theme,
-                                                    bottomPadding: inputHeight +
-                                                        listBottomGap +
-                                                        8,
-                                                  ),
-                                                ),
-                                        );
-                                      },
+                            return ValueListenableBuilder<DateTime?>(
+                              valueListenable: _visibleDateNotifier,
+                              builder: (context, currentDate, _) {
+                                return ValueListenableBuilder<bool>(
+                                  valueListenable: _isScrollingNotifier,
+                                  builder: (context, isScrolling, _) {
+                                    return FloatingDateHeader(
+                                      currentDate: currentDate,
+                                      isScrolling: isScrolling,
+                                      child: _isTransitioning
+                                          ? const SizedBox.shrink()
+                                          : ChatMessageListScope(
+                                              conversationId: _conversationId,
+                                              buildList: (context, paginationState) =>
+                                                  _buildMessageList(
+                                                paginationState,
+                                                theme,
+                                                bottomPaddingListenable: _listBottomGapNotifier,
+                                                inputHeightListenable: _inputHeightNotifier,
+                                              ),
+                                            ),
                                     );
                                   },
                                 );
@@ -2900,184 +2829,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     );
   }
 
-  PreferredSizeWidget _buildAppBar(ChatTheme theme) {
-    // Selection mode AppBar
-    if (_selection.isSelectionMode) {
-      return _buildSelectionAppBar(theme);
-    }
 
-    final appBarColor =
-        widget.args.isSecret ? const Color(0xFF1B3D2F) : theme.appBarColor;
-    return AppBar(
-      elevation: 0,
-      backgroundColor: appBarColor,
-      surfaceTintColor: Colors.transparent,
-      systemOverlayStyle: (theme.isDark
-              ? SystemUiOverlayStyle.light
-              : SystemUiOverlayStyle.dark)
-          .copyWith(
-        statusBarColor: appBarColor,
-        systemStatusBarContrastEnforced: false,
-      ),
-      leading: IconButton(
-        icon: Icon(
-          directionalBackIcon(context, ios: true),
-          color: theme.textColor,
-          size: 20,
-        ),
-        onPressed: () => Navigator.of(context).pop(),
-      ),
-      titleSpacing: 0,
-      title: FadeTransition(
-        opacity: _appBarAnimation,
-        child: _buildAppBarTitle(theme),
-      ),
-      actions: [
-        // منوی بیشتر
-        PopupMenuButton<String>(
-          icon: Icon(Icons.more_vert, color: theme.iconColor),
-          onSelected: _handleMenuAction,
-          itemBuilder: (context) => [
-            if (widget.args.isGroup)
-              PopupMenuItem(
-                value: 'group_manage',
-                child: Row(
-                  children: [
-                    Icon(Icons.admin_panel_settings_rounded,
-                        color: theme.iconColor, size: 20),
-                    const SizedBox(width: 12),
-                    const Text('مدیریت گروه'),
-                  ],
-                ),
-              ),
-            if (widget.args.isGroup)
-              PopupMenuItem(
-                value: 'group_invite',
-                child: Row(
-                  children: [
-                    Icon(Icons.link_rounded, color: theme.iconColor, size: 20),
-                    const SizedBox(width: 12),
-                    const Text('کپی لینک دعوت'),
-                  ],
-                ),
-              ),
-            if (widget.args.isGroup)
-              PopupMenuItem(
-                value: 'group_add_members',
-                child: Row(
-                  children: [
-                    Icon(Icons.person_add_alt_1_rounded,
-                        color: theme.iconColor, size: 20),
-                    const SizedBox(width: 12),
-                    const Text('افزودن عضو'),
-                  ],
-                ),
-              ),
-            if (!widget.args.isSecret &&
-                !widget.args.isGroup &&
-                widget.args.otherUserId.isNotEmpty)
-              const PopupMenuItem(
-                value: 'start_secret_chat',
-                child: Row(
-                  children: [
-                    Icon(Icons.lock_rounded, color: Colors.green, size: 20),
-                    SizedBox(width: 12),
-                    Text(
-                      'شروع گفتگوی محرمانه',
-                      style: TextStyle(color: Colors.green),
-                    ),
-                  ],
-                ),
-              ),
-            if (widget.args.isSecret)
-              PopupMenuItem(
-                value: 'secret_timer',
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.timer_outlined,
-                      color: Colors.green,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 12),
-                    Text(
-                      'تایمر حذف خودکار (${_secretAutoDeleteLabel(_secretAutoDeleteSeconds)})',
-                      style: const TextStyle(color: Colors.green),
-                    ),
-                  ],
-                ),
-              ),
-            PopupMenuItem(
-              value: 'search',
-              child: Row(
-                children: [
-                  Icon(Icons.search, color: theme.iconColor, size: 20),
-                  const SizedBox(width: 12),
-                  const Text('جستجو'),
-                ],
-              ),
-            ),
-            PopupMenuItem(
-              value: 'details',
-              child: Row(
-                children: [
-                  Icon(Icons.info_outline_rounded,
-                      color: theme.iconColor, size: 20),
-                  const SizedBox(width: 12),
-                  Text(widget.args.isGroup ? 'اطلاعات گروه' : 'جزئیات چت'),
-                ],
-              ),
-            ),
-            if (!widget.args.isGroup && widget.args.otherUserId.isNotEmpty)
-              PopupMenuItem(
-                value: 'block',
-                child: Row(
-                  children: [
-                    Icon(Icons.block_rounded, color: Colors.red, size: 20),
-                    const SizedBox(width: 12),
-                    Text('مسدود کردن', style: TextStyle(color: Colors.red)),
-                  ],
-                ),
-              ),
-            if (!widget.args.isGroup && widget.args.otherUserId.isNotEmpty)
-              PopupMenuItem(
-                value: 'report',
-                child: Row(
-                  children: [
-                    Icon(Icons.flag_rounded, color: Colors.orange, size: 20),
-                    const SizedBox(width: 12),
-                    Text('گزارش', style: TextStyle(color: Colors.orange)),
-                  ],
-                ),
-              ),
-            PopupMenuItem(
-              value: 'clear',
-              child: Row(
-                children: [
-                  Icon(Icons.delete_outline, color: theme.errorColor, size: 20),
-                  const SizedBox(width: 12),
-                  Text('پاک کردن چت',
-                      style: TextStyle(color: theme.errorColor)),
-                ],
-              ),
-            ),
-            if (widget.args.isGroup)
-              const PopupMenuItem(
-                value: 'leave_group',
-                child: Row(
-                  children: [
-                    Icon(Icons.exit_to_app_rounded,
-                        color: Colors.red, size: 20),
-                    SizedBox(width: 12),
-                    Text('خروج از گروه', style: TextStyle(color: Colors.red)),
-                  ],
-                ),
-              ),
-          ],
-        ),
-      ],
-    );
-  }
 
   Widget _buildAppBarTitle(ChatTheme theme) {
     return InkWell(
@@ -3476,7 +3228,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   Widget _buildMessageList(
     PaginationState paginationState,
     ChatTheme theme, {
-    required double bottomPadding,
+    required ValueListenable<double> bottomPaddingListenable,
+    required ValueListenable<double> inputHeightListenable,
   }) {
     final messagesAsync = ref.read(chatMessagesProvider(_conversationId));
 
@@ -3495,7 +3248,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       renderCapListenable: _messageRenderCapNotifier,
       overlayRevisionListenable: _listOverlayRevision,
       scrollController: _scrollController,
-      bottomPadding: bottomPadding,
+      bottomPaddingListenable: bottomPaddingListenable,
+      inputHeightListenable: inputHeightListenable,
       bindings: _getMessageBindings(theme),
       filterMessage: _isMessageVisibleInList,
       resolveUiContent: _applySecretUiContent,
@@ -4416,7 +4170,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
           Text(
             'اگر درخواست را قبول کنید، این شخص می‌تواند به شما پیام دهد و متوجه خوانده شدن پیام‌هایش می‌شود.',
             style: TextStyle(
-              color: theme.textColor.withOpacity(0.7),
+              color: theme.textColor.withValues(alpha: 0.7),
               fontSize: 12,
             ),
             textAlign: TextAlign.center,

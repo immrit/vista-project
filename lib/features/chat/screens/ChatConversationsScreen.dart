@@ -113,8 +113,10 @@ class _ChatConversationsScreenState
           Expanded(
             child: ValueListenableBuilder<String>(
               valueListenable: _searchQueryNotifier,
-              builder: (context, searchQuery, _) =>
-                  _buildUnifiedList(theme, searchQuery),
+              builder: (context, searchQuery, _) => Consumer(
+                builder: (context, scopedRef, _) =>
+                    _buildUnifiedList(context, scopedRef, theme, searchQuery),
+              ),
             ),
           ),
         ],
@@ -585,8 +587,8 @@ class _ChatConversationsScreenState
   }
 
   // ✅ لیست مکالمات بر پایه Optimized Provider (منبع واحد برای badge + ترتیب)
-  Widget _buildUnifiedList(ThemeData theme, String searchQuery) {
-    final conversationsState = ref.watch(
+  Widget _buildUnifiedList(BuildContext context, WidgetRef scopedRef, ThemeData theme, String searchQuery) {
+    final conversationsState = scopedRef.watch(
       optimizedConversationsProvider.select(
         (state) => (
           state.conversations,

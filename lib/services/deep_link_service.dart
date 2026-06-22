@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:app_links/app_links.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../features/chat/services/group_service.dart';
+import '../features/nearby/screens/nearby_likes_screen.dart';
 
 // Provider Ø¨Ø±Ø§ÛŒ Ù…Ø¯ÛŒØ±ÛŒØª ÙˆØ¶Ø¹ÛŒØª deep link
 final deepLinkProvider =
@@ -80,7 +81,8 @@ class DeepLinkService {
       } else if (host == 'profile' && pathSegments.isNotEmpty) {
         final userOrUsername = pathSegments.first;
         logInfo('Navigating to profile via vista scheme');
-        _navigateToProfile(userOrUsername, navigatorKey, userId: userOrUsername);
+        _navigateToProfile(userOrUsername, navigatorKey,
+            userId: userOrUsername);
       } else if (host == 'chat' && pathSegments.isNotEmpty) {
         final conversationId = pathSegments.first;
         logInfo('Navigating to chat via vista scheme');
@@ -90,10 +92,20 @@ class DeepLinkService {
         );
       } else if (host == 'notifications') {
         logInfo('Navigating to notifications via vista scheme');
-        navigatorKey.currentState?.pushNamedAndRemoveUntil('/home', (route) => false);
+        navigatorKey.currentState
+            ?.pushNamedAndRemoveUntil('/home', (route) => false);
       } else if (host == 'nearby') {
-        logInfo('Navigating to nearby via vista scheme');
-        navigatorKey.currentState?.pushNamed('/nearby');
+        final seg = pathSegments.isNotEmpty ? pathSegments.first : '';
+        logInfo('Navigating to nearby ($seg) via vista scheme');
+        if (seg == 'matches') {
+          navigatorKey.currentState?.push(MaterialPageRoute(
+              builder: (_) => const NearbyLikesScreen(initialTab: 1)));
+        } else if (seg == 'likes') {
+          navigatorKey.currentState?.push(MaterialPageRoute(
+              builder: (_) => const NearbyLikesScreen(initialTab: 0)));
+        } else {
+          navigatorKey.currentState?.pushNamed('/nearby');
+        }
       } else {
         logInfo('Unsupported vista scheme host: $host');
       }

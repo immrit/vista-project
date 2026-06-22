@@ -59,6 +59,7 @@ final discoverProvider =
 class DiscoverNotifier extends StateNotifier<DiscoverState> {
   final NearbyRepository _repo;
   bool _fetching = false;
+  final Set<String> _seenIds = {};
 
   DiscoverNotifier(this._repo) : super(const DiscoverState());
 
@@ -66,12 +67,19 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
     if (_fetching) return;
     _fetching = true;
     final randomOnline = setRandomOnline ?? state.isRandomOnline;
+    if (reset) _seenIds.clear();
     state = state.copyWith(
         loading: true, clearError: true, isRandomOnline: randomOnline);
     try {
-      final cards = randomOnline
+      final raw = randomOnline
           ? await _repo.discoverRandomOnline(limit: 20)
           : await _repo.discover(limit: 20);
+      final cards = raw.where((c) {
+        if (!c.isRecentlyOnline) return false;
+        if (_seenIds.contains(c.userId)) return false;
+        _seenIds.add(c.userId);
+        return true;
+      }).toList();
       state = DiscoverState(
         loading: false,
         cards: reset ? cards : [...state.cards, ...cards],

@@ -22,7 +22,8 @@ class ChatMessageListView extends ConsumerWidget {
     required this.renderCapListenable,
     required this.overlayRevisionListenable,
     required this.scrollController,
-    required this.bottomPadding,
+    required this.bottomPaddingListenable,
+    required this.inputHeightListenable,
     required this.bindings,
     required this.filterMessage,
     required this.resolveUiContent,
@@ -36,7 +37,8 @@ class ChatMessageListView extends ConsumerWidget {
   final ValueListenable<int> renderCapListenable;
   final ValueListenable<int> overlayRevisionListenable;
   final ScrollController scrollController;
-  final double bottomPadding;
+  final ValueListenable<double> bottomPaddingListenable;
+  final ValueListenable<double> inputHeightListenable;
   final ChatMessageBindings bindings;
   final bool Function(MessageModel message) filterMessage;
   final List<MessageModel> Function(List<MessageModel> messages)
@@ -107,32 +109,51 @@ class ChatMessageListView extends ConsumerWidget {
                 (showSecretNotices && secretSystemNoticeWidgets.isNotEmpty
                     ? 1
                     : 0);
-            final itemCount = descriptors.length + footerCount;
+            // Add +1 for the dynamic bottom padding item
+            final itemCount = descriptors.length + footerCount + 1;
 
             return ChatMessageBindingsScope(
               bindings: bindings,
               child: ScrollConfiguration(
                 behavior: const ChatScrollBehavior(),
                 child: ListView.builder(
-                  scrollCacheExtent: const ScrollCacheExtent.pixels(800),
+                  scrollCacheExtent: const ScrollCacheExtent.pixels(1500), // Increased for smoother fling
                   controller: scrollController,
                   reverse: true,
                   clipBehavior: Clip.hardEdge,
                   physics: chatListScrollPhysics(context),
-                  padding: EdgeInsets.only(bottom: bottomPadding + 10),
+                  padding: EdgeInsets.zero, // Padding is now handled by index 0
                   addAutomaticKeepAlives: false,
                   addRepaintBoundaries: false,
                   itemCount: itemCount,
                   itemBuilder: (context, index) {
-                    if (index >= descriptors.length) {
+                    // Index 0 is the dynamic bottom padding (keyboard gap)
+                    if (index == 0) {
+                      return ValueListenableBuilder<double>(
+                        valueListenable: inputHeightListenable,
+                        builder: (context, inputHeight, _) {
+                          return ValueListenableBuilder<double>(
+                            valueListenable: bottomPaddingListenable,
+                            builder: (context, bottomPadding, _) {
+                              return SizedBox(height: inputHeight + bottomPadding + 8);
+                            },
+                          );
+                        },
+                      );
+                    }
+
+                    // Shift index down by 1 because 0 is padding
+                    final itemIndex = index - 1;
+
+                    if (itemIndex >= descriptors.length) {
                       return _buildFooter(
                         theme,
-                        index - descriptors.length,
+                        itemIndex - descriptors.length,
                         paginationState.isLoadingMore,
                       );
                     }
 
-                    final descriptor = descriptors[index];
+                    final descriptor = descriptors[itemIndex];
                     final primaryId = descriptor.primaryMessageId;
                     final fullPrimaryIndex = messageIndexById[primaryId] ?? -1;
 
@@ -145,8 +166,8 @@ class ChatMessageListView extends ConsumerWidget {
                                 descriptor.messageIds.length,
                               );
 
-                    final nextDescriptor = index < descriptors.length - 1
-                        ? descriptors[index + 1]
+                    final nextDescriptor = itemIndex < descriptors.length - 1
+                        ? descriptors[itemIndex + 1]
                         : null;
                     final nextOldestCreatedAt = nextDescriptor == null
                         ? null
@@ -161,17 +182,19 @@ class ChatMessageListView extends ConsumerWidget {
                           nextOldestCreatedAt,
                         );
 
-                    return ChatMessageRow(
-                      key: ValueKey(descriptor.primaryMessageId),
-                      descriptor: descriptor,
-                      layout: ChatMessageRowLayout(
-                        isFirstInGroup: isFirstInGroup,
-                        isLastInGroup: isLastInGroup,
-                        showDateDivider: showDateDivider,
-                        showUnreadDivider: bindings.shouldShowUnreadDivider(
-                          descriptor.messageIds,
-                          index,
-                          descriptors.length,
+                    return RepaintBoundary(
+                      child: ChatMessageRow(
+                        key: ValueKey(descriptor.primaryMessageId),
+                        descriptor: descriptor,
+                        layout: ChatMessageRowLayout(
+                          isFirstInGroup: isFirstInGroup,
+                          isLastInGroup: isLastInGroup,
+                          showDateDivider: showDateDivider,
+                          showUnreadDivider: bindings.shouldShowUnreadDivider(
+                            descriptor.messageIds,
+                            itemIndex,
+                            descriptors.length,
+                          ),
                         ),
                       ),
                     );

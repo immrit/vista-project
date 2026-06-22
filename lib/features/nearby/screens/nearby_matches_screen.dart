@@ -6,8 +6,31 @@ import 'package:Vista/core/theme/app_theme.dart';
 import '../models/nearby_models.dart';
 import '../providers/nearby_provider.dart';
 
-class NearbyMatchesScreen extends ConsumerWidget {
+/// Standalone matches page (kept for direct navigation / deep links).
+class NearbyMatchesScreen extends StatelessWidget {
   const NearbyMatchesScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bg = isDark ? AppColors.darkBackground : AppColors.lightBackground;
+    return Scaffold(
+      backgroundColor: bg,
+      appBar: AppBar(
+        backgroundColor: bg,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        title: const Text('مَچ‌های من',
+            style: TextStyle(fontWeight: FontWeight.w800)),
+      ),
+      body: const NearbyMatchesBody(),
+    );
+  }
+}
+
+/// Matches list body — reused inside the standalone screen and the likes tabs.
+class NearbyMatchesBody extends ConsumerWidget {
+  const NearbyMatchesBody({super.key});
 
   Future<void> _openChat(
       BuildContext context, WidgetRef ref, NearbyMatch m) async {
@@ -62,36 +85,25 @@ class NearbyMatchesScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark ? AppColors.darkBackground : AppColors.lightBackground;
     final matches = ref.watch(nearbyMatchesProvider);
 
-    return Scaffold(
-      backgroundColor: bg,
-      appBar: AppBar(
-        backgroundColor: bg,
-        surfaceTintColor: Colors.transparent,
-        elevation: 0,
-        title: const Text('مَچ‌های من',
-            style: TextStyle(fontWeight: FontWeight.w800)),
-      ),
-      body: RefreshIndicator(
-        color: AppColors.primary,
-        onRefresh: () => ref.refresh(nearbyMatchesProvider.future),
-        child: matches.when(
-          loading: () => const Center(
-              child: CircularProgressIndicator(color: AppColors.primary)),
-          error: (_, __) => _message(isDark, 'خطا در بارگذاری مَچ‌ها'),
-          data: (list) => list.isEmpty
-              ? _message(
-                  isDark, 'هنوز مَچی نداری!\nبا کاوش در «اطراف من» شروع کن')
-              : ListView.separated(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.all(16),
-                  itemCount: list.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 12),
-                  itemBuilder: (_, i) => _tile(context, ref, list[i], isDark),
-                ),
-        ),
+    return RefreshIndicator(
+      color: AppColors.primary,
+      onRefresh: () => ref.refresh(nearbyMatchesProvider.future),
+      child: matches.when(
+        loading: () => const Center(
+            child: CircularProgressIndicator(color: AppColors.primary)),
+        error: (_, __) => _message(isDark, 'خطا در بارگذاری مَچ‌ها'),
+        data: (list) => list.isEmpty
+            ? _message(
+                isDark, 'هنوز مَچی نداری!\nبا کاوش در «اطراف من» شروع کن')
+            : ListView.separated(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.all(16),
+                itemCount: list.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 12),
+                itemBuilder: (_, i) => _tile(context, ref, list[i], isDark),
+              ),
       ),
     );
   }

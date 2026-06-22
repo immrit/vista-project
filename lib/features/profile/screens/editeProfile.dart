@@ -81,6 +81,9 @@ class _EditProfileState extends ConsumerState<EditProfile> {
     final data = await ref.read(profileProvider.future);
     if (data != null) {
       setState(() {
+        _usernameController.text = data['username'] ?? "";
+        fullNameController.text = data['full_name'] ?? "";
+        bioController.text = data['bio'] ?? "";
         emailController.text = data['email'] ?? "";
         _phoneController.text = data['phone_number'] ?? "";
         websiteController.text = data['website_url'] ?? "";
@@ -639,21 +642,6 @@ class _EditProfileState extends ConsumerState<EditProfile> {
         body: getProfileData.when(
           data: (data) {
             final avatarUrl = data!['avatar_url'];
-            if (_usernameController.text.isEmpty) {
-              _usernameController.text = data['username'] ?? "";
-            }
-            if (fullNameController.text.isEmpty) {
-              fullNameController.text = data['full_name'] ?? "";
-            }
-            if (bioController.text.isEmpty) {
-              bioController.text = data['bio'] ?? "";
-            }
-            if (emailController.text.isEmpty) {
-              emailController.text = data['email'] ?? "";
-            }
-            if (_phoneController.text.isEmpty) {
-              _phoneController.text = data['phone_number'] ?? "";
-            }
             if (_birthDate == null && data['birth_date'] != null) {
               _birthDate = data['birth_date']?.toString();
               _selectedDate = parseBirthDate(_birthDate);

@@ -9,20 +9,6 @@ class ChatScrollPhysics extends ScrollPhysics {
   ChatScrollPhysics applyTo(ScrollPhysics? ancestor) {
     return ChatScrollPhysics(parent: buildParent(ancestor));
   }
-
-  /// React to small finger movements instead of waiting for full touch slop.
-  @override
-  double get dragStartDistanceMotionThreshold => 1.0;
-
-  @override
-  double get minFlingVelocity => 30.0;
-
-  /// Cap momentum on 120Hz/144Hz displays to prevent unrealistically fast scroll.
-  @override
-  double carriedMomentum(double velocity) {
-    const maxVelocity = 8000.0;
-    return super.carriedMomentum(velocity).clamp(-maxVelocity, maxVelocity);
-  }
 }
 
 ScrollPhysics chatListScrollPhysics(BuildContext context) {

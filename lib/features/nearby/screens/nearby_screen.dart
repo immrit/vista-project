@@ -9,7 +9,6 @@ import '../models/nearby_models.dart';
 import '../providers/nearby_provider.dart';
 import '../widgets/nearby_card.dart';
 import 'nearby_likes_screen.dart';
-import 'nearby_matches_screen.dart';
 
 class NearbyScreen extends ConsumerStatefulWidget {
   const NearbyScreen({super.key});
@@ -25,28 +24,24 @@ class _NearbyScreenState extends ConsumerState<NearbyScreen>
   String? _locationError; // null = ok
   bool _disabled = false; // user turned discovery off for themselves
 
-  // Swipe state
-  Offset _drag = Offset.zero;
-  late final AnimationController _fly;
-  Animation<Offset>? _flyAnim;
-  bool _animatingOut = false;
-  String? _pendingAction; // action committed after fly-out
-  NearbyCandidate? _lastSwiped; // last committed swipe, for manual rewind
-  bool _rewinding = false;
+  // Browsing state
+  int _index = 0;
+  bool _liking = false;
+
+  // Swipe drag state
+  Offset _dragOffset = Offset.zero;
+  bool _isAnimating = false;
+  late AnimationController _swipeCtrl;
+  late Animation<Offset> _swipeAnim;
 
   @override
   void initState() {
     super.initState();
-    _fly = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 280))
-      ..addListener(() {
-        if (_flyAnim != null) setState(() => _drag = _flyAnim!.value);
-      })
-      ..addStatusListener((s) {
-        if (s == AnimationStatus.completed && _animatingOut) {
-          _onFlyOutDone();
-        }
-      });
+    _swipeCtrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 220));
+    _swipeCtrl.addListener(() {
+      if (_isAnimating) setState(() => _dragOffset = _swipeAnim.value);
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) => _init());
   }
 
@@ -88,7 +83,7 @@ class _NearbyScreenState extends ConsumerState<NearbyScreen>
 
   @override
   void dispose() {
-    _fly.dispose();
+    _swipeCtrl.dispose();
     super.dispose();
   }
 
@@ -137,119 +132,96 @@ class _NearbyScreenState extends ConsumerState<NearbyScreen>
     }
   }
 
-  // ── Swipe mechanics ───────────────────────────────────────────────────────
-  Size get _screen => MediaQuery.of(context).size;
-
-  void _onPanUpdate(DragUpdateDetails d) {
-    if (_animatingOut) return;
-    setState(() => _drag += d.delta);
+  // ── Browsing ──────────────────────────────────────────────────────────────
+  // forward=true → next card, forward=false → previous card.
+  void _advance(bool forward) {
+    final count = ref.read(discoverProvider).cards.length;
+    if (forward) {
+      if (_index < count - 1) {
+        setState(() => _index++);
+        if (_index >= count - 3) ref.read(discoverProvider.notifier).load();
+      }
+    } else {
+      if (_index > 0) setState(() => _index--);
+    }
   }
 
-  void _onPanEnd(DragEndDetails d) {
-    if (_animatingOut) return;
-    final w = _screen.width;
-    final h = _screen.height;
-    final dx = _drag.dx;
-    final dy = _drag.dy;
-    final v = d.velocity.pixelsPerSecond;
-    const flingV = 800.0; // px/s threshold for a deliberate fling
+  // ── Swipe gesture handlers ────────────────────────────────────────────────
+  void _onDragStart(DragStartDetails _) {
+    _swipeCtrl.stop();
+    setState(() { _isAnimating = false; _dragOffset = Offset.zero; });
+  }
 
-    // Position-based commit (card dragged past the threshold).
-    final pastRight = dx > w * 0.28;
-    final pastLeft = dx < -w * 0.28;
-    final pastUp = dy < -h * 0.18 && dx.abs() < w * 0.2;
+  void _onDragUpdate(DragUpdateDetails d) =>
+      setState(() => _dragOffset += d.delta);
 
-    // Velocity-based commit — only when the fling direction matches the drag
-    // direction, so a card thrown back toward center just snaps back.
-    final flingRight = v.dx > flingV && dx > w * 0.04;
-    final flingLeft = v.dx < -flingV && dx < -w * 0.04;
-    final flingUp = v.dy < -flingV && v.dx.abs() < flingV && dy < -h * 0.04;
+  void _onDragEnd(DragEndDetails d, List<NearbyCandidate> cards) {
+    final screenW = MediaQuery.of(context).size.width;
+    final vx = d.velocity.pixelsPerSecond.dx;
+    final safeIndex = _index.clamp(0, cards.length - 1);
 
-    if (pastUp || flingUp) {
-      _flyOut('superlike');
-    } else if (pastRight || flingRight) {
-      _flyOut('like');
-    } else if (pastLeft || flingLeft) {
-      _flyOut('pass');
+    if (_dragOffset.dx.abs() > screenW * 0.32 || vx.abs() > 650) {
+      // Velocity takes priority for direction; fall back to position.
+      final goingBack = vx.abs() > 400 ? vx > 0 : _dragOffset.dx > 0;
+      
+      if (goingBack && safeIndex == 0) {
+        _snapBack();
+        return;
+      }
+
+      final targetX = goingBack ? screenW : -screenW * 1.8;
+      _swipeAnim = Tween<Offset>(
+        begin: _dragOffset,
+        end: Offset(targetX, _dragOffset.dy * 1.5),
+      ).animate(CurvedAnimation(parent: _swipeCtrl, curve: Curves.easeOut));
+      _isAnimating = true;
+      _swipeCtrl.reset();
+      _swipeCtrl.forward().then((_) {
+        if (!mounted) return;
+        setState(() { _dragOffset = Offset.zero; _isAnimating = false; });
+        _advance(!goingBack); // right-swipe → back; left-swipe → forward
+      });
     } else {
       _snapBack();
     }
   }
 
   void _snapBack() {
-    _flyAnim = Tween<Offset>(begin: _drag, end: Offset.zero)
-        .animate(CurvedAnimation(parent: _fly, curve: Curves.easeOutBack));
-    _animatingOut = false;
-    _fly.forward(from: 0);
+    _swipeAnim = Tween<Offset>(begin: _dragOffset, end: Offset.zero)
+        .animate(CurvedAnimation(parent: _swipeCtrl, curve: Curves.easeOut));
+    _isAnimating = true;
+    _swipeCtrl.reset();
+    _swipeCtrl.forward().then((_) {
+      if (!mounted) return;
+      setState(() { _dragOffset = Offset.zero; _isAnimating = false; });
+    });
   }
 
-  void _flyOut(String action) {
-    HapticFeedback.mediumImpact();
-    final w = _screen.width;
-    final h = _screen.height;
-    final Offset end;
-    switch (action) {
-      case 'like':
-        end = Offset(w * 1.5, _drag.dy);
-        break;
-      case 'pass':
-        end = Offset(-w * 1.5, _drag.dy);
-        break;
-      default: // superlike
-        end = Offset(_drag.dx, -h * 1.2);
-    }
-    _pendingAction = action;
-    _animatingOut = true;
-    _flyAnim = Tween<Offset>(begin: _drag, end: end)
-        .animate(CurvedAnimation(parent: _fly, curve: Curves.easeIn));
-    _fly.forward(from: 0);
-  }
-
-  Future<void> _onFlyOutDone() async {
-    final action = _pendingAction;
-    final notifier = ref.read(discoverProvider.notifier);
+  Future<void> _likeCurrent() async {
     final cards = ref.read(discoverProvider).cards;
-    _animatingOut = false;
-    _pendingAction = null;
-    _flyAnim = null;
-    setState(() => _drag = Offset.zero);
-
-    if (action == null || cards.isEmpty) return;
-    final top = cards.first;
-    notifier.popTop();
-
-    final res = await notifier.act(top.userId, action);
+    if (_liking || _index < 0 || _index >= cards.length) return;
+    final card = cards[_index];
+    setState(() => _liking = true);
+    HapticFeedback.mediumImpact();
+    final res =
+        await ref.read(discoverProvider.notifier).act(card.userId, 'like');
     if (!mounted) return;
+    setState(() => _liking = false);
     if (!res.ok) {
-      // Server rejected the swipe — rewind the card and tell the user why.
-      notifier.reinsertTop(top);
       _showActError(res.errorCode);
       return;
     }
-    // Remember this card so the rewind button can undo it.
-    setState(() => _lastSwiped = top);
     final result = res.result;
     if (result != null && result.matched) {
-      _showMatchDialog(result, top);
-    }
-  }
-
-  Future<void> _rewind() async {
-    final card = _lastSwiped;
-    if (card == null || _rewinding || _animatingOut) return;
-    setState(() => _rewinding = true);
-    final ok = await ref.read(discoverProvider.notifier).undo(card);
-    if (!mounted) return;
-    setState(() {
-      _rewinding = false;
-      if (ok) _lastSwiped = null; // one-level undo
-    });
-    if (!ok) {
+      _showMatchDialog(result, card);
+    } else {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-            content: Text('بازگرداندن ممکن نشد'),
-            behavior: SnackBarBehavior.floating),
+            content: Text('لایک شد 💜'),
+            behavior: SnackBarBehavior.floating,
+            duration: Duration(milliseconds: 900)),
       );
+      _advance(true);
     }
   }
 
@@ -265,9 +237,12 @@ class _NearbyScreenState extends ConsumerState<NearbyScreen>
     );
   }
 
-  void _buttonAction(String action) {
-    if (_animatingOut || ref.read(discoverProvider).cards.isEmpty) return;
-    _flyOut(action);
+  // ── Profile navigation ────────────────────────────────────────────────────
+  void _openProfile(NearbyCandidate card) {
+    Navigator.pushNamed(context, '/profile', arguments: {
+      'userId': card.userId,
+      'username': card.username,
+    });
   }
 
   // ── Report (F5) ─────────────────────────────────────────────────────────
@@ -344,16 +319,11 @@ class _NearbyScreenState extends ConsumerState<NearbyScreen>
   }
 
   Future<void> _reportUser(NearbyCandidate card, String reason) async {
-    final notifier = ref.read(discoverProvider.notifier);
     try {
       await ref.read(nearbyRepositoryProvider).report(card.userId, reason);
-      // Server auto-passes the user; drop them locally too.
-      final cards = ref.read(discoverProvider).cards;
-      if (cards.isNotEmpty && cards.first.userId == card.userId) {
-        notifier.popTop();
-        _lastSwiped = null; // a reported user can't be rewound
-      }
+      // Server auto-passes the reported user; move on to the next card.
       if (!mounted) return;
+      _advance(true);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
             content: Text('گزارش ثبت شد. ممنون که گزارش دادی'),
@@ -521,14 +491,6 @@ class _NearbyScreenState extends ConsumerState<NearbyScreen>
           ),
           _likesBadge(),
           IconButton(
-            tooltip: 'مَچ‌ها',
-            icon: const Icon(Icons.favorite_rounded, color: AppColors.primary),
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const NearbyMatchesScreen()),
-            ),
-          ),
-          IconButton(
             tooltip: 'تنظیمات',
             icon: const Icon(Icons.tune_rounded),
             onPressed: _openPreferences,
@@ -539,7 +501,8 @@ class _NearbyScreenState extends ConsumerState<NearbyScreen>
     );
   }
 
-  // Star icon with a count badge of people who liked the viewer (F3).
+  // Heart icon with a badge of pending received likes — opens the combined
+  // "likes + matches" screen (F3).
   Widget _likesBadge() {
     final async = ref.watch(nearbyReceivedLikesProvider);
     final count = async.maybeWhen(data: (d) => d.count, orElse: () => 0);
@@ -547,8 +510,8 @@ class _NearbyScreenState extends ConsumerState<NearbyScreen>
       alignment: Alignment.center,
       children: [
         IconButton(
-          tooltip: 'لایک‌های دریافتی',
-          icon: const Icon(Icons.bolt_rounded, color: Color(0xFF3B82F6)),
+          tooltip: 'لایک‌ها و مَچ‌ها',
+          icon: const Icon(Icons.favorite_rounded, color: AppColors.primary),
           onPressed: () async {
             await Navigator.push(
               context,
@@ -612,55 +575,106 @@ class _NearbyScreenState extends ConsumerState<NearbyScreen>
   }
 
   Widget _deck(List<NearbyCandidate> cards, bool isDark) {
-    // Show up to 3 stacked cards (top + 2 behind).
-    final visible = cards.take(3).toList();
-    final w = _screen.width;
-    final rot = (_drag.dx / w) * 0.18;
+    final screenW = MediaQuery.of(context).size.width;
+    final safeIndex = _index.clamp(0, cards.length - 1);
+    final card = cards[safeIndex];
+
+    final isGoingBack = _dragOffset.dx > 0 && safeIndex > 0;
 
     return Column(
       children: [
         Expanded(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                for (int i = visible.length - 1; i >= 0; i--)
-                  if (i == 0)
-                    // Top, draggable card
-                    Transform.translate(
-                      offset: _drag,
-                      child: Transform.rotate(
-                        angle: rot,
-                        child: GestureDetector(
-                          onPanUpdate: _onPanUpdate,
-                          onPanEnd: _onPanEnd,
-                          onLongPress: () => _showCardMenu(visible[0]),
-                          child: _shadowed(NearbyCard(
-                            candidate: visible[0],
-                            dragX: (_drag.dx / w).clamp(-1, 1).toDouble(),
-                            dragY: (_drag.dy / _screen.height)
-                                .clamp(-1, 1)
-                                .toDouble(),
-                          )),
-                        ),
-                      ),
-                    )
-                  else
-                    // Background cards, slightly scaled down
-                    Transform.scale(
-                      scale: 1 - i * 0.04,
-                      child: Transform.translate(
-                        offset: Offset(0, i * 12),
-                        child: _shadowed(NearbyCard(candidate: visible[i])),
-                      ),
-                    ),
-              ],
+          child: ClipRect(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+              child: GestureDetector(
+                onPanStart: _onDragStart,
+                onPanUpdate: _onDragUpdate,
+                onPanEnd: (d) => _onDragEnd(d, cards),
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    if (isGoingBack) ...[
+                      // ── Rewind: current card stays put underneath …
+                      _shadowed(NearbyCard(candidate: card)),
+                      // … and the previous card slides in from the left edge,
+                      // on top, with a gentle tilt that straightens as it lands.
+                      _rewindCard(cards[safeIndex - 1], screenW),
+                    ] else ...[
+                      // ── Forward: next card sits behind, scaling up as the
+                      // current card is flung off to the left.
+                      if (safeIndex + 1 < cards.length)
+                        _backingCard(cards[safeIndex + 1]),
+                      _topCard(card),
+                    ],
+                  ],
+                ),
+              ),
             ),
           ),
         ),
-        _actionBar(),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 2),
+          child: Text(
+            '${safeIndex + 1} / ${cards.length}',
+            style: TextStyle(
+              fontSize: 12,
+              color: isDark
+                  ? AppColors.darkTextSecondary
+                  : AppColors.lightTextSecondary,
+            ),
+          ),
+        ),
+        _actionBar(cards),
       ],
+    );
+  }
+
+  // The active (forward) card the user drags. Follows the finger with a slight
+  // rotation; flung off-screen to the left to move on to the next profile.
+  Widget _topCard(NearbyCandidate card) {
+    final angle = (_dragOffset.dx / 380).clamp(-0.35, 0.35);
+    return Transform(
+      transform: Matrix4.identity()
+        ..translate(_dragOffset.dx, _dragOffset.dy)
+        ..rotateZ(angle),
+      alignment: Alignment.bottomCenter,
+      child: _shadowed(NearbyCard(
+        candidate: card,
+        onTap: () => _openProfile(card),
+        onReport: () => _showCardMenu(card),
+      )),
+    );
+  }
+
+  // The next card peeking behind the active one — scales up from 0.93→1.0 as the
+  // top card is dragged away, so it eases into place.
+  Widget _backingCard(NearbyCandidate card) {
+    final progress = (_dragOffset.dx.abs() / 160).clamp(0.0, 1.0);
+    return Transform.scale(
+      scale: 0.93 + progress * 0.07,
+      child: _shadowed(NearbyCard(candidate: card)),
+    );
+  }
+
+  // The previous card sliding back in from the left edge on top of the current
+  // one. [progress] 0→1 maps off-screen-left → centered, with a gentle tilt
+  // (~6°) that straightens as it lands.
+  Widget _rewindCard(NearbyCandidate card, double screenW) {
+    final progress = (_dragOffset.dx / screenW).clamp(0.0, 1.0);
+    final tx = -screenW * (1 - progress);
+    final ty = _dragOffset.dy * 0.35;
+    final rot = -0.11 * (1 - progress);
+    return Transform(
+      transform: Matrix4.identity()
+        ..translate(tx, ty)
+        ..rotateZ(rot),
+      alignment: Alignment.center,
+      child: _shadowed(NearbyCard(
+        candidate: card,
+        onTap: () => _openProfile(card),
+        onReport: () => _showCardMenu(card),
+      )),
     );
   }
 
@@ -680,64 +694,17 @@ class _NearbyScreenState extends ConsumerState<NearbyScreen>
     );
   }
 
-  Widget _actionBar() {
-    final mainDisabled =
-        _animatingOut || ref.watch(discoverProvider).cards.isEmpty;
-    final canRewind = _lastSwiped != null && !_rewinding && !_animatingOut;
+  Widget _actionBar(List<NearbyCandidate> cards) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 6, 20, 18),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: [
-          // Rewind — enabled independently of the deck state (F1).
-          _gatedButton(
-            enabled: canRewind,
-            child: _actionButton(
-              icon: Icons.undo_rounded,
-              color: const Color(0xFFF59E0B),
-              size: 48,
-              onTap: _rewind,
-            ),
-          ),
-          _gatedButton(
-            enabled: !mainDisabled,
-            child: _actionButton(
-              icon: Icons.close_rounded,
-              color: AppColors.error,
-              size: 60,
-              onTap: () => _buttonAction('pass'),
-            ),
-          ),
-          _gatedButton(
-            enabled: !mainDisabled,
-            child: _actionButton(
-              icon: Icons.star_rounded,
-              color: const Color(0xFF3B82F6),
-              size: 50,
-              onTap: () => _buttonAction('superlike'),
-            ),
-          ),
-          _gatedButton(
-            enabled: !mainDisabled,
-            child: _actionButton(
-              icon: Icons.favorite_rounded,
-              color: AppColors.success,
-              size: 60,
-              onTap: () => _buttonAction('like'),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _gatedButton({required bool enabled, required Widget child}) {
-    return IgnorePointer(
-      ignoring: !enabled,
-      child: AnimatedOpacity(
-        opacity: enabled ? 1 : 0.4,
-        duration: const Duration(milliseconds: 150),
-        child: child,
+      padding: const EdgeInsets.fromLTRB(28, 6, 28, 18),
+      child: Center(
+        child: _actionButton(
+          icon: Icons.favorite_rounded,
+          color: AppColors.primary,
+          size: 72,
+          filled: true,
+          onTap: _liking ? null : _likeCurrent,
+        ),
       ),
     );
   }
@@ -746,8 +713,10 @@ class _NearbyScreenState extends ConsumerState<NearbyScreen>
     required IconData icon,
     required Color color,
     required double size,
-    required VoidCallback onTap,
+    required VoidCallback? onTap,
+    bool filled = false,
   }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -755,19 +724,22 @@ class _NearbyScreenState extends ConsumerState<NearbyScreen>
         height: size,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: Theme.of(context).brightness == Brightness.dark
-              ? AppColors.darkSurfaceVariant
-              : Colors.white,
-          border: Border.all(color: color.withValues(alpha: 0.4), width: 2),
+          color: filled
+              ? color
+              : (isDark ? AppColors.darkSurfaceVariant : Colors.white),
+          border: filled
+              ? null
+              : Border.all(color: color.withValues(alpha: 0.4), width: 2),
           boxShadow: [
             BoxShadow(
-              color: color.withValues(alpha: 0.25),
-              blurRadius: 14,
+              color: color.withValues(alpha: filled ? 0.45 : 0.25),
+              blurRadius: filled ? 20 : 14,
               offset: const Offset(0, 6),
             ),
           ],
         ),
-        child: Icon(icon, color: color, size: size * 0.45),
+        child:
+            Icon(icon, color: filled ? Colors.white : color, size: size * 0.45),
       ),
     );
   }

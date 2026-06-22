@@ -4,18 +4,18 @@ import 'package:Vista/core/theme/app_theme.dart';
 import '../models/nearby_models.dart';
 
 /// A single Tinder-style profile card: full-bleed avatar, gradient scrim,
-/// name/age, verified badge, distance, bio and the info chips the user chose
-/// to display. [dragX] in [-1,1] drives the LIKE / NOPE / SUPER stamps.
+/// name/age, verified badge, distance, bio and info chips. [onTap] opens the
+/// profile; [onReport] surfaces the report action.
 class NearbyCard extends StatelessWidget {
   final NearbyCandidate candidate;
-  final double dragX;
-  final double dragY;
+  final VoidCallback? onReport;
+  final VoidCallback? onTap;
 
   const NearbyCard({
     super.key,
     required this.candidate,
-    this.dragX = 0,
-    this.dragY = 0,
+    this.onReport,
+    this.onTap,
   });
 
   String _genderLabel(String g) {
@@ -47,7 +47,9 @@ class NearbyCard extends StatelessWidget {
     final c = candidate;
     final title = c.age > 0 ? '${c.fullName}، ${c.age}' : c.fullName;
 
-    return ClipRRect(
+    return GestureDetector(
+      onTap: onTap,
+      child: ClipRRect(
       borderRadius: BorderRadius.circular(28),
       child: Stack(
         fit: StackFit.expand,
@@ -87,6 +89,26 @@ class NearbyCard extends StatelessWidget {
               fg: Colors.white,
             ),
           ),
+
+          // ── Report button (top-right)
+          if (onReport != null)
+            Positioned(
+              top: 12,
+              right: 12,
+              child: Material(
+                color: Colors.black.withValues(alpha: 0.4),
+                shape: const CircleBorder(),
+                child: InkWell(
+                  customBorder: const CircleBorder(),
+                  onTap: onReport,
+                  child: const Padding(
+                    padding: EdgeInsets.all(8),
+                    child: Icon(Icons.report_gmailerrorred_rounded,
+                        color: Colors.white, size: 22),
+                  ),
+                ),
+              ),
+            ),
 
           // ── Info (bottom)
           Positioned(
@@ -176,34 +198,9 @@ class NearbyCard extends StatelessWidget {
               ],
             ),
           ),
-
-          // ── Swipe stamps
-          _stamp(
-            visible: dragX > 0.12,
-            opacity: (dragX * 2).clamp(0, 1).toDouble(),
-            label: 'لایک',
-            color: AppColors.success,
-            alignment: Alignment.topLeft,
-            angle: -0.35,
-          ),
-          _stamp(
-            visible: dragX < -0.12,
-            opacity: (-dragX * 2).clamp(0, 1).toDouble(),
-            label: 'رد',
-            color: AppColors.error,
-            alignment: Alignment.topRight,
-            angle: 0.35,
-          ),
-          _stamp(
-            visible: dragY < -0.18 && dragX.abs() < 0.18,
-            opacity: (-dragY * 2).clamp(0, 1).toDouble(),
-            label: 'سوپرلایک',
-            color: const Color(0xFF3B82F6),
-            alignment: Alignment.topCenter,
-            angle: 0,
-          ),
         ],
       ),
+    ),
     );
   }
 
@@ -240,48 +237,6 @@ class NearbyCard extends StatelessWidget {
               style: TextStyle(
                   color: fg, fontSize: 12, fontWeight: FontWeight.w600)),
         ],
-      ),
-    );
-  }
-
-  Widget _stamp({
-    required bool visible,
-    required double opacity,
-    required String label,
-    required Color color,
-    required Alignment alignment,
-    required double angle,
-  }) {
-    if (!visible) return const SizedBox.shrink();
-    return Positioned.fill(
-      child: Align(
-        alignment: alignment,
-        child: Padding(
-          padding: const EdgeInsets.all(28),
-          child: Opacity(
-            opacity: opacity,
-            child: Transform.rotate(
-              angle: angle,
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                decoration: BoxDecoration(
-                  border: Border.all(color: color, width: 4),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  label,
-                  style: TextStyle(
-                    color: color,
-                    fontSize: 30,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 2,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
       ),
     );
   }

@@ -6,11 +6,52 @@ import 'package:Vista/core/theme/app_theme.dart';
 import '../data/nearby_repository.dart';
 import '../models/nearby_models.dart';
 import '../providers/nearby_provider.dart';
+import 'nearby_matches_screen.dart';
 
-/// People who liked the viewer (F3). Tapping "like back" creates an instant
-/// match; "pass" silently dismisses them.
-class NearbyLikesScreen extends ConsumerWidget {
-  const NearbyLikesScreen({super.key});
+/// Combined "likes + matches" screen (F3): tab 0 = people who liked you, tab 1 =
+/// your matches. [initialTab] lets a deep link open straight to either tab.
+class NearbyLikesScreen extends StatelessWidget {
+  final int initialTab;
+  const NearbyLikesScreen({super.key, this.initialTab = 0});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bg = isDark ? AppColors.darkBackground : AppColors.lightBackground;
+    return DefaultTabController(
+      length: 2,
+      initialIndex: initialTab.clamp(0, 1),
+      child: Scaffold(
+        backgroundColor: bg,
+        appBar: AppBar(
+          backgroundColor: bg,
+          surfaceTintColor: Colors.transparent,
+          elevation: 0,
+          title: const Text('لایک‌ها و مَچ‌ها',
+              style: TextStyle(fontWeight: FontWeight.w800)),
+          bottom: const TabBar(
+            indicatorColor: AppColors.primary,
+            labelColor: AppColors.primary,
+            tabs: [
+              Tab(text: 'لایک‌های دریافتی'),
+              Tab(text: 'مَچ‌ها'),
+            ],
+          ),
+        ),
+        body: const TabBarView(
+          children: [
+            _ReceivedLikesTab(),
+            NearbyMatchesBody(),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// People who liked the viewer. Tapping "like back" creates an instant match.
+class _ReceivedLikesTab extends ConsumerWidget {
+  const _ReceivedLikesTab();
 
   Future<void> _act(BuildContext context, WidgetRef ref, NearbyReceivedLike u,
       String action) async {
@@ -138,37 +179,26 @@ class NearbyLikesScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark ? AppColors.darkBackground : AppColors.lightBackground;
     final async = ref.watch(nearbyReceivedLikesProvider);
 
-    return Scaffold(
-      backgroundColor: bg,
-      appBar: AppBar(
-        backgroundColor: bg,
-        surfaceTintColor: Colors.transparent,
-        elevation: 0,
-        title: const Text('لایک‌های دریافتی',
-            style: TextStyle(fontWeight: FontWeight.w800)),
-      ),
-      body: RefreshIndicator(
-        color: AppColors.primary,
-        onRefresh: () => ref.refresh(nearbyReceivedLikesProvider.future),
-        child: async.when(
-          loading: () => const Center(
-              child: CircularProgressIndicator(color: AppColors.primary)),
-          error: (_, __) => _message(isDark, 'خطا در بارگذاری'),
-          data: (data) => data.likes.isEmpty
-              ? _message(
-                  isDark, 'هنوز کسی لایکت نکرده!\nبا کاوش بیشتر، دیده می‌شی')
-              : ListView.separated(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.all(16),
-                  itemCount: data.likes.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 12),
-                  itemBuilder: (_, i) =>
-                      _tile(context, ref, data.likes[i], isDark),
-                ),
-        ),
+    return RefreshIndicator(
+      color: AppColors.primary,
+      onRefresh: () => ref.refresh(nearbyReceivedLikesProvider.future),
+      child: async.when(
+        loading: () => const Center(
+            child: CircularProgressIndicator(color: AppColors.primary)),
+        error: (_, __) => _message(isDark, 'خطا در بارگذاری'),
+        data: (data) => data.likes.isEmpty
+            ? _message(
+                isDark, 'هنوز کسی لایکت نکرده!\nبا کاوش بیشتر، دیده می‌شی')
+            : ListView.separated(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.all(16),
+                itemCount: data.likes.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 12),
+                itemBuilder: (_, i) =>
+                    _tile(context, ref, data.likes[i], isDark),
+              ),
       ),
     );
   }

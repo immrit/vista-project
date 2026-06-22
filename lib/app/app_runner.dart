@@ -523,14 +523,9 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
     final colorBlindMatrix = ref.watch(colorBlindMatrixProvider);
     final currentLocale = ref.watch(localeProvider);
 
-    return ScreenUtilInit(
-      designSize: Size(viewPort.width, viewPort.height),
-      minTextAdapt: true,
-      splitScreenMode: true,
-      builder: (context, child) {
-        return OverlaySupport.global(
-          child: MaterialApp(
-            navigatorKey: navigatorKey,
+    return OverlaySupport.global(
+      child: MaterialApp(
+        navigatorKey: navigatorKey,
             title: 'Vista',
             debugShowCheckedModeBanner: false,
             theme: VistaThemes.lightTheme,
@@ -575,11 +570,8 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
                 systemStatusBarContrastEnforced: false,
                 systemNavigationBarContrastEnforced: false,
               );
-              // PERF: فراخوانی امری SystemChrome.setSystemUIOverlayStyle حذف شد —
-              // روی هر rebuild اجرا می‌شد (platform-channel بدون dedup وسط فریم).
-              // AnnotatedRegion پایین همان استایل را با dedup فریم‌ورک اعمال می‌کند.
-              // SystemUiBarService.sync خودش با _lastSignature dedup دارد و backup نیتیو است.
               SystemUiBarService.sync(overlayStyle);
+              
               final safeChild = child ?? const SizedBox.shrink();
               final content = colorBlindMatrix == null
                   ? safeChild
@@ -587,9 +579,18 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
                       colorFilter: ColorFilter.matrix(colorBlindMatrix),
                       child: safeChild,
                     );
-              return AnnotatedRegion<SystemUiOverlayStyle>(
-                value: overlayStyle,
-                child: content,
+                    
+              return ScreenUtilInit(
+                designSize: Size(viewPort.width, viewPort.height),
+                minTextAdapt: true,
+                splitScreenMode: true,
+                useInheritedMediaQuery: true,
+                builder: (context, _) {
+                  return AnnotatedRegion<SystemUiOverlayStyle>(
+                    value: overlayStyle,
+                    child: content,
+                  );
+                },
               );
             },
             home: const SessionAuthWrapper(), // Use SessionAuthWrapper
@@ -732,9 +733,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
                 return const Scaffold();
               },
             },
-          ),
-        );
-      },
+      ),
     );
   }
 }

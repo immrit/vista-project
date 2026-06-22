@@ -13,6 +13,7 @@ class NearbyCandidate {
   final bool isVerified;
   final String verificationType;
   final double distanceKm;
+  final String? lastSeenAt; // ISO 8601, null = unknown
 
   const NearbyCandidate({
     required this.userId,
@@ -27,6 +28,7 @@ class NearbyCandidate {
     required this.isVerified,
     required this.verificationType,
     required this.distanceKm,
+    this.lastSeenAt,
   });
 
   factory NearbyCandidate.fromJson(Map<String, dynamic> j) => NearbyCandidate(
@@ -42,7 +44,16 @@ class NearbyCandidate {
         isVerified: j['is_verified'] as bool? ?? false,
         verificationType: j['verification_type'] as String? ?? '',
         distanceKm: (j['distance_km'] as num?)?.toDouble() ?? 0,
+        lastSeenAt: j['last_seen_at'] as String?,
       );
+
+  /// True if user was online within the last 20 minutes (or lastSeenAt unknown).
+  bool get isRecentlyOnline {
+    if (lastSeenAt == null) return true;
+    final t = DateTime.tryParse(lastSeenAt!);
+    if (t == null) return true;
+    return DateTime.now().difference(t.toLocal()).inMinutes <= 20;
+  }
 
   /// Localized, human-friendly distance ("۲٫۳ کیلومتر" / "نزدیک شما").
   String get distanceLabel {
