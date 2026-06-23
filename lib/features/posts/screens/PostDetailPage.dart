@@ -10,6 +10,8 @@ import 'package:shamsi_date/shamsi_date.dart';
 import '../../../model/publicPostModel.dart';
 import 'package:Vista/utils/widgets.dart';
 import 'package:Vista/features/search/screens/searchPage.dart';
+import 'package:Vista/features/posts/navigation/content_routes.dart';
+import '../widgets/post_image_carousel.dart';
 import '../../../model/CommentModel.dart';
 import '../../../model/UserModel.dart';
 import '../../../provider/provider.dart';
@@ -87,6 +89,40 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
   Widget _buildPostImages(PublicPostModel post) {
     if (post.imageUrl == null || post.imageUrl!.isEmpty) {
       return const SizedBox.shrink();
+    }
+
+    // Multi-image carousel
+    if (post.hasMultipleImages) {
+      final images = post.galleryImages;
+      return Container(
+        margin: const EdgeInsets.symmetric(vertical: 10),
+        child: FutureBuilder<Size>(
+          future: _getImageDimensions(images.first),
+          builder: (context, snapshot) {
+            final size = snapshot.data;
+            final ratio = (size != null && size.height > 0)
+                ? (size.width / size.height).clamp(0.6, 1.91)
+                : 1.0;
+            return AspectRatio(
+              aspectRatio: ratio,
+              child: PostImageCarousel(
+                imageUrls: images,
+                borderRadius: BorderRadius.circular(8),
+                heroTagPrefix: 'post_image_${post.id}_',
+                onImageTap: (i) {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) =>
+                          PostImageViewer(imageUrl: images[i]),
+                    ),
+                  );
+                },
+              ),
+            );
+          },
+        ),
+      );
     }
 
     return Container(
@@ -185,50 +221,73 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
   }
 
   Widget _buildPostContent(String content, BuildContext context) {
+    // Match #hashtags and @mentions in a single pass. Mentions only trigger at
+    // a word boundary so emails (`a@b`) aren't mistaken for tags.
     final pattern = RegExp(
-      r'#[\w\u0600-\u06FF]+', // Simplified regex for hashtags only
+      r'(?<![^\s\n])@([\u0600-\u06FF\w_]+)|#([\u0600-\u06FF\w_]+)',
       multiLine: true,
       unicode: true,
+    );
+
+    final baseStyle = TextStyle(
+      color: Theme.of(context).brightness == Brightness.dark
+          ? Colors.white
+          : Colors.black,
+      height: 1.5,
+    );
+    const entityStyle = TextStyle(
+      color: Colors.blue,
+      fontWeight: FontWeight.w600,
     );
 
     List<TextSpan> spans = [];
     int start = 0;
 
     for (Match match in pattern.allMatches(content)) {
-      // Add text before hashtag
+      // Add plain text before the entity
       if (match.start > start) {
         spans.add(TextSpan(
           text: content.substring(start, match.start),
-          style: TextStyle(
-            color: Theme.of(context).brightness == Brightness.dark
-                ? Colors.white
-                : Colors.black,
-            height: 1.5,
-          ),
+          style: baseStyle,
         ));
       }
 
-      // Add hashtag
-      spans.add(
-        TextSpan(
-          text: match.group(0),
-          style: const TextStyle(
-            color: Colors.blue,
-            fontWeight: FontWeight.w500,
+      final mention = match.group(1);
+      if (mention != null) {
+        // @mention \u2192 open the user's profile
+        spans.add(
+          TextSpan(
+            text: '@$mention',
+            style: entityStyle,
+            recognizer: TapGestureRecognizer()
+              ..onTap = () {
+                ContentNavigation.pushProfileByUsername(
+                  context,
+                  username: mention,
+                );
+              },
           ),
-          recognizer: TapGestureRecognizer()
-            ..onTap = () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => SearchPage(
-                    initialHashtag: match.group(0)!,
+        );
+      } else {
+        // #hashtag \u2192 open hashtag search
+        spans.add(
+          TextSpan(
+            text: match.group(0),
+            style: entityStyle,
+            recognizer: TapGestureRecognizer()
+              ..onTap = () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => SearchPage(
+                      initialHashtag: match.group(0)!,
+                    ),
                   ),
-                ),
-              );
-            },
-        ),
-      );
+                );
+              },
+          ),
+        );
+      }
 
       start = match.end;
     }
@@ -315,17 +374,17 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
             else
               _buildPostImages(post),
             const SizedBox(height: 10),
-            _buildLikeRow(post),
+            // Music sits with the content, above the action row.
             if (post.musicUrl != null && post.musicUrl!.isNotEmpty)
               PostMusicBubble(
                 postId: post.id,
                 musicUrl: post.musicUrl!,
                 createdAt: post.createdAt,
                 title: _resolveMusicTitle(post),
-                artist: post.username,
                 avatarUrl: post.avatarUrl,
-                margin: const EdgeInsets.symmetric(vertical: 16),
+                margin: const EdgeInsets.only(bottom: 12),
               ),
+            _buildLikeRow(post),
           ],
         ),
       ),
@@ -496,6 +555,15 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
                       }
                     }
                     break;
+                  case 'appeal':
+                    Navigator.of(context).pushNamed(
+                      '/appeal',
+                      arguments: {
+                        'postId': post.id,
+                        'type': 'edit',
+                      },
+                    );
+                    break;
                   case 'report':
                     if (!isCurrentUserPost) {
                       showDialog(
@@ -623,8 +691,25 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
                   );
                 }
 
-                // گزینه ویرایش برای صاحب پست (با یا بدون دسترسی)
-                if (isCurrentUserPost) {
+                // پست ویرایش‌شده توسط Vista قابل ویرایش مجدد نیست — فقط اعتراض
+                if (isCurrentUserPost && post.editedByVista) {
+                  items.add(
+                    PopupMenuItem<String>(
+                      value: 'appeal',
+                      child: Row(
+                        children: [
+                          Icon(Icons.gavel_rounded,
+                              size: 20, color: Colors.amber.shade700),
+                          const SizedBox(width: 12),
+                          const Text('ثبت اعتراض'),
+                        ],
+                      ),
+                    ),
+                  );
+                }
+
+                // گزینه ویرایش برای صاحب پست (مشروط به اینکه Vista ویرایشش نکرده باشد)
+                if (isCurrentUserPost && !post.editedByVista) {
                   items.add(
                     PopupMenuItem<String>(
                       value: 'edit',

@@ -199,6 +199,7 @@ class GoPostsRepository {
   Future<PublicPostModel> createPost({
     required String content,
     String? imageUrl,
+    List<String>? imageUrls,
     String? videoUrl,
     String? musicUrl,
     String? musicTitle,
@@ -210,11 +211,13 @@ class GoPostsRepository {
       SystemFeature.posts,
       forceRefresh: true,
     );
+    final gallery = imageUrls?.where((u) => u.trim().isNotEmpty).toList();
     final response = await _dio.post(
       '/posts',
       data: {
         'content': content,
         if (imageUrl != null && imageUrl.isNotEmpty) 'image_url': imageUrl,
+        if (gallery != null && gallery.isNotEmpty) 'image_urls': gallery,
         if (videoUrl != null && videoUrl.isNotEmpty) 'video_url': videoUrl,
         if (musicUrl != null && musicUrl.isNotEmpty) 'music_url': musicUrl,
         if (musicTitle != null && musicTitle.isNotEmpty)
@@ -226,6 +229,27 @@ class GoPostsRepository {
       options: await _authOptions(),
     );
     return _postFromGo(_asMap(response.data));
+  }
+
+  /// Tag users on a post (Instagram-style). Author only; fires `post_mention`
+  /// notification + push for each tagged user. No-op when [userIds] is empty.
+  Future<void> addPostMentions({
+    required String postId,
+    required List<String> userIds,
+  }) async {
+    final normalizedIds = userIds
+        .map((id) => id.trim())
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList(growable: false);
+
+    if (normalizedIds.isEmpty) return;
+
+    await _dio.post(
+      '/posts/$postId/mentions',
+      data: {'user_ids': normalizedIds},
+      options: await _authOptions(),
+    );
   }
 
   Future<PublicPostModel> updatePost({
@@ -353,6 +377,23 @@ class GoPostsRepository {
         'reason': reason,
         if (additionalDetails != null && additionalDetails.isNotEmpty)
           'additional_details': additionalDetails,
+      },
+      options: await _authOptions(),
+    );
+  }
+
+  /// Submits an appeal/justification for a post that Vista moderation removed
+  /// or edited. Backend guards ownership + moderated-state and rejects
+  /// duplicate pending appeals (HTTP 409).
+  Future<void> appealPost({
+    required String postId,
+    required String reason,
+  }) async {
+    await _dio.post(
+      '/posts/appeal',
+      data: {
+        'post_id': postId,
+        'reason': reason,
       },
       options: await _authOptions(),
     );

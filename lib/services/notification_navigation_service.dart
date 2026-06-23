@@ -422,6 +422,22 @@ class NotificationNavigationService {
               return;
             }
             break;
+          case 'appeal':
+            final postId = uri.pathSegments.isNotEmpty
+                ? uri.pathSegments.first
+                : uri.queryParameters['postId'];
+            if (postId != null && postId.isNotEmpty) {
+              final navigator = Navigator.of(context);
+              navigator.pushNamed(
+                '/appeal',
+                arguments: {
+                  'postId': postId,
+                  'type': uri.queryParameters['type'] ?? 'edit',
+                },
+              );
+              return;
+            }
+            break;
           case 'notifications':
             await _navigateToNotifications(context);
             return;

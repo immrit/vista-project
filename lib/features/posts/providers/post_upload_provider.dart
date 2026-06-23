@@ -171,8 +171,11 @@ class PostUploadNotifier extends StateNotifier<List<UploadTask>> {
     final dotIndex = trimmed.lastIndexOf('.');
     final withoutExtension =
         dotIndex > 0 ? trimmed.substring(0, dotIndex) : trimmed;
+    // Keep the "Artist - Title" dash so the player can split singer from track.
+    // Only underscores collapse to spaces; dashes normalize to " - ".
     final normalized = withoutExtension
-        .replaceAll(RegExp(r'[_\-]+'), ' ')
+        .replaceAll('_', ' ')
+        .replaceAll(RegExp(r'\s*-\s*'), ' - ')
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
     return normalized.isEmpty ? 'موزیک' : normalized;
@@ -182,7 +185,9 @@ class PostUploadNotifier extends StateNotifier<List<UploadTask>> {
     required String content,
     required String userId,
     List<String>? tags, // ✅ Added tags support
+    List<String>? mentionedUserIds, // tagged users (@mention)
     File? image,
+    List<File>? images, // gallery / carousel (mobile, multi-image)
     Uint8List? imageBytes,
     String? imageName,
     File? video,
@@ -193,7 +198,12 @@ class PostUploadNotifier extends StateNotifier<List<UploadTask>> {
     File? videoThumbnail,
   }) async {
     final taskId = _uuid.v4();
-    final hasImage = image != null || (kIsWeb && imageBytes != null);
+    final galleryFiles =
+        images?.where((f) => f.path.trim().isNotEmpty).toList() ??
+            const <File>[];
+    final hasImage = image != null ||
+        galleryFiles.isNotEmpty ||
+        (kIsWeb && imageBytes != null);
     final hasVideo = video != null || (kIsWeb && videoBytes != null);
     final hasMusic = music != null;
     final mediaCount = [hasImage, hasVideo, hasMusic].where((v) => v).length;
@@ -237,11 +247,31 @@ class PostUploadNotifier extends StateNotifier<List<UploadTask>> {
 
         // 1. Upload Media
         String? imageUrl;
+        final galleryUrls = <String>[];
         String? videoUrl;
         String? musicUrl;
 
+        // Multi-image gallery (mobile carousel): upload each, cover = first.
+        if (galleryFiles.isNotEmpty) {
+          final perImageWeight = perMediaWeight / galleryFiles.length;
+          for (final file in galleryFiles) {
+            final url = await PostImageUploadService.uploadPostImage(
+              file,
+              onProgress: (p) => updateStageProgress(p, perImageWeight),
+            );
+            if (url != null && url.isNotEmpty) {
+              galleryUrls.add(url);
+              uploadedUrls.add(url);
+            }
+            completedWeight += perImageWeight;
+            _updateTaskProgress(taskId, completedWeight.clamp(0.0, 0.99));
+          }
+          if (galleryUrls.isNotEmpty) {
+            imageUrl = galleryUrls.first; // cover
+          }
+        }
         // Image Upload
-        if (kIsWeb && imageBytes != null && imageName != null) {
+        else if (kIsWeb && imageBytes != null && imageName != null) {
           imageUrl = await PostImageUploadService.uploadPostImageWeb(
             imageBytes,
             imageName,
@@ -318,14 +348,32 @@ class PostUploadNotifier extends StateNotifier<List<UploadTask>> {
         if (!await TokenStorage.hasValidSession()) {
           throw StateError('User is not authenticated');
         }
-        await GoPostsRepository().createPost(
+        final createdPost = await GoPostsRepository().createPost(
           content: content,
           tags: tags ?? const <String>[],
           imageUrl: imageUrl,
+          imageUrls: galleryUrls.length > 1 ? galleryUrls : null,
           videoUrl: videoUrl,
           musicUrl: musicUrl,
           musicTitle: musicUrl != null ? musicTitle : null,
         );
+
+        // Tag mentioned users (best-effort; post already created).
+        final mentions = mentionedUserIds
+                ?.where((id) => id.trim().isNotEmpty)
+                .toSet()
+                .toList(growable: false) ??
+            const <String>[];
+        if (mentions.isNotEmpty && createdPost.id.isNotEmpty) {
+          try {
+            await GoPostsRepository().addPostMentions(
+              postId: createdPost.id,
+              userIds: mentions,
+            );
+          } catch (e) {
+            debugPrint('Post mentions failed (non-fatal): $e');
+          }
+        }
         _updateTaskProgress(taskId, 1.0);
 
         // 3. Mark success, show completion notification, and remove after delay

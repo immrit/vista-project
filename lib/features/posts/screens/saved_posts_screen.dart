@@ -19,6 +19,7 @@ import '../data/go_posts_repository.dart';
 import '../providers/saved_posts_provider.dart';
 import '../widgets/double_tap_like_overlay.dart';
 import '../widgets/hashtag_rich_text.dart';
+import '../widgets/post_image_carousel.dart';
 import '../widgets/post_action_buttons.dart';
 import '../widgets/post_moderation_banner.dart';
 import '../widgets/standard_edit_post_dialog.dart';
@@ -305,7 +306,9 @@ class _SavedPostItem extends ConsumerWidget {
     final colorScheme = theme.colorScheme;
     final hasImage = post.imageUrl != null && post.imageUrl!.isNotEmpty;
 
-    final isLiked = ref.watch(likeStateProvider.select((map) => map[post.id])) ?? post.isLiked;
+    final isLiked =
+        ref.watch(likeStateProvider.select((map) => map[post.id])) ??
+            post.isLiked;
     final likeCount =
         post.likeCount + (isLiked != post.isLiked ? (isLiked ? 1 : -1) : 0);
 
@@ -422,8 +425,7 @@ class _SavedPostItem extends ConsumerWidget {
                           style: TextStyle(
                             fontSize: 15,
                             height: 1.4,
-                            color:
-                                colorScheme.onSurface.withValues(alpha: 0.9),
+                            color: colorScheme.onSurface.withValues(alpha: 0.9),
                           ),
                           hashtagStyle: const TextStyle(
                             color: Colors.blue,
@@ -444,6 +446,12 @@ class _SavedPostItem extends ConsumerWidget {
                                 builder: (_) =>
                                     SearchPage(initialHashtag: '#$tag'),
                               ),
+                            );
+                          },
+                          onMentionTap: (username) {
+                            ContentNavigation.pushProfileByUsername(
+                              context,
+                              username: username,
                             );
                           },
                         ),
@@ -477,33 +485,41 @@ class _SavedPostItem extends ConsumerWidget {
                                 }
                               }
                             },
-                            child: ConstrainedBox(
-                              constraints: const BoxConstraints(
-                                maxHeight: 280,
-                                minWidth: double.infinity,
-                              ),
-                              child: CachedNetworkImage(
-                                imageUrl: post.imageUrl!,
-                                fit: BoxFit.cover,
-                                placeholder: (_, __) => Container(
-                                  height: 180,
-                                  color: isDark
-                                      ? Colors.grey[800]
-                                      : Colors.grey[200],
-                                  child: const Center(
-                                    child: CircularProgressIndicator(
-                                        strokeWidth: 2),
+                            child: post.hasMultipleImages
+                                ? SizedBox(
+                                    height: 280,
+                                    child: PostImageCarousel(
+                                      imageUrls: post.galleryImages,
+                                      borderRadius: BorderRadius.circular(14),
+                                    ),
+                                  )
+                                : ConstrainedBox(
+                                    constraints: const BoxConstraints(
+                                      maxHeight: 280,
+                                      minWidth: double.infinity,
+                                    ),
+                                    child: CachedNetworkImage(
+                                      imageUrl: post.imageUrl!,
+                                      fit: BoxFit.cover,
+                                      placeholder: (_, __) => Container(
+                                        height: 180,
+                                        color: isDark
+                                            ? Colors.grey[800]
+                                            : Colors.grey[200],
+                                        child: const Center(
+                                          child: CircularProgressIndicator(
+                                              strokeWidth: 2),
+                                        ),
+                                      ),
+                                      errorWidget: (_, __, ___) => Container(
+                                        height: 180,
+                                        color: isDark
+                                            ? Colors.grey[800]
+                                            : Colors.grey[200],
+                                        child: const Icon(Icons.broken_image),
+                                      ),
+                                    ),
                                   ),
-                                ),
-                                errorWidget: (_, __, ___) => Container(
-                                  height: 180,
-                                  color: isDark
-                                      ? Colors.grey[800]
-                                      : Colors.grey[200],
-                                  child: const Icon(Icons.broken_image),
-                                ),
-                              ),
-                            ),
                           ),
                         ),
 

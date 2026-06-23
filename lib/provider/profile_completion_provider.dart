@@ -39,8 +39,10 @@ class ProfileCompletionNotifier extends StateNotifier<bool> {
       return isComplete;
     } catch (e) {
       logInfo('Error checking profile completion: $e');
-      state = false;
-      return false;
+      // خطای گذرا (شبکه/سرور) را به‌عنوان «ناقص» تفسیر نکن؛
+      // وگرنه کاربرِ دارای پروفایل کامل به اشتباه به صفحه تکمیل پروفایل می‌رود.
+      // مشابه رفتار onTimeout که در homeScreen مقدار true برمی‌گرداند.
+      return true;
     }
   }
 

@@ -136,10 +136,14 @@ class NearbyCard extends StatelessWidget {
                         ),
                       ),
                     ),
-                    if (c.isVerified) ...[
+                    if (c.gender.isNotEmpty) ...[
                       const SizedBox(width: 6),
+                      _genderBadge(c.gender),
+                    ],
+                    if (c.isVerified) ...[
+                      const SizedBox(width: 4),
                       const Icon(Icons.verified_rounded,
-                          color: Color(0xFF3B82F6), size: 22),
+                          color: Color(0xFF3B82F6), size: 20),
                     ],
                   ],
                 ),
@@ -212,6 +216,31 @@ class NearbyCard extends StatelessWidget {
         c.fullName.isNotEmpty ? c.fullName.characters.first : '?',
         style: const TextStyle(
             color: Colors.white, fontSize: 96, fontWeight: FontWeight.bold),
+      ),
+    );
+  }
+
+  Widget _genderBadge(String gender) {
+    final isMale = gender.toLowerCase() == 'male' || gender == 'مرد';
+    final color = isMale ? const Color(0xFF3B9AE1) : const Color(0xFFE13B82);
+    // Unicode symbols: same font metrics → identical visual size.
+    final glyph = isMale ? '♂' : '♀';
+    return Container(
+      width: 26,
+      height: 26,
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.88),
+        shape: BoxShape.circle,
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        glyph,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 15,
+          fontWeight: FontWeight.bold,
+          height: 1,
+        ),
       ),
     );
   }

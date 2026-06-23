@@ -10,6 +10,7 @@ class PublicPostModel {
   final String fullName;
   final String content;
   final String? imageUrl;
+  final List<String> imageUrls; // گالری چندعکسی (carousel)
   final String? videoUrl; // افزودن فیلد videoUrl برای ویدیوها
   final DateTime createdAt;
   final String username;
@@ -44,6 +45,7 @@ class PublicPostModel {
     required this.fullName,
     required this.content,
     this.imageUrl,
+    List<String>? imageUrls,
     this.videoUrl, // افزودن پارامتر videoUrl
     required this.createdAt,
     required this.username,
@@ -68,7 +70,19 @@ class PublicPostModel {
     this.moderatedAt,
     this.moderationReason,
     this.editedByVista = false,
-  }) : hashtags = hashtags ?? _extractHashtags(content);
+  })  : hashtags = hashtags ?? _extractHashtags(content),
+        imageUrls = imageUrls ?? const <String>[];
+
+  /// Images to show as a gallery: the multi-image list when present, else the
+  /// single cover. Empty when the post has no image.
+  List<String> get galleryImages {
+    if (imageUrls.isNotEmpty) return imageUrls;
+    final cover = imageUrl;
+    if (cover != null && cover.isNotEmpty) return [cover];
+    return const <String>[];
+  }
+
+  bool get hasMultipleImages => galleryImages.length > 1;
 
   // متد استاتیک برای استخراج هشتگ‌ها از متن
   static List<String> _extractHashtags(String text) {
@@ -87,7 +101,8 @@ class PublicPostModel {
       fullName: _parseFullName(map),
       content: _parseString(map, 'content') ?? '',
       imageUrl: _parseMediaUrl(map, 'image_url'),
-      videoUrl: _parseMediaUrl(map, 'video_url'), 
+      imageUrls: _parseImageUrls(map),
+      videoUrl: _parseMediaUrl(map, 'video_url'),
       createdAt: _parseDateTime(map, 'created_at') ?? DateTime.now(),
       username: _parseUsername(map),
       avatarUrl: _parseAvatarUrl(map),
@@ -127,10 +142,28 @@ class PublicPostModel {
   static String? _parseMediaUrl(Map<String, dynamic> map, String key) {
     final raw = _parseString(map, key, defaultValue: null);
     if (raw == null || raw.isEmpty) return null;
+    return _normalizeMediaUrl(raw);
+  }
+
+  static String _normalizeMediaUrl(String raw) {
     if (raw.startsWith('http')) return raw;
     final baseUrl = EnvConfig.apiBaseUrl.replaceFirst('api.', 's3.');
     final cleanPath = raw.startsWith('/') ? raw.substring(1) : raw;
     return '$baseUrl/$cleanPath';
+  }
+
+  /// Parse the `image_urls` gallery array, normalizing each entry the same way
+  /// single media URLs are resolved (relative → absolute S3 URL).
+  static List<String> _parseImageUrls(Map<String, dynamic> map) {
+    final raw = map['image_urls'];
+    if (raw is! List) return const <String>[];
+    final out = <String>[];
+    for (final item in raw) {
+      final s = item?.toString();
+      if (s == null || s.isEmpty) continue;
+      out.add(_normalizeMediaUrl(s));
+    }
+    return out;
   }
 
   // متدهای کمکی برای parse کردن
@@ -379,6 +412,7 @@ class PublicPostModel {
       'user_id': userId,
       'content': content,
       'image_url': imageUrl,
+      'image_urls': imageUrls,
       'video_url': videoUrl, // افزودن ویدیو به Map
       'created_at': createdAt.toIso8601String(),
       'profiles': profiles ??
@@ -420,6 +454,7 @@ class PublicPostModel {
     String? fullName,
     String? content,
     String? imageUrl,
+    List<String>? imageUrls,
     String? videoUrl, // افزودن پارامتر videoUrl به copyWith
     DateTime? createdAt,
     String? username,
@@ -451,6 +486,7 @@ class PublicPostModel {
       fullName: fullName ?? this.fullName,
       content: content ?? this.content,
       imageUrl: imageUrl ?? this.imageUrl,
+      imageUrls: imageUrls ?? this.imageUrls,
       videoUrl: videoUrl ?? this.videoUrl, // افزودن ویدیو به copyWith
       createdAt: createdAt ?? this.createdAt,
       username: username ?? this.username,

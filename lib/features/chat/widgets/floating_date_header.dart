@@ -18,13 +18,17 @@ import 'date_divider.dart';
 class FloatingDateHeader extends StatefulWidget {
   final DateTime? currentDate;
   final bool isScrolling;
-  final Widget child;
+
+  /// Optional content placed behind the floating date chip. Leave null to use
+  /// this widget as a standalone overlay (so the message list it floats over is
+  /// not rebuilt whenever [isScrolling] / [currentDate] change).
+  final Widget? child;
 
   const FloatingDateHeader({
     super.key,
     this.currentDate,
     required this.isScrolling,
-    required this.child,
+    this.child,
   });
 
   @override
@@ -144,11 +148,12 @@ class _FloatingDateHeaderState extends State<FloatingDateHeader>
 
     return Stack(
       children: [
-        // ✅ محتوای اصلی (لیست پیام‌ها)
+        // ✅ محتوای اصلی (لیست پیام‌ها) — فقط وقتی به‌صورت wrapper استفاده شود
         // هیچ پدینگ یا تغییری به این نمی‌دهیم تا پشت اپ‌بار برود
-        Positioned.fill(
-          child: widget.child,
-        ),
+        if (widget.child != null)
+          Positioned.fill(
+            child: widget.child!,
+          ),
 
         // ✅ تاریخ شناور
         // فقط این را به پایین هل می‌دهیم

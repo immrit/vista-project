@@ -90,6 +90,14 @@ class DeepLinkService {
           '/chat-detail',
           arguments: {'conversationId': conversationId},
         );
+      } else if (host == 'appeal' && pathSegments.isNotEmpty) {
+        final postId = pathSegments.first;
+        final type = uri.queryParameters['type'] ?? 'edit';
+        logInfo('Navigating to appeal screen via vista scheme');
+        navigatorKey.currentState?.pushNamed(
+          '/appeal',
+          arguments: {'postId': postId, 'type': type},
+        );
       } else if (host == 'notifications') {
         logInfo('Navigating to notifications via vista scheme');
         navigatorKey.currentState

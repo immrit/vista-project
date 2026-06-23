@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
@@ -246,6 +247,27 @@ class AppInitialization {
     final imageCache = PaintingBinding.instance.imageCache;
     imageCache.maximumSize = 200;
     imageCache.maximumSizeBytes = 80 * 1024 * 1024;
+
+    // Pointer-event resampling: re-time touch samples to the vsync so each frame
+    // advances the scroll by an even delta. Without it, irregular touch timestamps
+    // landing between 120Hz vsyncs produce uneven per-frame deltas — motion that
+    // feels laggy/choppy even when the frame rate is a rock-solid 120fps (the
+    // classic "no fps drop but scroll isn't smooth" symptom). Native apps
+    // (Telegram/WhatsApp) get this from the platform input pipeline; Flutter ships
+    // it OFF by default.
+    //
+    // Offset = the smoothing-vs-latency slider. More-negative = more interpolation
+    // between real touch samples = softer/"buttery" drag (Telegram feel); toward 0 =
+    // snappier but can feel "dry"/steppy. The engine default (-38ms) is the smooth
+    // end but tuned for 60Hz. -33ms sits just shy of it: clearly smooth on 90/120Hz
+    // without the full ~4-frame latency. Tune toward 0 if it starts to feel heavy.
+    if (defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS) {
+      GestureBinding.instance.resamplingEnabled = true;
+      GestureBinding.instance.samplingOffset =
+          const Duration(milliseconds: -33);
+    }
+
     SchedulerBinding.instance.scheduleWarmUpFrame();
   }
 }

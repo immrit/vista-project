@@ -1,8 +1,18 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../data/go_posts_repository.dart';
+import '../../profile/data/profile_repository.dart';
+import '../../../model/UserModel.dart';
+import '../../../widgets/verification_badge_icon.dart';
 
-/// فیلد متنی با قابلیت Autocomplete هشتگ (مشابه ویستا)
+/// Combined autocomplete field for `#hashtags` **and** `@mentions`
+/// (Instagram / X / Threads style).
+///
+/// While typing, [SocialTextEditingController] highlights the tokens live; this
+/// widget pops an overlay with suggestions for whichever trigger the caret is
+/// currently inside:
+/// - `#` → trending / matching hashtags (Go backend, with trending cache fallback)
+/// - `@` → matching users (profiles search, with a warm "suggested" cache)
 class HashtagAutocompleteField extends StatefulWidget {
   final TextEditingController controller;
   final int maxLines;
@@ -14,6 +24,9 @@ class HashtagAutocompleteField extends StatefulWidget {
   final InputDecoration? decoration;
   final ValueChanged<String>? onChanged;
   final TextDirection textDirection;
+
+  /// Enable `@mention` autocomplete. Hashtags are always enabled.
+  final bool enableMentions;
 
   const HashtagAutocompleteField({
     super.key,
@@ -27,6 +40,7 @@ class HashtagAutocompleteField extends StatefulWidget {
     this.decoration,
     this.onChanged,
     this.textDirection = TextDirection.rtl,
+    this.enableMentions = true,
   });
 
   @override
@@ -34,27 +48,41 @@ class HashtagAutocompleteField extends StatefulWidget {
       _HashtagAutocompleteFieldState();
 }
 
+enum _SuggestMode { none, hashtag, mention }
+
 class _HashtagAutocompleteFieldState extends State<HashtagAutocompleteField> {
   final GoPostsRepository _postsRepository = GoPostsRepository();
+  final ProfileRepository _profileRepository = ProfileRepository();
   final LayerLink _layerLink = LayerLink();
   OverlayEntry? _overlayEntry;
-  List<Map<String, dynamic>> _suggestions = [];
+
+  // Hashtag state
+  List<Map<String, dynamic>> _hashtagSuggestions = [];
   List<Map<String, dynamic>> _trending = [];
+
+  // Mention state
+  List<UserModel> _userSuggestions = [];
+  List<UserModel> _suggestedUsers = [];
+
   bool _isLoading = false;
+  _SuggestMode _mode = _SuggestMode.none;
+
   Timer? _debounceTimer;
-  String? _currentHashtagQuery;
-  int _hashtagStartIndex = 0;
+  String? _currentQuery;
+  int _tokenStartIndex = 0;
+  int _requestSeq = 0;
   final FocusNode _focusNode = FocusNode();
 
-  static const Duration _debounceDuration = Duration(milliseconds: 300);
+  static const Duration _debounceDuration = Duration(milliseconds: 280);
 
   @override
   void initState() {
     super.initState();
     widget.controller.addListener(_onTextChanged);
     _focusNode.addListener(_onFocusChanged);
-    // Warm cache for fast "just typed #" suggestions (Social-like).
+    // Warm caches so the first '#'/'@' feels instant.
     unawaited(_loadTrendingTags());
+    if (widget.enableMentions) unawaited(_loadSuggestedUsers());
   }
 
   @override
@@ -68,62 +96,84 @@ class _HashtagAutocompleteFieldState extends State<HashtagAutocompleteField> {
   }
 
   void _onFocusChanged() {
-    if (!_focusNode.hasFocus) {
-      _removeOverlay();
-    }
+    if (!_focusNode.hasFocus) _removeOverlay();
   }
 
   void _onTextChanged() {
     widget.onChanged?.call(widget.controller.text);
-    _detectHashtag();
+    _detectTrigger();
   }
 
-  /// تشخیص هشتگ در موقعیت مکان‌نما
-  void _detectHashtag() {
+  /// Detect whether the caret sits inside a `#`/`@` token and, if so, kick off
+  /// a debounced search for that token.
+  void _detectTrigger() {
     final text = widget.controller.text;
     final selection = widget.controller.selection;
 
     if (!selection.isValid || selection.baseOffset != selection.extentOffset) {
-      _removeOverlay();
+      _reset();
       return;
     }
 
-    final cursorPosition = selection.baseOffset;
-    if (cursorPosition <= 0) {
-      _removeOverlay();
+    final cursor = selection.baseOffset;
+    if (cursor <= 0) {
+      _reset();
       return;
     }
 
-    // پیدا کردن کلمه فعلی که کرسر درونش است
-    final textBeforeCursor = text.substring(0, cursorPosition);
+    final before = text.substring(0, cursor);
 
-    // استفاده از Regex برای یافتن هشتگ در انتهای متن قبل از کرسر
-    // این الگو هشتگ‌هایی که با # شروع می‌شوند و شامل حروف فارسی/انگلیسی/اعداد هستند را پیدا می‌کند
-    final RegExp hashtagRegex = RegExp(r'#([\u0600-\u06FF\w]*)$');
-    final match = hashtagRegex.firstMatch(textBeforeCursor);
+    // The trigger char must start the token: either at string start or after a
+    // whitespace/newline — this prevents emails (`a@b`) from triggering mentions.
+    final RegExp tokenRegex =
+        RegExp(r'(^|[\s\n])([#@])([؀-ۿ\w_]*)$', unicode: true);
+    final match = tokenRegex.firstMatch(before);
 
-    if (match != null) {
-      final query = match.group(1) ?? '';
-      _hashtagStartIndex = match.start;
-      _currentHashtagQuery = query;
+    if (match == null) {
+      _reset();
+      return;
+    }
 
-      // Debounce API call
-      _debounceTimer?.cancel();
-      _debounceTimer = Timer(_debounceDuration, () {
+    final trigger = match.group(2)!;
+    final query = match.group(3) ?? '';
+    // start index of the trigger char itself (group 1 may be a leading space).
+    _tokenStartIndex = match.start + match.group(1)!.length;
+    _currentQuery = query;
+
+    final mode = trigger == '#'
+        ? _SuggestMode.hashtag
+        : (widget.enableMentions ? _SuggestMode.mention : _SuggestMode.none);
+
+    if (mode == _SuggestMode.none) {
+      _reset();
+      return;
+    }
+    _mode = mode;
+
+    _debounceTimer?.cancel();
+    _debounceTimer = Timer(_debounceDuration, () {
+      if (mode == _SuggestMode.hashtag) {
         _searchHashtags(query);
-      });
-    } else {
-      _currentHashtagQuery = null;
-      _removeOverlay();
-    }
+      } else {
+        _searchUsers(query);
+      }
+    });
   }
+
+  void _reset() {
+    _currentQuery = null;
+    _mode = _SuggestMode.none;
+    _removeOverlay();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Hashtags
+  // ---------------------------------------------------------------------------
 
   Future<void> _loadTrendingTags() async {
     try {
-      final suggestions = await _postsRepository.getTrendingHashtags(
-        limit: 20,
-        days: 30,
-      );
+      final suggestions =
+          await _postsRepository.getTrendingHashtags(limit: 20, days: 30);
       final list = suggestions.map((item) => item.toMap()).toList();
       if (mounted) {
         setState(() => _trending = list);
@@ -131,135 +181,165 @@ class _HashtagAutocompleteFieldState extends State<HashtagAutocompleteField> {
         _trending = list;
       }
     } catch (_) {
-      // ignore – trending is best-effort for UX only
+      // trending is best-effort UX only
     }
   }
 
-  /// جستجوی هشتگ از Go backend
   Future<void> _searchHashtags(String keyword) async {
-    // If user just typed '#', show trending tags instead of an empty dropdown.
+    final seq = ++_requestSeq;
+
     if (keyword.isEmpty) {
-      if (_trending.isEmpty) {
-        await _loadTrendingTags();
-      }
-      if (!mounted) return;
-      setState(() => _suggestions = _trending);
-      if (_suggestions.isNotEmpty) {
-        _showOverlay();
-      } else {
-        _removeOverlay();
-      }
+      if (_trending.isEmpty) await _loadTrendingTags();
+      if (!mounted || seq != _requestSeq) return;
+      setState(() => _hashtagSuggestions = _trending);
+      _refreshOverlay(_hashtagSuggestions.isNotEmpty);
       return;
     }
 
     setState(() => _isLoading = true);
-
     try {
-      final response = await _postsRepository.searchHashtags(
-        keyword: keyword,
-        limit: 20,
-      );
-      final suggestions = response.map((item) => item.toMap()).toList();
+      final response =
+          await _postsRepository.searchHashtags(keyword: keyword, limit: 20);
+      var suggestions = response.map((item) => item.toMap()).toList();
 
-      if (mounted) {
-        setState(() {
-          _suggestions = suggestions;
-        });
-      } else {
-        _suggestions = suggestions;
-      }
-
-      if (_suggestions.isNotEmpty) {
-        _showOverlay();
-      } else {
-        // fallback: filter trending cache if search returns nothing
-        if (_trending.isEmpty) {
-          await _loadTrendingTags();
-        }
+      if (suggestions.isEmpty) {
+        // Fallback: prefix-filter the trending cache.
+        if (_trending.isEmpty) await _loadTrendingTags();
         final k = keyword.toLowerCase();
-        final filtered = _trending
+        suggestions = _trending
             .where(
                 (m) => (m['tag']?.toString().toLowerCase() ?? '').startsWith(k))
             .toList();
-        if (mounted) {
-          setState(() => _suggestions = filtered);
-        } else {
-          _suggestions = filtered;
-        }
-        if (_suggestions.isNotEmpty) {
-          _showOverlay();
-        } else {
-          _removeOverlay();
-        }
       }
-    } catch (e) {
-      // If the RPC doesn't exist or network is flaky, fall back to trending cache.
-      if (_trending.isEmpty) {
-        await _loadTrendingTags();
-      }
+
+      if (!mounted || seq != _requestSeq) return;
+      setState(() => _hashtagSuggestions = suggestions);
+      _refreshOverlay(suggestions.isNotEmpty);
+    } catch (_) {
+      if (_trending.isEmpty) await _loadTrendingTags();
       final k = keyword.toLowerCase();
       final filtered = _trending
           .where(
               (m) => (m['tag']?.toString().toLowerCase() ?? '').startsWith(k))
           .toList();
-      if (!mounted) return;
-      setState(() => _suggestions = filtered);
-      if (_suggestions.isNotEmpty) {
-        _showOverlay();
-      } else {
-        _removeOverlay();
-      }
+      if (!mounted || seq != _requestSeq) return;
+      setState(() => _hashtagSuggestions = filtered);
+      _refreshOverlay(filtered.isNotEmpty);
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted && seq == _requestSeq) setState(() => _isLoading = false);
     }
   }
 
-  /// نمایش Overlay پیشنهادات
+  // ---------------------------------------------------------------------------
+  // Mentions
+  // ---------------------------------------------------------------------------
+
+  Future<void> _loadSuggestedUsers() async {
+    try {
+      final profiles =
+          await _profileRepository.searchProfiles(query: '', limit: 8);
+      final users = profiles.map((p) => UserModel.fromMap(p.toMap())).toList();
+      if (mounted) {
+        setState(() => _suggestedUsers = users);
+      } else {
+        _suggestedUsers = users;
+      }
+    } catch (_) {
+      // best-effort only
+    }
+  }
+
+  Future<void> _searchUsers(String keyword) async {
+    final seq = ++_requestSeq;
+
+    if (keyword.isEmpty) {
+      if (_suggestedUsers.isEmpty) await _loadSuggestedUsers();
+      if (!mounted || seq != _requestSeq) return;
+      setState(() => _userSuggestions = _suggestedUsers);
+      _refreshOverlay(_userSuggestions.isNotEmpty);
+      return;
+    }
+
+    setState(() => _isLoading = true);
+    try {
+      final profiles =
+          await _profileRepository.searchProfiles(query: keyword, limit: 12);
+      final users = profiles.map((p) => UserModel.fromMap(p.toMap())).toList();
+      if (!mounted || seq != _requestSeq) return;
+      setState(() => _userSuggestions = users);
+      _refreshOverlay(users.isNotEmpty);
+    } catch (_) {
+      // Fallback: prefix-filter warm suggested cache.
+      final k = keyword.toLowerCase();
+      final filtered = _suggestedUsers
+          .where((u) => u.username.toLowerCase().startsWith(k))
+          .toList();
+      if (!mounted || seq != _requestSeq) return;
+      setState(() => _userSuggestions = filtered);
+      _refreshOverlay(filtered.isNotEmpty);
+    } finally {
+      if (mounted && seq == _requestSeq) setState(() => _isLoading = false);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Overlay
+  // ---------------------------------------------------------------------------
+
+  void _refreshOverlay(bool hasItems) {
+    if (hasItems || _isLoading) {
+      _showOverlay();
+    } else {
+      _removeOverlay();
+    }
+  }
+
   void _showOverlay() {
     _removeOverlay();
-
     _overlayEntry = OverlayEntry(
       builder: (context) => Positioned(
         width: MediaQuery.of(context).size.width - 32,
         child: CompositedTransformFollower(
           link: _layerLink,
           showWhenUnlinked: false,
-          offset: const Offset(0, 56), // زیر فیلد متنی
+          offset: const Offset(0, 56),
           child: Material(
             elevation: 8,
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(14),
             color: Theme.of(context).brightness == Brightness.dark
                 ? const Color(0xFF2A2A2A)
                 : Colors.white,
             child: Container(
-              constraints: const BoxConstraints(maxHeight: 200),
+              constraints: const BoxConstraints(maxHeight: 240),
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(14),
                 border: Border.all(
                   color: Theme.of(context).brightness == Brightness.dark
                       ? Colors.white12
                       : Colors.black12,
                 ),
               ),
+              clipBehavior: Clip.antiAlias,
               child: _buildSuggestionsList(),
             ),
           ),
         ),
       ),
     );
-
     Overlay.of(context).insert(_overlayEntry!);
   }
 
-  /// حذف Overlay
   void _removeOverlay() {
     _overlayEntry?.remove();
     _overlayEntry = null;
   }
 
-  /// ساخت لیست پیشنهادات
   Widget _buildSuggestionsList() {
-    if (_isLoading) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    if (_isLoading &&
+        ((_mode == _SuggestMode.hashtag && _hashtagSuggestions.isEmpty) ||
+            (_mode == _SuggestMode.mention && _userSuggestions.isEmpty))) {
       return const Padding(
         padding: EdgeInsets.all(16),
         child: Center(
@@ -272,27 +352,28 @@ class _HashtagAutocompleteFieldState extends State<HashtagAutocompleteField> {
       );
     }
 
-    if (_suggestions.isEmpty) {
-      return const SizedBox.shrink();
+    if (_mode == _SuggestMode.mention) {
+      return _buildMentionList(isDark);
     }
+    return _buildHashtagList(isDark);
+  }
 
+  Widget _buildHashtagList(bool isDark) {
     return ListView.builder(
       shrinkWrap: true,
       padding: const EdgeInsets.symmetric(vertical: 8),
-      itemCount: _suggestions.length,
+      itemCount: _hashtagSuggestions.length,
       itemBuilder: (context, index) {
-        final suggestion = _suggestions[index];
+        final suggestion = _hashtagSuggestions[index];
         final tag = suggestion['tag'] as String? ?? '';
         final usageCount = suggestion['usage_count'] as int? ?? 0;
 
         return InkWell(
-          onTap: () => _selectHashtag(tag),
-          borderRadius: BorderRadius.circular(8),
+          onTap: () => _commitToken('#$tag '),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             child: Row(
               children: [
-                // آیکون هشتگ
                 Container(
                   width: 36,
                   height: 36,
@@ -316,7 +397,6 @@ class _HashtagAutocompleteFieldState extends State<HashtagAutocompleteField> {
                   ),
                 ),
                 const SizedBox(width: 12),
-                // اطلاعات هشتگ
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -326,9 +406,7 @@ class _HashtagAutocompleteFieldState extends State<HashtagAutocompleteField> {
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 15,
-                          color: Theme.of(context).brightness == Brightness.dark
-                              ? Colors.white
-                              : Colors.black87,
+                          color: isDark ? Colors.white : Colors.black87,
                         ),
                       ),
                       const SizedBox(height: 2),
@@ -336,20 +414,15 @@ class _HashtagAutocompleteFieldState extends State<HashtagAutocompleteField> {
                         '$usageCount پست',
                         style: TextStyle(
                           fontSize: 12,
-                          color: Theme.of(context).brightness == Brightness.dark
-                              ? Colors.white60
-                              : Colors.black54,
+                          color: isDark ? Colors.white60 : Colors.black54,
                         ),
                       ),
                     ],
                   ),
                 ),
-                // آیکون افزودن
                 Icon(
                   Icons.add_circle_outline,
-                  color: Theme.of(context).brightness == Brightness.dark
-                      ? Colors.white38
-                      : Colors.black38,
+                  color: isDark ? Colors.white38 : Colors.black38,
                   size: 20,
                 ),
               ],
@@ -360,31 +433,88 @@ class _HashtagAutocompleteFieldState extends State<HashtagAutocompleteField> {
     );
   }
 
-  /// انتخاب هشتگ از لیست
-  void _selectHashtag(String tag) {
-    if (_currentHashtagQuery == null) return;
+  Widget _buildMentionList(bool isDark) {
+    return ListView.builder(
+      shrinkWrap: true,
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      itemCount: _userSuggestions.length,
+      itemBuilder: (context, index) {
+        final user = _userSuggestions[index];
+        final avatar = user.avatarUrl;
+        return InkWell(
+          onTap: () => _commitToken('@${user.username} '),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 18,
+                  backgroundColor: Colors.grey.shade300,
+                  backgroundImage: (avatar != null && avatar.isNotEmpty)
+                      ? NetworkImage(avatar)
+                      : const AssetImage('lib/utils/images/default-avatar.jpg')
+                          as ImageProvider,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          user.username.isEmpty ? 'کاربر' : user.username,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 15,
+                            color: isDark ? Colors.white : Colors.black87,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      VerificationBadgeIcon(
+                        isVerified: user.isVerified,
+                        verificationType: user.verificationType.name,
+                        role: user.role,
+                        size: 15,
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(
+                  Icons.alternate_email,
+                  color: isDark ? Colors.white38 : Colors.black38,
+                  size: 18,
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
 
+  /// Replace the in-progress token (`#partial` / `@partial`) with [replacement]
+  /// and place the caret right after it.
+  void _commitToken(String replacement) {
+    if (_currentQuery == null) return;
     final text = widget.controller.text;
-    final cursorPosition = widget.controller.selection.baseOffset;
+    final cursor = widget.controller.selection.baseOffset;
+    if (cursor < _tokenStartIndex) {
+      _reset();
+      return;
+    }
 
-    // جایگزینی هشتگ تایپ شده با هشتگ انتخاب شده
-    final newText = text.replaceRange(
-      _hashtagStartIndex,
-      cursorPosition,
-      '#$tag ', // اضافه کردن فاصله بعد از هشتگ
+    final newText = text.replaceRange(_tokenStartIndex, cursor, replacement);
+    final newCursor = _tokenStartIndex + replacement.length;
+
+    widget.controller.value = TextEditingValue(
+      text: newText,
+      selection: TextSelection.collapsed(
+        offset: newCursor.clamp(0, newText.length),
+      ),
     );
 
-    widget.controller.text = newText;
-
-    // قرار دادن کرسر بعد از هشتگ جدید
-    final newCursorPosition =
-        _hashtagStartIndex + tag.length + 2; // +2 for # and space
-    widget.controller.selection = TextSelection.collapsed(
-      offset: newCursorPosition.clamp(0, newText.length),
-    );
-
-    _removeOverlay();
-    _currentHashtagQuery = null;
+    _reset();
   }
 
   @override

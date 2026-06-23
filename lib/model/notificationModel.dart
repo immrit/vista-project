@@ -90,6 +90,10 @@ class NotificationModel extends Equatable {
         return 'comment';
       case 'reply_comment':
         return 'comment_reply';
+      case 'comment_mention':
+      case 'post_mention':
+      case 'mention':
+        return 'mention';
       case 'new_message':
       case 'chat_message':
         return 'message';
@@ -176,6 +180,8 @@ class NotificationModel extends Equatable {
         return 'نظر جدید';
       case 'comment_reply':
         return 'پاسخ جدید';
+      case 'mention':
+        return 'شما را تگ کرد';
       default:
         return 'اعلان جدید';
     }

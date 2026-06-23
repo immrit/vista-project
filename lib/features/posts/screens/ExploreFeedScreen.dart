@@ -41,6 +41,7 @@ import 'package:Vista/features/stories/stories.dart';
 import 'package:Vista/core/theme/app_theme.dart';
 import '../../../widgets/skeleton_loading.dart';
 import '../widgets/double_tap_like_overlay.dart';
+import '../widgets/post_image_carousel.dart';
 import 'package:Vista/l10n/generated/app_localizations.dart';
 import '../widgets/dwell_detector.dart';
 
@@ -150,13 +151,15 @@ class _ExploreFeedScreenState extends ConsumerState<ExploreFeedScreen>
               heroTag: null,
               onPressed: () {
                 Navigator.of(context).push(
-                  MaterialPageRoute(builder: (context) => const AddPublicPostScreen()),
+                  MaterialPageRoute(
+                      builder: (context) => const AddPublicPostScreen()),
                 );
               },
               backgroundColor: Colors.transparent,
               elevation: 0,
               highlightElevation: 0,
-              child: const Icon(Icons.add_rounded, color: Colors.white, size: 32),
+              child:
+                  const Icon(Icons.add_rounded, color: Colors.white, size: 32),
             ),
           ),
         ),
@@ -321,48 +324,51 @@ class _ForYouTab extends ConsumerWidget {
               return false;
             },
             child: ListView.builder(
-            scrollCacheExtent: ScrollCacheExtent.pixels(1000),
-            padding: _feedListPadding(context),
-            itemCount: posts.length + (notifier.hasMorePosts() ? 1 : 0),
-            itemBuilder: (context, index) {
-              if (index == posts.length) {
-                return const Padding(
-                  padding: EdgeInsets.all(16),
-                  child: Center(
-                    child: CircularProgressIndicator(color: AppColors.primary),
+              scrollCacheExtent: ScrollCacheExtent.pixels(1000),
+              padding: _feedListPadding(context),
+              itemCount: posts.length + (notifier.hasMorePosts() ? 1 : 0),
+              itemBuilder: (context, index) {
+                if (index == posts.length) {
+                  return const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Center(
+                      child:
+                          CircularProgressIndicator(color: AppColors.primary),
+                    ),
+                  );
+                }
+
+                final post = posts[index];
+                return DwellDetector(
+                  key: ValueKey<String>(post.id),
+                  itemKey: post.id,
+                  onView: () {
+                    unawaited(
+                        ref.read(goPostsRepositoryProvider).trackFeedEvent(
+                              postId: post.id,
+                              eventType: 'view',
+                            ));
+                  },
+                  onDwell: () {
+                    unawaited(
+                        ref.read(goPostsRepositoryProvider).trackFeedEvent(
+                              postId: post.id,
+                              eventType: 'dwell',
+                            ));
+                  },
+                  child: Column(
+                    children: [
+                      _ThreadPostItem(
+                        post: post,
+                        isForYou: true,
+                        reelsPlaylist: reelsPlaylist,
+                      ),
+                      const Divider(height: 0.5, thickness: 0.5),
+                    ],
                   ),
                 );
-              }
-
-              final post = posts[index];
-              return DwellDetector(
-                key: ValueKey<String>(post.id),
-                itemKey: post.id,
-                onView: () {
-                  unawaited(ref.read(goPostsRepositoryProvider).trackFeedEvent(
-                    postId: post.id,
-                    eventType: 'view',
-                  ));
-                },
-                onDwell: () {
-                  unawaited(ref.read(goPostsRepositoryProvider).trackFeedEvent(
-                    postId: post.id,
-                    eventType: 'dwell',
-                  ));
-                },
-                child: Column(
-                  children: [
-                    _ThreadPostItem(
-                      post: post,
-                      isForYou: true,
-                      reelsPlaylist: reelsPlaylist,
-                    ),
-                    const Divider(height: 0.5, thickness: 0.5),
-                  ],
-                ),
-              );
-            },
-          ),
+              },
+            ),
           ),
         );
       },
@@ -424,48 +430,51 @@ class _FollowingTab extends ConsumerWidget {
               return false;
             },
             child: ListView.builder(
-            scrollCacheExtent: ScrollCacheExtent.pixels(1000),
-            padding: _feedListPadding(context),
-            itemCount: posts.length + (notifier.hasMorePosts() ? 1 : 0),
-            itemBuilder: (context, index) {
-              if (index == posts.length) {
-                return const Padding(
-                  padding: EdgeInsets.all(16),
-                  child: Center(
-                    child: CircularProgressIndicator(color: AppColors.primary),
+              scrollCacheExtent: ScrollCacheExtent.pixels(1000),
+              padding: _feedListPadding(context),
+              itemCount: posts.length + (notifier.hasMorePosts() ? 1 : 0),
+              itemBuilder: (context, index) {
+                if (index == posts.length) {
+                  return const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Center(
+                      child:
+                          CircularProgressIndicator(color: AppColors.primary),
+                    ),
+                  );
+                }
+
+                final post = posts[index];
+                return DwellDetector(
+                  key: ValueKey<String>(post.id),
+                  itemKey: post.id,
+                  onView: () {
+                    unawaited(
+                        ref.read(goPostsRepositoryProvider).trackFeedEvent(
+                              postId: post.id,
+                              eventType: 'view',
+                            ));
+                  },
+                  onDwell: () {
+                    unawaited(
+                        ref.read(goPostsRepositoryProvider).trackFeedEvent(
+                              postId: post.id,
+                              eventType: 'dwell',
+                            ));
+                  },
+                  child: Column(
+                    children: [
+                      _ThreadPostItem(
+                        post: post,
+                        isForYou: false,
+                        reelsPlaylist: reelsPlaylist,
+                      ),
+                      const Divider(height: 0.5, thickness: 0.5),
+                    ],
                   ),
                 );
-              }
-
-              final post = posts[index];
-              return DwellDetector(
-                key: ValueKey<String>(post.id),
-                itemKey: post.id,
-                onView: () {
-                  unawaited(ref.read(goPostsRepositoryProvider).trackFeedEvent(
-                    postId: post.id,
-                    eventType: 'view',
-                  ));
-                },
-                onDwell: () {
-                  unawaited(ref.read(goPostsRepositoryProvider).trackFeedEvent(
-                    postId: post.id,
-                    eventType: 'dwell',
-                  ));
-                },
-                child: Column(
-                  children: [
-                    _ThreadPostItem(
-                      post: post,
-                      isForYou: false,
-                      reelsPlaylist: reelsPlaylist,
-                    ),
-                    const Divider(height: 0.5, thickness: 0.5),
-                  ],
-                ),
-              );
-            },
-          ),
+              },
+            ),
           ),
         );
       },
@@ -686,7 +695,9 @@ class _ThreadPostItem extends ConsumerWidget {
     final colorScheme = theme.colorScheme;
     final hasImage = post.imageUrl != null && post.imageUrl!.isNotEmpty;
     final hasVideo = post.hasVideo;
-    final isLiked = ref.watch(likeStateProvider.select((map) => map[post.id])) ?? post.isLiked;
+    final isLiked =
+        ref.watch(likeStateProvider.select((map) => map[post.id])) ??
+            post.isLiked;
     final likeCount =
         post.likeCount + (isLiked != post.isLiked ? (isLiked ? 1 : -1) : 0);
     final currentUserId =
@@ -702,9 +713,8 @@ class _ThreadPostItem extends ConsumerWidget {
     final isFollowBusy = ref.watch(
       _feedFollowLoadingProvider.select((ids) => ids.contains(post.userId)),
     );
-    final isSaved = ref.watch(savedPostIdsProvider.select((async) => 
-      async.maybeWhen(data: (ids) => ids.contains(post.id), orElse: () => false)
-    ));
+    final isSaved = ref.watch(savedPostIdsProvider.select((async) => async
+        .maybeWhen(data: (ids) => ids.contains(post.id), orElse: () => false)));
 
     // استفاده از GestureDetector به جای InkWell برای حذف افکت ریپل از کل پست
     return GestureDetector(
@@ -933,8 +943,7 @@ class _ThreadPostItem extends ConsumerWidget {
                           style: TextStyle(
                             fontSize: 15,
                             height: 1.4,
-                            color: colorScheme.onSurface
-                                .withValues(alpha: 0.9),
+                            color: colorScheme.onSurface.withValues(alpha: 0.9),
                           ),
                           hashtagStyle: const TextStyle(
                             color: Colors.blue,
@@ -955,6 +964,12 @@ class _ThreadPostItem extends ConsumerWidget {
                                 builder: (context) =>
                                     SearchPage(initialHashtag: '#$tag'),
                               ),
+                            );
+                          },
+                          onMentionTap: (username) {
+                            ContentNavigation.pushProfileByUsername(
+                              context,
+                              username: username,
                             );
                           },
                         ),
@@ -986,9 +1001,7 @@ class _ThreadPostItem extends ConsumerWidget {
                           .read(likeStateProvider.notifier)
                           .updateLikeState(post.id, true);
                       try {
-                        await ref
-                            .read(postActionsServiceProvider)
-                            .toggleLike(
+                        await ref.read(postActionsServiceProvider).toggleLike(
                               postId: post.id,
                               ownerId: post.userId,
                               ref: ref,
@@ -1006,26 +1019,36 @@ class _ThreadPostItem extends ConsumerWidget {
                         }
                       }
                     },
-                    child: CachedNetworkImage(
-                      imageUrl: post.imageUrl!,
-                      width: double.infinity,
-                      fit: BoxFit.cover,
-                      placeholder: (_, __) => Container(
-                        height: 180,
-                        color: isDark ? Colors.grey[800] : Colors.grey[200],
-                        child: const Center(
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: AppColors.primary,
+                    child: post.hasMultipleImages
+                        ? SizedBox(
+                            height: 280,
+                            child: PostImageCarousel(
+                              imageUrls: post.galleryImages,
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                          )
+                        : CachedNetworkImage(
+                            imageUrl: post.imageUrl!,
+                            width: double.infinity,
+                            fit: BoxFit.cover,
+                            placeholder: (_, __) => Container(
+                              height: 180,
+                              color:
+                                  isDark ? Colors.grey[800] : Colors.grey[200],
+                              child: const Center(
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: AppColors.primary,
+                                ),
+                              ),
+                            ),
+                            errorWidget: (_, __, ___) => Container(
+                              height: 180,
+                              color:
+                                  isDark ? Colors.grey[800] : Colors.grey[200],
+                              child: const Icon(Icons.broken_image),
+                            ),
                           ),
-                        ),
-                      ),
-                      errorWidget: (_, __, ___) => Container(
-                        height: 180,
-                        color: isDark ? Colors.grey[800] : Colors.grey[200],
-                        child: const Icon(Icons.broken_image),
-                      ),
-                    ),
                   ),
                 ),
               ),
@@ -1045,17 +1068,16 @@ class _ThreadPostItem extends ConsumerWidget {
                       .read(likeStateProvider.notifier)
                       .updateLikeState(post.id, true);
                   try {
-                    await ref
-                        .read(postActionsServiceProvider)
-                        .toggleLike(
+                    await ref.read(postActionsServiceProvider).toggleLike(
                           postId: post.id,
                           ownerId: post.userId,
                           ref: ref,
                         );
-                    unawaited(ref.read(goPostsRepositoryProvider).trackFeedEvent(
-                          postId: post.id,
-                          eventType: 'like',
-                        ));
+                    unawaited(
+                        ref.read(goPostsRepositoryProvider).trackFeedEvent(
+                              postId: post.id,
+                              eventType: 'like',
+                            ));
                   } catch (_) {
                     if (context.mounted) {
                       ref
@@ -1091,9 +1113,7 @@ class _ThreadPostItem extends ConsumerWidget {
                         .read(likeStateProvider.notifier)
                         .updateLikeState(post.id, willLike);
                     try {
-                      await ref
-                          .read(postActionsServiceProvider)
-                          .toggleLike(
+                      await ref.read(postActionsServiceProvider).toggleLike(
                             postId: post.id,
                             ownerId: post.userId,
                             ref: ref,
@@ -1122,12 +1142,11 @@ class _ThreadPostItem extends ConsumerWidget {
                   iconSize: 19,
                   gap: 4,
                   onTap: () {
-                    unawaited(ref
-                        .read(goPostsRepositoryProvider)
-                        .trackFeedEvent(
-                          postId: post.id,
-                          eventType: 'comment',
-                        ));
+                    unawaited(
+                        ref.read(goPostsRepositoryProvider).trackFeedEvent(
+                              postId: post.id,
+                              eventType: 'comment',
+                            ));
                     showCommentsBottomSheet2(
                       context,
                       postId: post.id,
@@ -1151,10 +1170,11 @@ class _ThreadPostItem extends ConsumerWidget {
                         .read(savedPostIdsProvider.notifier)
                         .toggle(post.id, post: post);
                     if (ok && !wasSaved) {
-                      unawaited(ref.read(goPostsRepositoryProvider).trackFeedEvent(
-                            postId: post.id,
-                            eventType: 'save',
-                          ));
+                      unawaited(
+                          ref.read(goPostsRepositoryProvider).trackFeedEvent(
+                                postId: post.id,
+                                eventType: 'save',
+                              ));
                     }
                     if (!ok && context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
@@ -1169,12 +1189,11 @@ class _ThreadPostItem extends ConsumerWidget {
                 // Share button with proper tap area
                 InkWell(
                   onTap: () {
-                    unawaited(ref
-                        .read(goPostsRepositoryProvider)
-                        .trackFeedEvent(
-                          postId: post.id,
-                          eventType: 'share',
-                        ));
+                    unawaited(
+                        ref.read(goPostsRepositoryProvider).trackFeedEvent(
+                              postId: post.id,
+                              eventType: 'share',
+                            ));
                     SmartShareService().showShareOptions(post, context);
                   },
                   borderRadius: BorderRadius.circular(12),
@@ -1198,7 +1217,6 @@ class _ThreadPostItem extends ConsumerWidget {
       ),
     );
   }
-
 
   // --- Post actions menu logic ---
   Widget _buildPostActions(
@@ -1342,7 +1360,8 @@ class _ThreadPostItem extends ConsumerWidget {
                       SizedBox(width: 8),
                       Text('کنترل آمار لایک/کامنت'),
                       Spacer(),
-                      Icon(Icons.workspace_premium, size: 18, color: Colors.amber),
+                      Icon(Icons.workspace_premium,
+                          size: 18, color: Colors.amber),
                     ],
                   ),
                 ));
@@ -1456,14 +1475,15 @@ class _ThreadPostItem extends ConsumerWidget {
               }
 
               try {
-                final hideLike = value == 'toggle_like_count'
-                    ? !post.hideLikeCount
-                    : null;
+                final hideLike =
+                    value == 'toggle_like_count' ? !post.hideLikeCount : null;
                 final hideComment = value == 'toggle_comment_count'
                     ? !post.hideCommentCount
                     : null;
 
-                await ref.read(goPostsRepositoryProvider).updateEngagementVisibility(
+                await ref
+                    .read(goPostsRepositoryProvider)
+                    .updateEngagementVisibility(
                       postId: post.id,
                       hideLikeCount: hideLike,
                       hideCommentCount: hideComment,
@@ -1475,8 +1495,7 @@ class _ThreadPostItem extends ConsumerWidget {
                 ref.refresh(fetchFollowingPostsProvider);
 
                 if (context.mounted) {
-                  final updatedLikeHidden =
-                      hideLike ?? post.hideLikeCount;
+                  final updatedLikeHidden = hideLike ?? post.hideLikeCount;
                   final updatedCommentHidden =
                       hideComment ?? post.hideCommentCount;
                   ScaffoldMessenger.of(context).showSnackBar(

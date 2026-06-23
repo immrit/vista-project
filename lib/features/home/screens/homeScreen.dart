@@ -123,7 +123,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             .timeout(const Duration(seconds: 2), onTimeout: () => true);
         if (!isComplete && mounted) {
           await Future.delayed(const Duration(milliseconds: 500));
-          if (mounted) {
+          // فقط زمانی setup را push کن که home هنوز صفحه فعال است.
+          // اگر چیزی روی home آمده باشد (مثلاً چت از طریق نوتیفیکیشن)،
+          // نباید صفحه تکمیل پروفایل روی آن باز شود.
+          final isHomeCurrent = ModalRoute.of(context)?.isCurrent ?? false;
+          if (mounted && isHomeCurrent) {
             Navigator.pushNamed(context, '/profile-setup');
           }
         }

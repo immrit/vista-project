@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../profile/data/profile_repository.dart';
 import '../screens/PostDetailPage.dart';
 import '../screens/profileScreen.dart';
 
@@ -9,10 +10,11 @@ class ProfileRoute extends PageRouteBuilder<void> {
     required this.userId,
     required this.username,
   }) : super(
-          pageBuilder: (context, animation, secondaryAnimation) => ProfileScreen(
-                userId: userId,
-                username: username,
-              ),
+          pageBuilder: (context, animation, secondaryAnimation) =>
+              ProfileScreen(
+            userId: userId,
+            username: username,
+          ),
           transitionDuration: const Duration(milliseconds: 220),
           reverseTransitionDuration: const Duration(milliseconds: 180),
           transitionsBuilder: (context, animation, secondaryAnimation, child) {
@@ -82,6 +84,35 @@ abstract final class ContentNavigation {
     return Navigator.push<void>(
       context,
       PostDetailRoute(postId: postId),
+    );
+  }
+
+  /// Open a profile from a bare `@username` (e.g. a tapped mention). Resolves
+  /// the user id first, then routes; silently no-ops if the username can't be
+  /// resolved so a bad mention never throws on the read path.
+  static Future<void> pushProfileByUsername(
+    BuildContext context, {
+    required String username,
+  }) async {
+    final clean = username.replaceFirst(RegExp(r'^@+'), '').trim();
+    if (clean.isEmpty) return;
+
+    String userId = '';
+    try {
+      final data =
+          await ProfileRepository().fetchProfileByUsername(clean.toLowerCase());
+      userId = (data['user_id'] ?? data['id'] ?? '').toString();
+    } catch (_) {
+      // Resolution is best-effort; fall through and let ProfileScreen retry by
+      // username if it supports that, otherwise just abort.
+    }
+
+    if (!context.mounted) return;
+    if (userId.isEmpty) return;
+
+    await Navigator.push<void>(
+      context,
+      ProfileRoute(userId: userId, username: clean),
     );
   }
 }

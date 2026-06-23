@@ -105,6 +105,12 @@ class _PricingPageState extends ConsumerState<PricingPage>
       'subtitle': 'آپلود و برش ویدیو تا ۲ دقیقه (کاربران عادی: ۱ دقیقه).',
     },
     {
+      'icon': Icons.collections,
+      'title': 'آلبوم چندعکسی تا ۱۰ عکس',
+      'subtitle':
+          'در هر پست تا ۱۰ عکس به‌صورت اسلایدی منتشر کنید (کاربران عادی: ۳ عکس).',
+    },
+    {
       'icon': Icons.visibility_off_outlined,
       'title': 'کنترل آمار لایک و کامنت',
       'subtitle': 'برای هر پست نمایش تعداد لایک و کامنت را روشن یا خاموش کنید.',

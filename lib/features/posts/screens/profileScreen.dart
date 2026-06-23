@@ -16,6 +16,7 @@ import '../providers/saved_posts_provider.dart';
 import '../widgets/post_action_buttons.dart';
 import '../widgets/post_moderation_banner.dart';
 import '../widgets/post_feed_video.dart';
+import '../widgets/post_image_carousel.dart';
 import '../services/reels_viewer_launcher.dart';
 
 // Imports for existing functionality
@@ -120,36 +121,40 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      floatingActionButton: isCurrentUserProfile ? Padding(
-        padding: const EdgeInsets.only(bottom: 90.0),
-        child: Container(
-          height: 56,
-          width: 56,
-          decoration: BoxDecoration(
-            gradient: AppColors.primaryGradient,
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                color: AppColors.primary.withValues(alpha: 0.35),
-                blurRadius: 12,
-                offset: const Offset(0, 4),
+      floatingActionButton: isCurrentUserProfile
+          ? Padding(
+              padding: const EdgeInsets.only(bottom: 90.0),
+              child: Container(
+                height: 56,
+                width: 56,
+                decoration: BoxDecoration(
+                  gradient: AppColors.primaryGradient,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.primary.withValues(alpha: 0.35),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: FloatingActionButton(
+                  heroTag: null,
+                  onPressed: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                          builder: (context) => const AddPublicPostScreen()),
+                    );
+                  },
+                  backgroundColor: Colors.transparent,
+                  elevation: 0,
+                  highlightElevation: 0,
+                  child: const Icon(Icons.add_rounded,
+                      color: Colors.white, size: 32),
+                ),
               ),
-            ],
-          ),
-          child: FloatingActionButton(
-            heroTag: null,
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (context) => const AddPublicPostScreen()),
-              );
-            },
-            backgroundColor: Colors.transparent,
-            elevation: 0,
-            highlightElevation: 0,
-            child: const Icon(Icons.add_rounded, color: Colors.white, size: 32),
-          ),
-        ),
-      ) : null,
+            )
+          : null,
       appBar: _buildAppBar(profileState, isDark, isCurrentUserProfile),
       body: profileState == null
           ? _ProfilePageShimmer(isDark: isDark)
@@ -871,6 +876,12 @@ class _ProfileHeader extends ConsumerWidget {
                           builder: (context) =>
                               SearchPage(initialHashtag: '#$tag'),
                         ),
+                      );
+                    },
+                    onMentionTap: (username) {
+                      ContentNavigation.pushProfileByUsername(
+                        context,
+                        username: username,
                       );
                     },
                   ),
@@ -2208,6 +2219,12 @@ class _PostListItem extends ConsumerWidget {
                               ),
                             );
                           },
+                          onMentionTap: (username) {
+                            ContentNavigation.pushProfileByUsername(
+                              context,
+                              username: username,
+                            );
+                          },
                         ),
                       ],
                       if (hasMusic)
@@ -2216,7 +2233,6 @@ class _PostListItem extends ConsumerWidget {
                           musicUrl: post.musicUrl!,
                           createdAt: post.createdAt,
                           title: _resolveMusicTitle(),
-                          artist: post.username,
                           avatarUrl: post.avatarUrl,
                           margin: EdgeInsets.only(
                             top: post.content.isNotEmpty ? 10 : 0,
@@ -2230,33 +2246,42 @@ class _PostListItem extends ConsumerWidget {
             ),
             if (hasImage) ...[
               const SizedBox(height: 10),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(14),
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(
-                    maxHeight: 280,
-                    minWidth: double.infinity,
+              if (post.hasMultipleImages)
+                SizedBox(
+                  height: 280,
+                  child: PostImageCarousel(
+                    imageUrls: post.galleryImages,
+                    borderRadius: BorderRadius.circular(14),
                   ),
-                  child: Hero(
-                    tag: 'post_image_${post.id}',
-                    child: CachedNetworkImage(
-                      imageUrl: post.imageUrl!,
-                      fit: BoxFit.cover,
-                      width: double.infinity,
-                      placeholder: (_, __) => _MediaShimmer(
-                        isDark: isDark,
-                        height: 180,
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      errorWidget: (_, __, ___) => Container(
-                        height: 180,
-                        color: isDark ? Colors.grey[800] : Colors.grey[200],
-                        child: const Icon(Icons.broken_image),
+                )
+              else
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(14),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(
+                      maxHeight: 280,
+                      minWidth: double.infinity,
+                    ),
+                    child: Hero(
+                      tag: 'post_image_${post.id}',
+                      child: CachedNetworkImage(
+                        imageUrl: post.imageUrl!,
+                        fit: BoxFit.cover,
+                        width: double.infinity,
+                        placeholder: (_, __) => _MediaShimmer(
+                          isDark: isDark,
+                          height: 180,
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        errorWidget: (_, __, ___) => Container(
+                          height: 180,
+                          color: isDark ? Colors.grey[800] : Colors.grey[200],
+                          child: const Icon(Icons.broken_image),
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
             ],
             if (hasVideo && !hasImage) ...[
               const SizedBox(height: 10),

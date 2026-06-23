@@ -578,50 +578,32 @@ class _NearbyScreenState extends ConsumerState<NearbyScreen>
     final screenW = MediaQuery.of(context).size.width;
     final safeIndex = _index.clamp(0, cards.length - 1);
     final card = cards[safeIndex];
-
     final isGoingBack = _dragOffset.dx > 0 && safeIndex > 0;
 
     return Column(
       children: [
         Expanded(
-          child: ClipRect(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-              child: GestureDetector(
-                onPanStart: _onDragStart,
-                onPanUpdate: _onDragUpdate,
-                onPanEnd: (d) => _onDragEnd(d, cards),
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    if (isGoingBack) ...[
-                      // ── Rewind: current card stays put underneath …
-                      _shadowed(NearbyCard(candidate: card)),
-                      // … and the previous card slides in from the left edge,
-                      // on top, with a gentle tilt that straightens as it lands.
-                      _rewindCard(cards[safeIndex - 1], screenW),
-                    ] else ...[
-                      // ── Forward: next card sits behind, scaling up as the
-                      // current card is flung off to the left.
-                      if (safeIndex + 1 < cards.length)
-                        _backingCard(cards[safeIndex + 1]),
-                      _topCard(card),
-                    ],
+          child: Padding(
+            // Extra bottom padding gives visual room for the backing-card peek.
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
+            child: GestureDetector(
+              onPanStart: _onDragStart,
+              onPanUpdate: _onDragUpdate,
+              onPanEnd: (d) => _onDragEnd(d, cards),
+              child: Stack(
+                clipBehavior: Clip.none,
+                alignment: Alignment.center,
+                children: [
+                  if (isGoingBack) ...[
+                    _shadowed(NearbyCard(candidate: card)),
+                    _rewindCard(cards[safeIndex - 1], screenW),
+                  ] else ...[
+                    if (safeIndex + 1 < cards.length)
+                      _backingCard(cards[safeIndex + 1]),
+                    _topCard(card),
                   ],
-                ),
+                ],
               ),
-            ),
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.only(bottom: 2),
-          child: Text(
-            '${safeIndex + 1} / ${cards.length}',
-            style: TextStyle(
-              fontSize: 12,
-              color: isDark
-                  ? AppColors.darkTextSecondary
-                  : AppColors.lightTextSecondary,
             ),
           ),
         ),
@@ -647,12 +629,19 @@ class _NearbyScreenState extends ConsumerState<NearbyScreen>
     );
   }
 
-  // The next card peeking behind the active one — scales up from 0.93→1.0 as the
-  // top card is dragged away, so it eases into place.
+  // Next card sits behind the top card: scaled down + shifted down so its
+  // bottom edge peeks out. As the top card is dragged away it scales up to
+  // full size and rises to center (progress 0 → 1).
   Widget _backingCard(NearbyCandidate card) {
+    const peekY = 16.0;
     final progress = (_dragOffset.dx.abs() / 160).clamp(0.0, 1.0);
-    return Transform.scale(
-      scale: 0.93 + progress * 0.07,
+    final scale = 0.92 + progress * 0.08;
+    final ty = peekY * (1.0 - progress);
+    return Transform(
+      transform: Matrix4.identity()
+        ..translate(0.0, ty)
+        ..scale(scale),
+      alignment: Alignment.center,
       child: _shadowed(NearbyCard(candidate: card)),
     );
   }
@@ -679,14 +668,17 @@ class _NearbyScreenState extends ConsumerState<NearbyScreen>
   }
 
   Widget _shadowed(Widget child) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(28),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.25),
-            blurRadius: 24,
-            offset: const Offset(0, 10),
+            color: isDark
+                ? Colors.black.withValues(alpha: 0.40)
+                : Colors.black.withValues(alpha: 0.10),
+            blurRadius: isDark ? 20 : 14,
+            offset: Offset(0, isDark ? 8 : 3),
           ),
         ],
       ),

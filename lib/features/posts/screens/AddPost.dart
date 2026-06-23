@@ -19,6 +19,9 @@ import 'package:Vista/widgets/YourVideoTrimmerPage.dart';
 import 'package:Vista/widgets/verification_badge_icon.dart';
 import '../providers/post_upload_provider.dart';
 import '../widgets/hashtag_autocomplete_field.dart';
+import '../widgets/social_text_editing_controller.dart';
+import '../widgets/audio_equalizer_bars.dart';
+import '../../profile/data/profile_repository.dart';
 
 class AddPublicPostScreen extends ConsumerStatefulWidget {
   const AddPublicPostScreen({super.key});
@@ -28,7 +31,8 @@ class AddPublicPostScreen extends ConsumerStatefulWidget {
 }
 
 class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
-  final TextEditingController contentController = TextEditingController();
+  final SocialTextEditingController contentController =
+      SocialTextEditingController();
   bool isLoading = false;
 
   int get _maxCharLength {
@@ -42,7 +46,20 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
     return 200;
   }
 
+  /// Whether the current user has any premium tier (badge or active sub).
+  bool get _isPremiumUser {
+    final u = ref.read(userProvider);
+    return u?.hasBlueBadge == true ||
+        u?.hasGoldBadge == true ||
+        u?.hasBlackBadge == true ||
+        u?.isPremiumUser == true;
+  }
+
+  /// Carousel image cap: premium users 10, regular users 3.
+  int get _maxGalleryImages => _isPremiumUser ? 10 : 3;
+
   File? _selectedImage;
+  final List<File> _selectedImages = []; // گالری چندعکسی (موبایل)
   Uint8List? _selectedImageBytes; // برای وب
   String? _selectedImageName; // برای وب
   File? _selectedMusic;
@@ -51,8 +68,13 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
   File? _videoThumbnail; // متغیر جدید برای ذخیره تامبنیل ویدیو
   Uint8List? _selectedVideoBytes; // برای وب
   String? _selectedVideoName; // برای وب
+
+  bool get _hasVideoSelected =>
+      _selectedVideo != null || _selectedVideoBytes != null;
   final FocusNode _focusNode = FocusNode();
   VideoPlayerController? _videoPlayerController; // کنترلر ویدیو
+  final PageController _galleryController = PageController();
+  int _galleryPage = 0;
 
   @override
   void initState() {
@@ -102,25 +124,27 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
           final bytes = await image.readAsBytes();
           setState(() {
             _selectedImage = null;
+            _selectedImages.clear();
             _selectedImageBytes = bytes;
             _selectedImageName = image.name;
+            // Video is exclusive; music may coexist with the image (IG-style).
             _selectedVideo = null;
             _selectedVideoBytes = null;
             _selectedVideoName = null;
-            _selectedMusic = null;
-            _musicFileName = null;
             _videoThumbnail = null;
           });
         } else {
           setState(() {
             _selectedImage = File(image.path);
+            _selectedImages
+              ..clear()
+              ..add(File(image.path));
             _selectedImageBytes = null;
             _selectedImageName = null;
+            // Video is exclusive; music may coexist with the image (IG-style).
             _selectedVideo = null;
             _selectedVideoBytes = null;
             _selectedVideoName = null;
-            _selectedMusic = null;
-            _musicFileName = null;
             _videoThumbnail = null;
           });
         }
@@ -128,6 +152,60 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
     } catch (e) {
       logDebug('Error picking image: $e');
     }
+  }
+
+  /// Multi-image gallery picker (mobile carousel). Web stays single-image.
+  Future<void> _pickMultipleImages() async {
+    if (kIsWeb) {
+      // pickMultiImage bytes flow not wired for web; fall back to single.
+      return _pickImage();
+    }
+    try {
+      final picker = ImagePicker();
+      final picked = await picker.pickMultiImage(
+        maxWidth: 1800,
+        maxHeight: 1800,
+        imageQuality: 85,
+      );
+      if (picked.isEmpty) return;
+
+      var files = picked.map((x) => File(x.path)).toList();
+      final cap = _maxGalleryImages;
+      if (files.length > cap) {
+        files = files.sublist(0, cap);
+        if (_isPremiumUser) {
+          _showSnackBar('حداکثر $cap عکس در هر پست قابل انتخاب است');
+        } else {
+          _showGalleryUpgradeSnackBar(cap);
+        }
+      }
+
+      setState(() {
+        _selectedImages
+          ..clear()
+          ..addAll(files);
+        _selectedImage = files.first;
+        _selectedImageBytes = null;
+        _selectedImageName = null;
+        // Video exclusive; music may coexist.
+        _selectedVideo = null;
+        _selectedVideoBytes = null;
+        _selectedVideoName = null;
+        _videoThumbnail = null;
+      });
+    } catch (e) {
+      logDebug('Error picking multiple images: $e');
+      _showError('خطا در انتخاب تصاویر');
+    }
+  }
+
+  void _removeAllImages() {
+    setState(() {
+      _selectedImage = null;
+      _selectedImages.clear();
+      _selectedImageBytes = null;
+      _selectedImageName = null;
+    });
   }
 
   void _showError(dynamic error) {
@@ -157,9 +235,7 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
           setState(() {
             _selectedMusic = File(filePath);
             _musicFileName = result.files.single.name;
-            _selectedImage = null;
-            _selectedImageBytes = null;
-            _selectedImageName = null;
+            // Music may sit on top of an image; only video is exclusive.
             _selectedVideo = null;
             _selectedVideoBytes = null;
             _selectedVideoName = null;
@@ -289,6 +365,24 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildVideoLoading(bool isDarkMode) {
+    return Container(
+      height: 200,
+      margin: const EdgeInsets.symmetric(vertical: 16),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        color: isDarkMode ? Colors.white10 : Colors.black12,
+      ),
+      child: const Center(
+        child: SizedBox(
+          width: 28,
+          height: 28,
+          child: CircularProgressIndicator(strokeWidth: 2.5),
+        ),
       ),
     );
   }
@@ -457,11 +551,16 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
     });
 
     try {
+      // Resolve @mentions → user ids so the backend can fire post_mention
+      // notifications + push. Best-effort: unknown usernames are dropped.
+      final mentionIds = await _resolveMentionIds(content);
+
       // شروع آپلود در پس‌زمینه
       await ref.read(postUploadProvider.notifier).startUpload(
             content: content,
             userId: currentUserId,
-            image: _selectedImage,
+            image: _selectedImages.length > 1 ? null : _selectedImage,
+            images: _selectedImages.length > 1 ? _selectedImages : null,
             imageBytes: _selectedImageBytes,
             imageName: _selectedImageName,
             video: _selectedVideo,
@@ -471,6 +570,7 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
             musicName: _musicFileName,
             videoThumbnail: _videoThumbnail,
             tags: tags, // Tags are derived from #hashtags inside the post text.
+            mentionedUserIds: mentionIds,
           );
 
       if (mounted) {
@@ -503,10 +603,31 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
     );
   }
 
+  /// Gallery cap reached for a regular user → nudge toward premium (10 images).
+  void _showGalleryUpgradeSnackBar(int cap) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+            'کاربران عادی تا $cap عکس. با پریمیوم تا ۱۰ عکس در هر پست بگذارید.'),
+        backgroundColor: const Color(0xFF4A90E2),
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.all(8),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        action: SnackBarAction(
+          label: 'ارتقا',
+          textColor: Colors.white,
+          onPressed: () => Navigator.pushNamed(context, '/premium'),
+        ),
+      ),
+    );
+  }
+
   @override
   void dispose() {
     contentController.dispose();
     _focusNode.dispose();
+    _galleryController.dispose();
     _videoPlayerController?.dispose(); // آزادسازی کنترلر ویدیو
     super.dispose();
   }
@@ -524,6 +645,9 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
         isDarkMode ? const Color(0xFF1E1E1E) : const Color(0xFFF5F5F5);
     final textColor = isDarkMode ? Colors.white : Colors.black;
     final secondaryTextColor = isDarkMode ? Colors.white70 : Colors.black54;
+
+    // Live #/@ token color in the compose field (Instagram link-blue).
+    contentController.highlightColor = const Color(0xFF3897F0);
 
     return SafeArea(
       top: false,
@@ -571,23 +695,9 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
 
                             const SizedBox(height: 16),
 
-                            // اضافه کردن ویجت پیش‌نمایش ویدیو
-                            if (_videoPlayerController != null &&
-                                _videoPlayerController!.value.isInitialized)
-                              _buildVideoPreview(),
-
-                            // پیش‌نمایش تصویر
-                            if (_selectedImage != null ||
-                                _selectedImageBytes != null)
-                              _buildImagePreview(isDarkMode)
-                            else
-                              _buildMediaUploadSection(
-                                  isDarkMode, primaryColor),
-
-                            // پیش‌نمایش موزیک
-                            if (_selectedMusic != null)
-                              _buildMusicPreview(
-                                  isDarkMode, primaryColor, textColor),
+                            // مدیا: ویدیو انحصاری؛ موزیک می‌تواند روی تصویر بنشیند (IG-style).
+                            _buildMediaArea(
+                                isDarkMode, primaryColor, textColor),
 
                             const SizedBox(height: 50),
                           ],
@@ -795,153 +905,523 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
     return out;
   }
 
-  Widget _buildImagePreview(bool isDarkMode) {
-    if (kIsWeb && _selectedImageBytes != null) {
-      // نمایش تصویر انتخاب شده در وب
-      return Hero(
-        tag: 'post-image',
-        child: Card(
-          clipBehavior: Clip.antiAlias,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          child: Stack(
-            children: [
-              Image.memory(
-                _selectedImageBytes!,
-                width: double.infinity,
-                fit: BoxFit.cover,
-                height: 250,
-              ),
-              // دکمه حذف
-              Positioned(
-                top: 8,
-                right: 8,
-                child: Material(
-                  color: Colors.black45,
-                  borderRadius: BorderRadius.circular(20),
-                  child: InkWell(
-                    onTap: () => setState(() => _selectedImageBytes = null),
-                    borderRadius: BorderRadius.circular(20),
-                    child: const Padding(
-                      padding: EdgeInsets.all(8.0),
-                      child: Icon(Icons.close, color: Colors.white, size: 18),
-                    ),
-                  ),
-                ),
-              ),
-              // دکمه‌های ویرایش
-              Positioned(
-                bottom: 8,
-                left: 8,
-                child: Row(
-                  children: [
-                    Material(
-                      color: Colors.black45,
-                      borderRadius: BorderRadius.circular(20),
-                      child: InkWell(
-                        onTap: () => _pickImage(),
-                        borderRadius: BorderRadius.circular(20),
-                        child: const Padding(
-                          padding: EdgeInsets.all(8.0),
-                          child:
-                              Icon(Icons.edit, color: Colors.white, size: 18),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Material(
-                      color: Colors.black45,
-                      borderRadius: BorderRadius.circular(20),
-                      child: InkWell(
-                        onTap: () => _pickImage(source: ImageSource.camera),
-                        borderRadius: BorderRadius.circular(20),
-                        child: const Padding(
-                          padding: EdgeInsets.all(8.0),
-                          child: Icon(Icons.camera_alt,
-                              color: Colors.white, size: 18),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ).animate().scale(duration: const Duration(milliseconds: 300)),
-      );
-    } else if (_selectedImage != null) {
-      return Hero(
-        tag: 'post-image',
-        child: Card(
-          // ...existing code...
-          child: Stack(
-            children: [
-              Image.file(
-                _selectedImage!,
-                width: double.infinity,
-                fit: BoxFit.cover,
-                height: 250,
-              ),
-              // دکمه حذف
-              Positioned(
-                top: 8,
-                right: 8,
-                child: Material(
-                  color: Colors.black45,
-                  borderRadius: BorderRadius.circular(20),
-                  child: InkWell(
-                    onTap: () => setState(() => _selectedImage = null),
-                    borderRadius: BorderRadius.circular(20),
-                    child: const Padding(
-                      padding: EdgeInsets.all(8.0),
-                      child: Icon(Icons.close, color: Colors.white, size: 18),
-                    ),
-                  ),
-                ),
-              ),
-              // دکمه‌های ویرایش
-              Positioned(
-                bottom: 8,
-                left: 8,
-                child: Row(
-                  children: [
-                    Material(
-                      color: Colors.black45,
-                      borderRadius: BorderRadius.circular(20),
-                      child: InkWell(
-                        onTap: () => _pickImage(),
-                        borderRadius: BorderRadius.circular(20),
-                        child: const Padding(
-                          padding: EdgeInsets.all(8.0),
-                          child:
-                              Icon(Icons.edit, color: Colors.white, size: 18),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Material(
-                      color: Colors.black45,
-                      borderRadius: BorderRadius.circular(20),
-                      child: InkWell(
-                        onTap: () => _pickImage(source: ImageSource.camera),
-                        borderRadius: BorderRadius.circular(20),
-                        child: const Padding(
-                          padding: EdgeInsets.all(8.0),
-                          child: Icon(Icons.camera_alt,
-                              color: Colors.white, size: 18),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ).animate().scale(duration: const Duration(milliseconds: 300)),
-      );
-    } else {
-      return const SizedBox.shrink();
+  /// Extract `@usernames` from the caption.
+  ///
+  /// - Only matches at a word boundary (start or after whitespace) so emails
+  ///   like `a@b` don't become mentions.
+  /// - De-dupes case-insensitively, keeps first-seen casing.
+  List<String> _extractMentionsFromContent(String text) {
+    final reg = RegExp(r'(?<![^\s\n])@([؀-ۿ\w_]+)', unicode: true);
+    final seen = <String>{};
+    final out = <String>[];
+    for (final m in reg.allMatches(text)) {
+      final raw = m.group(1);
+      if (raw == null) continue;
+      final t = raw.trim();
+      if (t.isEmpty) continue;
+      final key = t.toLowerCase();
+      if (seen.add(key)) out.add(t);
     }
+    return out;
+  }
+
+  /// Resolve mentioned `@usernames` to user ids (best-effort, parallel).
+  /// Unknown / failed lookups are simply omitted.
+  Future<List<String>> _resolveMentionIds(String content) async {
+    final usernames = _extractMentionsFromContent(content);
+    if (usernames.isEmpty) return const <String>[];
+
+    final repo = ProfileRepository();
+    final results = await Future.wait(
+      usernames.map((username) async {
+        try {
+          final data =
+              await repo.fetchProfileByUsername(username.toLowerCase());
+          return (data['user_id'] ?? data['id'] ?? '').toString();
+        } catch (_) {
+          return '';
+        }
+      }),
+    );
+
+    final ids = <String>{};
+    for (final id in results) {
+      if (id.trim().isNotEmpty) ids.add(id.trim());
+    }
+    return ids.toList(growable: false);
+  }
+
+  /// Unified photo preview (file + web bytes) with a soft modern frame.
+  /// When music is also selected it floats an [_musicOverlayBar] at the bottom
+  /// — Instagram "music on photo" composer.
+  Widget _buildImagePreview(bool isDarkMode) {
+    ImageProvider? provider;
+    if (kIsWeb && _selectedImageBytes != null) {
+      provider = MemoryImage(_selectedImageBytes!);
+    } else if (_selectedImage != null) {
+      provider = FileImage(_selectedImage!);
+    }
+    if (provider == null) return const SizedBox.shrink();
+
+    final hasMusic = _selectedMusic != null;
+
+    return Hero(
+      tag: 'post-image',
+      child: Container(
+        margin: const EdgeInsets.only(top: 4),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: isDarkMode ? 0.45 : 0.16),
+              blurRadius: 18,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Stack(
+          children: [
+            Image(
+              image: provider,
+              width: double.infinity,
+              height: 320,
+              fit: BoxFit.cover,
+            ),
+            // Top scrim so the controls stay legible on bright photos.
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: Container(
+                height: 70,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.black.withValues(alpha: 0.32),
+                      Colors.transparent,
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            // remove image
+            Positioned(
+              top: 10,
+              right: 10,
+              child: _circleIconButton(
+                icon: Icons.close,
+                onTap: () => setState(() {
+                  _selectedImage = null;
+                  _selectedImageBytes = null;
+                  _selectedImageName = null;
+                }),
+              ),
+            ),
+            // change / camera
+            Positioned(
+              top: 10,
+              left: 10,
+              child: Row(
+                children: [
+                  _circleIconButton(
+                    icon: Icons.photo_library_outlined,
+                    onTap: () => _pickImage(),
+                  ),
+                  const SizedBox(width: 8),
+                  _circleIconButton(
+                    icon: Icons.camera_alt_outlined,
+                    onTap: () => _pickImage(source: ImageSource.camera),
+                  ),
+                ],
+              ),
+            ),
+            // music-on-photo overlay
+            if (hasMusic)
+              Positioned(
+                left: 10,
+                right: 10,
+                bottom: 10,
+                child: _musicOverlayBar(),
+              ),
+          ],
+        ),
+      ).animate().scale(
+            duration: const Duration(milliseconds: 260),
+            begin: const Offset(0.98, 0.98),
+            end: const Offset(1, 1),
+            curve: Curves.easeOut,
+          ),
+    );
+  }
+
+  /// Small circular glass-less icon button used on top of media previews.
+  Widget _circleIconButton({
+    required IconData icon,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.black.withValues(alpha: 0.5),
+      shape: const CircleBorder(),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(8),
+          child: Icon(icon, color: Colors.white, size: 18),
+        ),
+      ),
+    );
+  }
+
+  /// Spinning album disc — soft brand gradient, repeats forever.
+  Widget _spinningDisc({double size = 32}) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: const BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: LinearGradient(
+          colors: [Color(0xFFF58529), Color(0xFFDD2A7B)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      child: Icon(Icons.music_note, color: Colors.white, size: size * 0.5),
+    ).animate(onPlay: (c) => c.repeat()).rotate(
+          begin: 0,
+          end: 1,
+          duration: const Duration(seconds: 4),
+        );
+  }
+
+  void _removeMusic() => setState(() {
+        _selectedMusic = null;
+        _musicFileName = null;
+      });
+
+  /// Clean display title from the picked audio filename.
+  String _displayMusicTitle() {
+    final name = _musicFileName;
+    if (name == null || name.trim().isEmpty) return 'موزیک';
+    final dot = name.lastIndexOf('.');
+    final base = dot > 0 ? name.substring(0, dot) : name;
+    final cleaned = base
+        .replaceAll(RegExp(r'[_\-]+'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    return cleaned.isEmpty ? 'موزیک' : cleaned;
+  }
+
+  /// Floating music bar shown over a photo (music-on-photo).
+  Widget _musicOverlayBar() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        gradient: LinearGradient(
+          colors: [
+            Colors.black.withValues(alpha: 0.58),
+            Colors.black.withValues(alpha: 0.42),
+          ],
+        ),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+      ),
+      child: Row(
+        children: [
+          _spinningDisc(size: 32),
+          const SizedBox(width: 10),
+          const AudioEqualizerBars(
+            color: Colors.white,
+            height: 16,
+            barCount: 4,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  _displayMusicTitle(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                  ),
+                ),
+                const Text(
+                  'موزیک پست',
+                  style: TextStyle(color: Colors.white70, fontSize: 11),
+                ),
+              ],
+            ),
+          ),
+          InkWell(
+            onTap: _removeMusic,
+            customBorder: const CircleBorder(),
+            child: const Padding(
+              padding: EdgeInsets.all(4),
+              child: Icon(Icons.close, color: Colors.white70, size: 18),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Whole media region: video (exclusive) OR photo (+optional music) OR
+  /// standalone music OR the empty picker. Plus an "add the missing one" row.
+  Widget _buildMediaArea(bool isDarkMode, Color primaryColor, Color textColor) {
+    if (_hasVideoSelected) {
+      return (_videoPlayerController != null &&
+              _videoPlayerController!.value.isInitialized)
+          ? _buildVideoPreview()
+          : _buildVideoLoading(isDarkMode);
+    }
+
+    final hasImage = _selectedImage != null || _selectedImageBytes != null;
+    final hasMusic = _selectedMusic != null;
+
+    if (!hasImage && !hasMusic) {
+      return _buildMediaUploadSection(isDarkMode, primaryColor);
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (hasImage)
+          (_selectedImages.length > 1
+              ? _buildImageCarouselPreview(isDarkMode, hasMusic)
+              : _buildImagePreview(isDarkMode))
+        else if (hasMusic)
+          _buildMusicPreview(isDarkMode, primaryColor, textColor),
+        _buildAddMoreRow(
+          hasImage: hasImage,
+          hasMusic: hasMusic,
+          isDarkMode: isDarkMode,
+        ),
+      ],
+    );
+  }
+
+  /// Multi-image carousel preview (PageView + dot indicator + counter), with
+  /// the same soft frame as the single preview. Music bar floats on top.
+  Widget _buildImageCarouselPreview(bool isDarkMode, bool hasMusic) {
+    final count = _selectedImages.length;
+    final page = _galleryPage.clamp(0, count - 1);
+    return Container(
+      margin: const EdgeInsets.only(top: 4),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDarkMode ? 0.45 : 0.16),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Stack(
+        children: [
+          SizedBox(
+            height: 320,
+            width: double.infinity,
+            child: PageView.builder(
+              controller: _galleryController,
+              itemCount: count,
+              onPageChanged: (i) => setState(() => _galleryPage = i),
+              itemBuilder: (context, i) => Image.file(
+                _selectedImages[i],
+                width: double.infinity,
+                height: 320,
+                fit: BoxFit.cover,
+              ),
+            ),
+          ),
+          // top scrim for control legibility
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: Container(
+              height: 70,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.black.withValues(alpha: 0.32),
+                    Colors.transparent,
+                  ],
+                ),
+              ),
+            ),
+          ),
+          // counter pill (1/3)
+          Positioned(
+            top: 12,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.55),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  '${page + 1}/$count',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          // replace all
+          Positioned(
+            top: 10,
+            right: 10,
+            child: _circleIconButton(
+              icon: Icons.close,
+              onTap: _removeAllImages,
+            ),
+          ),
+          // change selection
+          Positioned(
+            top: 10,
+            left: 10,
+            child: _circleIconButton(
+              icon: Icons.collections_outlined,
+              onTap: _pickMultipleImages,
+            ),
+          ),
+          // dot indicator
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: hasMusic ? 72 : 12,
+            child: _buildDots(count, page),
+          ),
+          if (hasMusic)
+            Positioned(
+              left: 10,
+              right: 10,
+              bottom: 10,
+              child: _musicOverlayBar(),
+            ),
+        ],
+      ),
+    ).animate().scale(
+          duration: const Duration(milliseconds: 260),
+          begin: const Offset(0.98, 0.98),
+          end: const Offset(1, 1),
+          curve: Curves.easeOut,
+        );
+  }
+
+  Widget _buildDots(int count, int active) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: List.generate(count, (i) {
+        final isActive = i == active;
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          margin: const EdgeInsets.symmetric(horizontal: 3),
+          width: isActive ? 18 : 6,
+          height: 6,
+          decoration: BoxDecoration(
+            color:
+                isActive ? Colors.white : Colors.white.withValues(alpha: 0.5),
+            borderRadius: BorderRadius.circular(3),
+          ),
+        );
+      }),
+    );
+  }
+
+  /// Soft pill chips to add whichever media isn't selected yet.
+  Widget _buildAddMoreRow({
+    required bool hasImage,
+    required bool hasMusic,
+    required bool isDarkMode,
+  }) {
+    final chips = <Widget>[];
+    if (!hasImage) {
+      chips.add(_addMediaChip(
+        icon: Icons.image_outlined,
+        label: 'افزودن تصویر',
+        color: const Color(0xFF3897F0),
+        onTap: _pickMultipleImages,
+        isDarkMode: isDarkMode,
+      ));
+    }
+    if (!hasMusic) {
+      chips.add(_addMediaChip(
+        icon: Icons.music_note_outlined,
+        label: 'افزودن موزیک',
+        color: const Color(0xFF1DB954),
+        onTap: _pickMusicFile,
+        isDarkMode: isDarkMode,
+      ));
+    }
+    if (chips.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Row(
+        children: [
+          for (int i = 0; i < chips.length; i++) ...[
+            if (i > 0) const SizedBox(width: 10),
+            chips[i],
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _addMediaChip({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+    required bool isDarkMode,
+  }) {
+    return Material(
+      color: color.withValues(alpha: isDarkMode ? 0.18 : 0.10),
+      borderRadius: BorderRadius.circular(30),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, color: color, size: 18),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: TextStyle(
+                  color: color,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _buildMediaUploadSection(bool isDarkMode, Color primaryColor) {
@@ -979,9 +1459,10 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
                 _buildMediaButton(
                   icon: Icons.image,
                   label: 'تصویر',
-                  onTap: () => _pickImage(),
+                  onTap: _pickMultipleImages,
                   primaryColor: primaryColor,
                   isDarkMode: isDarkMode,
+                  tileColor: const Color(0xFF3897F0),
                 ),
                 const SizedBox(width: 16),
                 // دکمه افزودن تصویر از دوربین
@@ -991,6 +1472,7 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
                   onTap: () => _pickImage(source: ImageSource.camera),
                   primaryColor: primaryColor,
                   isDarkMode: isDarkMode,
+                  tileColor: const Color(0xFF8E5CF7),
                 ),
                 const SizedBox(width: 16),
                 // دکمه افزودن ویدیو
@@ -1000,6 +1482,7 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
                   onTap: _pickVideo,
                   primaryColor: primaryColor,
                   isDarkMode: isDarkMode,
+                  tileColor: const Color(0xFFE0457B),
                 ),
                 const SizedBox(width: 16),
                 // دکمه افزودن موزیک
@@ -1009,6 +1492,7 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
                   onTap: _pickMusicFile,
                   primaryColor: primaryColor,
                   isDarkMode: isDarkMode,
+                  tileColor: const Color(0xFF1DB954),
                 ),
               ],
             ),
@@ -1024,89 +1508,111 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
     required VoidCallback onTap,
     required Color primaryColor,
     required bool isDarkMode,
+    Color? tileColor,
   }) {
+    final accent = tileColor ?? primaryColor;
     return Column(
       children: [
         Material(
-          color: isDarkMode
-              ? Colors.white12
-              : Colors.black.withValues(alpha: 0.05),
-          borderRadius: BorderRadius.circular(12),
+          color: accent.withValues(alpha: isDarkMode ? 0.22 : 0.12),
+          shape: const CircleBorder(),
+          clipBehavior: Clip.antiAlias,
           child: InkWell(
             onTap: onTap,
-            borderRadius: BorderRadius.circular(12),
+            customBorder: const CircleBorder(),
             child: Padding(
-              padding: const EdgeInsets.all(12.0),
+              padding: const EdgeInsets.all(14.0),
               child: Icon(
                 icon,
-                color: primaryColor,
-                size: 22,
+                color: accent,
+                size: 24,
               ),
             ),
           ),
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: 6),
         Text(
           label,
           style: TextStyle(
             fontSize: 12,
-            color: isDarkMode ? Colors.white60 : Colors.black54,
+            fontWeight: FontWeight.w500,
+            color: isDarkMode ? Colors.white70 : Colors.black54,
           ),
         ),
       ],
     );
   }
 
+  /// Standalone music card (no photo) — soft gradient, spinning disc,
+  /// animated equalizer. Modern "now playing" look.
   Widget _buildMusicPreview(
       bool isDarkMode, Color primaryColor, Color textColor) {
-    return Card(
-      elevation: 0,
-      color: isDarkMode
-          ? Colors.white.withValues(alpha: 0.05)
-          : Colors.black.withValues(alpha: 0.02),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        leading: Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: primaryColor.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Icon(
-            Icons.music_note,
-            color: primaryColor,
-            size: 22,
-          ),
+    return Container(
+      margin: const EdgeInsets.only(top: 4),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        gradient: const LinearGradient(
+          colors: [Color(0xFF2B5876), Color(0xFF4E4376)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
-        title: Text(
-          _musicFileName ?? 'فایل موزیک',
-          style: TextStyle(
-            color: textColor,
-            fontWeight: FontWeight.w500,
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF4E4376).withValues(alpha: 0.4),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
           ),
-        ),
-        subtitle: Text(
-          'آماده ارسال',
-          style: TextStyle(
-            fontSize: 12,
-            color: isDarkMode ? Colors.white60 : Colors.black54,
-          ),
-        ),
-        trailing: IconButton(
-          icon: Icon(
-            Icons.close,
-            color: isDarkMode ? Colors.white70 : Colors.black54,
-          ),
-          onPressed: () {
-            setState(() {
-              _selectedMusic = null;
-              _musicFileName = null;
-            });
-          },
-        ),
+        ],
       ),
-    ).animate().slide(duration: const Duration(milliseconds: 300));
+      child: Row(
+        children: [
+          _spinningDisc(size: 54),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: const [
+                    Icon(Icons.graphic_eq, color: Colors.white70, size: 14),
+                    SizedBox(width: 6),
+                    Text(
+                      'آماده پخش',
+                      style: TextStyle(color: Colors.white70, fontSize: 12),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  _displayMusicTitle(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                const AudioEqualizerBars(
+                  color: Colors.white,
+                  height: 20,
+                  barCount: 6,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          _circleIconButton(icon: Icons.close, onTap: _removeMusic),
+        ],
+      ),
+    ).animate().fadeIn(duration: const Duration(milliseconds: 260)).slideY(
+          begin: 0.08,
+          end: 0,
+          duration: const Duration(milliseconds: 260),
+        );
   }
 
   Widget _buildBottomActionBar(

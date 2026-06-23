@@ -13,6 +13,7 @@ class HashtagRichText extends StatefulWidget {
   final String text;
   final TextStyle? style;
   final TextStyle? hashtagStyle;
+  final TextStyle? mentionStyle;
   final TextStyle? readMoreStyle;
   final TextAlign textAlign;
   final TextDirection? textDirection;
@@ -20,6 +21,7 @@ class HashtagRichText extends StatefulWidget {
   final TextOverflow overflow;
   final String? readMoreLabel;
   final ValueChanged<String>? onHashtagTap;
+  final ValueChanged<String>? onMentionTap;
   final VoidCallback? onReadMoreTap;
 
   const HashtagRichText({
@@ -27,6 +29,7 @@ class HashtagRichText extends StatefulWidget {
     required this.text,
     this.style,
     this.hashtagStyle,
+    this.mentionStyle,
     this.readMoreStyle,
     this.textAlign = TextAlign.start,
     this.textDirection,
@@ -34,6 +37,7 @@ class HashtagRichText extends StatefulWidget {
     this.overflow = TextOverflow.clip,
     this.readMoreLabel,
     this.onHashtagTap,
+    this.onMentionTap,
     this.onReadMoreTap,
   });
 
@@ -60,9 +64,19 @@ class _HashtagRichTextState extends State<HashtagRichText> {
     _recognizers.clear();
   }
 
-  List<InlineSpan> _buildSpans(TextStyle baseStyle, TextStyle tagStyle) {
+  List<InlineSpan> _buildSpans(
+    TextStyle baseStyle,
+    TextStyle tagStyle,
+    TextStyle mentionStyle,
+  ) {
     final text = widget.text;
-    final reg = RegExp(r'#([\u0600-\u06FF\w_]+)', unicode: true);
+    // One pass over both entity kinds so order is preserved. Mentions only
+    // trigger at a word boundary (start or after whitespace) so emails like
+    // `a@b` are not mistaken for mentions.
+    final reg = RegExp(
+      r'(?<![^\s\n])@([\u0600-\u06FF\w_]+)|#([\u0600-\u06FF\w_]+)',
+      unicode: true,
+    );
 
     final spans = <InlineSpan>[];
     var start = 0;
@@ -74,23 +88,32 @@ class _HashtagRichTextState extends State<HashtagRichText> {
         );
       }
 
-      final raw = m.group(1) ?? '';
-      final tag = raw.trim();
-      final show = '#$tag';
-      final rec = TapGestureRecognizer()
-        ..onTap = () {
-          if (tag.isEmpty) return;
-          widget.onHashtagTap?.call(tag);
-        };
-      _recognizers.add(rec);
+      final mention = m.group(1);
+      final hashtag = m.group(2);
 
-      spans.add(
-        TextSpan(
-          text: show,
-          style: tagStyle,
-          recognizer: rec,
-        ),
-      );
+      if (mention != null) {
+        final username = mention.trim();
+        final rec = TapGestureRecognizer()
+          ..onTap = () {
+            if (username.isEmpty) return;
+            widget.onMentionTap?.call(username);
+          };
+        _recognizers.add(rec);
+        spans.add(
+          TextSpan(text: '@$username', style: mentionStyle, recognizer: rec),
+        );
+      } else {
+        final tag = (hashtag ?? '').trim();
+        final rec = TapGestureRecognizer()
+          ..onTap = () {
+            if (tag.isEmpty) return;
+            widget.onHashtagTap?.call(tag);
+          };
+        _recognizers.add(rec);
+        spans.add(
+          TextSpan(text: '#$tag', style: tagStyle, recognizer: rec),
+        );
+      }
 
       start = m.end;
     }
@@ -130,6 +153,11 @@ class _HashtagRichTextState extends State<HashtagRichText> {
           color: Colors.blue,
           fontWeight: FontWeight.w600,
         );
+    final mentionStyle = widget.mentionStyle ??
+        baseStyle.copyWith(
+          color: Colors.blue,
+          fontWeight: FontWeight.w600,
+        );
     final direction = widget.textDirection ??
         resolveChatTextDirection(
           widget.text,
@@ -150,12 +178,11 @@ class _HashtagRichTextState extends State<HashtagRichText> {
             );
         final readMoreStyle = widget.readMoreStyle ??
             baseStyle.copyWith(
-              color: baseStyle.color?.withValues(alpha: 0.65) ??
-                  Colors.grey,
+              color: baseStyle.color?.withValues(alpha: 0.65) ?? Colors.grey,
               fontWeight: FontWeight.w600,
             );
 
-        final spans = _buildSpans(baseStyle, tagStyle);
+        final spans = _buildSpans(baseStyle, tagStyle, mentionStyle);
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,

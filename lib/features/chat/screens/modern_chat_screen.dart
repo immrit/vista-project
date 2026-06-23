@@ -209,7 +209,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   final _showScrollToBottomNotifier = ValueNotifier<bool>(false);
   String? _currentUserId;
   bool _isTransitioning =
-      true; // ✅ For deferred rendering during Hero transition
+      true; // ✅ Deferred one frame so the list builds off-screen during push
 
   // Search
   bool _isSearchMode = false;
@@ -390,13 +390,17 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     _setupConnectionStatusBannerListener();
     _setupAdaptiveEffects();
 
-    // First frame: show list immediately after route settles.
+    // First frame: wait for the route transition to settle before rendering heavy list.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _cachedSafeBottom = MediaQuery.paddingOf(context).bottom;
       _listBottomGapNotifier.value = _cachedSafeBottom;
       _publishKeyboardLayout(force: true);
-      setState(() => _isTransitioning = false);
+
+      // Reveal the heavy message list the instant the push transition finishes,
+      // rather than after a fixed delay. Cached messages are ready immediately;
+      // this only avoids building the list *during* the open animation (jank).
+      _revealListWhenTransitionSettles();
     });
 
     // Second frame: defer heavier work so open-chat transition stays smooth.
@@ -440,6 +444,18 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       _startPolling();
       unawaited(_triggerPollingRefresh());
     });
+  }
+
+  /// Renders the message list immediately (on the first post-frame), so it is
+  /// already populated as the screen slides in — Telegram-style — instead of
+  /// sliding in blank and filling later. Cached messages are ready instantly,
+  /// and the first (heavier) build happens while the page is still mostly
+  /// off-screen, so its cost is hidden behind the push animation rather than
+  /// shown to the user as a blank gap.
+  void _revealListWhenTransitionSettles() {
+    if (mounted && _isTransitioning) {
+      setState(() => _isTransitioning = false);
+    }
   }
 
   void _bootstrapInitialReplyContext() {
@@ -2292,37 +2308,45 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                         ),
                   body: Stack(
                     children: [
+                      // Message list — built ONCE, decoupled from the scroll-state
+                      // and visible-date notifiers. Previously the list sat inside
+                      // nested ValueListenableBuilders, so every drag start/stop
+                      // (isScrolling toggle) and date change rebuilt the whole list
+                      // subtree + descriptor cache mid-scroll → the "stiff under the
+                      // finger" hitch. The input-height wrapper was also redundant
+                      // (its value was unused; padding is handled inside the list).
                       Positioned.fill(
-                        child: ValueListenableBuilder<double>(
-                          valueListenable: _inputHeightNotifier,
-                          builder: (context, inputHeight, _) {
-                            return ValueListenableBuilder<DateTime?>(
-                              valueListenable: _visibleDateNotifier,
-                              builder: (context, currentDate, _) {
-                                return ValueListenableBuilder<bool>(
-                                  valueListenable: _isScrollingNotifier,
-                                  builder: (context, isScrolling, _) {
-                                    return FloatingDateHeader(
-                                      currentDate: currentDate,
-                                      isScrolling: isScrolling,
-                                      child: _isTransitioning
-                                          ? const SizedBox.shrink()
-                                          : ChatMessageListScope(
-                                              conversationId: _conversationId,
-                                              buildList: (context, paginationState) =>
-                                                  _buildMessageList(
-                                                paginationState,
-                                                theme,
-                                                bottomPaddingListenable: _listBottomGapNotifier,
-                                                inputHeightListenable: _inputHeightNotifier,
-                                              ),
-                                            ),
-                                    );
-                                  },
-                                );
-                              },
-                            );
-                          },
+                        child: _isTransitioning
+                            ? const SizedBox.shrink()
+                            : ChatMessageListScope(
+                                conversationId: _conversationId,
+                                buildList: (context, paginationState) =>
+                                    _buildMessageList(
+                                  paginationState,
+                                  theme,
+                                  bottomPaddingListenable: _listBottomGapNotifier,
+                                  inputHeightListenable: _inputHeightNotifier,
+                                ),
+                              ),
+                      ),
+                      // Floating date chip — independent overlay so it can react to
+                      // scroll state without touching the list.
+                      Positioned.fill(
+                        child: IgnorePointer(
+                          child: ValueListenableBuilder<DateTime?>(
+                            valueListenable: _visibleDateNotifier,
+                            builder: (context, currentDate, _) {
+                              return ValueListenableBuilder<bool>(
+                                valueListenable: _isScrollingNotifier,
+                                builder: (context, isScrolling, _) {
+                                  return FloatingDateHeader(
+                                    currentDate: currentDate,
+                                    isScrolling: isScrolling,
+                                  );
+                                },
+                              );
+                            },
+                          ),
                         ),
                       ),
                       if (_isCurrentUserBlocked || _isOtherUserBlocked)

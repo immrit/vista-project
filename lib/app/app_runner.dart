@@ -67,6 +67,7 @@ import 'package:Vista/features/settings/screens/vistaStore/pricing_page.dart';
 import 'package:Vista/features/posts/screens/ExploreFeedScreen.dart';
 import 'package:Vista/features/nearby/screens/nearby_screen.dart';
 import 'package:Vista/features/posts/screens/PostDetailPage.dart';
+import 'package:Vista/features/posts/screens/appeal_screen.dart';
 import 'package:Vista/features/posts/screens/profileScreen.dart';
 import 'package:Vista/features/emoji/domain/modern_emoji_lookup.dart';
 
@@ -638,6 +639,21 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
                 if (postId != null) {
                   return SessionMiddleware(
                       child: PostDetailsPage(postId: postId));
+                }
+                return const Scaffold();
+              },
+              '/appeal': (context) {
+                final args = ModalRoute.of(context)?.settings.arguments;
+                String postId = '';
+                String type = 'edit';
+                if (args is Map) {
+                  postId = (args['postId'] ?? '').toString().trim();
+                  type = (args['type'] ?? 'edit').toString().trim();
+                }
+                if (postId.isNotEmpty) {
+                  return SessionMiddleware(
+                    child: AppealScreen(postId: postId, type: type),
+                  );
                 }
                 return const Scaffold();
               },
