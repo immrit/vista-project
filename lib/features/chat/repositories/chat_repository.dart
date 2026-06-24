@@ -89,7 +89,7 @@ abstract class ChatRepository {
     String? beforeMessageId,
   });
 
-  Stream<List<MessageModel>> watchMessages(String conversationId);
+  Stream<List<MessageModel>> watchMessages(String conversationId, {int? limit});
 
   Future<ChatResult<MessageModel>> sendMessage(MessagePayload payload);
 

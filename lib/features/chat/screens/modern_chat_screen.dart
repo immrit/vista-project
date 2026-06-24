@@ -16,7 +16,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
-import 'dart:ui' as ui;
 import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
@@ -116,7 +115,6 @@ import '../services/message_actions_service.dart';
 import '../performance/adaptive_effects_provider.dart';
 import '../performance/chat_message_render_window.dart';
 import '../performance/chat_performance_profile.dart';
-import '../widgets/chat_adaptive_blur_scope.dart';
 import '../widgets/chat_input_dock.dart';
 import '../widgets/keyboard_stable_media_query.dart';
 import '../widgets/chat_group_presence_summary.dart';
@@ -210,6 +208,11 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   String? _currentUserId;
   bool _isTransitioning =
       true; // ✅ Deferred one frame so the list builds off-screen during push
+
+  // Messages already present when the chat opens render static (no per-bubble
+  // entry animation) so the push slide shows settled content — Telegram-style.
+  // Lifted shortly after reveal so genuinely new incoming messages still animate.
+  bool _suppressInitialEntryAnims = true;
 
   // Search
   bool _isSearchMode = false;
@@ -401,6 +404,12 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       // rather than after a fixed delay. Cached messages are ready immediately;
       // this only avoids building the list *during* the open animation (jank).
       _revealListWhenTransitionSettles();
+
+      // Allow entry animations again once the open slide + initial paint settle,
+      // so new incoming messages animate but the open itself stays static/smooth.
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (mounted) _suppressInitialEntryAnims = false;
+      });
     });
 
     // Second frame: defer heavier work so open-chat transition stays smooth.
@@ -1685,8 +1694,6 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     return _cachedSafeBottom;
   }
 
-
-
   void _publishKeyboardLayout({bool force = false}) {
     final bottomGap = _reservedHeightForInset(_lastViewInsetBottom);
     final reduceEffectsFromKeyboard = _reduceEffectsFromKeyboard ||
@@ -1821,7 +1828,10 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         _pollingTimer = null;
       } else {
         unawaited(_triggerPollingRefresh());
-        _pollingTimer ??= Timer.periodic(const Duration(seconds: 2), (_) {
+        // 2s was aggressive: each poll that changes anything triggers a full
+        // message re-emit + reprocess. 6s keeps chat near-real-time during SSE
+        // outage without hammering the pipeline mid-scroll.
+        _pollingTimer ??= Timer.periodic(const Duration(seconds: 6), (_) {
           unawaited(_triggerPollingRefresh());
         });
       }
@@ -1996,8 +2006,6 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   bool _isSameDay(DateTime a, DateTime b) {
     return a.year == b.year && a.month == b.month && a.day == b.day;
   }
-
-
 
   bool _isAlbumImageMessage(MessageModel message) {
     final hasMediaSource =
@@ -2221,32 +2229,18 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
           KeyboardStableMediaQuery(
             child: Stack(
               children: [
-                Positioned.fill(
-                  child: ChatAdaptiveBlurScope(
-                    builder:
-                        (context, blurSigma, allowHeavyBlur, effectsLevel) {
-                      return ValueListenableBuilder<bool>(
-                        valueListenable: _keyboardEffectsNotifier,
-                        builder: (context, reduceEffectsFromKeyboard, _) {
-                          return ValueListenableBuilder<bool>(
-                            valueListenable: _isScrollingNotifier,
-                            builder: (context, isScrolling, _) {
-                              final reduceEffects =
-                                  reduceEffectsFromKeyboard || isScrolling;
-                              return RepaintBoundary(
-                                child: EnhancedChatBackground(
-                                  enablePattern: true,
-                                  blurIntensity: blurSigma,
-                                  allowHeavyEffects:
-                                      !reduceEffects && allowHeavyBlur,
-                                  child: const SizedBox.expand(),
-                                ),
-                              );
-                            },
-                          );
-                        },
-                      );
-                    },
+                // Background is a static Container + image: BackdropFilter was
+                // removed in App-Perf P4.9, so blurIntensity / allowHeavyEffects
+                // are no-ops. It was wrapped in ChatAdaptiveBlurScope + two
+                // ValueListenableBuilders, so every scroll start/stop and keyboard
+                // toggle rebuilt the full-screen background subtree just to emit
+                // identical pixels. Collapsed to a const, repaint-isolated tree.
+                const Positioned.fill(
+                  child: RepaintBoundary(
+                    child: EnhancedChatBackground(
+                      enablePattern: true,
+                      child: SizedBox.expand(),
+                    ),
                   ),
                 ),
                 Scaffold(
@@ -2324,7 +2318,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                                     _buildMessageList(
                                   paginationState,
                                   theme,
-                                  bottomPaddingListenable: _listBottomGapNotifier,
+                                  bottomPaddingListenable:
+                                      _listBottomGapNotifier,
                                   inputHeightListenable: _inputHeightNotifier,
                                 ),
                               ),
@@ -2779,43 +2774,58 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
     _startDeleteAnimation(messageIds);
     logInfo('message_delete_requested: ${messageIds.join(",")}');
-    final batchId = DateTime.now().microsecondsSinceEpoch.toString();
-    final deleteTimer = Timer(const Duration(seconds: 4), () {
-      _pendingDeleteTimers.remove(batchId);
+    
+    if (result.deleteForEveryone) {
       unawaited(_persistDeleteAfterAnimation(
         messageIds: messageIds,
         messages: normalizedMessages,
-        deleteForEveryone: result.deleteForEveryone,
+        deleteForEveryone: true,
       ));
       if (mounted) {
-        final suffix = result.deleteForEveryone ? ' برای همه' : '';
         _showSuccessSnackBar(
-          '${messageIds.length} پیام حذف شد$suffix'.toPersianDigit(),
+          '${messageIds.length} پیام برای همه حذف شد'.toPersianDigit(),
         );
       }
-    });
-    _pendingDeleteTimers[batchId] = deleteTimer;
+    } else {
+      final batchId = DateTime.now().microsecondsSinceEpoch.toString();
+      final deleteTimer = Timer(const Duration(seconds: 4), () {
+        _pendingDeleteTimers.remove(batchId);
+        unawaited(_persistDeleteAfterAnimation(
+          messageIds: messageIds,
+          messages: normalizedMessages,
+          deleteForEveryone: false,
+        ));
+        if (mounted) {
+          _showSuccessSnackBar(
+            '${messageIds.length} پیام حذف شد'.toPersianDigit(),
+          );
+        }
+      });
+      _pendingDeleteTimers[batchId] = deleteTimer;
 
-    if (mounted) {
-      ScaffoldMessenger.of(context).hideCurrentSnackBar();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-              '${messageIds.length} پیام برای حذف آماده شد'.toPersianDigit()),
-          duration: const Duration(seconds: 4),
-          action: SnackBarAction(
-            label: 'بازگردانی',
-            onPressed: () {
-              final timer = _pendingDeleteTimers.remove(batchId);
-              timer?.cancel();
-              if (!mounted) return;
-              _deletingMessageIds.removeAll(messageIds);
-              _hiddenMessageIds.removeAll(messageIds);
-              _bumpListOverlay();
-            },
+      if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.only(bottom: 80, left: 16, right: 16),
+            content: Text(
+                '${messageIds.length} پیام برای حذف آماده شد'.toPersianDigit()),
+            duration: const Duration(seconds: 4),
+            action: SnackBarAction(
+              label: 'بازگردانی',
+              onPressed: () {
+                final timer = _pendingDeleteTimers.remove(batchId);
+                timer?.cancel();
+                if (!mounted) return;
+                _deletingMessageIds.removeAll(messageIds);
+                _hiddenMessageIds.removeAll(messageIds);
+                _bumpListOverlay();
+              },
+            ),
           ),
-        ),
-      );
+        );
+      }
     }
   }
 
@@ -2852,8 +2862,6 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       conversationId: widget.args.conversationId,
     );
   }
-
-
 
   Widget _buildAppBarTitle(ChatTheme theme) {
     return InkWell(
@@ -4128,7 +4136,6 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     final haloHeight = (visibleReservedHeight + (inputHeight * 0.56))
         .clamp(48.0, 420.0)
         .toDouble();
-    final blurSigma = keyboardVisible ? 1.6 : (reduceEffects ? 2.0 : 5.5);
     final gradientAlphas =
         isDark ? const [0.0, 0.08, 0.16, 0.24] : const [0.0, 0.14, 0.24, 0.36];
     final haloDecoration = BoxDecoration(
@@ -4150,20 +4157,13 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       right: 0,
       bottom: haloBottom,
       height: haloHeight,
+      // No BackdropFilter: it sampled + blurred the scrolling messages behind it
+      // every frame (its backdrop changes constantly while the list moves), which
+      // was the chat's dominant raster cost — DevTools showed ~42ms/frame, ALL
+      // jank on the GPU/raster thread. The gradient halo alone gives the same
+      // soft fade over the input dock without the per-frame blur pass.
       child: IgnorePointer(
-        child: RepaintBoundary(
-          child: ClipRect(
-            child: blurSigma <= 0.0
-                ? DecoratedBox(decoration: haloDecoration)
-                : BackdropFilter(
-                    filter: ui.ImageFilter.blur(
-                      sigmaX: blurSigma,
-                      sigmaY: blurSigma,
-                    ),
-                    child: DecoratedBox(decoration: haloDecoration),
-                  ),
-          ),
-        ),
+        child: DecoratedBox(decoration: haloDecoration),
       ),
     );
   }
@@ -6881,11 +6881,13 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         ? adaptiveEffects.effectsLevel
         : ChatEffectsLevel.high;
 
-    final shouldAnimateEntry = switch (adaptiveEffects.chatEntryMode) {
-      ChatEntryAnimationMode.off => false,
-      ChatEntryAnimationMode.minimal => index < 2 && !_isNearTop,
-      ChatEntryAnimationMode.full => index < 5 && !_isNearTop,
-    };
+    final shouldAnimateEntry = _suppressInitialEntryAnims
+        ? false
+        : switch (adaptiveEffects.chatEntryMode) {
+            ChatEntryAnimationMode.off => false,
+            ChatEntryAnimationMode.minimal => index < 2 && !_isNearTop,
+            ChatEntryAnimationMode.full => index < 5 && !_isNearTop,
+          };
     final replyPreview = _resolveReplyPreviewForMessage(message, messagesById);
 
     Widget buildBubble(List<reaction_models.MessageReaction> messageReactions) {

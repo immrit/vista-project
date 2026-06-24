@@ -234,7 +234,7 @@ class UserFriendlyErrorUtils {
         backgroundColor: Colors.red.shade700,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        margin: const EdgeInsets.all(16),
+        margin: const EdgeInsets.only(bottom: 80, left: 16, right: 16),
         duration: const Duration(seconds: 4),
         action: SnackBarAction(
           label: 'باشه',
@@ -267,7 +267,7 @@ class UserFriendlyErrorUtils {
         backgroundColor: Colors.green.shade700,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        margin: const EdgeInsets.all(16),
+        margin: const EdgeInsets.only(bottom: 80, left: 16, right: 16),
       ),
     );
   }

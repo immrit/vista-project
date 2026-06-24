@@ -49,8 +49,6 @@ class OnlineStatusDot extends StatefulWidget {
 class _OnlineStatusDotState extends State<OnlineStatusDot>
     with SingleTickerProviderStateMixin {
   late AnimationController _pulseController;
-  late Animation<double> _pulseAnimation;
-  late Animation<double> _opacityAnimation;
 
   @override
   void initState() {
@@ -58,20 +56,6 @@ class _OnlineStatusDotState extends State<OnlineStatusDot>
     _pulseController = AnimationController(
       duration: const Duration(milliseconds: 1500),
       vsync: this,
-    );
-
-    _pulseAnimation = Tween<double>(begin: 1.0, end: 1.3).animate(
-      CurvedAnimation(
-        parent: _pulseController,
-        curve: Curves.easeInOut,
-      ),
-    );
-
-    _opacityAnimation = Tween<double>(begin: 0.7, end: 0.0).animate(
-      CurvedAnimation(
-        parent: _pulseController,
-        curve: Curves.easeOut,
-      ),
     );
 
     _updateAnimation();
@@ -86,12 +70,10 @@ class _OnlineStatusDotState extends State<OnlineStatusDot>
   }
 
   void _updateAnimation() {
-    if (widget.status == UserPresenceStatus.online) {
-      _pulseController.repeat();
-    } else {
-      _pulseController.stop();
-      _pulseController.reset();
-    }
+    // No repeating pulse. An always-on animation forces a frame every vsync, and
+    // on the Impeller GLES backend each forced frame recomposited the whole chat
+    // scene (~24ms raster) → continuous idle jank even when nothing moved. The
+    // static glowing dot conveys "online" without driving frames (Telegram-style).
   }
 
   @override
@@ -146,33 +128,8 @@ class _OnlineStatusDotState extends State<OnlineStatusDot>
       ),
     );
 
-    // PERF: فقط pulse ring انیمیشن دارد. RepaintBoundary تا repaint دائمی نقطه‌ی
-    // آنلاین، AppBar/آواتار اطراف را dirty نکند.
-    return RepaintBoundary(
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          if (isOnline)
-            AnimatedBuilder(
-              animation: _pulseController,
-              builder: (context, child) {
-                return Transform.scale(
-                  scale: _pulseAnimation.value,
-                  child: Container(
-                    width: widget.size,
-                    height: widget.size,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: color.withValues(alpha: _opacityAnimation.value),
-                    ),
-                  ),
-                );
-              },
-            ),
-          mainDot,
-        ],
-      ),
-    );
+    // Static dot only — no animated pulse ring (see _updateAnimation).
+    return RepaintBoundary(child: mainDot);
   }
 }
 

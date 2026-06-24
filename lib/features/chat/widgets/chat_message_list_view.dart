@@ -117,7 +117,10 @@ class ChatMessageListView extends ConsumerWidget {
               child: ScrollConfiguration(
                 behavior: const ChatScrollBehavior(),
                 child: ListView.builder(
-                  scrollCacheExtent: const ScrollCacheExtent.pixels(1500), // Increased for smoother fling
+                  // ~1 extra screen of pre-build either side. 1500 meant ~6× the
+                  // default cache → far more heavy rows built/kept per fling. 600
+                  // still hides blank flashes without the build burst.
+                  scrollCacheExtent: const ScrollCacheExtent.pixels(600),
                   controller: scrollController,
                   reverse: true,
                   clipBehavior: Clip.hardEdge,
@@ -135,7 +138,8 @@ class ChatMessageListView extends ConsumerWidget {
                           return ValueListenableBuilder<double>(
                             valueListenable: bottomPaddingListenable,
                             builder: (context, bottomPadding, _) {
-                              return SizedBox(height: inputHeight + bottomPadding + 8);
+                              return SizedBox(
+                                  height: inputHeight + bottomPadding + 8);
                             },
                           );
                         },

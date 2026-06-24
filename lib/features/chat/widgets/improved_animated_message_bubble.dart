@@ -28,6 +28,7 @@ import '../performance/motion_tokens.dart';
 import '../../emoji/domain/emoji_render_policy.dart';
 import '../../emoji/widgets/modern_emoji_text.dart';
 import 'reaction_reactor_avatar_stack.dart';
+import 'chat_text_bubble_layout.dart';
 
 /// Message delivery state for the bubble widget.
 enum MessageStatus {
@@ -175,7 +176,6 @@ class _ImprovedAnimatedMessageBubbleState
   AnimationController? _controller;
   Animation<double>? _fadeAnimation;
   Animation<Offset>? _slideAnimation;
-  Animation<double>? _scaleAnimation;
   late String _formattedTime;
 
   String _currentContent = "";
@@ -251,9 +251,8 @@ class _ImprovedAnimatedMessageBubbleState
     ));
 
     // Telegram X style: subtle 8% vertical slide (not the old 90% banner effect)
-    final slideBegin = widget.isMe
-        ? const Offset(0.05, 0.05)
-        : const Offset(0, 0.08);
+    final slideBegin =
+        widget.isMe ? const Offset(0.05, 0.05) : const Offset(0, 0.08);
     _slideAnimation = Tween<Offset>(
       begin: slideBegin,
       end: Offset.zero,
@@ -267,20 +266,10 @@ class _ImprovedAnimatedMessageBubbleState
           const Interval(0.0, 1.0, curve: Curves.easeOutCubic),
       },
     ));
-
-    _scaleAnimation = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: ctrl,
-      curve: switch (widget.effectsLevel) {
-        ChatEffectsLevel.low => const Interval(0.0, 0.4, curve: Curves.linear),
-        ChatEffectsLevel.medium =>
-          const Interval(0.0, 0.65, curve: Curves.easeOut),
-        ChatEffectsLevel.high =>
-          const Interval(0.0, 0.7, curve: Curves.easeOutBack),
-      },
-    ));
+    // NOTE: no scale animation. Scaling a bubble scales its text, and Impeller
+    // (GLES backend here) re-rasterizes glyphs at every intermediate scale →
+    // CreateGlyphAtlas thrash, which the entry trace showed dominating raster.
+    // Fade + a tiny slide read the same but are cheap (slide is a pure translate).
   }
 
   @override
@@ -335,20 +324,18 @@ class _ImprovedAnimatedMessageBubbleState
     super.build(context);
     final theme = context.chatTheme;
 
+    // No RepaintBoundary here: each list row is already wrapped in one by
+    // ChatMessageListView (the bubble is never a standalone scroll child on the
+    // hot path), so an inner boundary only adds a redundant GPU layer per row.
     if (_staticPresentation || _controller == null) {
-      return RepaintBoundary(child: _buildInteractiveBubble(theme));
+      return _buildInteractiveBubble(theme);
     }
 
-    return RepaintBoundary(
-      child: FadeTransition(
-        opacity: _fadeAnimation!,
-        child: SlideTransition(
-          position: _slideAnimation!,
-          child: ScaleTransition(
-            scale: _scaleAnimation!,
-            child: _buildInteractiveBubble(theme),
-          ),
-        ),
+    return FadeTransition(
+      opacity: _fadeAnimation!,
+      child: SlideTransition(
+        position: _slideAnimation!,
+        child: _buildInteractiveBubble(theme),
       ),
     );
   }
@@ -397,14 +384,23 @@ class _ImprovedAnimatedMessageBubbleState
         canonicalType != 'voice' &&
         canonicalType != 'audio';
 
+    // Fast path: a pure text bubble (no reply/forward/sender/story/shared-post
+    // sections, no reactions, real text). Such bubbles are the bulk of a busy
+    // chat, and they were the only ones paying IntrinsicWidth's double paragraph
+    // layout. ChatTextBubbleLayout shrink-wraps to max(text, footer) in a single
+    // pass — visually identical, so no IntrinsicWidth needed here.
+    final usePlainTextLayout = _isPlainTextBubble(canonicalType);
+
     Widget bubble = ConstrainedBox(
       constraints: BoxConstraints(
         maxWidth: MediaQuery.sizeOf(context).width * 0.82,
       ),
-      child: _buildMessageBubble(theme),
+      child: usePlainTextLayout
+          ? _buildPlainTextContainer(theme)
+          : _buildMessageBubble(theme),
     );
 
-    if (needsIntrinsicWidth) {
+    if (needsIntrinsicWidth && !usePlainTextLayout) {
       bubble = IntrinsicWidth(child: bubble);
     }
 
@@ -441,13 +437,7 @@ class _ImprovedAnimatedMessageBubbleState
 
     return Container(
       clipBehavior: isMedia ? Clip.hardEdge : Clip.none,
-      decoration: BoxDecoration(
-        color: widget.isMe && theme.myBubbleGradient == null
-            ? theme.myBubbleColor
-            : (widget.isMe ? null : theme.otherBubbleColor),
-        gradient: widget.isMe ? theme.myBubbleGradient : null,
-        borderRadius: _getBorderRadius(theme),
-      ),
+      decoration: _messageBoxDecoration(theme),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
@@ -463,9 +453,105 @@ class _ImprovedAnimatedMessageBubbleState
               widget.replyToContent != null)
             _buildReplySection(theme),
           _buildContent(theme),
-          if (widget.reactions.isNotEmpty && !_handlesReactionsInternally()) _buildReactionsSection(theme),
+          if (widget.reactions.isNotEmpty && !_handlesReactionsInternally())
+            _buildReactionsSection(theme),
         ],
       ),
+    );
+  }
+
+  BoxDecoration _messageBoxDecoration(ChatTheme theme) {
+    return BoxDecoration(
+      color: widget.isMe && theme.myBubbleGradient == null
+          ? theme.myBubbleColor
+          : (widget.isMe ? null : theme.otherBubbleColor),
+      gradient: widget.isMe ? theme.myBubbleGradient : null,
+      borderRadius: _getBorderRadius(theme),
+    );
+  }
+
+  /// True when the bubble is plain text only — eligible for the single-pass
+  /// [ChatTextBubbleLayout] instead of `IntrinsicWidth`. Any extra section
+  /// (reply/forward/sender/story/shared-post/reactions/media/decrypting) keeps
+  /// the original `IntrinsicWidth` path so its layout is untouched.
+  bool _isPlainTextBubble(String canonicalType) {
+    final isTextType = canonicalType != 'image' &&
+        canonicalType != 'video' &&
+        canonicalType != 'document' &&
+        canonicalType != 'voice' &&
+        canonicalType != 'audio';
+    if (!isTextType) return false;
+    if (_isDecrypting) return false;
+    if (_shouldShowSenderName()) return false;
+    if (widget.isForwarded) return false;
+    if (widget.reactions.isNotEmpty) return false;
+    if (widget.replyToContent != null) return false;
+    if (widget.message?.storyReplyData != null) return false;
+    if (widget.message?.isUploading ?? false) return false;
+    if (widget.message?.isFailed ?? false) return false;
+    // Excludes "media unavailable" placeholders (known media type, no url).
+    if (_isKnownMediaType(canonicalType)) return false;
+    return _displayCaption().isNotEmpty;
+  }
+
+  /// Pure-text bubble body: same decoration/padding/text/footer as the general
+  /// path, but the inner `Column(stretch)[text, gap, footerRow]` is replaced by
+  /// [ChatTextBubbleLayout] so the paragraph is laid out only once.
+  Widget _buildPlainTextContainer(ChatTheme theme) {
+    final caption = _displayCaption();
+    final contentDirection = resolveChatTextDirection(caption);
+    return Container(
+      decoration: _messageBoxDecoration(theme),
+      child: Padding(
+        padding: const EdgeInsets.only(left: 12, right: 12, top: 8, bottom: 6),
+        child: ChatTextBubbleLayout(
+          textDirection: contentDirection,
+          gap: 2,
+          text: Directionality(
+            textDirection: contentDirection,
+            child: _buildCaptionRichText(theme, caption, contentDirection),
+          ),
+          // Plain-text path has no reactions (guarded), so the footer is just the
+          // timestamp + tick at its natural (min) width — ChatTextBubbleLayout
+          // pins it to the reading-direction end, matching the old spaceBetween row.
+          footer: _buildTimeAndStatus(theme),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCaptionRichText(
+    ChatTheme theme,
+    String caption,
+    TextDirection contentDirection,
+  ) {
+    return ModernEmojiRichText(
+      text: caption,
+      useModernEmoji: EmojiRenderPolicy.useModernEmojiRenderer(),
+      textDirection: contentDirection,
+      textAlign: TextAlign.start,
+      baseStyle: TextStyle(
+        color:
+            widget.isMe ? theme.myBubbleTextColor : theme.otherBubbleTextColor,
+        fontSize: 14.5,
+        height: 1.5,
+        fontFamily: 'Vazirmatn',
+        fontFamilyFallback: const [
+          'Apple Color Emoji',
+          'Segoe UI Emoji',
+          'Noto Color Emoji',
+        ],
+      ),
+      linkColor: theme.sendButtonColor,
+      mentionColor: theme.sendButtonColor,
+      hashtagColor: theme.sendButtonColor,
+      onMentionTap: (username) {
+        NavigationHelper.navigateToUserProfile(context, username);
+      },
+      onHashtagTap: (tag) {
+        NavigationHelper.navigateToHashtagPosts(context, tag);
+      },
+      onLinkTap: widget.onLinkTap,
     );
   }
 
@@ -799,10 +885,8 @@ class _ImprovedAnimatedMessageBubbleState
             imageUrl,
             width: 48,
             height: 48,
-            cacheWidth:
-                (48 * MediaQuery.devicePixelRatioOf(context)).round(),
-            cacheHeight:
-                (48 * MediaQuery.devicePixelRatioOf(context)).round(),
+            cacheWidth: (48 * MediaQuery.devicePixelRatioOf(context)).round(),
+            cacheHeight: (48 * MediaQuery.devicePixelRatioOf(context)).round(),
             fit: BoxFit.cover,
             errorBuilder: (_, __, ___) => placeholder,
             loadingBuilder: (context, child, progress) {
@@ -895,7 +979,8 @@ class _ImprovedAnimatedMessageBubbleState
                 children: [
                   Text(
                     effectiveHeaderText,
-                    textDirection: resolveChatTextDirection(effectiveHeaderText),
+                    textDirection:
+                        resolveChatTextDirection(effectiveHeaderText),
                     style: TextStyle(
                       color: theme.sendButtonColor,
                       fontSize: 12,
@@ -1131,8 +1216,7 @@ class _ImprovedAnimatedMessageBubbleState
           : caption.isNotEmpty
               ? ModernEmojiRichText(
                   text: caption,
-                  useModernEmoji:
-                      EmojiRenderPolicy.useModernEmojiRenderer(),
+                  useModernEmoji: EmojiRenderPolicy.useModernEmojiRenderer(),
                   textDirection: contentDirection,
                   textAlign: TextAlign.start,
                   baseStyle: TextStyle(
@@ -1152,12 +1236,10 @@ class _ImprovedAnimatedMessageBubbleState
                   mentionColor: theme.sendButtonColor,
                   hashtagColor: theme.sendButtonColor,
                   onMentionTap: (username) {
-                    NavigationHelper.navigateToUserProfile(
-                        context, username);
+                    NavigationHelper.navigateToUserProfile(context, username);
                   },
                   onHashtagTap: (tag) {
-                    NavigationHelper.navigateToHashtagPosts(
-                        context, tag);
+                    NavigationHelper.navigateToHashtagPosts(context, tag);
                   },
                   onLinkTap: widget.onLinkTap,
                 )
@@ -1277,9 +1359,7 @@ class _ImprovedAnimatedMessageBubbleState
     if (mime.startsWith('video/')) return 'video';
 
     final fileName = widget.message?.attachmentFileName ?? '';
-    final url = widget.message?.resolvedMediaUrl ??
-        widget.attachmentUrl ??
-        '';
+    final url = widget.message?.resolvedMediaUrl ?? widget.attachmentUrl ?? '';
     final ext = p
         .extension(fileName.isNotEmpty ? fileName : url)
         .replaceFirst('.', '')
@@ -1894,8 +1974,7 @@ class _ImprovedAnimatedMessageBubbleState
               scale: reaction.isMyReaction ? 1.06 : 1.0,
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 180),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
                   color: reaction.isMyReaction
                       ? theme.sendButtonColor.withValues(alpha: 0.2)
@@ -1911,8 +1990,7 @@ class _ImprovedAnimatedMessageBubbleState
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(reaction.emoji,
-                        style: const TextStyle(fontSize: 12)),
+                    Text(reaction.emoji, style: const TextStyle(fontSize: 12)),
                     if (widget.showReactionAvatars &&
                         reaction.reactors.isNotEmpty) ...[
                       const SizedBox(width: 4),
@@ -1928,13 +2006,11 @@ class _ImprovedAnimatedMessageBubbleState
                             ScaleTransition(scale: animation, child: child),
                         child: Text(
                           reaction.count.toString().toPersianDigit(),
-                          key:
-                              ValueKey('${reaction.emoji}:${reaction.count}'),
+                          key: ValueKey('${reaction.emoji}:${reaction.count}'),
                           style: TextStyle(
                             fontSize: 10,
                             color: widget.isMe
-                                ? theme.myBubbleTextColor
-                                    .withValues(alpha: 0.7)
+                                ? theme.myBubbleTextColor.withValues(alpha: 0.7)
                                 : theme.otherBubbleTextColor
                                     .withValues(alpha: 0.7),
                           ),
@@ -2001,4 +2077,3 @@ class _ImprovedAnimatedMessageBubbleState
     return true;
   }
 }
-

@@ -1,15 +1,15 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 
-// PERF: قبلاً این Shell یک AnimationController.repeat(reverse:true) همیشه‌روشن داشت
-// (drift گرادیانِ شیشه‌ای). یعنی نوار ورودی *حتی idle* در هر فریم repaint می‌شد +
-// یک BackdropFilter که هم‌زمان با باز شدن کیبورد بار GPU را بالا می‌برد.
-//
-// راهکار: حذف کامل AnimationController و AnimatedBuilder → StatelessWidget. گرادیان
-// sheen به یک highlight ثابت تبدیل شد (مثل نوار ورودی تلگرام، بدون انیمیشن دائمی).
-// BackdropFilter همان یک instance ثابت می‌ماند و از قبل با reduceEffects گارد شده
-// (حین اسکرول/کیبورد حذف می‌شود).
+// PERF history:
+//  1) Originally an AnimationController.repeat(reverse:true) drove a "glass drift"
+//     gradient → input bar repainted every frame even idle. Removed → Stateless.
+//  2) A BackdropFilter remained for the frosted look. BackdropFilter re-applies its
+//     blur on EVERY composited frame (it can't be cached), and the app-bar online
+//     pulse (_pulseController.repeat()) forces a frame every vsync while the peer is
+//     online — so the blur ran ~60×/sec forever. DevTools showed this as the chat's
+//     steady ~24ms raster cost and the "stiff entry" culprit (all jank on the GPU
+//     thread, build was ~1.5ms). Removed entirely: a near-opaque solid bar + a
+//     static sheen is visually almost identical and essentially free to composite.
 class LiquidGlassInputShell extends StatelessWidget {
   final Widget child;
   final bool reduceEffects;
@@ -30,50 +30,24 @@ class LiquidGlassInputShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (reduceEffects) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(24),
-        child: Container(
-          decoration: BoxDecoration(
-            color: background.withValues(alpha: 0.95),
-            border: Border.all(
-              color: borderColor.withValues(alpha: 0.2),
-              width: 0.5,
-            ),
-          ),
-          child: child,
-        ),
-      );
-    }
-
-    final effectiveBlur = blurSigma.clamp(0.0, 14.0);
-
     return ClipRRect(
       borderRadius: BorderRadius.circular(24),
       child: Stack(
         children: [
-          if (effectiveBlur > 0)
-            Positioned.fill(
-              child: BackdropFilter(
-                filter: ImageFilter.blur(
-                  sigmaX: effectiveBlur,
-                  sigmaY: effectiveBlur,
-                ),
-                child: const SizedBox.shrink(),
-              ),
-            ),
+          // Near-opaque fill replaces the BackdropFilter: without real-time blur a
+          // translucent bar would show sharp messages through it, so keep alpha high.
           Positioned.fill(
             child: Container(
               decoration: BoxDecoration(
-                color: background,
+                color: background.withValues(alpha: 0.95),
                 border: Border.all(
-                  color: borderColor,
+                  color: borderColor.withValues(alpha: 0.35),
                   width: 0.5,
                 ),
               ),
             ),
           ),
-          // Highlight ثابت (بدون انیمیشن drift) — حس شیشه‌ای بدون repaint دائمی.
+          // Static glass sheen (no animation, no blur) — cheap, keeps the look.
           Positioned.fill(
             child: IgnorePointer(
               child: DecoratedBox(
@@ -83,9 +57,7 @@ class LiquidGlassInputShell extends StatelessWidget {
                     end: const Alignment(0.7, 1),
                     colors: [
                       Colors.white.withValues(alpha: 0.0),
-                      Colors.white.withValues(
-                        alpha: isDark ? 0.02 : 0.05,
-                      ),
+                      Colors.white.withValues(alpha: isDark ? 0.02 : 0.05),
                       Colors.white.withValues(alpha: 0.0),
                     ],
                     stops: const [0.2, 0.5, 0.8],

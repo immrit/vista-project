@@ -92,6 +92,25 @@ class _SwipeToReplyWrapperState extends State<SwipeToReplyWrapper> {
     final theme = context.chatTheme;
     final bubbleOnRight = _bubbleOnRight(context);
 
+    // SizedBox.expand gives the Column tight screen-width constraints so
+    // crossAxisAlignment.end in _buildBubbleBody anchors the bubble to the
+    // correct screen edge instead of centering it.
+    final content = SizedBox(width: double.infinity, child: widget.child);
+
+    // Rest state (the overwhelming majority of rows, especially while scrolling):
+    // skip the Stack + Transform + reply-icon overlay entirely. They only exist
+    // mid-drag, so building them per row on every mount was pure waste. Drag
+    // restores the full tree below via setState. No visual change at rest.
+    if (_dragOffset == 0.0 && !_isDraggingHorizontally) {
+      return Listener(
+        behavior: HitTestBehavior.translucent,
+        onPointerMove: (event) => _onPointerMove(event, bubbleOnRight),
+        onPointerUp: (_) => _onPointerEnd(),
+        onPointerCancel: (_) => _onPointerEnd(),
+        child: content,
+      );
+    }
+
     return Listener(
       behavior: HitTestBehavior.translucent,
       onPointerMove: (event) => _onPointerMove(event, bubbleOnRight),
@@ -99,15 +118,9 @@ class _SwipeToReplyWrapperState extends State<SwipeToReplyWrapper> {
       onPointerCancel: (_) => _onPointerEnd(),
       child: Stack(
         children: [
-          // SizedBox.expand gives the Column tight screen-width constraints so
-          // crossAxisAlignment.end in _buildBubbleBody anchors the bubble to the
-          // correct screen edge instead of centering it.
-          SizedBox(
-            width: double.infinity,
-            child: Transform.translate(
-              offset: Offset(_dragOffset, 0),
-              child: widget.child,
-            ),
+          Transform.translate(
+            offset: Offset(_dragOffset, 0),
+            child: content,
           ),
           if (_dragOffset.abs() > 10)
             Positioned(

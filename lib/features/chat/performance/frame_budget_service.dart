@@ -25,6 +25,15 @@ class FrameBudgetService {
     return (1000000.0 / hz).round();
   }
 
+  // Throttle the expensive percentile pass. Appending frame samples is cheap;
+  // sorting 180 ints + 3 percentiles + jank scan + 2 notifier writes EVERY frame
+  // ran on the UI thread during scroll — the jank monitor itself burned frame
+  // budget and churned the adaptive-effects recompute. Recompute at most every
+  // ~400ms instead (still several adapts/sec, zero per-frame cost).
+  static const int _minComputeIntervalMicros = 400000;
+  final Stopwatch _throttleClock = Stopwatch()..start();
+  int _lastComputeMicros = 0;
+
   final List<int> _framesMicros = <int>[];
   bool _isMonitoring = false;
   bool _hasCallback = false;
@@ -72,6 +81,15 @@ class FrameBudgetService {
     }
 
     if (_framesMicros.length < 12) return;
+
+    // Per-frame samples accumulate above (cheap); the costly sort/percentile pass
+    // below is throttled so it no longer competes with row builds during a fling.
+    final nowMicros = _throttleClock.elapsedMicroseconds;
+    if (_lastComputeMicros != 0 &&
+        nowMicros - _lastComputeMicros < _minComputeIntervalMicros) {
+      return;
+    }
+    _lastComputeMicros = nowMicros;
 
     final sorted = List<int>.from(_framesMicros)..sort();
     final p50 = _percentile(sorted, 0.50) / 1000.0;

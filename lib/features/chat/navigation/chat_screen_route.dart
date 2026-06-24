@@ -2,11 +2,14 @@ import 'package:flutter/material.dart';
 
 import '../screens/modern_chat_screen.dart';
 
-/// Uses the app's default PageTransitionsTheme (Cupertino slide) for a
-/// native-feeling transition, but with a longer duration than the 300ms
-/// MaterialPageRoute default. The extra time turns the "snappy/dry" slide into
-/// a softer, Telegram-like glide while keeping the iOS edge back-swipe, page
-/// parallax and RTL awareness. Tune these to taste.
+/// Chat push route.
+///
+/// Uses the app's default page transition (Cupertino slide via the global
+/// PageTransitionsTheme) at the standard MaterialPageRoute duration — the exact
+/// same feel as the rest of the app (e.g. the Nearby screen), which already
+/// reads as smooth. A previous 420/340ms override made the chat push feel
+/// draggy and gave the first (heavy) list build a wider window to stutter in.
+/// Edge back-swipe, parallax and RTL awareness come from the theme builder.
 class ChatScreenRoute extends MaterialPageRoute<void> {
   ChatScreenRoute({required this.args})
       : super(
@@ -14,10 +17,4 @@ class ChatScreenRoute extends MaterialPageRoute<void> {
         );
 
   final ChatScreenArgs args;
-
-  @override
-  Duration get transitionDuration => const Duration(milliseconds: 420);
-
-  @override
-  Duration get reverseTransitionDuration => const Duration(milliseconds: 340);
 }

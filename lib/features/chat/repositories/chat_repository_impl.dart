@@ -28,6 +28,7 @@ import '../data/datasources/chat_local_datasource_isar.dart';
 import '../domain/message_payload.dart';
 import '../services/sse_manager.dart';
 import '../services/user_moderation_service.dart';
+import '../services/message_tombstone_service.dart';
 import 'chat_repository.dart';
 import '../../../../security/e2ee_service.dart';
 
@@ -341,7 +342,8 @@ class ChatRepositoryImpl implements ChatRepository {
   }
 
   @override
-  Stream<List<MessageModel>> watchMessages(String conversationId) async* {
+  Stream<List<MessageModel>> watchMessages(String conversationId,
+      {int? limit}) async* {
     final uid = await _userId();
     if (uid == null) {
       yield const [];
@@ -362,7 +364,10 @@ class ChatRepositoryImpl implements ChatRepository {
         final convId = data?['conversation_id']?.toString();
         if (convId == conversationId) {
           if (type == 'message_deleted' && data?['message_id'] != null) {
-            unawaited(_local.deleteMessage(data!['message_id'].toString()));
+            final msgId = data!['message_id'].toString();
+            unawaited(_local.deleteMessage(msgId));
+            unawaited(MessageTombstoneService()
+                .markDeletedRemotely(msgId, conversationId));
           }
           if (type == 'read_receipt') {
             final readerId = data?['user_id']?.toString() ?? '';
@@ -386,19 +391,26 @@ class ChatRepositoryImpl implements ChatRepository {
       }
     });
 
-    yield* _local.watchMessages(conversationId, uid).transform(
-          StreamTransformer.fromHandlers(
-            handleDone: (sink) {
-              sseSub?.cancel();
-              sink.close();
-            },
-            handleError: (e, st, sink) {
-              sseSub?.cancel();
-              sink.addError(e, st);
-            },
-            handleData: (data, sink) => sink.add(data),
-          ),
-        );
+    try {
+      yield* _local.watchMessages(conversationId, uid, limit: limit).transform(
+            StreamTransformer.fromHandlers(
+              handleDone: (sink) {
+                sseSub?.cancel();
+                sink.close();
+              },
+              handleError: (e, st, sink) {
+                sseSub?.cancel();
+                sink.addError(e, st);
+              },
+              handleData: (data, sink) => sink.add(data),
+            ),
+          );
+    } finally {
+      // Cancel on consumer cancel (dispose) too. handleDone/handleError only
+      // fire on completion/error, so without this the SSE subscription leaked
+      // every time a chat screen closed.
+      await sseSub.cancel();
+    }
   }
 
   @override
@@ -735,7 +747,13 @@ class ChatRepositoryImpl implements ChatRepository {
           .toList()
           .reversed
           .toList();
-      await _local.saveMessages(msgs);
+          
+      if (msgs.isNotEmpty) {
+        final sortedServer = List<MessageModel>.from(msgs)
+          ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+        await _local.reconcileMessages(conversationId, msgs,
+            endDate: sortedServer.last.createdAt);
+      }
       return ChatResult.success(msgs);
     } on DioException catch (e) {
       return ChatResult.failure(_dioError(e));
@@ -1299,18 +1317,19 @@ class ChatRepositoryImpl implements ChatRepository {
     );
 
     return server.copyWith(
-      content: server.hasMediaPlaceholderContent &&
-              !local.hasMediaPlaceholderContent
-          ? local.content
-          : (server.hasMediaPlaceholderContent &&
-                  (server.resolvedMediaUrl != null ||
-                      local.resolvedMediaUrl != null))
-              ? ''
-              : server.content,
+      content:
+          server.hasMediaPlaceholderContent && !local.hasMediaPlaceholderContent
+              ? local.content
+              : (server.hasMediaPlaceholderContent &&
+                      (server.resolvedMediaUrl != null ||
+                          local.resolvedMediaUrl != null))
+                  ? ''
+                  : server.content,
       attachmentUrl: _preferNonEmpty(server.attachmentUrl, local.attachmentUrl),
       audioUrl: _preferNonEmpty(server.audioUrl, local.audioUrl),
-      attachmentType: _preferNonEmpty(server.attachmentType, local.attachmentType) ??
-          local.messageType,
+      attachmentType:
+          _preferNonEmpty(server.attachmentType, local.attachmentType) ??
+              local.messageType,
       attachmentFileName: server.attachmentFileName?.isNotEmpty == true
           ? server.attachmentFileName
           : local.attachmentFileName,

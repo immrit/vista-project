@@ -132,59 +132,64 @@ class ChatMessageRow extends ConsumerWidget {
       (message) => bindings.isMessageTemporarilyHidden(message.id),
     );
 
-    final messageWidget = Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        if (layout.showDateDivider)
-          date_divider.DateDivider(date: rowMessages.last.createdAt),
-        GestureDetector(
-          behavior: HitTestBehavior.translucent,
-          onTap: () {
-            if (selection.isSelectionMode) {
-              bindings.onToggleRenderItemSelection(descriptor.messageIds);
-            }
-          },
-          onLongPress: () {
-            HapticFeedback.mediumImpact();
-            if (selection.isSelectionMode) {
-              bindings.onToggleRenderItemSelection(descriptor.messageIds);
-            } else {
-              bindings.onEnterSelectionMode(descriptor.messageIds);
-            }
-          },
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
-            child: Row(
-              mainAxisAlignment:
-                  isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
-              children: [
-                if (selection.isSelectionMode)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: _SelectionCheckbox(
-                      selected: isRowSelected,
-                      onTap: () => bindings.onToggleRenderItemSelection(
-                        descriptor.messageIds,
-                      ),
-                    ),
-                  ),
-                Flexible(
-                  child: Opacity(
-                    opacity: isHidden ? 0.0 : 1.0,
-                    child: bubble,
+    final messageBody = GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onTap: () {
+        if (selection.isSelectionMode) {
+          bindings.onToggleRenderItemSelection(descriptor.messageIds);
+        }
+      },
+      onLongPress: () {
+        HapticFeedback.mediumImpact();
+        if (selection.isSelectionMode) {
+          bindings.onToggleRenderItemSelection(descriptor.messageIds);
+        } else {
+          bindings.onEnterSelectionMode(descriptor.messageIds);
+        }
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+        child: Row(
+          mainAxisAlignment:
+              isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+          children: [
+            if (selection.isSelectionMode)
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: _SelectionCheckbox(
+                  selected: isRowSelected,
+                  onTap: () => bindings.onToggleRenderItemSelection(
+                    descriptor.messageIds,
                   ),
                 ),
-              ],
+              ),
+            Flexible(
+              // Opacity layer only when actually hidden — Opacity(1.0) would be a
+              // redundant RenderObject on every visible row.
+              child: isHidden ? Opacity(opacity: 0.0, child: bubble) : bubble,
             ),
-          ),
+          ],
         ),
-        if (layout.showUnreadDivider)
-          UnreadMessagesDivider(
-            unreadCount: bindings.unreadCount,
-            onTap: bindings.onScrollToBottom,
-          ),
-      ],
+      ),
     );
+
+    // Most rows carry no date/unread divider — skip the wrapping Column for them
+    // so the common row is one widget shallower.
+    final messageWidget = (layout.showDateDivider || layout.showUnreadDivider)
+        ? Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (layout.showDateDivider)
+                date_divider.DateDivider(date: rowMessages.last.createdAt),
+              messageBody,
+              if (layout.showUnreadDivider)
+                UnreadMessagesDivider(
+                  unreadCount: bindings.unreadCount,
+                  onTap: bindings.onScrollToBottom,
+                ),
+            ],
+          )
+        : messageBody;
 
     return ChatMessageListTile(
       keepAlive: ChatMessageRenderWindow.shouldKeepAliveMessages(rowMessages),

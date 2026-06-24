@@ -23,14 +23,20 @@ class ChatLocalDataSourceIsar {
   // ═══════════════════════════════════════════════════════════════════
 
   Stream<List<MessageModel>> watchMessages(
-      String conversationId, String currentUserId) async* {
+      String conversationId, String currentUserId,
+      {int? limit}) async* {
     final isar = await _dbManager.instance;
-    yield* isar.messageEntitys
+    final base = isar.messageEntitys
         .filter()
         .conversationIdEqualTo(conversationId)
-        .sortByCreatedAtDesc() // Isar auto-generates this
-        .watch(fireImmediately: true)
-        .map((entities) => entities.map((e) => e.toModel()).toList());
+        .sortByCreatedAtDesc(); // Isar auto-generates this
+    // limit caps how many newest entities are deserialized per emit. Without it
+    // every change re-mapped the WHOLE conversation history to MessageModel on
+    // the main isolate — the dominant cost in heavy chats.
+    final Stream<List<MessageEntity>> stream = limit == null
+        ? base.watch(fireImmediately: true)
+        : base.limit(limit).watch(fireImmediately: true);
+    yield* stream.map((entities) => entities.map((e) => e.toModel()).toList());
   }
 
   Future<void> saveMessages(List<MessageModel> messages) async {
@@ -197,10 +203,12 @@ class ChatLocalDataSourceIsar {
 
     return incoming.copyWith(
       content: _mergeIncomingContent(incoming, existing),
-      attachmentUrl: _preferNonEmptyUrl(incoming.attachmentUrl, existing.attachmentUrl),
+      attachmentUrl:
+          _preferNonEmptyUrl(incoming.attachmentUrl, existing.attachmentUrl),
       audioUrl: _preferNonEmptyUrl(incoming.audioUrl, existing.audioUrl),
-      attachmentType:
-          incoming.attachmentType ?? existing.attachmentType ?? existing.messageType,
+      attachmentType: incoming.attachmentType ??
+          existing.attachmentType ??
+          existing.messageType,
       messageType: incoming.messageType ?? existing.messageType,
       // Never regress delivery state due to stale sync snapshots.
       isSent: incoming.isSent || existing.isSent,
@@ -529,18 +537,21 @@ class ChatLocalDataSourceIsar {
   }
 
   Future<void> reconcileMessages(
-      String conversationId, List<MessageModel> serverMessages) async {
+      String conversationId, List<MessageModel> serverMessages,
+      {DateTime? endDate}) async {
     final isar = await _dbManager.instance;
     if (serverMessages.isEmpty) {
-      await isar.writeTxn(() async {
-        await isar.messageEntitys
-            .filter()
-            .conversationIdEqualTo(conversationId)
-            .isPendingEqualTo(false)
-            .isFailedEqualTo(false)
-            .deleteAll();
-        await _rebuildConversationMetadataInTxn(isar, conversationId);
-      });
+      if (endDate == null) {
+        await isar.writeTxn(() async {
+          await isar.messageEntitys
+              .filter()
+              .conversationIdEqualTo(conversationId)
+              .isPendingEqualTo(false)
+              .isFailedEqualTo(false)
+              .deleteAll();
+          await _rebuildConversationMetadataInTxn(isar, conversationId);
+        });
+      }
       return;
     }
 
@@ -552,10 +563,16 @@ class ChatLocalDataSourceIsar {
 
     // 2. Find local messages in range (that presumably SHOULD match server content)
     // CRITICAL: Exclude pending/failed messages to prevent deleting messages being sent.
-    final localEntities = await isar.messageEntitys
+    var filter = isar.messageEntitys
         .filter()
         .conversationIdEqualTo(conversationId)
-        .createdAtGreaterThan(oldestServerDate, include: true)
+        .createdAtGreaterThan(oldestServerDate, include: true);
+
+    if (endDate != null) {
+      filter = filter.createdAtLessThan(endDate, include: true);
+    }
+
+    final localEntities = await filter
         .isPendingEqualTo(false) // Protect pending
         .isFailedEqualTo(false) // Protect failed
         .findAll();
@@ -790,8 +807,7 @@ class ChatLocalDataSourceIsar {
   String _messageDeliveryStatusToString(MessageModel message) {
     if (message.isPending == true) return 'pending';
     if (message.isFailed == true) return 'failed';
-    if (message.isMe &&
-        (message.isSeen == true || message.isRead == true)) {
+    if (message.isMe && (message.isSeen == true || message.isRead == true)) {
       return 'read';
     }
     if (message.isDelivered == true) return 'delivered';

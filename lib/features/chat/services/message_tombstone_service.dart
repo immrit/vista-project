@@ -65,6 +65,29 @@ class MessageTombstoneService {
     unawaited(syncPendingDeletes());
   }
 
+  Future<void> markDeletedRemotely(
+      String messageId, String conversationId) async {
+    final isar = await _dbManager.instance;
+    await isar.writeTxn(() async {
+      final existing = await isar.deletionTaskEntitys
+          .filter()
+          .messageIdEqualTo(messageId)
+          .findFirst();
+      if (existing != null) return; // already have a tombstone
+
+      final row = DeletionTaskEntity();
+      row.messageId = messageId;
+      row.conversationId = conversationId;
+      row.deletionMode = 1;
+      row.retryCount = 0;
+      // Use max valid JS integer (9007199254740991) to prevent sync worker from picking it up
+      row.nextAttempt = 9007199254740991; 
+      row.timestamp = DateTime.now().toUtc().millisecondsSinceEpoch;
+      row.s3Key = null;
+      await isar.deletionTaskEntitys.put(row);
+    });
+  }
+
   Future<void> markDeletedLocallyBatch({
     required List<String> messageIds,
     required String conversationId,

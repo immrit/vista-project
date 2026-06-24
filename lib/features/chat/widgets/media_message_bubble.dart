@@ -4,7 +4,6 @@
 
 import 'dart:async';
 import 'dart:io';
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -438,32 +437,29 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
                   ),
                 ),
               ),
-
-                if (!_isFileCached &&
-                    !shouldDownload &&
-                    !_isManuallyDownloading &&
-                    !widget.isSecretMode)
-                  _buildDownloadButton(),
-
-                if (_isManuallyDownloading && !_isFileCached)
-                  _buildLoadingIndicator(),
-
-                if (!widget.isSecretMode &&
-                    _isNetworkUrl &&
-                    _transferTask != null)
-                  Positioned(
-                    left: 8,
-                    bottom: 8,
-                    child: _buildTransferControls(),
-                  ),
-                if (!hasCaption)
-                  Positioned(
-                    right: 6,
-                    bottom: 6,
-                    child: _buildTimestampPill(theme),
-                  ),
-              ],
-            ),
+              if (!_isFileCached &&
+                  !shouldDownload &&
+                  !_isManuallyDownloading &&
+                  !widget.isSecretMode)
+                _buildDownloadButton(),
+              if (_isManuallyDownloading && !_isFileCached)
+                _buildLoadingIndicator(),
+              if (!widget.isSecretMode &&
+                  _isNetworkUrl &&
+                  _transferTask != null)
+                Positioned(
+                  left: 8,
+                  bottom: 8,
+                  child: _buildTransferControls(),
+                ),
+              if (!hasCaption)
+                Positioned(
+                  right: 6,
+                  bottom: 6,
+                  child: _buildTimestampPill(theme),
+                ),
+            ],
+          ),
           if (hasCaption) _buildCaption(theme),
         ],
       ),
@@ -568,11 +564,6 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
       ChatEffectsLevel.medium => 64,
       ChatEffectsLevel.high => 96,
     };
-    final useHeavyBlur = widget.allowHeavyEffects &&
-        widget.effectsLevel == ChatEffectsLevel.high &&
-        !widget.isUploading &&
-        !_isManuallyDownloading;
-
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -587,15 +578,11 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
           )
         else
           Container(color: theme.otherBubbleColor.withValues(alpha: 0.3)),
-        if (useHeavyBlur)
-          BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-            child: Container(
-              color: Colors.black.withValues(alpha: 0.1),
-            ),
-          )
-        else
-          Container(color: Colors.black.withValues(alpha: 0.18)),
+        // No BackdropFilter here: it blurred the backdrop per frame for every
+        // loading image — several at once on entry = the 95–145ms raster spikes.
+        // The tiny thumbnail (memCacheWidth ~40–96) upscaled to bubble size is
+        // already a soft preview; a flat dim is enough.
+        Container(color: Colors.black.withValues(alpha: 0.12)),
       ],
     );
   }
