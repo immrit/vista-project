@@ -13,8 +13,8 @@ final servicesHubProvider =
   return repo.getHub();
 });
 
-final contactsProvider = StateNotifierProvider<
-    ContactsNotifier, AsyncValue<List<ContactVistaUser>>>(
+final contactsProvider =
+    StateNotifierProvider<ContactsNotifier, AsyncValue<List<ContactVistaUser>>>(
   (ref) => ContactsNotifier(ref.watch(servicesHubRepositoryProvider)),
 );
 
@@ -27,7 +27,7 @@ class ContactsNotifier
 
   Future<void> load() async {
     if (_isLoaded && state is AsyncData) return;
-    
+
     state = const AsyncValue.loading();
     try {
       final granted = await FlutterContacts.requestPermission(readonly: true);
@@ -39,7 +39,9 @@ class ContactsNotifier
       final contacts = await FlutterContacts.getContacts(withProperties: true);
       final phones = <String>{};
       for (final c in contacts) {
-        for (final p in c.phones) phones.add(p.number);
+        for (final p in c.phones) {
+          phones.add(p.number);
+        }
       }
 
       final result = await _repo.findContacts(phones.toList());

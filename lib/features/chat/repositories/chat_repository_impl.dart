@@ -422,7 +422,7 @@ class ChatRepositoryImpl implements ChatRepository {
     try {
       await SystemStatusService.instance.ensureFeatureEnabled(
         SystemFeature.chat,
-        forceRefresh: true,
+        forceRefresh: false,
       );
     } on FeatureDisabledException catch (e) {
       return ChatResult.failure(e.message);

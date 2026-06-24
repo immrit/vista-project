@@ -3,17 +3,24 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:Vista/core/theme/app_theme.dart';
 
+/// نتیجه انتخاب کاربر در dialog اقناعی
+enum LocationPermissionChoice {
+  grant, // «باشه، اجازه می‌دم»
+  later, // «نه، الان نه»
+  neverAsk, // «دیگه ازم نپرس»
+}
+
 /// ─────────────────────────────────────────────────────────────────────────────
-/// [LocationPermissionDialog] — پیش از درخواست سیستم، کاربر را متقاعد می‌کند
+/// [LocationPermissionDialog] — dialog زیبا برای درخواست دسترسی مکان
 /// ─────────────────────────────────────────────────────────────────────────────
-/// نمایش: `LocationPermissionDialog.showRequest(context)` → `bool` (آیا رضایت داد)
 class LocationPermissionDialog {
   LocationPermissionDialog._();
 
-  /// نمایش dialog اقناعی پیش از `requestPermission()`.
-  /// برمی‌گرداند: `true` = کاربر موافقت کرد، `false` = رد کرد.
-  static Future<bool> showRequest(BuildContext context) async {
-    final result = await showGeneralDialog<bool>(
+  /// نمایش dialog اقناعی.
+  /// برمی‌گرداند: [LocationPermissionChoice]
+  static Future<LocationPermissionChoice> showRequest(
+      BuildContext context) async {
+    final result = await showGeneralDialog<LocationPermissionChoice>(
       context: context,
       barrierDismissible: false,
       barrierColor: Colors.black.withOpacity(0.65),
@@ -31,7 +38,7 @@ class LocationPermissionDialog {
       },
       pageBuilder: (ctx, _, __) => const _LocationRequestSheet(),
     );
-    return result ?? false;
+    return result ?? LocationPermissionChoice.later;
   }
 
   /// نمایش dialog راهنمایی به تنظیمات (وقتی دسترسی `deniedForever` است).
@@ -60,6 +67,19 @@ class LocationPermissionDialog {
   }
 }
 
+// ─── Material wrapper مشترک برای رفع خط زرد ───────────────────────────────
+// showGeneralDialog بدون Scaffold/Material ران می‌شود؛ این wrapper
+// DefaultTextStyle و Directionality لازم را فراهم می‌کند.
+Widget _dialogScaffold({required Widget child}) {
+  return Directionality(
+    textDirection: TextDirection.rtl,
+    child: Material(
+      type: MaterialType.transparency,
+      child: child,
+    ),
+  );
+}
+
 // ─── Widget اقناعی ──────────────────────────────────────────────────────────
 class _LocationRequestSheet extends StatelessWidget {
   const _LocationRequestSheet();
@@ -73,114 +93,144 @@ class _LocationRequestSheet extends StatelessWidget {
     final textSecondary =
         isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary;
 
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 28),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(28),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-            child: Container(
-              decoration: BoxDecoration(
-                color: bg,
-                borderRadius: BorderRadius.circular(28),
-                border: Border.all(
-                  color: isDark
-                      ? AppColors.darkBorder.withOpacity(0.5)
-                      : Colors.white.withOpacity(0.8),
-                  width: 1.2,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.primary.withOpacity(0.12),
-                    blurRadius: 40,
-                    spreadRadius: 4,
-                    offset: const Offset(0, 8),
+    return _dialogScaffold(
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 28),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(28),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: bg,
+                  borderRadius: BorderRadius.circular(28),
+                  border: Border.all(
+                    color: isDark
+                        ? AppColors.darkBorder.withOpacity(0.5)
+                        : Colors.white.withOpacity(0.8),
+                    width: 1.2,
                   ),
-                  BoxShadow(
-                    color: Colors.black.withOpacity(isDark ? 0.4 : 0.08),
-                    blurRadius: 24,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // ── Header gradient strip ──────────────────────────────────
-                  Container(
-                    height: 5,
-                    decoration: const BoxDecoration(
-                      gradient: AppColors.heroGradient,
-                      borderRadius:
-                          BorderRadius.vertical(top: Radius.circular(28)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.primary.withOpacity(0.12),
+                      blurRadius: 40,
+                      spreadRadius: 4,
+                      offset: const Offset(0, 8),
                     ),
-                  ),
+                    BoxShadow(
+                      color: Colors.black.withOpacity(isDark ? 0.4 : 0.08),
+                      blurRadius: 24,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // ── Header gradient strip ────────────────────────────────
+                    Container(
+                      height: 5,
+                      decoration: const BoxDecoration(
+                        gradient: AppColors.heroGradient,
+                        borderRadius:
+                            BorderRadius.vertical(top: Radius.circular(28)),
+                      ),
+                    ),
 
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // ── Icon ──────────────────────────────────────────────
-                        _GlowIcon(isDark: isDark),
-                        const SizedBox(height: 20),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // ── Icon ────────────────────────────────────────────
+                          _GlowIcon(isDark: isDark),
+                          const SizedBox(height: 20),
 
-                        // ── Title ─────────────────────────────────────────────
-                        ShaderMask(
-                          shaderCallback: (b) =>
-                              AppColors.heroGradient.createShader(b),
-                          child: Text(
-                            'بذار بدونیم کجایی',
+                          // ── Title ───────────────────────────────────────────
+                          ShaderMask(
+                            shaderCallback: (b) =>
+                                AppColors.heroGradient.createShader(b),
+                            child: Text(
+                              'بذار بدونیم کجایی',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.w900,
+                                color: textPrimary,
+                                height: 1.3,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+
+                          // ── Subtitle ─────────────────────────────────────────
+                          Text(
+                            'برای نشون دادن آدم‌های نزدیکت و سرچ هوشمندتر، '
+                            'به موقعیت مکانیت نیاز داریم.',
                             textAlign: TextAlign.center,
                             style: TextStyle(
-                              fontSize: 22,
-                              fontWeight: FontWeight.w900,
-                              color: textPrimary,
-                              height: 1.3,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-
-                        // ── Subtitle ──────────────────────────────────────────
-                        Text(
-                          'برای نشون دادن آدم‌های نزدیکت و سرچ هوشمندتر، '
-                          'به موقعیت مکانیت نیاز داریم.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: textSecondary,
-                            height: 1.65,
-                          ),
-                        ),
-                        const SizedBox(height: 22),
-
-                        // ── Feature chips ─────────────────────────────────────
-                        _FeatureList(isDark: isDark),
-                        const SizedBox(height: 28),
-
-                        // ── CTA ───────────────────────────────────────────────
-                        _GradientButton(
-                          label: 'باشه، اجازه می‌دم',
-                          onTap: () => Navigator.of(context).pop(true),
-                        ),
-                        const SizedBox(height: 10),
-                        TextButton(
-                          onPressed: () => Navigator.of(context).pop(false),
-                          child: Text(
-                            'نه، الان نه',
-                            style: TextStyle(
-                              color: textSecondary,
                               fontSize: 14,
-                              fontWeight: FontWeight.w500,
+                              color: textSecondary,
+                              height: 1.65,
                             ),
                           ),
-                        ),
-                      ],
+                          const SizedBox(height: 22),
+
+                          // ── Feature chips ────────────────────────────────────
+                          _FeatureList(isDark: isDark),
+                          const SizedBox(height: 28),
+
+                          // ── CTA: Grant ───────────────────────────────────────
+                          _GradientButton(
+                            label: 'باشه، اجازه می‌دم',
+                            onTap: () => Navigator.of(context)
+                                .pop(LocationPermissionChoice.grant),
+                          ),
+                          const SizedBox(height: 8),
+
+                          // ── Later ────────────────────────────────────────────
+                          TextButton(
+                            onPressed: () => Navigator.of(context)
+                                .pop(LocationPermissionChoice.later),
+                            style: TextButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 24, vertical: 10),
+                            ),
+                            child: Text(
+                              'نه، الان نه',
+                              style: TextStyle(
+                                color: textSecondary,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+
+                          // ── Never Ask ────────────────────────────────────────
+                          TextButton(
+                            onPressed: () => Navigator.of(context)
+                                .pop(LocationPermissionChoice.neverAsk),
+                            style: TextButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 24, vertical: 6),
+                            ),
+                            child: Text(
+                              'دیگه ازم نپرس',
+                              style: TextStyle(
+                                color: isDark
+                                    ? AppColors.darkTextTertiary
+                                    : AppColors.lightTextTertiary,
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w400,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -203,111 +253,107 @@ class _LocationSettingsSheet extends StatelessWidget {
     final textSecondary =
         isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary;
 
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 28),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(28),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-            child: Container(
-              decoration: BoxDecoration(
-                color: bg,
-                borderRadius: BorderRadius.circular(28),
-                border: Border.all(
-                  color: isDark
-                      ? AppColors.darkBorder.withOpacity(0.5)
-                      : Colors.white.withOpacity(0.8),
-                  width: 1.2,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.warning.withOpacity(0.15),
-                    blurRadius: 40,
-                    spreadRadius: 4,
-                    offset: const Offset(0, 8),
+    return _dialogScaffold(
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 28),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(28),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: bg,
+                  borderRadius: BorderRadius.circular(28),
+                  border: Border.all(
+                    color: isDark
+                        ? AppColors.darkBorder.withOpacity(0.5)
+                        : Colors.white.withOpacity(0.8),
+                    width: 1.2,
                   ),
-                  BoxShadow(
-                    color: Colors.black.withOpacity(isDark ? 0.4 : 0.08),
-                    blurRadius: 24,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // ── Header gradient strip ──────────────────────────────────
-                  Container(
-                    height: 5,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [AppColors.warning, AppColors.accent],
-                      ),
-                      borderRadius: const BorderRadius.vertical(
-                          top: Radius.circular(28)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.warning.withOpacity(0.15),
+                      blurRadius: 40,
+                      spreadRadius: 4,
+                      offset: const Offset(0, 8),
                     ),
-                  ),
-
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // ── Icon ──────────────────────────────────────────────
-                        _SettingsIcon(isDark: isDark),
-                        const SizedBox(height: 20),
-
-                        // ── Title ─────────────────────────────────────────────
-                        Text(
-                          'دسترسی مکان بسته‌ست',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 21,
-                            fontWeight: FontWeight.w900,
-                            color: textPrimary,
-                          ),
+                    BoxShadow(
+                      color: Colors.black.withOpacity(isDark ? 0.4 : 0.08),
+                      blurRadius: 24,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      height: 5,
+                      decoration: const BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [AppColors.warning, AppColors.accent],
                         ),
-                        const SizedBox(height: 12),
+                        borderRadius:
+                            BorderRadius.vertical(top: Radius.circular(28)),
+                      ),
+                    ),
 
-                        // ── Explanation ───────────────────────────────────────
-                        Text(
-                          'قبلاً این دسترسی رو رد کردی و سیستم دیگه اجازه پرسیدن مجدد نمیده. '
-                          'برای فعال‌سازی باید از تنظیمات دستگاهت اجازه بدی.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 13.5,
-                            color: textSecondary,
-                            height: 1.7,
-                          ),
-                        ),
-                        const SizedBox(height: 20),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _SettingsIcon(isDark: isDark),
+                          const SizedBox(height: 20),
 
-                        // ── Steps ─────────────────────────────────────────────
-                        _StepsList(isDark: isDark),
-                        const SizedBox(height: 26),
-
-                        // ── CTA ───────────────────────────────────────────────
-                        _WarningButton(
-                          label: 'رفتن به تنظیمات',
-                          onTap: () => Navigator.of(context).pop(true),
-                        ),
-                        const SizedBox(height: 10),
-                        TextButton(
-                          onPressed: () => Navigator.of(context).pop(false),
-                          child: Text(
-                            'بعداً',
+                          Text(
+                            'دسترسی مکان بسته‌ست',
+                            textAlign: TextAlign.center,
                             style: TextStyle(
-                              color: textSecondary,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
+                              fontSize: 21,
+                              fontWeight: FontWeight.w900,
+                              color: textPrimary,
                             ),
                           ),
-                        ),
-                      ],
+                          const SizedBox(height: 12),
+
+                          Text(
+                            'قبلاً این دسترسی رو رد کردی و سیستم دیگه اجازه پرسیدن مجدد نمیده. '
+                            'برای فعال‌سازی باید از تنظیمات دستگاهت اجازه بدی.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 13.5,
+                              color: textSecondary,
+                              height: 1.7,
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+
+                          _StepsList(isDark: isDark),
+                          const SizedBox(height: 26),
+
+                          _WarningButton(
+                            label: 'رفتن به تنظیمات',
+                            onTap: () => Navigator.of(context).pop(true),
+                          ),
+                          const SizedBox(height: 10),
+                          TextButton(
+                            onPressed: () => Navigator.of(context).pop(false),
+                            child: Text(
+                              'بعداً',
+                              style: TextStyle(
+                                color: textSecondary,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -355,7 +401,6 @@ class _GlowIconState extends State<_GlowIcon>
       builder: (_, __) => Stack(
         alignment: Alignment.center,
         children: [
-          // Outer glow ring
           Container(
             width: 88,
             height: 88,
@@ -369,7 +414,6 @@ class _GlowIconState extends State<_GlowIcon>
               ),
             ),
           ),
-          // Inner circle
           Container(
             width: 68,
             height: 68,

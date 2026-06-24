@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:Vista/core/updater/in_app_updater.dart';
 
 class UpdateBanner extends StatefulWidget {
-  const UpdateBanner({Key? key}) : super(key: key);
+  const UpdateBanner({super.key});
 
   @override
   State<UpdateBanner> createState() => _UpdateBannerState();
@@ -34,7 +34,7 @@ class _UpdateBannerState extends State<UpdateBanner> {
 
   Future<void> _startDownload() async {
     if (_updateInfo?.downloadUrl == null) return;
-    
+
     setState(() {
       _isDownloading = true;
       _progress = 0.0;
@@ -61,7 +61,7 @@ class _UpdateBannerState extends State<UpdateBanner> {
       } else {
         setState(() {
           _isDownloading = false;
-          _isVisible = false; 
+          _isVisible = false;
         });
       }
     }
@@ -111,8 +111,9 @@ class _UpdateBannerState extends State<UpdateBanner> {
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
                         value: _progress,
-                        valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
-                        backgroundColor: Colors.white.withOpacity(0.3),
+                        valueColor:
+                            const AlwaysStoppedAnimation<Color>(Colors.white),
+                        backgroundColor: Colors.white.withValues(alpha: 0.3),
                       ),
                     ),
                   ),
@@ -122,7 +123,8 @@ class _UpdateBannerState extends State<UpdateBanner> {
                     color: Colors.white,
                     fontWeight: FontWeight.bold,
                     fontSize: 14,
-                    fontFamily: 'Vazirmatn', // Assuming Vazirmatn is used, very common in Persian apps
+                    fontFamily:
+                        'Vazirmatn', // Assuming Vazirmatn is used, very common in Persian apps
                   ),
                 ),
               ],

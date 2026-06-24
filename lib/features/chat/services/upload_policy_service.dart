@@ -45,8 +45,8 @@ class AllowedFileResult {
 class UploadPolicyService {
   const UploadPolicyService();
 
-  static const int normalMaxBytes = 10 * 1024 * 1024;
-  static const int premiumMaxBytes = 50 * 1024 * 1024;
+  static const int normalMaxBytes = 15 * 1024 * 1024;
+  static const int premiumMaxBytes = 100 * 1024 * 1024;
 
   static const Set<String> _imageExts = {
     'jpg',

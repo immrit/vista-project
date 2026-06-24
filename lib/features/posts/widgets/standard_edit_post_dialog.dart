@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:Vista/model/publicPostModel.dart';
 import 'package:Vista/features/posts/data/go_posts_repository.dart';
 import '../../../utils/user_friendly_error_utils.dart';
+import 'package:Vista/provider/provider.dart';
 
 void showStandardEditDialog({
   required BuildContext context,
@@ -10,9 +11,23 @@ void showStandardEditDialog({
   required PublicPostModel post,
   VoidCallback? onSuccess,
 }) {
-  final TextEditingController contentController =
+	final TextEditingController contentController =
       TextEditingController(text: post.content);
   bool isLoading = false;
+
+  int maxCharLength = 500;
+  try {
+    final currentUser = ref.read(userProvider);
+    if (currentUser?.hasBlueBadge == true) {
+      maxCharLength = 10000;
+    } else if (currentUser?.hasGoldBadge == true ||
+        currentUser?.hasBlackBadge == true ||
+        currentUser?.isPremiumUser == true) {
+      maxCharLength = 1000;
+    }
+  } catch (e) {
+    // Ignore if userProvider is not available in scope
+  }
 
   // تابع تشخیص جهت متن
   TextDirection getTextDirection(String text) {
@@ -69,7 +84,7 @@ void showStandardEditDialog({
                           child: TextField(
                             controller: contentController,
                             maxLines: 4,
-                            maxLength: 300,
+                            maxLength: maxCharLength,
                             textDirection:
                                 getTextDirection(contentController.text),
                             onChanged: (value) {
@@ -81,7 +96,7 @@ void showStandardEditDialog({
                               ),
                               hintText: 'متن پست را ویرایش کنید...',
                               counterText:
-                                  '${contentController.text.length}/300',
+                                  '${contentController.text.length}/$maxCharLength',
                               filled: true,
                               fillColor: Theme.of(context).brightness ==
                                       Brightness.dark

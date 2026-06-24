@@ -662,12 +662,12 @@ class NotificationNavigationService {
       final senderAvatar =
           data['sender_avatar']?.toString() ?? data['avatar_url']?.toString();
       final senderId = data['sender_id']?.toString() ?? '';
-
-      // اگر senderId خالی بود، باید از conversationId استفاده کنیم تا اطلاعات را بگیریم
-      // اما فعلاً با همان اطلاعات موجود کار می‌کنیم
+      
+      final isGroup = data['is_group']?.toString() == 'true';
+      final conversationTitle = isGroup ? (data['group_name']?.toString() ?? senderName) : senderName;
+      final conversationAvatarUrl = isGroup ? (data['group_avatar']?.toString() ?? senderAvatar) : senderAvatar;
 
       // هدایت به صفحه چت
-      // استفاده از ChatScreen قدیمی (چون در route استفاده می‌شود)
       await _ensureRootOnHome(context);
       final navigator = _resolveNavigator(context);
       if (navigator == null) return;
@@ -677,9 +677,9 @@ class NotificationNavigationService {
         '/chat',
         arguments: {
           'conversationId': conversationId,
-          'otherUserId': senderId.isNotEmpty ? senderId : null,
-          'username': senderName,
-          'avatarUrl': senderAvatar,
+          'otherUserId': isGroup ? null : (senderId.isNotEmpty ? senderId : null),
+          'username': conversationTitle,
+          'avatarUrl': conversationAvatarUrl,
         },
       );
 

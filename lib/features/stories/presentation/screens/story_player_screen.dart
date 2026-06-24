@@ -521,7 +521,7 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
         _buildMediaBackground(),
 
         // Interactive elements (stickers, text) from Story Editor
-        ..._buildInteractiveElements(),
+        if (!_isLoading) ..._buildInteractiveElements(),
       ],
     );
   }
@@ -637,9 +637,12 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: () => _handleElementTap(element, index),
-              child: StickerFactory.buildSticker(
-                element,
-                isEditable: false, // Viewer mode - tap triggers interaction
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: StickerFactory.buildSticker(
+                  element,
+                  isEditable: false, // Viewer mode - tap triggers interaction
+                ),
               ),
             ),
           ),

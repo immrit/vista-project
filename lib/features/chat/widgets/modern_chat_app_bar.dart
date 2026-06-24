@@ -35,6 +35,7 @@ class ModernChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
   final VoidCallback onTitleTap;
   final int pinnedMessageCount;
   final VoidCallback? onPinnedMessageTap;
+  final bool isTransitioning;
 
   const ModernChatAppBar({
     super.key,
@@ -61,6 +62,7 @@ class ModernChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
     required this.onTitleTap,
     this.pinnedMessageCount = 0,
     this.onPinnedMessageTap,
+    this.isTransitioning = false,
   });
 
   @override
@@ -97,10 +99,7 @@ class ModernChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
         onPressed: onBack,
       ),
       titleSpacing: 0,
-      title: FadeTransition(
-        opacity: appBarAnimation,
-        child: _buildAppBarTitle(context),
-      ),
+      title: _buildAppBarTitle(context),
       actions: [
         PopupMenuButton<String>(
           icon: Icon(Icons.more_vert, color: theme.iconColor),
@@ -424,11 +423,13 @@ class ModernChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
             width: 42,
             height: 42,
             fit: BoxFit.cover,
-            placeholder: (context, url) => Shimmer.fromColors(
-              baseColor: Colors.grey.shade300,
-              highlightColor: Colors.grey.shade100,
-              child: Container(color: Colors.white),
-            ),
+            placeholder: (context, url) => isTransitioning
+                ? Container(color: Colors.grey.shade200)
+                : Shimmer.fromColors(
+                    baseColor: Colors.grey.shade300,
+                    highlightColor: Colors.grey.shade100,
+                    child: Container(color: Colors.white),
+                  ),
             errorWidget: (context, url, error) => Container(
               color: theme.inputBackgroundColor,
               child: Icon(Icons.group, color: theme.iconColor),
@@ -469,11 +470,13 @@ class ModernChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
                   width: 42,
                   height: 42,
                   fit: BoxFit.cover,
-                  placeholder: (context, url) => Shimmer.fromColors(
-                    baseColor: Colors.grey.shade300,
-                    highlightColor: Colors.grey.shade100,
-                    child: Container(color: Colors.white),
-                  ),
+                  placeholder: (context, url) => isTransitioning
+                      ? Container(color: Colors.grey.shade200)
+                      : Shimmer.fromColors(
+                          baseColor: Colors.grey.shade300,
+                          highlightColor: Colors.grey.shade100,
+                          child: Container(color: Colors.white),
+                        ),
                   errorWidget: (context, url, error) => _buildAvatarText(),
                 ),
         ),

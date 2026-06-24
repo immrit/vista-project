@@ -69,7 +69,9 @@ class BackendUploadService {
     final presign = await _presign(
       objectKey: objectKey,
       contentType: contentType,
+      fileSize: bytes.length,
     );
+    logInfo('📦 PRESIGN RESP url=${presign['url']} object_url=${presign['object_url']} key=${presign['object_key']}');
     final uploadUrl = presign['url']?.toString() ?? '';
     if (uploadUrl.isEmpty) {
       throw 'لینک آپلود از سرور دریافت نشد';
@@ -186,12 +188,14 @@ class BackendUploadService {
   static Future<Map<String, dynamic>> _presign({
     required String objectKey,
     required String contentType,
+    required int fileSize,
   }) async {
     final response = await _api.post(
       '/uploads/presign',
       data: {
         'object_key': objectKey,
         'content_type': contentType,
+        'file_size': fileSize,
       },
       options: await _authOptions(),
     );

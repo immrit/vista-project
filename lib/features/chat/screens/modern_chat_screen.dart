@@ -33,7 +33,6 @@ import '../../../model/ProfileModel.dart';
 import '../../../model/message_model.dart';
 import '../../../utils/compat_extensions.dart';
 import '../../../utils/avatar_asset_utils.dart';
-import '../../../utils/directional_navigation.dart';
 import '../../../utils/time_utils.dart';
 import '../providers/chat_providers.dart';
 import '../repositories/chat_repository.dart';
@@ -139,6 +138,7 @@ class ChatScreenArgs {
   final String? initialReplySenderId;
   final bool initialReplyFromNote;
   final String? initialDraftMessage;
+
   /// فایل‌های share شده که باید در چت فرستاده شوند
   final List<String> initialSharedFilePaths;
 
@@ -375,6 +375,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   @override
   void initState() {
     super.initState();
+    // ✅ شروع با یک رندر کپ بسیار کوچک برای جلوگیری از لگ در حین انیمیشن باز شدن صفحه
+    _messageRenderCapNotifier.value = 15;
     _chatRepository = ref.read(chatRepositoryProvider);
     _typingService = ref.read(typingServiceProvider);
     _adaptiveEffectsController = ref.read(adaptiveEffectsProvider.notifier);
@@ -387,26 +389,12 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     _loadPinnedMessageCount();
     _bootstrapInitialReplyContext();
 
-    // ✅ شروع گوش دادن به Read Receipts
-    _initReadReceipts();
-
-    // ✅ لیسنرهای وضعیت تایپ کردن
-    _initTypingListeners();
-    _setupMessageSideEffectsListener();
-    _setupConnectionStatusBannerListener();
-    _setupAdaptiveEffects();
-
-    // First frame: wait for the route transition to settle before rendering heavy list.
+    // ✅ کارهای سبک که باید در فریم اول باشند
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _cachedSafeBottom = MediaQuery.paddingOf(context).bottom;
       _listBottomGapNotifier.value = _cachedSafeBottom;
       _publishKeyboardLayout(force: true);
-
-      // Reveal the heavy message list the instant the push transition finishes,
-      // rather than after a fixed delay. Cached messages are ready immediately;
-      // this only avoids building the list *during* the open animation (jank).
-      _revealListWhenTransitionSettles();
 
       // Allow entry animations again once the open slide + initial paint settle,
       // so new incoming messages animate but the open itself stays static/smooth.
@@ -414,49 +402,84 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         if (mounted) _suppressInitialEntryAnims = false;
       });
     });
-
-    // Second frame: defer heavier work so open-chat transition stays smooth.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        unawaited(_fetchUserProfileIfNeeded());
-        unawaited(_initSecretChatPolicy());
-        if (widget.args.isGroup) {
-          unawaited(_loadGroupMembersForHeader());
-        }
-      });
-    });
-
-    // ✅ تنظیم چت فعال برای جلوگیری از دریافت بج پیام
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        _chatRepository.setActiveConversation(widget.args.conversationId);
-        CurrentChatTracker.instance.setOpenConversation(
-          widget.args.conversationId,
-        );
-        ref
-            .read(pushNotificationServiceProvider)
-            .cancelConversationNotification(widget.args.conversationId);
-        _startActiveConversationHeartbeat();
-      }
-    });
-
-    // ✅ آپدیت فوری بج پیام (اگر پیام خوانده نشده داشتیم)
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        _chatRepository.resetUnreadCount(widget.args.conversationId);
-
-        _chatRepository.markMessagesAsSeen(widget.args.conversationId);
-      }
-    });
-
-    // ✅ Polling Fallback: هر 30 ثانیه برای اطمینان از دریافت پیام‌ها
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      _startPolling();
-      unawaited(_triggerPollingRefresh());
-    });
   }
+
+  bool _didRunTransitionSettledLogic = false;
+
+  void _onTransitionSettle() {
+    if (!mounted || _didRunTransitionSettledLogic) return;
+    _didRunTransitionSettledLogic = true;
+
+    // ✅ الان که انیمیشن روی غلتک افتاده، کارهای سنگین، کوئری‌ها و لیسنرها رو استارت می‌زنیم
+    _initReadReceipts();
+    _initTypingListeners();
+    _setupMessageSideEffectsListener();
+    _setupConnectionStatusBannerListener();
+    _setupAdaptiveEffects();
+
+    unawaited(_fetchUserProfileIfNeeded());
+    unawaited(_initSecretChatPolicy());
+    if (widget.args.isGroup) {
+      unawaited(_loadGroupMembersForHeader());
+    }
+
+    _chatRepository.setActiveConversation(widget.args.conversationId);
+    CurrentChatTracker.instance.setOpenConversation(widget.args.conversationId);
+    ref
+        .read(pushNotificationServiceProvider)
+        .cancelConversationNotification(widget.args.conversationId);
+    _startActiveConversationHeartbeat();
+
+    _chatRepository.resetUnreadCount(widget.args.conversationId);
+    _chatRepository.markMessagesAsSeen(widget.args.conversationId);
+
+    _startPolling();
+    unawaited(_triggerPollingRefresh());
+  }
+
+  bool _didSetupRouteListener = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_didSetupRouteListener) {
+      _didSetupRouteListener = true;
+      final route = ModalRoute.of(context);
+      if (route != null && route.animation != null) {
+        if (route.animation!.isCompleted) {
+          _isTransitioning = false;
+          _onTransitionSettle();
+          _messageRenderCapNotifier.value = ChatMessageRenderWindow.initialCap;
+        } else {
+          route.animation!.addListener(_onRouteAnimationTick);
+          route.animation!.addStatusListener((status) {
+            if (status == AnimationStatus.completed && mounted) {
+              _onTransitionSettle();
+              _messageRenderCapNotifier.value = ChatMessageRenderWindow.initialCap;
+            }
+          });
+        }
+      } else {
+        _isTransitioning = false;
+        _onTransitionSettle();
+      }
+    }
+  }
+
+  void _onRouteAnimationTick() {
+    final route = ModalRoute.of(context);
+    if (route != null && route.animation != null && _isTransitioning) {
+      // 0.15 = 15% through the animation. Momentum is established.
+      if (route.animation!.value > 0.15) {
+        if (mounted) {
+          setState(() => _isTransitioning = false);
+          _onTransitionSettle();
+        }
+        route.animation!.removeListener(_onRouteAnimationTick);
+      }
+    }
+  }
+
 
   /// Renders the message list immediately (on the first post-frame), so it is
   /// already populated as the screen slides in — Telegram-style — instead of
@@ -464,10 +487,9 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   /// and the first (heavier) build happens while the page is still mostly
   /// off-screen, so its cost is hidden behind the push animation rather than
   /// shown to the user as a blank gap.
+  /// (Removed in favor of _onRouteAnimationTick)
   void _revealListWhenTransitionSettles() {
-    if (mounted && _isTransitioning) {
-      setState(() => _isTransitioning = false);
-    }
+    // Logic moved to _onRouteAnimationTick
   }
 
   void _bootstrapInitialReplyContext() {
@@ -494,26 +516,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     // اگر فایل‌های share شده وجود داشت، بعد از آماده‌شدن چت آن‌ها را ارسال کن
     final sharedPaths = widget.args.initialSharedFilePaths;
     if (sharedPaths.isNotEmpty) {
-      WidgetsBinding.instance.addPostFrameCallback((_) async {
-        await Future.delayed(const Duration(milliseconds: 600));
-        if (!mounted) return;
-        final files = sharedPaths
-            .map((p) => File(p))
-            .where((f) => f.existsSync())
-            .toList();
-        if (files.isEmpty) return;
-        final selection = AttachmentSelection(
-          type: ChatAttachmentType.gallery,
-          files: files
-              .map((f) => SelectedAttachmentFile(
-                    file: f,
-                    displayFileName: f.path.split('/').last,
-                    mimeType: _guessMimeTypeFromPath(f.path),
-                  ))
-              .toList(),
-        );
-        await _handleAttachmentSelected(selection);
-      });
+      _processInitialSharedFiles(sharedPaths);
     }
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -521,7 +524,6 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       _focusNode.requestFocus();
     });
   }
-
 
   String? get _activeReplyContent => _resolveReplyContentForSend(
         replyTo: _replyToMessage,
@@ -1798,6 +1800,44 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     _publishKeyboardLayout(force: layoutChanged);
   }
 
+  Future<void> _processInitialSharedFiles(List<String> sharedPaths) async {
+    // Wait until _currentUserId is loaded (max 3 seconds)
+    for (int i = 0; i < 30; i++) {
+      if (_currentUserId != null) break;
+      await Future.delayed(const Duration(milliseconds: 100));
+    }
+
+    if (!mounted || _currentUserId == null) {
+      debugPrint(
+          'Timeout or unmounted waiting for _currentUserId to send shared files');
+      return;
+    }
+
+    final files =
+        sharedPaths.map((p) => File(p)).where((f) => f.existsSync()).toList();
+    if (files.isEmpty) return;
+
+    final firstMime = _guessMimeTypeFromPath(files.first.path) ?? '';
+    final isMedia =
+        firstMime.startsWith('image/') || firstMime.startsWith('video/');
+
+    final selection = AttachmentSelection(
+      type: isMedia ? ChatAttachmentType.gallery : ChatAttachmentType.file,
+      files: files
+          .map((f) => SelectedAttachmentFile(
+                file: f,
+                displayFileName: f.path.split('/').last,
+                mimeType: _guessMimeTypeFromPath(f.path),
+              ))
+          .toList(),
+    );
+
+    await Future.delayed(const Duration(milliseconds: 300));
+    if (!mounted) return;
+
+    await _handleAttachmentSelected(selection);
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
@@ -2264,11 +2304,12 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                 // ValueListenableBuilders, so every scroll start/stop and keyboard
                 // toggle rebuilt the full-screen background subtree just to emit
                 // identical pixels. Collapsed to a const, repaint-isolated tree.
-                const Positioned.fill(
+                Positioned.fill(
                   child: RepaintBoundary(
                     child: EnhancedChatBackground(
                       enablePattern: true,
-                      child: SizedBox.expand(),
+                      isTransitioning: _isTransitioning,
+                      child: const SizedBox.expand(),
                     ),
                   ),
                 ),
@@ -2295,6 +2336,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                                 args: widget.args,
                                 isOtherUserTyping: _otherUserTypingNotifier,
                                 appBarAnimation: _appBarAnimation,
+                                isTransitioning: _isTransitioning,
                                 secretAutoDeleteSeconds:
                                     _secretAutoDeleteSeconds,
                                 secretAutoDeleteLabel: _secretAutoDeleteLabel(
@@ -2423,35 +2465,51 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
           Positioned.fill(
             child: Material(
               type: MaterialType.transparency,
-              child: ChatInputDock(
-                inputHeightListenable: _inputHeightNotifier,
-                layoutListenable: _inputDockLayoutNotifier,
-                keyboardEffectsListenable: _keyboardEffectsNotifier,
-                isScrollingListenable: _isScrollingNotifier,
-                showScrollToBottomListenable: _showScrollToBottomNotifier,
-                showInput: !_isCurrentUserBlocked && !_isOtherUserBlocked,
-                onScrollToBottom: _scrollToBottom,
-                themeBackgroundColor: theme.backgroundColor,
-                themeIconColor: theme.iconColor,
-                inputHaloBuilder: (reduceEffects,
-                        {required gapHeight, required keyboardVisible}) =>
-                    _buildInputDockHalo(
-                  gapHeight: gapHeight,
-                  inputHeight: _inputHeight,
-                  keyboardVisible: keyboardVisible,
-                  reduceEffects: reduceEffects,
-                ),
-                inputAreaBuilder: (reduceEffects) => isPendingRequest
-                    ? _buildMessageRequestOverlay(theme)
-                    : _buildInputArea(
-                        theme,
-                        reduceEffects: reduceEffects,
-                        allowHeavyEffects:
-                            blurConfig.allowHeavyBlur && !reduceEffects,
-                        blurSigma: blurConfig.blurSigma,
+              child: _isTransitioning
+                  ? Container(
+                      alignment: Alignment.bottomCenter,
+                      child: Container(
+                        height: 70,
+                        decoration: BoxDecoration(
+                          color: theme.backgroundColor,
+                          border: Border(
+                            top: BorderSide(
+                              color: theme.dividerColor ?? Colors.black12,
+                              width: 0.5,
+                            ),
+                          ),
+                        ),
                       ),
-                emojiPanel: _buildEmojiPanel(theme),
-              ),
+                    )
+                  : ChatInputDock(
+                      inputHeightListenable: _inputHeightNotifier,
+                      layoutListenable: _inputDockLayoutNotifier,
+                      keyboardEffectsListenable: _keyboardEffectsNotifier,
+                      isScrollingListenable: _isScrollingNotifier,
+                      showScrollToBottomListenable: _showScrollToBottomNotifier,
+                      showInput: !_isCurrentUserBlocked && !_isOtherUserBlocked,
+                      onScrollToBottom: _scrollToBottom,
+                      themeBackgroundColor: theme.backgroundColor,
+                      themeIconColor: theme.iconColor,
+                      inputHaloBuilder: (reduceEffects,
+                              {required gapHeight, required keyboardVisible}) =>
+                          _buildInputDockHalo(
+                        gapHeight: gapHeight,
+                        inputHeight: _inputHeight,
+                        keyboardVisible: keyboardVisible,
+                        reduceEffects: reduceEffects,
+                      ),
+                      inputAreaBuilder: (reduceEffects) => isPendingRequest
+                          ? _buildMessageRequestOverlay(theme)
+                          : _buildInputArea(
+                              theme,
+                              reduceEffects: reduceEffects,
+                              allowHeavyEffects:
+                                  blurConfig.allowHeavyBlur && !reduceEffects,
+                              blurSigma: blurConfig.blurSigma,
+                            ),
+                      emojiPanel: _buildEmojiPanel(theme),
+                    ),
             ),
           ),
 
@@ -2803,7 +2861,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
     _startDeleteAnimation(messageIds);
     logInfo('message_delete_requested: ${messageIds.join(",")}');
-    
+
     if (result.deleteForEveryone) {
       unawaited(_persistDeleteAfterAnimation(
         messageIds: messageIds,
@@ -4738,18 +4796,26 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         final params = SendMessageParams(
           conversationId: targetConvId,
           content: content,
-          replyToMessageId: i == 0 ? _resolveReplyToMessageId(
-              replyTo: replyTo, pendingReply: pendingReply) : null,
-          replyToContent: i == 0 ? _resolveReplyContentForSend(
-            replyTo: replyTo,
-            pendingReply: pendingReply,
-          ) : null,
-          replyToSenderName: i == 0 ? _resolveReplySenderNameForSend(
-            replyTo: replyTo,
-            pendingReply: pendingReply,
-          ) : null,
-          replyToKind: i == 0 ? _resolveReplyToKind(
-              replyTo: replyTo, pendingReply: pendingReply) : null,
+          replyToMessageId: i == 0
+              ? _resolveReplyToMessageId(
+                  replyTo: replyTo, pendingReply: pendingReply)
+              : null,
+          replyToContent: i == 0
+              ? _resolveReplyContentForSend(
+                  replyTo: replyTo,
+                  pendingReply: pendingReply,
+                )
+              : null,
+          replyToSenderName: i == 0
+              ? _resolveReplySenderNameForSend(
+                  replyTo: replyTo,
+                  pendingReply: pendingReply,
+                )
+              : null,
+          replyToKind: i == 0
+              ? _resolveReplyToKind(
+                  replyTo: replyTo, pendingReply: pendingReply)
+              : null,
           recipientPublicKey:
               widget.args.isSecret ? _otherUserProfile?.publicKey : null,
         );
@@ -5349,11 +5415,11 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       text = text.substring('Exception:'.length).trim();
     }
 
-    const marker = '| technical:';
-    final markerIndex = text.indexOf(marker);
-    if (markerIndex >= 0) {
-      text = text.substring(0, markerIndex).trim();
-    }
+    // const marker = '| technical:';
+    // final markerIndex = text.indexOf(marker);
+    // if (markerIndex >= 0) {
+    //   text = text.substring(0, markerIndex).trim();
+    // }
 
     return text.isEmpty ? fallback : text;
   }

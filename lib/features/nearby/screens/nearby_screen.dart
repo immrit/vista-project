@@ -108,33 +108,17 @@ class _NearbyScreenState extends ConsumerState<NearbyScreen>
       var perm = await Geolocator.checkPermission();
 
       if (perm == LocationPermission.denied) {
-        // ── پیش از پرسش سیستم: dialog اقناعی نشون بده ────────────────────
-        if (!mounted) return;
-        final userAgreed =
-            await LocationPermissionDialog.showRequest(context);
-        if (!mounted) return;
-        if (!userAgreed) {
-          // کاربر خودش رد کرد — بدون پرسش سیستم
-          setState(() {
-            _locating = false;
-            _locationError = 'permission';
-          });
-          return;
-        }
+        // درخواست مستقیم از سیستم — dialog اقناعی قبلاً (global) نمایش داده شده
         perm = await Geolocator.requestPermission();
       }
 
       if (perm == LocationPermission.deniedForever) {
-        // ── راهنمایی به تنظیمات ─────────────────────────────────────────
         if (!mounted) return;
         setState(() {
           _locating = false;
           _locationError = 'permission_forever';
         });
         await LocationPermissionDialog.showSettingsGuide(context);
-        if (!mounted) return;
-        // پس از بستن dialog، اگه کاربر رفت تنظیمات؛ bootstrap مجدد نمی‌زنیم
-        // — کاربر باید خودش از تنظیمات برگرده و دوباره وارد بشه.
         return;
       }
 

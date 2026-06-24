@@ -1,14 +1,11 @@
 // ignore_for_file: deprecated_member_use
-import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_contacts/flutter_contacts.dart';
 import 'package:Vista/widgets/skeleton_loading.dart';
 
 import 'package:Vista/core/theme/app_theme.dart';
-import 'package:Vista/core/app_config.dart';
 import 'package:Vista/features/nearby/screens/nearby_screen.dart';
 import '../models/services_hub_model.dart';
 import '../providers/services_hub_provider.dart';
@@ -110,8 +107,7 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) =>
-              InAppWebScreen(url: banner.link, title: banner.title),
+          builder: (_) => InAppWebScreen(url: banner.link, title: banner.title),
         ),
       );
     }
@@ -162,7 +158,9 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
             child: const Text(
               'سرویس‌ها',
               style: TextStyle(
-                  color: Colors.white, fontWeight: FontWeight.w800, fontSize: 22),
+                  color: Colors.white,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 22),
             ),
           ),
         ),
@@ -536,7 +534,8 @@ class _ContactsHorizontalListState
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(20),
           color: isDark ? AppColors.darkSurfaceVariant : Colors.white,
-          border: Border.all(color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
+          border: Border.all(
+              color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
         ),
         padding: const EdgeInsets.symmetric(vertical: 14),
         child: Column(
@@ -560,7 +559,10 @@ class _ContactsHorizontalListState
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: const [
-                      BaseSkeletonWidget(width: 52, height: 52, borderRadius: BorderRadius.all(Radius.circular(26))),
+                      BaseSkeletonWidget(
+                          width: 52,
+                          height: 52,
+                          borderRadius: BorderRadius.all(Radius.circular(26))),
                       SizedBox(height: 6),
                       BaseSkeletonWidget(width: 50, height: 10),
                     ],
@@ -611,8 +613,8 @@ class _ContactsHorizontalListState
                   itemBuilder: (context, index) {
                     final u = users[index];
                     return GestureDetector(
-                      onTap: () =>
-                          Navigator.pushNamed(context, '/profile', arguments: u.id),
+                      onTap: () => Navigator.pushNamed(context, '/profile',
+                          arguments: u.id),
                       child: Container(
                         width: 70,
                         margin: const EdgeInsets.symmetric(horizontal: 4),

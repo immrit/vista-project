@@ -337,42 +337,65 @@ class _AnimatedStoryRingState extends ConsumerState<_AnimatedStoryRing>
             isDarkMode ? const Color(0xFF303030) : const Color(0xFFBDBDBD),
           ];
 
-    return RotationTransition(
-      turns: _spinController,
-      child: Container(
+    if (_isLoadingStory) {
+      return SizedBox(
         width: 74,
-        height: 74, // Slightly larger to accommodate thinner ring visual
-        padding: const EdgeInsets.all(2.0), // Thinner ring
+        height: 74,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            SizedBox(
+              width: 74,
+              height: 74,
+              child: CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  hasUnseenStories ? const Color(0xFF6366F1) : (isDarkMode ? Colors.white54 : Colors.black54),
+                ),
+                strokeWidth: 2.0,
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.all(2.5),
+              decoration: BoxDecoration(
+                color: isDarkMode ? Colors.black : Colors.white,
+                shape: BoxShape.circle,
+              ),
+              child: _buildAvatar(),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      width: 74,
+      height: 74, // Slightly larger to accommodate thinner ring visual
+      padding: const EdgeInsets.all(2.0), // Thinner ring
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: LinearGradient(
+          colors: gradientColors,
+          begin: Alignment.topRight,
+          end: Alignment.bottomLeft,
+        ),
+        boxShadow: hasUnseenStories
+            ? [
+                BoxShadow(
+                  color: const Color(0xFF8B5CF6)
+                      .withValues(alpha: 0.3), // Vista violet shadow
+                  blurRadius: 8,
+                  spreadRadius: 0,
+                ),
+              ]
+            : null,
+      ),
+      child: Container(
+        padding: const EdgeInsets.all(2.5),
         decoration: BoxDecoration(
+          color: isDarkMode ? Colors.black : Colors.white,
           shape: BoxShape.circle,
-          gradient: LinearGradient(
-            colors: gradientColors,
-            begin: Alignment.topRight,
-            end: Alignment.bottomLeft,
-          ),
-          boxShadow: hasUnseenStories
-              ? [
-                  BoxShadow(
-                    color: const Color(0xFF8B5CF6)
-                        .withValues(alpha: 0.3), // Vista violet shadow
-                    blurRadius: 8,
-                    spreadRadius: 0,
-                  ),
-                ]
-              : null,
         ),
-        child: Container(
-          padding: const EdgeInsets.all(2.5),
-          decoration: BoxDecoration(
-            color: isDarkMode ? Colors.black : Colors.white,
-            shape: BoxShape.circle,
-          ),
-          child: RotationTransition(
-            turns: Tween(begin: 0.0, end: -1.0).animate(
-                _spinController), // counter-rotate avatar to keep it upright
-            child: _buildAvatar(),
-          ),
-        ),
+        child: _buildAvatar(),
       ),
     );
   }

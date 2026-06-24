@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:typed_data';
+import 'package:dio/dio.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:path/path.dart' as path;
 import '../../features/auth/data/auth_repository.dart';
@@ -11,7 +12,7 @@ import '../../services/cache_manager.dart';
 import '../../security/logging_utility.dart';
 
 class MediaUploadService {
-  static const int _maxFileBytes = 50 * 1024 * 1024;
+  static const int _maxFileBytes = 100 * 1024 * 1024;
 
   // ==========================================
   // 1. IMAGE COMPRESSION & CONVERSION
@@ -81,8 +82,8 @@ class MediaUploadService {
       if (!await file.exists()) throw Exception('فایل مورد نظر وجود ندارد');
 
       final fileSize = await file.length();
-      if (fileSize > 50 * 1024 * 1024) {
-        throw Exception('Image size must be at most 50MB');
+      if (fileSize > 100 * 1024 * 1024) {
+        throw Exception('Image size must be at most 100MB');
       }
 
       final extension = path.extension(file.path).toLowerCase();
@@ -92,6 +93,8 @@ class MediaUploadService {
         if (compressedFile == null) throw Exception('تبدیل به JPEG شکست خورد');
       } else {
         compressedFile = await compressImage(file, isChat: true);
+        // If compression fails (e.g. file is already an optimised JPEG from
+        // the image editor), fall back to the original file.
         compressedFile ??= file;
       }
 
@@ -106,6 +109,7 @@ class MediaUploadService {
       );
 
       final fileBytes = await compressedFile.readAsBytes();
+      logInfo('🔑 PRESIGN objectKey=$fileName fileSize=${fileBytes.length} userId=$userId convId=$conversationId');
       if (onProgress != null) onProgress(0.0);
 
       final uploadResult = await BackendUploadService.uploadBytes(
@@ -117,11 +121,18 @@ class MediaUploadService {
 
       return uploadResult.url;
     } catch (e, st) {
-      logError('Chat image upload failed', error: e, stackTrace: st);
+      if (e is DioException) {
+        logError(
+          'Chat image upload DioError: status=${e.response?.statusCode} body=${e.response?.data} msg=${e.message}',
+          error: e,
+          stackTrace: st,
+        );
+      } else {
+        logError('Chat image upload failed', error: e, stackTrace: st);
+      }
       UserFriendlyErrorHandler.logError(e,
           context: 'image_upload', stackTrace: st);
-      throw Exception(
-          '${UserFriendlyErrorHandler.getFriendlyMessage(e, context: 'image_upload')} | technical: ${e.runtimeType}: $e');
+      throw Exception('technical: ${e.runtimeType}: $e');
     } finally {
       if (compressedFile != null && compressedFile.path != file.path) {
         try {
@@ -257,7 +268,7 @@ class MediaUploadService {
       }
 
       if (fileBytes.length > _maxFileBytes) {
-        throw Exception('PDF size must be at most 50MB');
+        throw Exception('PDF size must be at most 100MB');
       }
       if (fileBytes.length < 1024) throw Exception('PDF file is too small');
 
@@ -299,7 +310,7 @@ class MediaUploadService {
 
       final fileBytes = await file.readAsBytes();
       if (fileBytes.length > _maxFileBytes) {
-        throw Exception('File size must be at most 50MB');
+        throw Exception('File size must be at most 100MB');
       }
 
       var extension = path.extension(file.path).toLowerCase();
@@ -343,7 +354,7 @@ class MediaUploadService {
         throw Exception('Only PDF is supported');
       }
       if (fileBytes.length > _maxFileBytes) {
-        throw Exception('PDF size must be at most 50MB');
+        throw Exception('PDF size must be at most 100MB');
       }
       if (fileBytes.length < 1024) throw Exception('PDF file is too small');
 
@@ -446,8 +457,8 @@ class MediaUploadService {
     void Function(double progress)? onProgress,
   }) async {
     try {
-      if (await file.length() > 10 * 1024 * 1024) {
-        throw Exception('حجم فایل باید کمتر از 10 مگابایت باشد');
+      if (await file.length() > 100 * 1024 * 1024) {
+        throw Exception('حجم فایل باید کمتر از 100 مگابایت باشد');
       }
 
       final extension = path.extension(file.path).toLowerCase();
@@ -486,8 +497,8 @@ class MediaUploadService {
     void Function(double progress)? onProgress,
   }) async {
     try {
-      if (await file.length() > 10 * 1024 * 1024) {
-        throw Exception('حجم فایل باید کمتر از ۱۰ مگابایت باشد');
+      if (await file.length() > 100 * 1024 * 1024) {
+        throw Exception('حجم فایل باید کمتر از 100 مگابایت باشد');
       }
       final extension = path.extension(file.path).toLowerCase();
       if (!['.mp4', '.mov', '.mkv'].contains(extension)) {
@@ -523,8 +534,8 @@ class MediaUploadService {
       if (!['.mp4', '.mov', '.mkv'].contains(extension)) {
         throw Exception('فقط فایل‌های mp4، mov و mkv پشتیبانی می‌شوند');
       }
-      if (fileBytes.length > 10 * 1024 * 1024) {
-        throw Exception('حجم فایل باید کمتر از ۱۰ مگابایت باشد');
+      if (fileBytes.length > 100 * 1024 * 1024) {
+        throw Exception('حجم فایل باید کمتر از 100 مگابایت باشد');
       }
 
       final userId = await _currentUserId();

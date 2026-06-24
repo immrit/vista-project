@@ -24,6 +24,7 @@ import 'current_chat_tracker.dart';
 import 'local_notification_center.dart';
 import '../features/chat/data/datasources/chat_local_datasource_isar.dart';
 import '../features/auth/providers/auth_controller.dart' show TokenStorage;
+import '../DB/settings_cache_service.dart';
 import 'device_id_service.dart';
 
 @pragma('vm:entry-point')
@@ -505,9 +506,18 @@ class PushNotificationService {
       }
       // ✅ Fallback: Save to Local DB immediately
       await _saveMessageToLocalDB(data);
-      await _showMessagingStyleNotification(data);
+
+      if (await _shouldShowNotification('chat')) {
+        await _showMessagingStyleNotification(data);
+      } else {
+        logInfo('🔕 Notification suppressed by global settings or quiet hours.');
+      }
     } else {
-      await _showStandardNotification(message);
+      if (await _shouldShowNotification('social')) {
+        await _showStandardNotification(message);
+      } else {
+        logInfo('🔕 Notification suppressed by global settings or quiet hours.');
+      }
     }
   }
 
@@ -610,6 +620,12 @@ class PushNotificationService {
     final localSource = ChatLocalDataSourceIsar();
     final conversation = await localSource.getConversation(conversationId, '');
     
+    // ۱. بررسی میوت بودن خود گروه/پی‌وی
+    if (conversation?.isMuted == true) {
+      logInfo('🔕 Notification suppressed: conversation is muted.');
+      return;
+    }
+
     final bool isGroup = conversation?.isGroup == true || data['is_group'] == 'true';
     
     String senderName = data['sender_name']?.toString() ?? 'کاربر';
@@ -1624,6 +1640,65 @@ class PushNotificationService {
       }
     } catch (e) {
       logInfo('❌ خطا در اضافه کردن اعلان به provider: $e');
+    }
+  }
+  /// ✅ تابع کمکی برای بررسی تنظیمات سراسری نوتیفیکیشن و Quiet Hours
+  Future<bool> _shouldShowNotification(String type) async {
+    try {
+      final currentUserId = await TokenStorage.getUserId();
+      if (currentUserId == null || currentUserId.isEmpty) return true;
+
+      final settingsCache = SettingsCacheService();
+      final settings = await settingsCache.getNotificationSettings(currentUserId);
+      if (settings == null) return true;
+
+      // بررسی نوع نوتیفیکیشن
+      final bool pushEnabled = settings['push_notifications'] == true;
+      if (!pushEnabled) return false;
+
+      if (type == 'chat') {
+        if (settings['message_notifications'] == false) return false;
+      } else {
+        // برای سوشال نوتیفیکیشن‌ها فرض می‌کنیم به طور کلی بر اساس pushEnabled کنترل می‌شود
+        // می‌توان لاجیک پیچیده‌تری برای like/comment و... گذاشت
+      }
+
+      // بررسی Quiet Hours (ساعات سکوت)
+      final bool quietHoursEnabled = settings['quiet_hours_enabled'] == true;
+      if (quietHoursEnabled) {
+        final String startStr = settings['quiet_hours_start']?.toString() ?? '22:00';
+        final String endStr = settings['quiet_hours_end']?.toString() ?? '08:00';
+        
+        final now = DateTime.now();
+        final currentMinutes = now.hour * 60 + now.minute;
+        
+        int parseTime(String t) {
+          final parts = t.split(':');
+          if (parts.length == 2) {
+            return (int.tryParse(parts[0]) ?? 0) * 60 + (int.tryParse(parts[1]) ?? 0);
+          }
+          return 0;
+        }
+        
+        final startMins = parseTime(startStr);
+        final endMins = parseTime(endStr);
+        
+        bool inQuietHours = false;
+        if (startMins <= endMins) {
+          inQuietHours = currentMinutes >= startMins && currentMinutes <= endMins;
+        } else { // از شب تا صبح روز بعد
+          inQuietHours = currentMinutes >= startMins || currentMinutes <= endMins;
+        }
+        
+        if (inQuietHours) {
+          return false;
+        }
+      }
+
+      return true;
+    } catch (e) {
+      logInfo('⚠️ Failed to check notification settings: $e');
+      return true;
     }
   }
 }

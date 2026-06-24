@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_contacts/flutter_contacts.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:Vista/core/theme/app_theme.dart';
@@ -61,38 +60,42 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
           centerTitle: true,
         ),
         body: state.when(
-                loading: () => ListView.builder(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: 10,
-                  itemBuilder: (_, __) => Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                    child: Row(
-                      children: [
-                        const BaseSkeletonWidget(width: 48, height: 48, borderRadius: BorderRadius.all(Radius.circular(24))),
-                        const SizedBox(width: 16),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: const [
-                            BaseSkeletonWidget(width: 120, height: 16),
-                            SizedBox(height: 8),
-                            BaseSkeletonWidget(width: 80, height: 12),
-                          ],
-                        ),
-                      ],
-                    ),
+          loading: () => ListView.builder(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: 10,
+            itemBuilder: (_, __) => Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              child: Row(
+                children: [
+                  const BaseSkeletonWidget(
+                      width: 48,
+                      height: 48,
+                      borderRadius: BorderRadius.all(Radius.circular(24))),
+                  const SizedBox(width: 16),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: const [
+                      BaseSkeletonWidget(width: 120, height: 16),
+                      SizedBox(height: 8),
+                      BaseSkeletonWidget(width: 80, height: 12),
+                    ],
                   ),
-                ),
-                error: (_, __) => _contactsError(isDark),
-                data: (users) => users.isEmpty
-                    ? _noContacts(isDark)
-                    : ListView.builder(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        physics: const BouncingScrollPhysics(),
-                        itemCount: users.length,
-                        itemBuilder: (context, index) => _contactItem(users[index], isDark),
-                      ),
+                ],
               ),
+            ),
+          ),
+          error: (_, __) => _contactsError(isDark),
+          data: (users) => users.isEmpty
+              ? _noContacts(isDark)
+              : ListView.builder(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  physics: const BouncingScrollPhysics(),
+                  itemCount: users.length,
+                  itemBuilder: (context, index) =>
+                      _contactItem(users[index], isDark),
+                ),
+        ),
       ),
     );
   }
@@ -103,9 +106,8 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
       leading: CircleAvatar(
         radius: 24,
         backgroundColor: AppColors.primary.withValues(alpha: 0.12),
-        backgroundImage: u.avatarUrl.isNotEmpty
-            ? NetworkImage(u.avatarUrl)
-            : null,
+        backgroundImage:
+            u.avatarUrl.isNotEmpty ? NetworkImage(u.avatarUrl) : null,
         child: u.avatarUrl.isEmpty
             ? Text(
                 u.fullName.isNotEmpty ? u.fullName[0] : '?',

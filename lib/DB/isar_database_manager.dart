@@ -16,6 +16,13 @@ import '../DB/entities/app_settings_entity.dart';
 import '../DB/entities/deletion_task_entity.dart';
 import '../DB/entities/retry_queue_entity.dart';
 
+class IsarOpenParams {
+  final String directoryPath;
+  final List<int>? encryptionKey;
+
+  IsarOpenParams({required this.directoryPath, this.encryptionKey});
+}
+
 class IsarDatabaseManager {
   static final IsarDatabaseManager _instance = IsarDatabaseManager._internal();
   factory IsarDatabaseManager() => _instance;
@@ -50,6 +57,48 @@ class IsarDatabaseManager {
       rethrow;
     } finally {
       _openingCompleter = null;
+    }
+  }
+
+  Future<IsarOpenParams> getOpenParams() async {
+    final dir = await getApplicationDocumentsDirectory();
+    final encryptionKey = await _getEncryptionKey(dir);
+    return IsarOpenParams(
+      directoryPath: dir.path,
+      encryptionKey: encryptionKey,
+    );
+  }
+
+  static Isar openIsarSynchronously(IsarOpenParams params) {
+    final alreadyOpen = Isar.getInstance();
+    if (alreadyOpen != null && alreadyOpen.isOpen) {
+      return alreadyOpen;
+    }
+
+    final schemas = [
+      MessageEntitySchema,
+      ConversationEntitySchema,
+      RecentSearchEntitySchema,
+      AppSettingsEntitySchema,
+      DeletionTaskEntitySchema,
+      ProfileEntitySchema,
+      PostEntitySchema,
+      RetryQueueEntitySchema,
+    ];
+
+    final namedArgs = <Symbol, dynamic>{
+      #directory: params.directoryPath,
+    };
+
+    if (params.encryptionKey != null) {
+      namedArgs[#encryptionKey] = params.encryptionKey;
+    }
+
+    try {
+      final result = Function.apply(Isar.openSync, [schemas], namedArgs);
+      return result as Isar;
+    } catch (e) {
+      rethrow;
     }
   }
 

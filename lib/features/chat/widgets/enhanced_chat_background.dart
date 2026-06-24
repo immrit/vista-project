@@ -8,6 +8,7 @@ class EnhancedChatBackground extends StatelessWidget {
   final bool allowHeavyEffects;
   final bool? forceEnableBlur;
   final double blurIntensity;
+  final bool isTransitioning;
 
   const EnhancedChatBackground({
     super.key,
@@ -16,6 +17,7 @@ class EnhancedChatBackground extends StatelessWidget {
     this.allowHeavyEffects = true,
     this.forceEnableBlur,
     this.blurIntensity = 3.0,
+    this.isTransitioning = false,
   });
 
   @override
@@ -28,18 +30,19 @@ class EnhancedChatBackground extends StatelessWidget {
         Container(
           color: isDark ? const Color(0xFF0F0F0F) : const Color(0xFFDFE5E9),
         ),
-        Image.asset(
-          isDark
-              ? 'assets/images/vista_custom_bg_dark.png'
-              : 'assets/images/vista_custom_bg.png',
-          fit: BoxFit.cover,
-          gaplessPlayback: true,
-          errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-          color: isDark
-              ? Colors.black.withValues(alpha: 0.2)
-              : Colors.white.withValues(alpha: 0.2),
-          colorBlendMode: isDark ? BlendMode.darken : BlendMode.lighten,
-        ),
+        if (!isTransitioning)
+          Image.asset(
+            isDark
+                ? 'assets/images/vista_custom_bg_dark.png'
+                : 'assets/images/vista_custom_bg.png',
+            fit: BoxFit.cover,
+            gaplessPlayback: true,
+            errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+            color: isDark
+                ? Colors.black.withValues(alpha: 0.2)
+                : Colors.white.withValues(alpha: 0.2),
+            colorBlendMode: isDark ? BlendMode.darken : BlendMode.lighten,
+          ),
         child,
       ],
     );

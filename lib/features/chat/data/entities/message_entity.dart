@@ -13,13 +13,12 @@ class MessageEntity {
   @Index(unique: true, replace: true)
   late String id;
 
-  @Index()
+  @Index(composite: [CompositeIndex('createdAt')])
   late String conversationId;
 
   late String senderId;
   late String content;
 
-  @Index()
   late DateTime createdAt;
 
   DateTime? editedAt;

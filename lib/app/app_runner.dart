@@ -24,6 +24,7 @@ import 'package:Vista/services/auto_lock_service.dart';
 import 'package:Vista/services/network_state_service.dart';
 import 'package:Vista/services/system_status_service.dart';
 import 'package:Vista/services/system_ui_bar_service.dart';
+import 'package:Vista/services/location_permission_prompt_service.dart';
 
 import 'package:Vista/DB/profile_cache_service.dart';
 import 'package:Vista/services/user_presence_service.dart';
@@ -279,6 +280,14 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
   Future<void> _bootstrapAppServices() async {
     await _bootstrapAuthenticatedUser();
     await _initializePushServiceOnce();
+    // نمایش dialog مجوز مکان (اگه لازم باشه) — با تاخیر کوتاه تا UI کاملاً آماده باشه
+    Future.delayed(const Duration(seconds: 2), () {
+      final ctx = navigatorKey.currentContext;
+      if (ctx != null && ctx.mounted) {
+        unawaited(
+            LocationPermissionPromptService.checkAndPromptIfNeeded(ctx));
+      }
+    });
   }
 
   Future<void> _initializePushServiceOnce() async {
@@ -491,6 +500,14 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
       AutoLockService().refreshSettings();
       SessionManagerServiceV2().onAppResumed();
       unawaited(_refreshSystemStatus(force: true));
+      // بررسی dialog مجوز مکان — اگه ۲۴ ساعت گذشته و کاربر آنلاین شد نشون بده
+      Future.delayed(const Duration(seconds: 1), () {
+        final ctx = navigatorKey.currentContext;
+        if (ctx != null && ctx.mounted) {
+          unawaited(
+              LocationPermissionPromptService.checkAndPromptIfNeeded(ctx));
+        }
+      });
     } else if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.inactive) {
       AutoLockService().recordUserActivity();

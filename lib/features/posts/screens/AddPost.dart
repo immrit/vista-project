@@ -46,13 +46,13 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
 
   int get _maxCharLength {
     final currentUser = ref.read(userProvider);
-    if (currentUser?.hasBlueBadge == true) return 2000;
+    if (currentUser?.hasBlueBadge == true) return 10000;
     if (currentUser?.hasGoldBadge == true ||
         currentUser?.hasBlackBadge == true ||
         currentUser?.isPremiumUser == true) {
-      return 400;
+      return 1000;
     }
-    return 200;
+    return 500;
   }
 
   /// Whether the current user has any premium tier (badge or active sub).
@@ -98,37 +98,68 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
     });
   }
 
-  void _applyPreloadedContent() {
+  Future<void> _applyPreloadedContent() async {
     if (!mounted) return;
     final files = widget.preloadedFiles;
     if (files.isEmpty && widget.preloadedText == null) return;
 
-    setState(() {
-      // تکست
-      if (widget.preloadedText != null) {
+    if (widget.preloadedText != null) {
+      setState(() {
         contentController.text = widget.preloadedText!;
-      }
+      });
+    }
 
-      if (files.isNotEmpty) {
-        final mimeHint = files.first.path.toLowerCase();
-        final isVideo = mimeHint.endsWith('.mp4') ||
-            mimeHint.endsWith('.mov') ||
-            mimeHint.endsWith('.avi') ||
-            mimeHint.endsWith('.mkv');
+    if (files.isNotEmpty) {
+      final mimeHint = files.first.path.toLowerCase();
+      final isVideo = mimeHint.endsWith('.mp4') ||
+          mimeHint.endsWith('.mov') ||
+          mimeHint.endsWith('.avi') ||
+          mimeHint.endsWith('.mkv');
 
-        if (isVideo) {
-          _selectedVideo = files.first;
-          _initVideoPlayer(files.first);
+      if (isVideo) {
+        final originalFile = files.first;
+        final UserModel? currentUser = ref.read(userProvider);
+        final maxDuration = currentUser?.hasAnyBadge == true
+            ? const Duration(minutes: 2)
+            : const Duration(minutes: 1);
+
+        final String? trimmedPath = await Navigator.push<String?>(
+          context,
+          MaterialPageRoute(
+            builder: (context) => YourVideoTrimmerPage(
+              videoFile: originalFile,
+              maxDuration: maxDuration,
+            ),
+          ),
+        );
+
+        if (trimmedPath != null && trimmedPath.isNotEmpty) {
+          final File trimmedFile = File(trimmedPath);
+          if (await trimmedFile.exists() && mounted) {
+            setState(() {
+              _selectedVideo = trimmedFile;
+              _selectedVideoName = trimmedFile.path.split('/').last;
+            });
+            _generateMicroThumbnail(trimmedFile);
+            _initVideoPlayer(trimmedFile);
+          }
         } else {
+          // اگر کنسل کرد، می‌تونه ویدیو اولیه رو مستقیم نشون بدیم یا هیچ چی
+          // چون کاربر مستقیماً share کرده بود
+        }
+      } else {
+        setState(() {
           // عکس یا چندین عکس
           if (files.length == 1) {
             _selectedImage = files.first;
+            _selectedImages.add(files.first);
           } else {
             _selectedImages.addAll(files.take(_maxGalleryImages));
+            _selectedImage = files.first;
           }
-        }
+        });
       }
-    });
+    }
   }
 
   Future<void> _initVideoPlayer(File file) async {
@@ -763,7 +794,7 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
               ),
 
               // نمایش تولتیپ تبلیغاتی برای کاربران عادی
-              if (_maxCharLength == 200)
+              if (_maxCharLength == 500)
                 Positioned(
                   bottom: 8,
                   right: 16,

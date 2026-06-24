@@ -60,7 +60,6 @@ class StickerFactory {
         return PhotoStickerWidget(element: element, isEditable: isEditable);
 
       case StoryInteractionType.none:
-        if (!isEditable) return const SizedBox.shrink();
         // Default Text Rendering
         return Text(
           element.text,

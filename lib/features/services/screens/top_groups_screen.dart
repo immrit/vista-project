@@ -20,9 +20,11 @@ class TopGroupsScreen extends ConsumerWidget {
         statusBarBrightness: isDark ? Brightness.dark : Brightness.light,
       ),
       child: Scaffold(
-        backgroundColor: isDark ? AppColors.darkBackground : AppColors.lightBackground,
+        backgroundColor:
+            isDark ? AppColors.darkBackground : AppColors.lightBackground,
         appBar: AppBar(
-          backgroundColor: isDark ? AppColors.darkBackground : AppColors.lightBackground,
+          backgroundColor:
+              isDark ? AppColors.darkBackground : AppColors.lightBackground,
           surfaceTintColor: Colors.transparent,
           elevation: 0,
           leading: IconButton(
@@ -44,7 +46,8 @@ class TopGroupsScreen extends ConsumerWidget {
         ),
         body: state.when(
           loading: () => const Center(
-            child: CircularProgressIndicator(strokeWidth: 2.5, color: AppColors.primary),
+            child: CircularProgressIndicator(
+                strokeWidth: 2.5, color: AppColors.primary),
           ),
           error: (err, stack) => _buildError(isDark, ref),
           data: (groups) {
@@ -58,7 +61,8 @@ class TopGroupsScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildContent(BuildContext context, List<TopGroup> groups, bool isDark) {
+  Widget _buildContent(
+      BuildContext context, List<TopGroup> groups, bool isDark) {
     return CustomScrollView(
       physics: const BouncingScrollPhysics(),
       slivers: [
@@ -84,11 +88,15 @@ class TopGroupsScreen extends ConsumerWidget {
               ),
               child: const Column(
                 children: [
-                  Icon(Icons.emoji_events_rounded, color: Colors.amberAccent, size: 48),
+                  Icon(Icons.emoji_events_rounded,
+                      color: Colors.amberAccent, size: 48),
                   SizedBox(height: 8),
                   Text(
                     'رقابت محبوب‌ترین‌ها',
-                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18),
                   ),
                   SizedBox(height: 4),
                   Text(
@@ -115,7 +123,8 @@ class TopGroupsScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildGroupItem(BuildContext context, TopGroup group, int index, bool isDark) {
+  Widget _buildGroupItem(
+      BuildContext context, TopGroup group, int index, bool isDark) {
     final bool isTop3 = index < 3;
     final Color rankColor;
     if (index == 0) {
@@ -125,7 +134,8 @@ class TopGroupsScreen extends ConsumerWidget {
     } else if (index == 2) {
       rankColor = const Color(0xFFCD7F32); // Bronze
     } else {
-      rankColor = isDark ? AppColors.darkTextTertiary : AppColors.lightTextSecondary;
+      rankColor =
+          isDark ? AppColors.darkTextTertiary : AppColors.lightTextSecondary;
     }
 
     return Container(
@@ -134,7 +144,9 @@ class TopGroupsScreen extends ConsumerWidget {
         color: isDark ? AppColors.darkSurfaceVariant : Colors.white,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: isTop3 ? rankColor.withValues(alpha: 0.5) : (isDark ? AppColors.darkBorder : AppColors.lightBorder),
+          color: isTop3
+              ? rankColor.withValues(alpha: 0.5)
+              : (isDark ? AppColors.darkBorder : AppColors.lightBorder),
           width: isTop3 ? 1.5 : 1.0,
         ),
       ),
@@ -166,12 +178,14 @@ class TopGroupsScreen extends ConsumerWidget {
                 // Avatar
                 CircleAvatar(
                   radius: 26,
-                  backgroundColor: AppColors.primary.withOpacity(0.1),
-                  backgroundImage: (group.image != null && group.image!.isNotEmpty) 
-                      ? NetworkImage(group.image!) 
-                      : null,
+                  backgroundColor: AppColors.primary.withValues(alpha: 0.1),
+                  backgroundImage:
+                      (group.image != null && group.image!.isNotEmpty)
+                          ? NetworkImage(group.image!)
+                          : null,
                   child: (group.image == null || group.image!.isEmpty)
-                      ? const Icon(Icons.group_rounded, color: AppColors.primary)
+                      ? const Icon(Icons.group_rounded,
+                          color: AppColors.primary)
                       : null,
                 ),
                 const SizedBox(width: 12),
@@ -193,18 +207,27 @@ class TopGroupsScreen extends ConsumerWidget {
                       const SizedBox(height: 4),
                       Row(
                         children: [
-                          Icon(Icons.people_alt_rounded, size: 14, color: isDark ? Colors.white70 : Colors.black54),
+                          Icon(Icons.people_alt_rounded,
+                              size: 14,
+                              color: isDark ? Colors.white70 : Colors.black54),
                           const SizedBox(width: 4),
                           Text(
                             '${group.memberCount} عضو',
-                            style: TextStyle(fontSize: 12, color: isDark ? Colors.white70 : Colors.black54),
+                            style: TextStyle(
+                                fontSize: 12,
+                                color:
+                                    isDark ? Colors.white70 : Colors.black54),
                           ),
                           const SizedBox(width: 12),
-                          Icon(Icons.star_rounded, size: 14, color: Colors.orangeAccent),
+                          Icon(Icons.star_rounded,
+                              size: 14, color: Colors.orangeAccent),
                           const SizedBox(width: 4),
                           Text(
                             '${group.score}',
-                            style: const TextStyle(fontSize: 12, color: Colors.orangeAccent, fontWeight: FontWeight.bold),
+                            style: const TextStyle(
+                                fontSize: 12,
+                                color: Colors.orangeAccent,
+                                fontWeight: FontWeight.bold),
                           ),
                         ],
                       ),
@@ -218,7 +241,8 @@ class TopGroupsScreen extends ConsumerWidget {
                     children: [
                       if (group.verifiedCount > 0)
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
                           margin: const EdgeInsets.only(bottom: 4),
                           decoration: BoxDecoration(
                             color: Colors.blueAccent.withValues(alpha: 0.1),
@@ -227,15 +251,19 @@ class TopGroupsScreen extends ConsumerWidget {
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              const Icon(Icons.verified_rounded, size: 12, color: Colors.blueAccent),
+                              const Icon(Icons.verified_rounded,
+                                  size: 12, color: Colors.blueAccent),
                               const SizedBox(width: 4),
-                              Text('${group.verifiedCount}', style: const TextStyle(fontSize: 10, color: Colors.blueAccent)),
+                              Text('${group.verifiedCount}',
+                                  style: const TextStyle(
+                                      fontSize: 10, color: Colors.blueAccent)),
                             ],
                           ),
                         ),
                       if (group.premiumCount > 0)
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
                             color: Colors.purpleAccent.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(8),
@@ -243,9 +271,13 @@ class TopGroupsScreen extends ConsumerWidget {
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              const Icon(Icons.workspace_premium_rounded, size: 12, color: Colors.purpleAccent),
+                              const Icon(Icons.workspace_premium_rounded,
+                                  size: 12, color: Colors.purpleAccent),
                               const SizedBox(width: 4),
-                              Text('${group.premiumCount}', style: const TextStyle(fontSize: 10, color: Colors.purpleAccent)),
+                              Text('${group.premiumCount}',
+                                  style: const TextStyle(
+                                      fontSize: 10,
+                                      color: Colors.purpleAccent)),
                             ],
                           ),
                         ),
@@ -264,13 +296,19 @@ class TopGroupsScreen extends ConsumerWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.search_off_rounded, size: 64, color: isDark ? AppColors.darkTextTertiary : AppColors.lightTextSecondary),
+          Icon(Icons.search_off_rounded,
+              size: 64,
+              color: isDark
+                  ? AppColors.darkTextTertiary
+                  : AppColors.lightTextSecondary),
           const SizedBox(height: 16),
           Text(
             'گروه عمومی‌ای یافت نشد',
             style: TextStyle(
               fontSize: 16,
-              color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+              color: isDark
+                  ? AppColors.darkTextSecondary
+                  : AppColors.lightTextSecondary,
             ),
           ),
         ],
@@ -283,12 +321,15 @@ class TopGroupsScreen extends ConsumerWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(Icons.error_outline_rounded, size: 48, color: AppColors.error),
+          const Icon(Icons.error_outline_rounded,
+              size: 48, color: AppColors.error),
           const SizedBox(height: 16),
           Text(
             'خطا در دریافت لیست گروه‌ها',
             style: TextStyle(
-              color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+              color: isDark
+                  ? AppColors.darkTextSecondary
+                  : AppColors.lightTextSecondary,
             ),
           ),
           const SizedBox(height: 16),

@@ -1,7 +1,6 @@
 // ignore_for_file: unused_element, deprecated_member_use
 
 import 'dart:async';
-import 'dart:io' as io;
 
 import 'package:Vista/features/chat/screens/ChatConversationsScreen.dart'
     show ChatConversationsScreen;
@@ -194,7 +193,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 borderRadius: BorderRadius.circular(16),
               ),
               title: Text(
-                AppLocalizations.of(context)?.verifyPhoneTitle ?? 'تایید شماره موبایل',
+                AppLocalizations.of(context)?.verifyPhoneTitle ??
+                    'تایید شماره موبایل',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
@@ -205,7 +205,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    AppLocalizations.of(context)?.verifyPhoneDesc ?? 'برای ادامه فعالیت و امنیت بیشتر حساب کاربری، لطفاً شماره موبایل خود را تایید کنید.',
+                    AppLocalizations.of(context)?.verifyPhoneDesc ??
+                        'برای ادامه فعالیت و امنیت بیشتر حساب کاربری، لطفاً شماره موبایل خود را تایید کنید.',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: isDark ? Colors.grey[400] : Colors.grey[600],
@@ -245,7 +246,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     Navigator.of(dialogContext).pop();
                   },
                   child: Text(
-                    AppLocalizations.of(context)?.remindLater ?? 'بعداً یادآوری کن',
+                    AppLocalizations.of(context)?.remindLater ??
+                        'بعداً یادآوری کن',
                     style: TextStyle(
                       color: isDark ? Colors.grey[400] : Colors.grey[600],
                     ),
@@ -326,7 +328,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             color: isDark ? Colors.black : Colors.white,
                           ),
                         )
-                      : Text(AppLocalizations.of(context)?.sendCode ?? 'ارسال کد'),
+                      : Text(
+                          AppLocalizations.of(context)?.sendCode ?? 'ارسال کد'),
                 ),
               ],
             );
@@ -403,9 +406,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         statusBarBrightness: isLight ? Brightness.light : Brightness.dark,
         systemStatusBarContrastEnforced: false,
         // هاله: در تم روشن سفید، در تم تاریک رنگ scaffold
-        systemNavigationBarColor: isLight
-            ? Colors.white
-            : theme.scaffoldBackgroundColor,
+        systemNavigationBarColor:
+            isLight ? Colors.white : theme.scaffoldBackgroundColor,
         systemNavigationBarContrastEnforced: false,
         systemNavigationBarIconBrightness:
             isLight ? Brightness.dark : Brightness.light,
@@ -427,9 +429,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
         statusBarBrightness: isDark ? Brightness.dark : Brightness.light,
         systemStatusBarContrastEnforced: false,
-        systemNavigationBarColor: isDark
-            ? theme.scaffoldBackgroundColor
-            : Colors.white,
+        systemNavigationBarColor:
+            isDark ? theme.scaffoldBackgroundColor : Colors.white,
         systemNavigationBarContrastEnforced: false,
         systemNavigationBarIconBrightness:
             isDark ? Brightness.light : Brightness.dark,
@@ -440,42 +441,42 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           if (!didPop) _goHomeOrExit();
         },
         child: Scaffold(
-        extendBody: true,
-        backgroundColor: theme.scaffoldBackgroundColor,
-        body: Stack(
-          children: [
-            IndexedStack(
-              index: _selectedIndex,
-              children: [
-                ..._persistentTabs,
-                ProfileScreen(
-                  key: ValueKey('$_currentUserId:$_currentUsername'),
-                  userId: _currentUserId,
-                  username: _currentUsername,
-                ),
-              ],
-            ),
-            // نوار پیشرفت آپلود - مشابه اینستاگرام/X
-            Positioned(
-              top: MediaQuery.of(context).padding.top + 8,
-              left: 0,
-              right: 0,
-              child: const UploadProgressOverlay(),
-            ),
-          ],
+          extendBody: true,
+          backgroundColor: theme.scaffoldBackgroundColor,
+          body: Stack(
+            children: [
+              IndexedStack(
+                index: _selectedIndex,
+                children: [
+                  ..._persistentTabs,
+                  ProfileScreen(
+                    key: ValueKey('$_currentUserId:$_currentUsername'),
+                    userId: _currentUserId,
+                    username: _currentUsername,
+                  ),
+                ],
+              ),
+              // نوار پیشرفت آپلود - مشابه اینستاگرام/X
+              Positioned(
+                top: MediaQuery.of(context).padding.top + 8,
+                left: 0,
+                right: 0,
+                child: const UploadProgressOverlay(),
+              ),
+            ],
+          ),
+          bottomNavigationBar: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildBottomNavWithHalo(
+                isDark: isDark,
+                unreadCount: unreadCount,
+                theme: theme,
+              ),
+              const UpdateBanner(),
+            ],
+          ),
         ),
-        bottomNavigationBar: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _buildBottomNavWithHalo(
-              isDark: isDark,
-              unreadCount: unreadCount,
-              theme: theme,
-            ),
-            const UpdateBanner(),
-          ],
-        ),
-      ),
       ),
     );
   }
@@ -494,9 +495,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     // فاصله جزیره از پایین
     const islandBottomMargin = 28.0;
     // ارتفاع کل ناحیه باتم نویگیشن
-    final navBarHeight = islandApproxHeight + islandBottomMargin + bottomPadding + 20;
+    final navBarHeight =
+        islandApproxHeight + islandBottomMargin + bottomPadding + 20;
     // ارتفاع هاله که از وسط جزیره به پایین شروع میشه
-    final haloHeight = (islandApproxHeight / 2) + islandBottomMargin + bottomPadding + 10;
+    final haloHeight =
+        (islandApproxHeight / 2) + islandBottomMargin + bottomPadding + 10;
 
     return SizedBox(
       height: navBarHeight,
@@ -579,6 +582,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       ),
     );
   }
+
   /// آیتم ناوبری Premium با آیکون تصویری
   Widget _buildPremiumNavItem({
     required int index,
@@ -694,24 +698,32 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
         decoration: BoxDecoration(
-          gradient: isSelected ? AppColors.primaryGradient : null, // ✅ Gradient برند
-          color: isSelected ? null : (isDark ? Colors.grey[800] : Colors.grey[200]),
+          gradient:
+              isSelected ? AppColors.primaryGradient : null, // ✅ Gradient برند
+          color: isSelected
+              ? null
+              : (isDark ? Colors.grey[800] : Colors.grey[200]),
           borderRadius: BorderRadius.circular(14),
-          boxShadow: isSelected ? [
-            BoxShadow(
-              color: AppColors.primary.withValues(alpha: 0.35),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
-          ] : null,
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: AppColors.primary.withValues(alpha: 0.35),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ]
+              : null,
         ),
         child: Icon(
           Icons.grid_view_rounded,
           size: 24,
-          color: isSelected ? Colors.white : (isDark ? Colors.grey[400] : Colors.grey[600]),
+          color: isSelected
+              ? Colors.white
+              : (isDark ? Colors.grey[400] : Colors.grey[600]),
         ),
-      ).animate(target: isSelected ? 1 : 0).scaleXY(
-          end: 1.05, duration: 250.ms, curve: Curves.easeOutBack),
+      )
+          .animate(target: isSelected ? 1 : 0)
+          .scaleXY(end: 1.05, duration: 250.ms, curve: Curves.easeOutBack),
     );
   }
 }

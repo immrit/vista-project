@@ -212,14 +212,15 @@ class _ChatConversationsScreenState
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 300),
                     curve: Curves.easeInOut,
-                    height: 10,
+                    height: isConnecting ? 20 : 10,
+                    alignment: Alignment.center,
                     margin: const EdgeInsetsDirectional.only(start: 8),
                     padding: isConnecting
                         ? const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 1)
+                            horizontal: 8, vertical: 0)
                         : EdgeInsets.zero,
                     decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(6),
+                      borderRadius: BorderRadius.circular(12),
                       color: indicatorColor,
                       boxShadow: [
                         BoxShadow(

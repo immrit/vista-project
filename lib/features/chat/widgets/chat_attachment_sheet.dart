@@ -13,6 +13,9 @@ import '../../../utils/directional_navigation.dart';
 import '../../../utils/user_friendly_error_utils.dart';
 import '../theme/chat_theme.dart';
 import 'document_upload_sheet.dart';
+import 'media_editor_result.dart';
+import 'telegram_image_editor.dart';
+import 'telegram_video_editor.dart';
 
 enum ChatAttachmentType {
   gallery,
@@ -313,16 +316,48 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
       return;
     }
 
-    final result = await Navigator.of(context).push<AttachmentSelection>(
-      MaterialPageRoute(
-        builder: (_) => _ChatImagePreviewScreen(
-          type: ChatAttachmentType.gallery,
-          files: files,
-          initialIndex: initialIndex.clamp(0, files.length - 1).toInt(),
-          initialCaption: _captionController.text.trim(),
+    AttachmentSelection? result;
+
+    if (files.length == 1) {
+      final isVideo = _isVideo(files.first.file.path);
+      final mediaResult = await Navigator.of(context).push<MediaEditorResult>(
+        MaterialPageRoute(
+          builder: (_) => isVideo 
+              ? TelegramVideoEditor(
+                  file: files.first.file,
+                  initialCaption: _captionController.text.trim(),
+                )
+              : TelegramImageEditor(
+                  file: files.first.file,
+                  initialCaption: _captionController.text.trim(),
+                ),
         ),
-      ),
-    );
+      );
+
+      if (mediaResult != null) {
+        result = AttachmentSelection(
+          type: ChatAttachmentType.gallery,
+          files: [
+            SelectedAttachmentFile(
+              file: mediaResult.file,
+              displayFileName: p.basename(mediaResult.file.path),
+            )
+          ],
+          caption: mediaResult.caption,
+        );
+      }
+    } else {
+      result = await Navigator.of(context).push<AttachmentSelection>(
+        MaterialPageRoute(
+          builder: (_) => _ChatImagePreviewScreen(
+            type: ChatAttachmentType.gallery,
+            files: files,
+            initialIndex: initialIndex.clamp(0, files.length - 1).toInt(),
+            initialCaption: _captionController.text.trim(),
+          ),
+        ),
+      );
+    }
 
     if (result == null || !mounted) return;
     widget.onSelected(result);
@@ -340,21 +375,53 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
     if (image == null) return;
     if (!mounted) return;
 
-    final result = await Navigator.of(context).push<AttachmentSelection>(
-      MaterialPageRoute(
-        builder: (_) => _ChatImagePreviewScreen(
+    AttachmentSelection? result;
+
+    if (_isVideo(image.path)) {
+      final mediaResult = await Navigator.of(context).push<MediaEditorResult>(
+        MaterialPageRoute(
+          builder: (_) => TelegramVideoEditor(
+            file: File(image.path),
+            initialCaption: '',
+          ),
+        ),
+      );
+
+      if (mediaResult != null) {
+        result = AttachmentSelection(
           type: ChatAttachmentType.camera,
           files: [
             SelectedAttachmentFile(
-              file: File(image.path),
-              displayFileName: image.name.trim().isNotEmpty
-                  ? image.name
-                  : p.basename(image.path),
-            ),
+              file: mediaResult.file,
+              displayFileName: p.basename(mediaResult.file.path),
+            )
           ],
+          caption: mediaResult.caption,
+        );
+      }
+    } else {
+      final mediaResult = await Navigator.of(context).push<MediaEditorResult>(
+        MaterialPageRoute(
+          builder: (_) => TelegramImageEditor(
+            file: File(image.path),
+            initialCaption: '',
+          ),
         ),
-      ),
-    );
+      );
+
+      if (mediaResult != null) {
+        result = AttachmentSelection(
+          type: ChatAttachmentType.camera,
+          files: [
+            SelectedAttachmentFile(
+              file: mediaResult.file,
+              displayFileName: p.basename(mediaResult.file.path),
+            )
+          ],
+          caption: mediaResult.caption,
+        );
+      }
+    }
     if (result == null || !mounted) return;
     widget.onSelected(result);
     Navigator.pop(context);
@@ -383,6 +450,11 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
       return '$normalized$fallbackExt';
     }
     return normalized;
+  }
+
+  bool _isVideo(String path) {
+    final ext = path.toLowerCase();
+    return ext.endsWith('.mp4') || ext.endsWith('.mov') || ext.endsWith('.avi');
   }
 
   Future<void> _pickFile() async {
@@ -1130,6 +1202,58 @@ class _ChatImagePreviewScreenState extends State<_ChatImagePreviewScreen> {
     super.dispose();
   }
 
+  Future<void> _editCurrentMedia() async {
+    if (_previewFiles.isEmpty) return;
+    final currentFile = _previewFiles[_currentIndex].file;
+
+    final ext = currentFile.path.toLowerCase();
+    final isVideo = ext.endsWith('.mp4') || ext.endsWith('.mov') || ext.endsWith('.avi');
+
+    if (isVideo) {
+      final videoResult = await Navigator.push<MediaEditorResult>(
+        context,
+        MaterialPageRoute(
+          builder: (context) => TelegramVideoEditor(
+            file: currentFile,
+            initialCaption: _previewFiles[_currentIndex].displayFileName == p.basename(currentFile.path) 
+                ? '' 
+                : _previewFiles[_currentIndex].displayFileName, // Not ideal, but we keep it empty or use existing logic
+          ),
+        ),
+      );
+
+      if (videoResult != null && mounted) {
+        setState(() {
+          _previewFiles[_currentIndex] = SelectedAttachmentFile(
+            file: videoResult.file,
+            displayFileName: p.basename(videoResult.file.path),
+          );
+        });
+      }
+    } else {
+      final imageResult = await Navigator.push<MediaEditorResult>(
+        context,
+        MaterialPageRoute(
+          builder: (context) => TelegramImageEditor(
+            file: currentFile,
+            initialCaption: _previewFiles[_currentIndex].displayFileName == p.basename(currentFile.path) 
+                ? '' 
+                : _previewFiles[_currentIndex].displayFileName,
+          ),
+        ),
+      );
+
+      if (imageResult != null && mounted) {
+        setState(() {
+          _previewFiles[_currentIndex] = SelectedAttachmentFile(
+            file: imageResult.file,
+            displayFileName: p.basename(imageResult.file.path),
+          );
+        });
+      }
+    }
+  }
+
   void _send() {
     if (_previewFiles.isEmpty) return;
     if (_previewFiles.length > _maxAlbumItems) {
@@ -1232,37 +1356,41 @@ class _ChatImagePreviewScreenState extends State<_ChatImagePreviewScreen> {
           style: const TextStyle(color: Colors.white),
         ),
         iconTheme: const IconThemeData(color: Colors.white),
-        actions: isAlbum
-            ? [
-                Padding(
-                  padding: const EdgeInsetsDirectional.only(end: 12),
-                  child: Center(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.14),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.24),
-                          width: 0.8,
-                        ),
-                      ),
-                      child: Text(
-                        '${_currentIndex + 1}/${_previewFiles.length}',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.edit_rounded, color: Colors.white),
+            onPressed: _editCurrentMedia,
+            tooltip: 'ویرایش',
+          ),
+          if (isAlbum)
+            Padding(
+              padding: const EdgeInsetsDirectional.only(end: 12),
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.14),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.24),
+                      width: 0.8,
+                    ),
+                  ),
+                  child: Text(
+                    '${_currentIndex + 1}/${_previewFiles.length}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                 ),
-              ]
-            : null,
+              ),
+            ),
+        ],
       ),
       body: Stack(
         children: [

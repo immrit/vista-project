@@ -83,6 +83,9 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
   bool _wasVerticallyAligned = false;
   bool _wasHorizontallyAligned = false;
 
+  // Hiding stickers for screenshot
+  bool _hideInteractiveForScreenshot = false;
+
   // Story Duration
   StoryDuration _storyDuration = StoryDuration.hours24;
 
@@ -568,6 +571,7 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
     if (item is TextStoryItem) {
       return _buildTextContent(item);
     } else if (item is StickerStoryItem) {
+      if (_hideInteractiveForScreenshot) return const SizedBox();
       return _buildStickerContent(item);
     } else if (item is ImageStoryItem) {
       return _buildImageContent(item);
@@ -1017,7 +1021,12 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
     // نمایش loading overlay
     _showLoadingOverlay();
 
+    setState(() {
+      _hideInteractiveForScreenshot = true;
+    });
+
     try {
+      // Allow UI to update and hide stickers
       await Future.delayed(const Duration(milliseconds: 100));
 
       File finalMedia;
@@ -1080,7 +1089,10 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
       }
     } finally {
       if (mounted) {
-        setState(() => _isSaving = false);
+        setState(() {
+          _isSaving = false;
+          _hideInteractiveForScreenshot = false;
+        });
       }
     }
   }
@@ -1117,6 +1129,27 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
       final yNorm = _normalizedCoordinate(item.y, canvasSize.height);
 
       if (item is TextStoryItem) {
+        if (widget.mediaType == StoryMediaType.video) {
+          // Serialize for video because it's not baked into the video file
+          return StoryElement(
+            elementId: item.id,
+            text: item.text,
+            x: item.x,
+            y: item.y,
+            xNorm: xNorm,
+            yNorm: yNorm,
+            rotation: item.rotation,
+            scale: item.scale,
+            color: item.color,
+            fontSize: item.fontSize,
+            interactionType: StoryInteractionType.none,
+            styleIndex: item.styleIndex,
+            fontFamily: item.fontFamily,
+            textAlign: item.textAlign,
+            width: 0,
+            height: 0,
+          );
+        }
         return null; // Baked into image
       }
 

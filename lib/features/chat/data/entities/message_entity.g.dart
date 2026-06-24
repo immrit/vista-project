@@ -242,9 +242,9 @@ const MessageEntitySchema = CollectionSchema(
         )
       ],
     ),
-    r'conversationId': IndexSchema(
-      id: 2945908346256754300,
-      name: r'conversationId',
+    r'conversationId_createdAt': IndexSchema(
+      id: -6415830084913696883,
+      name: r'conversationId_createdAt',
       unique: false,
       replace: false,
       properties: [
@@ -252,15 +252,7 @@ const MessageEntitySchema = CollectionSchema(
           name: r'conversationId',
           type: IndexType.hash,
           caseSensitive: true,
-        )
-      ],
-    ),
-    r'createdAt': IndexSchema(
-      id: -3433535483987302584,
-      name: r'createdAt',
-      unique: false,
-      replace: false,
-      properties: [
+        ),
         IndexPropertySchema(
           name: r'createdAt',
           type: IndexType.value,
@@ -698,14 +690,6 @@ extension MessageEntityQueryWhereSort
       return query.addWhereClause(const IdWhereClause.any());
     });
   }
-
-  QueryBuilder<MessageEntity, MessageEntity, QAfterWhere> anyCreatedAt() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addWhereClause(
-        const IndexWhereClause.any(indexName: r'createdAt'),
-      );
-    });
-  }
 }
 
 extension MessageEntityQueryWhere
@@ -824,28 +808,28 @@ extension MessageEntityQueryWhere
   }
 
   QueryBuilder<MessageEntity, MessageEntity, QAfterWhereClause>
-      conversationIdEqualTo(String conversationId) {
+      conversationIdEqualToAnyCreatedAt(String conversationId) {
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(IndexWhereClause.equalTo(
-        indexName: r'conversationId',
+        indexName: r'conversationId_createdAt',
         value: [conversationId],
       ));
     });
   }
 
   QueryBuilder<MessageEntity, MessageEntity, QAfterWhereClause>
-      conversationIdNotEqualTo(String conversationId) {
+      conversationIdNotEqualToAnyCreatedAt(String conversationId) {
     return QueryBuilder.apply(this, (query) {
       if (query.whereSort == Sort.asc) {
         return query
             .addWhereClause(IndexWhereClause.between(
-              indexName: r'conversationId',
+              indexName: r'conversationId_createdAt',
               lower: [],
               upper: [conversationId],
               includeUpper: false,
             ))
             .addWhereClause(IndexWhereClause.between(
-              indexName: r'conversationId',
+              indexName: r'conversationId_createdAt',
               lower: [conversationId],
               includeLower: false,
               upper: [],
@@ -853,13 +837,13 @@ extension MessageEntityQueryWhere
       } else {
         return query
             .addWhereClause(IndexWhereClause.between(
-              indexName: r'conversationId',
+              indexName: r'conversationId_createdAt',
               lower: [conversationId],
               includeLower: false,
               upper: [],
             ))
             .addWhereClause(IndexWhereClause.between(
-              indexName: r'conversationId',
+              indexName: r'conversationId_createdAt',
               lower: [],
               upper: [conversationId],
               includeUpper: false,
@@ -869,44 +853,46 @@ extension MessageEntityQueryWhere
   }
 
   QueryBuilder<MessageEntity, MessageEntity, QAfterWhereClause>
-      createdAtEqualTo(DateTime createdAt) {
+      conversationIdCreatedAtEqualTo(
+          String conversationId, DateTime createdAt) {
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(IndexWhereClause.equalTo(
-        indexName: r'createdAt',
-        value: [createdAt],
+        indexName: r'conversationId_createdAt',
+        value: [conversationId, createdAt],
       ));
     });
   }
 
   QueryBuilder<MessageEntity, MessageEntity, QAfterWhereClause>
-      createdAtNotEqualTo(DateTime createdAt) {
+      conversationIdEqualToCreatedAtNotEqualTo(
+          String conversationId, DateTime createdAt) {
     return QueryBuilder.apply(this, (query) {
       if (query.whereSort == Sort.asc) {
         return query
             .addWhereClause(IndexWhereClause.between(
-              indexName: r'createdAt',
-              lower: [],
-              upper: [createdAt],
+              indexName: r'conversationId_createdAt',
+              lower: [conversationId],
+              upper: [conversationId, createdAt],
               includeUpper: false,
             ))
             .addWhereClause(IndexWhereClause.between(
-              indexName: r'createdAt',
-              lower: [createdAt],
+              indexName: r'conversationId_createdAt',
+              lower: [conversationId, createdAt],
               includeLower: false,
-              upper: [],
+              upper: [conversationId],
             ));
       } else {
         return query
             .addWhereClause(IndexWhereClause.between(
-              indexName: r'createdAt',
-              lower: [createdAt],
+              indexName: r'conversationId_createdAt',
+              lower: [conversationId, createdAt],
               includeLower: false,
-              upper: [],
+              upper: [conversationId],
             ))
             .addWhereClause(IndexWhereClause.between(
-              indexName: r'createdAt',
-              lower: [],
-              upper: [createdAt],
+              indexName: r'conversationId_createdAt',
+              lower: [conversationId],
+              upper: [conversationId, createdAt],
               includeUpper: false,
             ));
       }
@@ -914,37 +900,40 @@ extension MessageEntityQueryWhere
   }
 
   QueryBuilder<MessageEntity, MessageEntity, QAfterWhereClause>
-      createdAtGreaterThan(
+      conversationIdEqualToCreatedAtGreaterThan(
+    String conversationId,
     DateTime createdAt, {
     bool include = false,
   }) {
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(IndexWhereClause.between(
-        indexName: r'createdAt',
-        lower: [createdAt],
+        indexName: r'conversationId_createdAt',
+        lower: [conversationId, createdAt],
         includeLower: include,
-        upper: [],
+        upper: [conversationId],
       ));
     });
   }
 
   QueryBuilder<MessageEntity, MessageEntity, QAfterWhereClause>
-      createdAtLessThan(
+      conversationIdEqualToCreatedAtLessThan(
+    String conversationId,
     DateTime createdAt, {
     bool include = false,
   }) {
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(IndexWhereClause.between(
-        indexName: r'createdAt',
-        lower: [],
-        upper: [createdAt],
+        indexName: r'conversationId_createdAt',
+        lower: [conversationId],
+        upper: [conversationId, createdAt],
         includeUpper: include,
       ));
     });
   }
 
   QueryBuilder<MessageEntity, MessageEntity, QAfterWhereClause>
-      createdAtBetween(
+      conversationIdEqualToCreatedAtBetween(
+    String conversationId,
     DateTime lowerCreatedAt,
     DateTime upperCreatedAt, {
     bool includeLower = true,
@@ -952,10 +941,10 @@ extension MessageEntityQueryWhere
   }) {
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(IndexWhereClause.between(
-        indexName: r'createdAt',
-        lower: [lowerCreatedAt],
+        indexName: r'conversationId_createdAt',
+        lower: [conversationId, lowerCreatedAt],
         includeLower: includeLower,
-        upper: [upperCreatedAt],
+        upper: [conversationId, upperCreatedAt],
         includeUpper: includeUpper,
       ));
     });

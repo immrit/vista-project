@@ -5,6 +5,23 @@ import '../../../../DB/isar_database_manager.dart';
 import '../../utils/conversation_name_utils.dart';
 import '../entities/message_entity.dart' hide fastHash;
 import '../entities/conversation_entity.dart';
+import 'package:flutter/foundation.dart';
+
+Future<List<MessageModel>> _fetchAndMapMessagesIsolate(Map<String, dynamic> args) async {
+  final params = args['params'] as IsarOpenParams;
+  final conversationId = args['conversationId'] as String;
+  final limit = args['limit'] as int?;
+
+  final isar = IsarDatabaseManager.openIsarSynchronously(params);
+  
+  final query = isar.messageEntitys
+      .filter()
+      .conversationIdEqualTo(conversationId)
+      .sortByCreatedAtDesc();
+      
+  final entities = limit == null ? query.findAllSync() : query.limit(limit).findAllSync();
+  return entities.map((e) => e.toModel()).toList();
+}
 
 class ChatLocalDataSourceIsar {
   final IsarDatabaseManager _dbManager; // Assuming Injection or instantiate
@@ -26,17 +43,25 @@ class ChatLocalDataSourceIsar {
       String conversationId, String currentUserId,
       {int? limit}) async* {
     final isar = await _dbManager.instance;
+
     final base = isar.messageEntitys
         .filter()
         .conversationIdEqualTo(conversationId)
-        .sortByCreatedAtDesc(); // Isar auto-generates this
-    // limit caps how many newest entities are deserialized per emit. Without it
-    // every change re-mapped the WHOLE conversation history to MessageModel on
-    // the main isolate — the dominant cost in heavy chats.
-    final Stream<List<MessageEntity>> stream = limit == null
-        ? base.watch(fireImmediately: true)
-        : base.limit(limit).watch(fireImmediately: true);
-    yield* stream.map((entities) => entities.map((e) => e.toModel()).toList());
+        .sortByCreatedAtDesc(); 
+
+    final Stream<void> watcher = limit == null
+        ? base.watchLazy() // Removed fireImmediately: true, we handle it manually
+        : base.limit(limit).watchLazy();
+
+    // 1. Guaranteed initial load
+    final initialEntities = limit == null ? base.findAllSync() : base.limit(limit).findAllSync();
+    yield initialEntities.map((e) => e.toModel()).toList();
+
+    // 2. Listen to subsequent changes
+    await for (final _ in watcher) {
+      final entities = limit == null ? base.findAllSync() : base.limit(limit).findAllSync();
+      yield entities.map((e) => e.toModel()).toList();
+    }
   }
 
   Future<void> saveMessages(List<MessageModel> messages) async {
