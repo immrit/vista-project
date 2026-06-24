@@ -742,13 +742,6 @@ class _ChatConversationsScreenState
 
           // ✅ بخش مکالمات پین شده
           if (pinnedConversations.isNotEmpty) ...[
-            SliverToBoxAdapter(
-              child: _buildSectionHeader(
-                theme,
-                AppLocalizations.of(context)?.pinned ?? 'پین شده',
-                Icons.push_pin_rounded,
-              ),
-            ),
             SliverList(
               delegate: SliverChildBuilderDelegate(
                 (context, index) {
@@ -772,14 +765,6 @@ class _ChatConversationsScreenState
 
           // ✅ بخش مکالمات عادی
           if (regularConversations.isNotEmpty) ...[
-            if (pinnedConversations.isNotEmpty)
-              SliverToBoxAdapter(
-                child: _buildSectionHeader(
-                    theme,
-                    AppLocalizations.of(context)?.allConversations ??
-                        'همه گفتگوها',
-                    Icons.chat_rounded),
-              ),
             SliverList(
               delegate: SliverChildBuilderDelegate(
                 (context, index) {

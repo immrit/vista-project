@@ -91,7 +91,8 @@ class GifMessageBubble extends StatelessWidget {
           // زمان و تیک (روی تصویر، پایین سمت راست)
           Positioned(
             bottom: 4,
-            right: 4,
+            right: message.isMe ? 4 : null,
+            left: !message.isMe ? 4 : null,
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(

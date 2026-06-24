@@ -65,6 +65,11 @@ class _EditMessageDialogState extends ConsumerState<EditMessageDialog> {
       return;
     }
 
+    if (newContent.length > 4096) {
+      setState(() => _error = 'متن پیام نمی‌تواند بیشتر از ۴۰۹۶ کاراکتر باشد');
+      return;
+    }
+
     if (newContent == widget.currentContent.trim()) {
       Navigator.of(context).pop(false);
       return;

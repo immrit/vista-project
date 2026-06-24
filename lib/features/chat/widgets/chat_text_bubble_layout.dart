@@ -20,6 +20,7 @@ class ChatTextBubbleLayout extends MultiChildRenderObjectWidget {
   ChatTextBubbleLayout({
     super.key,
     required this.textDirection,
+    required this.isMe,
     required this.gap,
     required Widget text,
     required Widget footer,
@@ -29,6 +30,9 @@ class ChatTextBubbleLayout extends MultiChildRenderObjectWidget {
   /// (timestamp + tick) is pinned to.
   final TextDirection textDirection;
 
+  /// Whether the message is sent by the current user.
+  final bool isMe;
+
   /// Vertical gap between the text block and the footer (was a `SizedBox`).
   final double gap;
 
@@ -36,6 +40,7 @@ class ChatTextBubbleLayout extends MultiChildRenderObjectWidget {
   RenderChatTextBubbleLayout createRenderObject(BuildContext context) {
     return RenderChatTextBubbleLayout(
       textDirection: textDirection,
+      isMe: isMe,
       gap: gap,
     );
   }
@@ -47,6 +52,7 @@ class ChatTextBubbleLayout extends MultiChildRenderObjectWidget {
   ) {
     renderObject
       ..textDirection = textDirection
+      ..isMe = isMe
       ..gap = gap;
   }
 }
@@ -59,14 +65,23 @@ class RenderChatTextBubbleLayout extends RenderBox
         RenderBoxContainerDefaultsMixin<RenderBox, _BubbleParentData> {
   RenderChatTextBubbleLayout({
     required TextDirection textDirection,
+    required bool isMe,
     required double gap,
   })  : _textDirection = textDirection,
+        _isMe = isMe,
         _gap = gap;
 
   TextDirection _textDirection;
   set textDirection(TextDirection value) {
     if (_textDirection == value) return;
     _textDirection = value;
+    markNeedsLayout();
+  }
+
+  bool _isMe;
+  set isMe(bool value) {
+    if (_isMe == value) return;
+    _isMe = value;
     markNeedsLayout();
   }
 
@@ -113,8 +128,12 @@ class RenderChatTextBubbleLayout extends RenderBox
       isRtl ? width - text.size.width : 0.0,
       0.0,
     );
+    
+    // Pin footer to the edge of the screen (outer edge of the bubble).
+    // isMe (Sent): right edge in both LTR/RTL, so width - footer.size.width
+    // !isMe (Received): left edge in both LTR/RTL, so 0.0
     footerPd.offset = Offset(
-      isRtl ? 0.0 : width - footer.size.width,
+      _isMe ? width - footer.size.width : 0.0,
       text.size.height + _gap,
     );
 

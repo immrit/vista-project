@@ -786,20 +786,6 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
       enabled: widget.enabled,
       maxLines: 5,
       minLines: 1,
-      maxLength: 4000,
-      maxLengthEnforcement: MaxLengthEnforcement.enforced,
-      buildCounter: (_, {required currentLength, required isFocused, maxLength}) {
-        if (!isFocused || currentLength < 3800) return null;
-        return Text(
-          '$currentLength / $maxLength',
-          style: TextStyle(
-            fontSize: 10,
-            color: currentLength >= 4000
-                ? Colors.red
-                : Colors.grey,
-          ),
-        );
-      },
       textInputAction: TextInputAction.newline,
       textDirection: textDirection,
       textAlign: textAlign,

@@ -50,6 +50,7 @@ class ProfileModel extends Equatable {
   final DateTime? subscriptionExpiresAt;
   final int? premiumDaysRemaining;
   final String messagePrivacy;
+  final bool allowProfileZoom;
 
   const ProfileModel({
     required this.id,
@@ -87,6 +88,7 @@ class ProfileModel extends Equatable {
     this.subscriptionExpiresAt,
     this.premiumDaysRemaining,
     this.messagePrivacy = 'everyone',
+    this.allowProfileZoom = true,
   });
 
   static String _trimmed(dynamic value) => value?.toString().trim() ?? '';
@@ -186,6 +188,7 @@ class ProfileModel extends Equatable {
           ? int.tryParse(map['premium_days_remaining'].toString())
           : null,
       messagePrivacy: map['message_privacy']?.toString() ?? 'everyone',
+      allowProfileZoom: _boolValue(map['allow_profile_zoom'], fallback: true),
     );
   }
 
@@ -240,6 +243,7 @@ class ProfileModel extends Equatable {
           subscriptionExpiresAt?.toUtc().toIso8601String(),
       if (premiumDaysRemaining != null)
         'premium_days_remaining': premiumDaysRemaining,
+      'allow_profile_zoom': allowProfileZoom,
     };
   }
 
@@ -280,6 +284,8 @@ class ProfileModel extends Equatable {
     String? subscriptionPlan,
     DateTime? subscriptionExpiresAt,
     int? premiumDaysRemaining,
+    String? messagePrivacy,
+    bool? allowProfileZoom,
   }) {
     return ProfileModel(
       id: id ?? this.id,
@@ -318,6 +324,7 @@ class ProfileModel extends Equatable {
           subscriptionExpiresAt ?? this.subscriptionExpiresAt,
       premiumDaysRemaining: premiumDaysRemaining ?? this.premiumDaysRemaining,
       messagePrivacy: messagePrivacy ?? this.messagePrivacy,
+      allowProfileZoom: allowProfileZoom ?? this.allowProfileZoom,
     );
   }
 
@@ -358,6 +365,7 @@ class ProfileModel extends Equatable {
         subscriptionExpiresAt,
         premiumDaysRemaining,
         messagePrivacy,
+        allowProfileZoom,
       ];
   bool get hasBlueBadge =>
       isVerified && verificationType == VerificationType.blueTick;

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -10,10 +11,14 @@ import 'modern_chat_screen.dart';
 import '../navigation/chat_screen_route.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/chat_providers.dart';
+import '../../../services/share_receiver_service.dart';
 
-/// صفحه پیام جدید - UI ساده و مینیمال مشابه ویستا
+/// صفحه پیام جدید - با پشتیبانی از share intent
 class NewMessageScreen extends ConsumerStatefulWidget {
-  const NewMessageScreen({super.key});
+  /// محتوای share شده (اختیاری)
+  final SharedContent? sharedContent;
+
+  const NewMessageScreen({super.key, this.sharedContent});
 
   @override
   ConsumerState<NewMessageScreen> createState() => _NewMessageScreenState();
@@ -128,6 +133,9 @@ class _NewMessageScreenState extends ConsumerState<NewMessageScreen> {
     }
 
     if (!mounted) return;
+
+    // اگر shared content داریم، آن را به ChatScreenArgs پاس کن
+    final shared = widget.sharedContent;
     Navigator.push<void>(
       context,
       ChatScreenRoute(
@@ -137,6 +145,9 @@ class _NewMessageScreenState extends ConsumerState<NewMessageScreen> {
           otherUserAvatar: user.avatarUrl,
           otherUserId: user.id,
           isSecret: isSecret,
+          initialDraftMessage: shared?.isText == true ? shared!.text : null,
+          initialSharedFilePaths:
+              shared?.hasFiles == true ? shared!.filePaths : const [],
         ),
       ),
     );
@@ -183,6 +194,10 @@ class _NewMessageScreenState extends ConsumerState<NewMessageScreen> {
       ),
       body: Column(
         children: [
+          // بنر محتوای share شده
+          if (widget.sharedContent != null)
+            _SharedContentBanner(content: widget.sharedContent!),
+
           // جستجو
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
@@ -486,6 +501,107 @@ class _NewMessageScreenState extends ConsumerState<NewMessageScreen> {
               indent: 72,
               endIndent: 16,
               color: theme.dividerColor.withValues(alpha: 0.3),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// بنر کوچک نمایش محتوای share شده در بالای صفحه انتخاب مخاطب
+class _SharedContentBanner extends StatelessWidget {
+  final SharedContent content;
+  const _SharedContentBanner({required this.content});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bgColor = isDark
+        ? const Color(0xFF2C2C2E)
+        : const Color(0xFFF0F0F5);
+    final textColor = isDark ? Colors.white70 : Colors.black87;
+
+    String label;
+    IconData icon;
+    if (content.isText) {
+      label = content.text ?? 'متن';
+      icon = Icons.text_fields_rounded;
+    } else if (content.isImage) {
+      label = content.isMultiple
+          ? '${content.filePaths.length} تصویر'
+          : 'یک تصویر';
+      icon = Icons.image_rounded;
+    } else if (content.isVideo) {
+      label = content.isMultiple
+          ? '${content.filePaths.length} ویدیو'
+          : 'یک ویدیو';
+      icon = Icons.videocam_rounded;
+    } else {
+      label = 'فایل';
+      icon = Icons.attach_file_rounded;
+    }
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: const Color(0xFF6C63FF).withValues(alpha: 0.3),
+          width: 1,
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFF6C63FF), Color(0xFF3B82F6)],
+              ),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, color: Colors.white, size: 16),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'ارسال به:',
+                  style: TextStyle(
+                    fontFamily: 'Vazirmatn',
+                    fontSize: 11,
+                    color: textColor.withValues(alpha: 0.5),
+                  ),
+                ),
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontFamily: 'Vazirmatn',
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: textColor,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // تصویر preview اگر عکس بود
+          if (content.isImage && content.hasFiles)
+            ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: Image.file(
+                File(content.filePaths.first),
+                width: 40,
+                height: 40,
+                fit: BoxFit.cover,
+              ),
             ),
         ],
       ),

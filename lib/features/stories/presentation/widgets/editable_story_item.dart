@@ -44,6 +44,7 @@ class _EditableStoryItemState extends State<EditableStoryItem> {
   double _startItemY = 0.0;
   double _startItemScale = 1.0;
   double _startItemRotation = 0.0;
+  bool _isSnapped = false;
 
   static const double _minScale = 0.35;
   static const double _maxScale = 6.0;
@@ -239,6 +240,24 @@ class _EditableStoryItemState extends State<EditableStoryItem> {
 
       if (details.rotation.isFinite) {
         nextRotation = _normalizeAngle(_startItemRotation + details.rotation);
+        
+        const double snapThreshold = 0.087; // ~5 degrees in radians
+        final double pi = math.pi;
+        final snapAngles = [0.0, pi / 2, pi, 3 * pi / 2, 2 * pi];
+        bool snappedNow = false;
+        
+        for (final target in snapAngles) {
+          if ((nextRotation - target).abs() < snapThreshold) {
+            nextRotation = target;
+            snappedNow = true;
+            break;
+          }
+        }
+        
+        if (snappedNow && !_isSnapped) {
+          HapticFeedback.lightImpact();
+        }
+        _isSnapped = snappedNow;
       }
     }
 

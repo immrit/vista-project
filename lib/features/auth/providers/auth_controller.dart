@@ -558,7 +558,8 @@ final userAuthStateProvider = StreamProvider<DummyUserModel?>((ref) async* {
 });
 
 final changePasswordProvider =
-    FutureProvider.family<void, String>((ref, newPassword) async {
+    FutureProvider.family<void, ({String oldPassword, String newPassword})>(
+        (ref, args) async {
   // TODO: Implement change password with the Go backend API
   throw UnimplementedError('Change password is not implemented yet.');
 });

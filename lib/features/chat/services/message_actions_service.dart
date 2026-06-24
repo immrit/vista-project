@@ -203,7 +203,7 @@ class MessageActionsService {
   }
 
   // ═══════════════════════════════════════════════════════════════════
-  // 📌 PIN MESSAGE → POST /v1/chat/conversations/{id}/pin
+  // 📌 PIN MESSAGE → POST /v1/chat/messages/{id}/pin
   // ═══════════════════════════════════════════════════════════════════
 
   Future<ActionResult<void>> pinMessage({
@@ -216,8 +216,7 @@ class MessageActionsService {
 
       final dio = _dio;
       await dio.post(
-        '/chat/conversations/$conversationId/pin',
-        data: {'message_id': messageId},
+        '/chat/messages/$messageId/pin',
         options: options,
       );
       return const ActionResult.success();

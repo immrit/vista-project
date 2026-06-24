@@ -34,6 +34,7 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
   // Logic State
   bool _isPhoneInput = false;
   bool _isRegistering = false;
+  bool _obscurePassword = true;
 
   // OTP State
   int countdown = 60;
@@ -522,7 +523,7 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
           TextField(
             controller: _passwordController,
             focusNode: _passwordFocusNode,
-            obscureText: true,
+            obscureText: _obscurePassword,
             textAlign: TextAlign.left,
             textDirection: TextDirection.ltr,
             textInputAction: TextInputAction.done,
@@ -531,10 +532,20 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
                 _handlePasswordLogin();
               }
             },
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               hintText: "رمز عبور",
               hintTextDirection: TextDirection.rtl,
-              prefixIcon: Icon(Icons.lock_outline),
+              prefixIcon: const Icon(Icons.lock_outline),
+              suffixIcon: IconButton(
+                icon: Icon(
+                  _obscurePassword ? Icons.visibility_off : Icons.visibility,
+                ),
+                onPressed: () {
+                  setState(() {
+                    _obscurePassword = !_obscurePassword;
+                  });
+                },
+              ),
             ),
           ),
           const SizedBox(height: 24),

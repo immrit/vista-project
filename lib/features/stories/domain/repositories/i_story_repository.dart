@@ -107,7 +107,7 @@ abstract class IStoryRepository {
   Future<StoryResult<void>> trackView(String storyId);
 
   /// دریافت لیست بازدیدکنندگان
-  Future<StoryResult<List<StoryView>>> getStoryViews(String storyId);
+  Future<StoryResult<List<StoryView>>> getStoryViews(String storyId, {int limit = 50, int offset = 0});
 
   /// واکنش به استوری
   Future<StoryResult<void>> reactToStory(

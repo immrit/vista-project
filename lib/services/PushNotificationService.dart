@@ -605,48 +605,164 @@ class PushNotificationService {
 
     final int notificationId = conversationId.hashCode;
     final String groupKey = conversationId;
-    final String senderName = data['sender_name']?.toString() ?? 'کاربر';
-    final String messageContent = _buildReadableMessageBody(
+    
+    // واکشی اطلاعات مکالمه از دیتابیس لوکال برای تشخیص گروه و استخراج اطلاعات
+    final localSource = ChatLocalDataSourceIsar();
+    final conversation = await localSource.getConversation(conversationId, '');
+    
+    final bool isGroup = conversation?.isGroup == true || data['is_group'] == 'true';
+    
+    String senderName = data['sender_name']?.toString() ?? 'کاربر';
+    String messageContent = _buildReadableMessageBody(
       data,
       fallback: 'پیام جدید',
     );
-    final String? senderAvatarUrl = AvatarAssetUtils.firstResolvedUrl(
+    String? senderAvatarUrl = AvatarAssetUtils.firstResolvedUrl(
       data['sender_avatar'],
       data['avatar_url'] ?? data['actor_avatar'],
     );
+    
+    String? groupAvatarUrl;
+    String? conversationTitle;
+
+    if (isGroup) {
+      conversationTitle = conversation?.otherUserName ?? data['group_name']?.toString() ?? senderName;
+      groupAvatarUrl = AvatarAssetUtils.resolveUrl(conversation?.otherUserAvatar);
+
+      // در صورتی که نام ارسال کننده همان نام گروه باشد و پیام فرمت نام: محتوا داشته باشد
+      if (conversationTitle == senderName && messageContent.contains(': ')) {
+        final parts = messageContent.split(': ');
+        senderName = parts[0];
+        messageContent = parts.sublist(1).join(': ');
+      }
+      
+      // تلاش برای دریافت آخرین پیام از دیتابیس لوکال برای دقت بیشتر در مشخصات فرستنده
+      try {
+        final messages = await localSource.watchMessages(conversationId, '', limit: 1).first;
+        if (messages.isNotEmpty) {
+           final latestMsg = messages.first;
+           if (latestMsg.id == data['message_id']) {
+               senderName = latestMsg.senderName ?? senderName;
+               senderAvatarUrl = AvatarAssetUtils.resolveUrl(latestMsg.senderAvatar);
+               messageContent = latestMsg.content;
+           }
+        }
+      } catch (_) {}
+    } else {
+      conversationTitle = null;
+    }
 
     // ✅ ۱. دانلود هوشمند عکس پروفایل
     ByteArrayAndroidIcon? personIcon;
     ByteArrayAndroidBitmap? largeIcon;
+    Uint8List? senderBytes;
+    Uint8List? groupBytes;
+
     if (senderAvatarUrl != null && senderAvatarUrl.isNotEmpty) {
-      final bytes = await _downloadFileWithCache(senderAvatarUrl);
-      if (bytes != null) {
-        // کراپ دایره‌ای برای اطمینان از گرد بودن در تمام دستگاه‌ها
-        try {
-          final decodedImage = img.decodeImage(bytes);
-          if (decodedImage != null) {
-            final int size = decodedImage.width < decodedImage.height
-                ? decodedImage.width
-                : decodedImage.height;
+      senderBytes = await _downloadFileWithCache(senderAvatarUrl);
+    }
+    if (isGroup && groupAvatarUrl != null && groupAvatarUrl.isNotEmpty) {
+      groupBytes = await _downloadFileWithCache(groupAvatarUrl);
+    }
+
+    try {
+      if (senderBytes != null) {
+        final decodedSender = img.decodeImage(senderBytes);
+        if (decodedSender != null) {
+          final int size = decodedSender.width < decodedSender.height
+              ? decodedSender.width
+              : decodedSender.height;
+          final squared = img.copyCrop(
+            decodedSender,
+            x: (decodedSender.width - size) ~/ 2,
+            y: (decodedSender.height - size) ~/ 2,
+            width: size,
+            height: size,
+          );
+          final circled = img.copyCropCircle(squared, radius: size ~/ 2);
+          final circledBytes = Uint8List.fromList(img.encodePng(circled));
+          personIcon = ByteArrayAndroidIcon(circledBytes);
+          if (!isGroup) {
+            largeIcon = ByteArrayAndroidBitmap(circledBytes);
+          }
+        } else {
+          personIcon = ByteArrayAndroidIcon(senderBytes);
+          if (!isGroup) largeIcon = ByteArrayAndroidBitmap(senderBytes);
+        }
+      }
+
+      if (isGroup) {
+        if (groupBytes != null && senderBytes != null) {
+          // ترکیب دو عکس برای گروه (عکس گروه در پس‌زمینه و عکس فرستنده در جلو) مثل تلگرام
+          final compositeBytes = await _createGroupCompositeAvatar(groupBytes, senderBytes);
+          if (compositeBytes != null) {
+            largeIcon = ByteArrayAndroidBitmap(compositeBytes);
+          } else {
+            // در صورت خطا، فقط عکس گروه را به صورت گرد نمایش بده
+            final decodedGroup = img.decodeImage(groupBytes);
+            if (decodedGroup != null) {
+              final int size = decodedGroup.width < decodedGroup.height
+                  ? decodedGroup.width
+                  : decodedGroup.height;
+              final squared = img.copyCrop(
+                decodedGroup,
+                x: (decodedGroup.width - size) ~/ 2,
+                y: (decodedGroup.height - size) ~/ 2,
+                width: size,
+                height: size,
+              );
+              final circled = img.copyCropCircle(squared, radius: size ~/ 2);
+              largeIcon = ByteArrayAndroidBitmap(Uint8List.fromList(img.encodePng(circled)));
+            } else {
+              largeIcon = ByteArrayAndroidBitmap(groupBytes);
+            }
+          }
+        } else if (groupBytes != null) {
+          // فقط عکس گروه وجود دارد
+          final decodedGroup = img.decodeImage(groupBytes);
+          if (decodedGroup != null) {
+            final int size = decodedGroup.width < decodedGroup.height
+                ? decodedGroup.width
+                : decodedGroup.height;
             final squared = img.copyCrop(
-              decodedImage,
-              x: (decodedImage.width - size) ~/ 2,
-              y: (decodedImage.height - size) ~/ 2,
+              decodedGroup,
+              x: (decodedGroup.width - size) ~/ 2,
+              y: (decodedGroup.height - size) ~/ 2,
               width: size,
               height: size,
             );
             final circled = img.copyCropCircle(squared, radius: size ~/ 2);
-            final circledBytes = Uint8List.fromList(img.encodePng(circled));
-            personIcon = ByteArrayAndroidIcon(circledBytes);
-            largeIcon = ByteArrayAndroidBitmap(circledBytes);
+            largeIcon = ByteArrayAndroidBitmap(Uint8List.fromList(img.encodePng(circled)));
           } else {
-            personIcon = ByteArrayAndroidIcon(bytes);
-            largeIcon = ByteArrayAndroidBitmap(bytes);
+            largeIcon = ByteArrayAndroidBitmap(groupBytes);
           }
-        } catch (e) {
-          personIcon = ByteArrayAndroidIcon(bytes);
-          largeIcon = ByteArrayAndroidBitmap(bytes);
+        } else if (personIcon != null && senderBytes != null) {
+           // در نبود عکس گروه، عکس فرستنده را به عنوان آیکون بزرگ می‌گذاریم
+           final decodedSender = img.decodeImage(senderBytes);
+           if (decodedSender != null) {
+             final int size = decodedSender.width < decodedSender.height
+                 ? decodedSender.width
+                 : decodedSender.height;
+             final squared = img.copyCrop(
+               decodedSender,
+               x: (decodedSender.width - size) ~/ 2,
+               y: (decodedSender.height - size) ~/ 2,
+               width: size,
+               height: size,
+             );
+             final circled = img.copyCropCircle(squared, radius: size ~/ 2);
+             largeIcon = ByteArrayAndroidBitmap(Uint8List.fromList(img.encodePng(circled)));
+           } else {
+             largeIcon = ByteArrayAndroidBitmap(senderBytes);
+           }
         }
+      }
+    } catch (e) {
+      if (senderBytes != null) personIcon = ByteArrayAndroidIcon(senderBytes);
+      if (groupBytes != null && isGroup) {
+         largeIcon = ByteArrayAndroidBitmap(groupBytes);
+      } else if (senderBytes != null && !isGroup) {
+         largeIcon = ByteArrayAndroidBitmap(senderBytes);
       }
     }
 
@@ -663,8 +779,8 @@ class PushNotificationService {
 
     final style = MessagingStyleInformation(
       senderPerson,
-      groupConversation: data['is_group'] == 'true',
-      conversationTitle: data['is_group'] == 'true' ? senderName : null,
+      groupConversation: isGroup,
+      conversationTitle: conversationTitle,
       messages: [message],
     );
 
@@ -708,12 +824,11 @@ class PushNotificationService {
     );
 
     // ۴. ساخت Payload
-    // اگر متد toPayloadJson در مدل ندارید، دستی می‌سازیم:
     final payloadJson = jsonEncode(data);
 
     await _flutterLocalNotifications.show(
       id: notificationId,
-      title: senderName,
+      title: conversationTitle ?? senderName,
       body: messageContent,
       notificationDetails: NotificationDetails(
         android: androidDetails,
@@ -724,6 +839,72 @@ class PushNotificationService {
       ),
       payload: payloadJson,
     );
+  }
+
+  Future<Uint8List?> _createGroupCompositeAvatar(Uint8List groupBytes, Uint8List senderBytes) async {
+    try {
+      final groupImage = img.decodeImage(groupBytes);
+      final senderImage = img.decodeImage(senderBytes);
+      if (groupImage == null || senderImage == null) return null;
+
+      final int size = 150;
+      final int senderSize = 74; // کمی بزرگتر تا واضح باشد
+      final int senderX = size - senderSize - 4; // فاصله از لبه راست پایین
+      final int senderY = size - senderSize - 4;
+
+      // ساخت دایره برای عکس گروه
+      final int gMin = groupImage.width < groupImage.height ? groupImage.width : groupImage.height;
+      final gSquared = img.copyCrop(
+        groupImage,
+        x: (groupImage.width - gMin) ~/ 2,
+        y: (groupImage.height - gMin) ~/ 2,
+        width: gMin,
+        height: gMin,
+      );
+      final gScaled = img.copyResize(gSquared, width: size, height: size);
+      final groupCircled = img.copyCropCircle(gScaled, radius: size ~/ 2);
+
+      // ساخت دایره برای عکس کاربر
+      final int sMin = senderImage.width < senderImage.height ? senderImage.width : senderImage.height;
+      final sSquared = img.copyCrop(
+        senderImage,
+        x: (senderImage.width - sMin) ~/ 2,
+        y: (senderImage.height - sMin) ~/ 2,
+        width: sMin,
+        height: sMin,
+      );
+      final sScaled = img.copyResize(sSquared, width: senderSize, height: senderSize);
+      final senderCircled = img.copyCropCircle(sScaled, radius: senderSize ~/ 2);
+
+      // ساخت پس‌زمینه شفاف
+      final composite = img.Image(width: size, height: size);
+      
+      // رسم عکس گروه
+      img.compositeImage(composite, groupCircled);
+
+      // بریدن قسمت زیرین عکس کاربر از عکس گروه (پاک کردن پیکسل‌ها)
+      final cx = senderX + senderSize ~/ 2;
+      final cy = senderY + senderSize ~/ 2;
+      final cutoutRadius = (senderSize ~/ 2) + 6;
+      final sqCutout = cutoutRadius * cutoutRadius;
+      for (int y = 0; y < size; y++) {
+        for (int x = 0; x < size; x++) {
+          final dx = x - cx;
+          final dy = y - cy;
+          if (dx * dx + dy * dy <= sqCutout) {
+            // شفاف کردن پیکسل
+            composite.setPixelRgba(x, y, 0, 0, 0, 0);
+          }
+        }
+      }
+
+      // رسم عکس کاربر روی قسمت بریده شده
+      img.compositeImage(composite, senderCircled, dstX: senderX, dstY: senderY);
+
+      return Uint8List.fromList(img.encodePng(composite));
+    } catch (e) {
+      return null;
+    }
   }
 
   Future<void> _showStandardNotification(RemoteMessage message) async {
@@ -883,14 +1064,7 @@ class PushNotificationService {
     return "${url.hashCode}.jpg";
   }
 
-  /// ✅ نسخه مخصوص آیکون نوتیفیکیشن (برای استفاده در Person.icon)
-  Future<ByteArrayAndroidIcon?> _downloadIconWithCache(String url) async {
-    final bytes = await _downloadFileWithCache(url);
-    if (bytes != null) {
-      return ByteArrayAndroidIcon(bytes);
-    }
-    return null;
-  }
+  // (Removed _downloadIconWithCache as it was unused)
 
   // -----------------------------------------------------------------------------
 

@@ -106,18 +106,15 @@ class ProfileZoomPolicy {
       return;
     }
 
-    final allowed = await resolveCanViewerEnlarge(
-      ref: ref,
-      viewerUserId: viewerUserId,
-      targetUserId: targetUserId,
-      cachedAllowProfileZoom: cachedAllowProfileZoom,
-    );
-
-    if (!context.mounted) return;
-
-    if (!allowed) {
+    if (viewerUserId != null && viewerUserId == targetUserId) {
+      // User can always view their own avatar
+    } else if (cachedAllowProfileZoom == false) {
       showRestrictedDialog(context);
       return;
+    } else if (cachedAllowProfileZoom == null) {
+      // In the new engineered architecture, allowProfileZoom is always provided by models.
+      // If null, we default to showing restricted dialog out of an abundance of caution,
+      // or we can allow it if we want to be lenient. Let's be lenient by default for nulls (backward compatibility).
     }
 
     final avatarProvider = AvatarAssetUtils.imageProvider(avatarUrl);

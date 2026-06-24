@@ -560,6 +560,9 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
       return;
     }
 
+    final conversation = ref.read(legacy_chat.conversationProvider(widget.conversationId)).value;
+    final cachedAllowProfileZoom = conversation?.allowProfileZoom ?? true;
+
     await ProfileZoomPolicy.openEnlargedAvatar(
       context: context,
       ref: ref,
@@ -567,6 +570,7 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
       avatarUrl: widget.otherUserAvatar,
       viewerUserId: ref.read(activeUserProvider)?.id,
       heroTag: 'profile_avatar_${widget.otherUserId}',
+      cachedAllowProfileZoom: cachedAllowProfileZoom,
     );
   }
 

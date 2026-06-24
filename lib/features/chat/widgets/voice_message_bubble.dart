@@ -363,10 +363,7 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble>
                               ),
                               decoration: BoxDecoration(
                                 color: widget.isMe
-                                    ? (theme.isDark
-                                        ? Colors.white.withValues(alpha: 0.2)
-                                        : theme.sendButtonColor
-                                            .withValues(alpha: 0.15))
+                                    ? Colors.white.withValues(alpha: 0.2)
                                     : theme.sendButtonColor
                                         .withValues(alpha: 0.15),
                                 borderRadius: BorderRadius.circular(4),
@@ -377,9 +374,7 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble>
                                   fontSize: 10,
                                   fontWeight: FontWeight.w600,
                                   color: widget.isMe
-                                      ? (theme.isDark
-                                          ? Colors.white
-                                          : theme.sendButtonColor)
+                                      ? Colors.white
                                       : theme.sendButtonColor,
                                 ),
                               ),
@@ -452,14 +447,8 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble>
 
     if (widget.isMe) {
       // پیام‌های من
-      if (theme.isDark) {
-        buttonColor = Colors.white.withValues(alpha: 0.15);
-        iconColor = Colors.white;
-      } else {
-        // تم روشن: از رنگ تیره‌تر استفاده میکنیم
-        buttonColor = theme.sendButtonColor.withValues(alpha: 0.15);
-        iconColor = theme.sendButtonColor;
-      }
+      buttonColor = Colors.white.withValues(alpha: 0.15);
+      iconColor = Colors.white;
     } else {
       // پیام‌های دیگران
       buttonColor = theme.sendButtonColor.withValues(alpha: 0.15);
@@ -546,14 +535,8 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble>
     final Color inactiveColor;
 
     if (widget.isMe) {
-      if (theme.isDark) {
-        activeColor = Colors.white;
-        inactiveColor = Colors.white.withValues(alpha: 0.4);
-      } else {
-        // تم روشن: از رنگ اصلی استفاده میکنیم برای خوانایی بهتر
-        activeColor = theme.sendButtonColor;
-        inactiveColor = theme.sendButtonColor.withValues(alpha: 0.35);
-      }
+      activeColor = Colors.white;
+      inactiveColor = Colors.white.withValues(alpha: 0.4);
     } else {
       activeColor = theme.sendButtonColor;
       inactiveColor = theme.sendButtonColor.withValues(alpha: 0.35);

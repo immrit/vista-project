@@ -1,4 +1,4 @@
-﻿import 'dart:io';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -41,6 +41,12 @@ class _StoryCreationScreenState extends ConsumerState<StoryCreationScreen>
   AssetPathEntity? _selectedAlbum;
   List<AssetEntity> _mediaItems = [];
   bool _isLoadingMedia = true;
+  
+  // Pagination
+  int _currentPage = 0;
+  final int _itemsPerPage = 30;
+  bool _hasMoreMedia = true;
+  bool _isLoadingMoreMedia = false;
 
   // UI state
   bool _isProcessing = false;
@@ -130,20 +136,44 @@ class _StoryCreationScreenState extends ConsumerState<StoryCreationScreen>
     }
   }
 
-  Future<void> _loadMediaFromAlbum(AssetPathEntity album) async {
-    setState(() => _isLoadingMedia = true);
+  Future<void> _loadMediaFromAlbum(AssetPathEntity album, {bool refresh = true}) async {
+    if (refresh) {
+      setState(() {
+        _isLoadingMedia = true;
+        _currentPage = 0;
+        _mediaItems.clear();
+        _hasMoreMedia = true;
+      });
+    } else {
+      if (!_hasMoreMedia || _isLoadingMoreMedia) return;
+      setState(() => _isLoadingMoreMedia = true);
+    }
 
     try {
-      final media = await album.getAssetListRange(start: 0, end: 100);
+      final media = await album.getAssetListPaged(page: _currentPage, size: _itemsPerPage);
       if (mounted) {
         setState(() {
-          _mediaItems = media;
-          _isLoadingMedia = false;
+          if (refresh) {
+            _mediaItems = media;
+          } else {
+            _mediaItems.addAll(media);
+          }
+          _hasMoreMedia = media.length == _itemsPerPage;
+          if (refresh) {
+            _isLoadingMedia = false;
+          } else {
+            _isLoadingMoreMedia = false;
+          }
         });
       }
     } catch (e) {
       debugPrint('Media load error: $e');
-      setState(() => _isLoadingMedia = false);
+      if (mounted) {
+        setState(() {
+          _isLoadingMedia = false;
+          _isLoadingMoreMedia = false;
+        });
+      }
     }
   }
 
@@ -153,11 +183,39 @@ class _StoryCreationScreenState extends ConsumerState<StoryCreationScreen>
     HapticFeedback.lightImpact();
     setState(() {
       _isRearCamera = !_isRearCamera;
-      _isCameraInitialized = false;
     });
 
-    await _cameraController?.dispose();
-    await _initCamera();
+    final oldController = _cameraController;
+
+    final camera = _isRearCamera
+        ? _cameras.firstWhere(
+            (c) => c.lensDirection == CameraLensDirection.back,
+            orElse: () => _cameras.first,
+          )
+        : _cameras.firstWhere(
+            (c) => c.lensDirection == CameraLensDirection.front,
+            orElse: () => _cameras.first,
+          );
+
+    final newController = CameraController(
+      camera,
+      ResolutionPreset.high,
+      enableAudio: true,
+    );
+
+    try {
+      await newController.initialize();
+      if (mounted) {
+        setState(() {
+          _cameraController = newController;
+        });
+        await oldController?.dispose();
+      } else {
+        await newController.dispose();
+      }
+    } catch (e) {
+      debugPrint('Camera init error: $e');
+    }
   }
 
   void _toggleFlash() async {
@@ -239,35 +297,31 @@ class _StoryCreationScreenState extends ConsumerState<StoryCreationScreen>
   }
 
   Future<void> _processMedia(File file, StoryMediaType type) async {
-    if (type == StoryMediaType.video) {
-      await _showVideoUploadOptions(file);
-    } else {
-      // رفتن به ویرایشگر
-      if (!mounted) return;
-      final result = await Navigator.push<Map<String, dynamic>>(
-        context,
-        MaterialPageRoute(
-          builder: (context) => StoryEditorScreen(
-            mediaFile: file,
-            mediaType: type,
-          ),
+    // رفتن به ویرایشگر (برای عکس و ویدیو)
+    if (!mounted) return;
+    final result = await Navigator.push<Map<String, dynamic>>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => StoryEditorScreen(
+          mediaFile: file,
+          mediaType: type,
         ),
-      );
+      ),
+    );
 
-      if (result != null && mounted) {
-        // اگر استوری با موفقیت ساخته شد، شروع آپلود
-        await _uploadStory(
-          result['media'] as File,
-          type,
-          caption: result['caption'] as String?,
-          interactiveElements:
-              result['elements'] as List<StoryElement>?, // Send elements
-          duration:
-              (result['duration'] as StoryDuration?) ?? StoryDuration.hours24,
-          privacy: (result['privacy'] as StoryPrivacyType?) ??
-              StoryPrivacyType.everyone,
-        );
-      }
+    if (result != null && mounted) {
+      // اگر استوری با موفقیت ساخته شد، شروع آپلود
+      await _uploadStory(
+        result['media'] as File,
+        type,
+        caption: result['caption'] as String?,
+        interactiveElements:
+            result['elements'] as List<StoryElement>?, // Send elements
+        duration:
+            (result['duration'] as StoryDuration?) ?? StoryDuration.hours24,
+        privacy: (result['privacy'] as StoryPrivacyType?) ??
+            StoryPrivacyType.everyone,
+      );
     }
   }
 
@@ -498,7 +552,7 @@ class _StoryCreationScreenState extends ConsumerState<StoryCreationScreen>
         selectedAlbum: _selectedAlbum,
         onAlbumSelected: (album) {
           setState(() => _selectedAlbum = album);
-          _loadMediaFromAlbum(album);
+          _loadMediaFromAlbum(album, refresh: true);
           Navigator.pop(context);
         },
       ),
@@ -761,22 +815,45 @@ class _StoryCreationScreenState extends ConsumerState<StoryCreationScreen>
       );
     }
 
-    return GridView.builder(
-      controller: scrollController,
-      padding: const EdgeInsets.all(2),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 4,
-        crossAxisSpacing: 2,
-        mainAxisSpacing: 2,
-      ),
-      itemCount: _mediaItems.length,
-      itemBuilder: (context, index) {
-        final asset = _mediaItems[index];
-        return _MediaThumbnail(
-          asset: asset,
-          onTap: () => _selectMedia(asset),
-        );
+    return NotificationListener<ScrollNotification>(
+      onNotification: (ScrollNotification scrollInfo) {
+        if (scrollInfo.metrics.pixels >= scrollInfo.metrics.maxScrollExtent - 200 && !_isLoadingMoreMedia && _hasMoreMedia) {
+          if (_selectedAlbum != null) {
+            _currentPage++;
+            _loadMediaFromAlbum(_selectedAlbum!, refresh: false);
+          }
+        }
+        return false;
       },
+      child: GridView.builder(
+        controller: scrollController,
+        padding: const EdgeInsets.all(2),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 4,
+          crossAxisSpacing: 2,
+          mainAxisSpacing: 2,
+        ),
+        itemCount: _mediaItems.length + (_isLoadingMoreMedia ? 4 : 0),
+        itemBuilder: (context, index) {
+          if (index >= _mediaItems.length) {
+            return Container(
+              color: Colors.grey[900],
+              child: const Center(
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                ),
+              ),
+            );
+          }
+          final asset = _mediaItems[index];
+          return _MediaThumbnail(
+            asset: asset,
+            onTap: () => _selectMedia(asset),
+          );
+        },
+      ),
     );
   }
 

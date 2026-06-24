@@ -506,6 +506,7 @@ class _ImprovedAnimatedMessageBubbleState
         padding: const EdgeInsets.only(left: 12, right: 12, top: 8, bottom: 6),
         child: ChatTextBubbleLayout(
           textDirection: contentDirection,
+          isMe: widget.isMe,
           gap: 2,
           text: Directionality(
             textDirection: contentDirection,
@@ -1926,20 +1927,32 @@ class _ImprovedAnimatedMessageBubbleState
 
   Widget _buildBottomRow(ChatTheme theme) {
     return Row(
+      textDirection: TextDirection.ltr,
       mainAxisSize: MainAxisSize.max,
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
-        if (widget.reactions.isNotEmpty)
-          Flexible(
-            child: Padding(
-              padding: const EdgeInsetsDirectional.only(end: 8.0),
-              child: _buildReactionsWrap(theme),
+        if (!widget.isMe) ...[
+          _buildTimeAndStatus(theme),
+          if (widget.reactions.isNotEmpty)
+            Flexible(
+              child: Padding(
+                padding: const EdgeInsetsDirectional.only(start: 8.0),
+                child: _buildReactionsWrap(theme),
+              ),
             ),
-          )
-        else
-          const SizedBox(width: 0),
-        _buildTimeAndStatus(theme),
+        ] else ...[
+          if (widget.reactions.isNotEmpty)
+            Flexible(
+              child: Padding(
+                padding: const EdgeInsetsDirectional.only(end: 8.0),
+                child: _buildReactionsWrap(theme),
+              ),
+            )
+          else
+            const SizedBox(width: 0),
+          _buildTimeAndStatus(theme),
+        ],
       ],
     );
   }

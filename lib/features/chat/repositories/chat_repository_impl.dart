@@ -145,10 +145,21 @@ class ChatRepositoryImpl implements ChatRepository {
 
     sseSub = SseManager.instance.events.listen((event) async {
       final type = event['type'] as String?;
+      
+      if (type == 'message_deleted') {
+        final data = event['data'] as Map<String, dynamic>?;
+        final msgId = data?['message_id']?.toString();
+        final conversationId = data?['conversation_id']?.toString();
+        if (msgId != null && conversationId != null) {
+          unawaited(_local.deleteMessage(msgId));
+          unawaited(MessageTombstoneService()
+              .markDeletedRemotely(msgId, conversationId));
+        }
+      }
+      
       if (type == 'new_message' ||
           type == 'conversation_updated' ||
-          type == 'conversation_cleared' ||
-          type == 'message_deleted') {
+          type == 'conversation_cleared') {
         unawaited(_syncConversations(uid));
       }
     });
@@ -358,17 +369,10 @@ class ChatRepositoryImpl implements ChatRepository {
       final type = event['type'] as String?;
       if (type == 'new_message' ||
           type == 'message_updated' ||
-          type == 'message_deleted' ||
           type == 'read_receipt') {
         final data = event['data'] as Map<String, dynamic>?;
         final convId = data?['conversation_id']?.toString();
         if (convId == conversationId) {
-          if (type == 'message_deleted' && data?['message_id'] != null) {
-            final msgId = data!['message_id'].toString();
-            unawaited(_local.deleteMessage(msgId));
-            unawaited(MessageTombstoneService()
-                .markDeletedRemotely(msgId, conversationId));
-          }
           if (type == 'read_receipt') {
             final readerId = data?['user_id']?.toString() ?? '';
             final readAtRaw = data?['read_at']?.toString() ?? '';
@@ -1247,7 +1251,21 @@ class ChatRepositoryImpl implements ChatRepository {
     final uid = await _userId();
     final opts = await _authOptions();
     if (uid == null || opts == null) {
-      return ChatResult.failure('Ú©Ø§Ø±Ø¨Ø± ÙˆØ§Ø±Ø¯ Ù†Ø´Ø¯Ù‡ Ø§Ø³Øª');
+      return ChatResult.failure('کاربر وارد نشده است');
+    }
+
+    // Optimistic UI Update
+    final currentConv = await _local.getConversation(conversationId, uid);
+    if (currentConv != null) {
+      ConversationModel updatedConv = currentConv;
+      if (action == 'archive') {
+        updatedConv = currentConv.copyWith(isArchived: !currentConv.isArchived);
+      } else if (action == 'pin') {
+        updatedConv = currentConv.copyWith(isPinned: !currentConv.isPinned);
+      } else if (action == 'mute') {
+        updatedConv = currentConv.copyWith(isMuted: !currentConv.isMuted);
+      }
+      await _local.saveConversation(updatedConv);
     }
 
     try {
@@ -1258,6 +1276,10 @@ class ChatRepositoryImpl implements ChatRepository {
       await _local.saveConversation(_convFromGo(_asMap(res.data), uid));
       return ChatResult.success(null);
     } on DioException catch (e) {
+      // Revert Optimistic UI Update
+      if (currentConv != null) {
+        await _local.saveConversation(currentConv);
+      }
       return ChatResult.failure(_dioError(e));
     }
   }

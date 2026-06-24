@@ -249,9 +249,9 @@ class StoryUploadService {
 
       final img = await FlutterImageCompress.compressWithFile(
         file.absolute.path,
-        minWidth: 1080,
-        minHeight: 1920,
-        quality: 85,
+        minWidth: 1440,
+        minHeight: 2560,
+        quality: 90,
         format: CompressFormat.jpeg,
       );
 

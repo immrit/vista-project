@@ -26,8 +26,8 @@ class NotificationSoundService {
           isSpeakerphoneOn: false,
           stayAwake: false,
           contentType: AndroidContentType.sonification,
-          usageType: AndroidUsageType.notificationEvent,
-          audioFocus: AndroidAudioFocus.gainTransientMayDuck,
+          usageType: AndroidUsageType.media, // Changed from notificationEvent to media
+          audioFocus: AndroidAudioFocus.none, // Prevent ducking (lowering background music)
         ),
         iOS: AudioContextIOS(
           category: AVAudioSessionCategory.ambient,
@@ -62,7 +62,7 @@ class NotificationSoundService {
       
       // Stop current playback to restart it immediately if called multiple times rapidly
       await _sentPlayer.stop();
-      await _sentPlayer.play(AssetSource('sounds/message-sent.mp3'));
+      await _sentPlayer.play(AssetSource('sounds/message-sent.mp3'), volume: 0.4);
     } catch (e, st) {
       logError('Failed to play message sent sound', error: e, stackTrace: st);
     }
@@ -74,7 +74,7 @@ class NotificationSoundService {
       if (!_initialized) await init();
 
       await _receivedPlayer.stop();
-      await _receivedPlayer.play(AssetSource('sounds/message-recive.mp3'));
+      await _receivedPlayer.play(AssetSource('sounds/message-recive.mp3'), volume: 0.4);
     } catch (e, st) {
       logError('Failed to play message received sound', error: e, stackTrace: st);
     }

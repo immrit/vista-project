@@ -24,7 +24,16 @@ import '../widgets/audio_equalizer_bars.dart';
 import '../../profile/data/profile_repository.dart';
 
 class AddPublicPostScreen extends ConsumerStatefulWidget {
-  const AddPublicPostScreen({super.key});
+  /// فایل‌های از پیش انتخاب‌شده (از share intent)
+  final List<File> preloadedFiles;
+  /// متن از پیش پر‌شده (از share intent)
+  final String? preloadedText;
+
+  const AddPublicPostScreen({
+    super.key,
+    this.preloadedFiles = const [],
+    this.preloadedText,
+  });
 
   @override
   _AddPublicPostScreenState createState() => _AddPublicPostScreenState();
@@ -82,10 +91,53 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
     contentController.addListener(() {
       if (mounted) setState(() {});
     });
-    // ... existing initState logic if any
+
+    // استفاده از فایل‌های share شده بدون باز کردن picker
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _applyPreloadedContent();
+    });
   }
 
-  // ... (keeping existing initState and other methods)
+  void _applyPreloadedContent() {
+    if (!mounted) return;
+    final files = widget.preloadedFiles;
+    if (files.isEmpty && widget.preloadedText == null) return;
+
+    setState(() {
+      // تکست
+      if (widget.preloadedText != null) {
+        contentController.text = widget.preloadedText!;
+      }
+
+      if (files.isNotEmpty) {
+        final mimeHint = files.first.path.toLowerCase();
+        final isVideo = mimeHint.endsWith('.mp4') ||
+            mimeHint.endsWith('.mov') ||
+            mimeHint.endsWith('.avi') ||
+            mimeHint.endsWith('.mkv');
+
+        if (isVideo) {
+          _selectedVideo = files.first;
+          _initVideoPlayer(files.first);
+        } else {
+          // عکس یا چندین عکس
+          if (files.length == 1) {
+            _selectedImage = files.first;
+          } else {
+            _selectedImages.addAll(files.take(_maxGalleryImages));
+          }
+        }
+      }
+    });
+  }
+
+  Future<void> _initVideoPlayer(File file) async {
+    try {
+      _videoPlayerController = VideoPlayerController.file(file);
+      await _videoPlayerController!.initialize();
+      if (mounted) setState(() {});
+    } catch (_) {}
+  }
 
   // متد جدید برای تولید میکرو-تامبنیل
   Future<void> _generateMicroThumbnail(File videoFile) async {

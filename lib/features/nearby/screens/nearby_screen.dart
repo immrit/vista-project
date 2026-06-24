@@ -8,6 +8,7 @@ import 'package:Vista/core/theme/app_theme.dart';
 import '../models/nearby_models.dart';
 import '../providers/nearby_provider.dart';
 import '../widgets/nearby_card.dart';
+import '../widgets/location_permission_dialog.dart';
 import 'nearby_likes_screen.dart';
 
 class NearbyScreen extends ConsumerStatefulWidget {
@@ -96,24 +97,56 @@ class _NearbyScreenState extends ConsumerState<NearbyScreen>
     });
     try {
       if (!await Geolocator.isLocationServiceEnabled()) {
+        if (!mounted) return;
         setState(() {
           _locating = false;
           _locationError = 'service_off';
         });
         return;
       }
+
       var perm = await Geolocator.checkPermission();
+
       if (perm == LocationPermission.denied) {
+        // ── پیش از پرسش سیستم: dialog اقناعی نشون بده ────────────────────
+        if (!mounted) return;
+        final userAgreed =
+            await LocationPermissionDialog.showRequest(context);
+        if (!mounted) return;
+        if (!userAgreed) {
+          // کاربر خودش رد کرد — بدون پرسش سیستم
+          setState(() {
+            _locating = false;
+            _locationError = 'permission';
+          });
+          return;
+        }
         perm = await Geolocator.requestPermission();
       }
-      if (perm == LocationPermission.denied ||
-          perm == LocationPermission.deniedForever) {
+
+      if (perm == LocationPermission.deniedForever) {
+        // ── راهنمایی به تنظیمات ─────────────────────────────────────────
+        if (!mounted) return;
+        setState(() {
+          _locating = false;
+          _locationError = 'permission_forever';
+        });
+        await LocationPermissionDialog.showSettingsGuide(context);
+        if (!mounted) return;
+        // پس از بستن dialog، اگه کاربر رفت تنظیمات؛ bootstrap مجدد نمی‌زنیم
+        // — کاربر باید خودش از تنظیمات برگرده و دوباره وارد بشه.
+        return;
+      }
+
+      if (perm == LocationPermission.denied) {
+        if (!mounted) return;
         setState(() {
           _locating = false;
           _locationError = 'permission';
         });
         return;
       }
+
       final pos = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
       );
@@ -738,25 +771,42 @@ class _NearbyScreenState extends ConsumerState<NearbyScreen>
 
   // ── State views ────────────────────────────────────────────────────────
   Widget _locationErrorView(bool isDark) {
-    final (msg, action) = switch (_locationError) {
-      'service_off' => ('سرویس موقعیت‌مکانی دستگاه خاموش است', 'فعال‌سازی'),
-      'permission' => (
-          'برای پیدا کردن آدم‌های نزدیک، به دسترسی موقعیت مکانی نیاز داریم',
-          'تلاش مجدد'
+    final (msg, action, icon) = switch (_locationError) {
+      'service_off' => (
+          'سرویس موقعیت‌مکانی دستگاه خاموش است.\nبرای استفاده از «اطراف من» باید GPS فعال باشه.',
+          'فعال‌سازی',
+          Icons.gps_off_rounded,
         ),
-      _ => ('خطا در دریافت موقعیت مکانی', 'تلاش مجدد'),
+      'permission_forever' => (
+          'دسترسی مکان مسدود شده.\nبرای فعال‌سازی باید از تنظیمات دستگاه اجازه بدی.',
+          'راهنمای تنظیمات',
+          Icons.lock_outline_rounded,
+        ),
+      'permission' => (
+          'برای پیدا کردن آدم‌های نزدیک، به دسترسی موقعیت مکانی نیاز داریم.',
+          'فعال‌سازی',
+          Icons.location_off_rounded,
+        ),
+      _ => (
+          'خطا در دریافت موقعیت مکانی',
+          'تلاش مجدد',
+          Icons.error_outline_rounded,
+        ),
     };
     return _centeredMessage(
-      icon: Icons.location_off_rounded,
+      icon: icon,
       message: msg,
       actionLabel: action,
       onAction: () async {
-        if (_locationError == 'permission') {
+        if (_locationError == 'permission_forever') {
+          await LocationPermissionDialog.showSettingsGuide(context);
           await Geolocator.openAppSettings();
         } else if (_locationError == 'service_off') {
           await Geolocator.openLocationSettings();
+          _bootstrap();
+        } else {
+          _bootstrap();
         }
-        _bootstrap();
       },
       isDark: isDark,
     );

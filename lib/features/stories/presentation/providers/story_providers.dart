@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/repositories/story_repository.dart';
@@ -39,16 +41,62 @@ final userStoriesProvider =
 
 // ========== بازدیدکنندگان استوری ==========
 
-final storyViewsProvider = FutureProvider.autoDispose
-    .family<List<StoryView>, String>((ref, storyId) async {
-  final repository = ref.watch(storyRepositoryProvider);
-  final result = await repository.getStoryViews(storyId);
+class StoryViewsNotifier
+    extends AutoDisposeFamilyAsyncNotifier<List<StoryView>, String> {
+  int _offset = 0;
+  final int _limit = 50;
+  bool hasMore = true;
 
-  return result.fold(
-    (error) => throw Exception(error),
-    (data) => data,
-  );
-});
+  @override
+  FutureOr<List<StoryView>> build(String arg) async {
+    return _fetchInitial();
+  }
+
+  Future<List<StoryView>> _fetchInitial() async {
+    _offset = 0;
+    hasMore = true;
+    final repo = ref.read(storyRepositoryProvider);
+    final res = await repo.getStoryViews(arg, limit: _limit, offset: _offset);
+    return res.fold(
+      (err) => throw Exception(err),
+      (data) {
+        hasMore = data.length == _limit;
+        _offset += data.length;
+        return data;
+      },
+    );
+  }
+
+  Future<void> loadMore() async {
+    if (state.isLoading || state.isRefreshing || !hasMore) return;
+
+    // We want to keep previous data while loading more, so we do a background refresh
+    // state = const AsyncLoading(); // this would clear data, we avoid it
+
+    final currentData = state.value ?? [];
+
+    try {
+      final repo = ref.read(storyRepositoryProvider);
+      final res = await repo.getStoryViews(arg, limit: _limit, offset: _offset);
+
+      res.fold(
+        (err) => throw Exception(err),
+        (data) {
+          hasMore = data.length == _limit;
+          _offset += data.length;
+          state = AsyncData([...currentData, ...data]);
+        },
+      );
+    } catch (e, st) {
+      state = AsyncError(e, st);
+    }
+  }
+}
+
+final storyViewsProvider = AsyncNotifierProvider.autoDispose
+    .family<StoryViewsNotifier, List<StoryView>, String>(
+  StoryViewsNotifier.new,
+);
 
 // ========== Highlights یک کاربر ==========
 
@@ -184,8 +232,7 @@ class StoryUploadNotifier extends StateNotifier<StoryUploadState> {
 }
 
 final storyUploadProvider =
-    StateNotifierProvider.autoDispose<StoryUploadNotifier, StoryUploadState>(
-        (ref) {
+    StateNotifierProvider<StoryUploadNotifier, StoryUploadState>((ref) {
   final repository = ref.watch(storyRepositoryProvider);
   return StoryUploadNotifier(repository, ref);
 });

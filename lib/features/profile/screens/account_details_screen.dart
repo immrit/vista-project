@@ -475,13 +475,6 @@ class _AdditionalAccountDetailsCard extends StatelessWidget {
 
     items.addAll([
       _InfoRowData(
-        icon: Icons.public_outlined,
-        label: 'کشور محل ثبت‌نام',
-        value: _orUnknown(profile.registrationCountry),
-        iconBgColor: iconBgColor,
-        iconColor: iconColor,
-      ),
-      _InfoRowData(
         icon: Icons.location_on_outlined,
         label: 'مکان / شهر',
         value: _orUnknown(profile.location),

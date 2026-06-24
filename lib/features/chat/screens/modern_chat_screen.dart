@@ -139,6 +139,8 @@ class ChatScreenArgs {
   final String? initialReplySenderId;
   final bool initialReplyFromNote;
   final String? initialDraftMessage;
+  /// فایل‌های share شده که باید در چت فرستاده شوند
+  final List<String> initialSharedFilePaths;
 
   const ChatScreenArgs({
     required this.conversationId,
@@ -152,6 +154,7 @@ class ChatScreenArgs {
     this.initialReplySenderId,
     this.initialReplyFromNote = false,
     this.initialDraftMessage,
+    this.initialSharedFilePaths = const [],
   });
 }
 
@@ -488,11 +491,37 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       );
     }
 
+    // اگر فایل‌های share شده وجود داشت، بعد از آماده‌شدن چت آن‌ها را ارسال کن
+    final sharedPaths = widget.args.initialSharedFilePaths;
+    if (sharedPaths.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        await Future.delayed(const Duration(milliseconds: 600));
+        if (!mounted) return;
+        final files = sharedPaths
+            .map((p) => File(p))
+            .where((f) => f.existsSync())
+            .toList();
+        if (files.isEmpty) return;
+        final selection = AttachmentSelection(
+          type: ChatAttachmentType.gallery,
+          files: files
+              .map((f) => SelectedAttachmentFile(
+                    file: f,
+                    displayFileName: f.path.split('/').last,
+                    mimeType: _guessMimeTypeFromPath(f.path),
+                  ))
+              .toList(),
+        );
+        await _handleAttachmentSelected(selection);
+      });
+    }
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _focusNode.requestFocus();
     });
   }
+
 
   String? get _activeReplyContent => _resolveReplyContentForSend(
         replyTo: _replyToMessage,
@@ -2804,25 +2833,18 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       _pendingDeleteTimers[batchId] = deleteTimer;
 
       if (mounted) {
-        ScaffoldMessenger.of(context).hideCurrentSnackBar();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            behavior: SnackBarBehavior.floating,
-            margin: const EdgeInsets.only(bottom: 80, left: 16, right: 16),
-            content: Text(
-                '${messageIds.length} پیام برای حذف آماده شد'.toPersianDigit()),
-            duration: const Duration(seconds: 4),
-            action: SnackBarAction(
-              label: 'بازگردانی',
-              onPressed: () {
-                final timer = _pendingDeleteTimers.remove(batchId);
-                timer?.cancel();
-                if (!mounted) return;
-                _deletingMessageIds.removeAll(messageIds);
-                _hiddenMessageIds.removeAll(messageIds);
-                _bumpListOverlay();
-              },
-            ),
+        _showInfoSnackBar(
+          '${messageIds.length} پیام برای حذف آماده شد'.toPersianDigit(),
+          action: SnackBarAction(
+            label: 'بازگردانی',
+            onPressed: () {
+              final timer = _pendingDeleteTimers.remove(batchId);
+              timer?.cancel();
+              if (!mounted) return;
+              _deletingMessageIds.removeAll(messageIds);
+              _hiddenMessageIds.removeAll(messageIds);
+              _bumpListOverlay();
+            },
           ),
         );
       }
@@ -3111,9 +3133,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       final inviteLink = 'https://cafevista.ir/group/$inviteCode';
       await Clipboard.setData(ClipboardData(text: inviteLink));
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('لینک دعوت گروه کپی شد')),
-        );
+        _showInfoSnackBar('لینک دعوت گروه کپی شد');
       }
     } catch (error) {
       if (mounted) _showErrorSnackBar('برای دریافت لینک دعوت دسترسی ندارید');
@@ -4651,8 +4671,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   Future<void> _sendMessage() async {
     if (!mounted) return;
 
-    var content = _messageController.text.trim();
-    if (content.isEmpty) return;
+    var fullContent = _messageController.text.trim();
+    if (fullContent.isEmpty) return;
 
     _messageController.clear();
 
@@ -4660,112 +4680,134 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     final pendingReply = _pendingReplyContext;
     if (mounted) _clearReplyContext();
 
+    // اسپلیت کردن پیام‌های طولانی (مثل تلگرام)
+    final int limit = 4096;
+    final List<String> chunks = [];
+    for (int i = 0; i < fullContent.length; i += limit) {
+      chunks.add(fullContent.substring(
+          i, i + limit > fullContent.length ? fullContent.length : i + limit));
+    }
+
     try {
-      if (widget.args.isSecret) {
-        final prefs = await SharedPreferences.getInstance();
-        final peerPubB64 =
-            prefs.getString('e2e_peer_pub_${widget.args.conversationId}');
-        if (peerPubB64 == null) {
-          _showErrorSnackBar(
-              'درحال تبادل کلید امنیتی با مخاطب هستیم... لطفاً کمی صبر کنید');
-          return;
-        }
-
-        final e2e = E2EEncryptionService();
-        final myKeyPair = await e2e.getSavedKeyPair(_currentUserId!);
-        if (myKeyPair == null) {
-          _showErrorSnackBar('خطا: کلید امنیتی محلی یافت نشد.');
-          return;
-        }
-
-        final sharedSecret = await e2e.computeSharedSecret(
-          myKeyPair: myKeyPair,
-          peerPublicKeyBytes: base64Decode(peerPubB64),
-        );
-
-        // جایگزین کردن محتوای واقعی با محتوای رمزنگاری شده
-        content = await e2e.encryptMessage(content, sharedSecret);
-      }
-
       String targetConvId = widget.args.conversationId;
       bool wasEmpty = targetConvId.isEmpty;
+      bool shouldPushReplacement = false;
 
-      if (wasEmpty) {
-        final convResult = await _chatRepository.createConversation(
-          widget.args.otherUserId,
-          isSecret: widget.args.isSecret,
+      for (int i = 0; i < chunks.length; i++) {
+        var content = chunks[i];
+
+        if (widget.args.isSecret) {
+          final prefs = await SharedPreferences.getInstance();
+          final peerPubB64 =
+              prefs.getString('e2e_peer_pub_${widget.args.conversationId}');
+          if (peerPubB64 == null) {
+            _showErrorSnackBar(
+                'درحال تبادل کلید امنیتی با مخاطب هستیم... لطفاً کمی صبر کنید');
+            return;
+          }
+
+          final e2e = E2EEncryptionService();
+          final myKeyPair = await e2e.getSavedKeyPair(_currentUserId!);
+          if (myKeyPair == null) {
+            _showErrorSnackBar('خطا: کلید امنیتی محلی یافت نشد.');
+            return;
+          }
+
+          final sharedSecret = await e2e.computeSharedSecret(
+            myKeyPair: myKeyPair,
+            peerPublicKeyBytes: base64Decode(peerPubB64),
+          );
+
+          // جایگزین کردن محتوای واقعی با محتوای رمزنگاری شده
+          content = await e2e.encryptMessage(content, sharedSecret);
+        }
+
+        if (wasEmpty && i == 0) {
+          final convResult = await _chatRepository.createConversation(
+            widget.args.otherUserId,
+            isSecret: widget.args.isSecret,
+          );
+          if (!convResult.isSuccess || convResult.data == null) {
+            _showErrorSnackBar(convResult.error ?? 'خطا در ایجاد گفتگو');
+            return;
+          }
+          targetConvId = convResult.data!.id;
+          shouldPushReplacement = true;
+        }
+
+        final params = SendMessageParams(
+          conversationId: targetConvId,
+          content: content,
+          replyToMessageId: i == 0 ? _resolveReplyToMessageId(
+              replyTo: replyTo, pendingReply: pendingReply) : null,
+          replyToContent: i == 0 ? _resolveReplyContentForSend(
+            replyTo: replyTo,
+            pendingReply: pendingReply,
+          ) : null,
+          replyToSenderName: i == 0 ? _resolveReplySenderNameForSend(
+            replyTo: replyTo,
+            pendingReply: pendingReply,
+          ) : null,
+          replyToKind: i == 0 ? _resolveReplyToKind(
+              replyTo: replyTo, pendingReply: pendingReply) : null,
+          recipientPublicKey:
+              widget.args.isSecret ? _otherUserProfile?.publicKey : null,
         );
-        if (!convResult.isSuccess || convResult.data == null) {
-          _showErrorSnackBar(convResult.error ?? 'خطا در ایجاد گفتگو');
+
+        if (!mounted) return;
+
+        final result =
+            await ref.read(chatActionControllerProvider.notifier).sendMessage(
+                  conversationId: params.conversationId,
+                  content: params.content,
+                  replyToMessageId: params.replyToMessageId,
+                  replyToContent: params.replyToContent,
+                  replyToSenderName: params.replyToSenderName,
+                  replyToKind: params.replyToKind,
+                  recipientPublicKey:
+                      widget.args.isSecret ? params.recipientPublicKey : null,
+                );
+
+        if (!mounted) return;
+
+        if (!result.isSuccess) {
+          _showErrorSnackBar(result.error ?? 'خطا در ارسال پیام');
           return;
         }
-        targetConvId = convResult.data!.id;
+
+        // فاصله کوتاه بین پیام‌ها برای حفظ ترتیب
+        if (chunks.length > 1 && i < chunks.length - 1) {
+          await Future.delayed(const Duration(milliseconds: 100));
+        }
       }
 
-      final params = SendMessageParams(
-        conversationId: targetConvId,
-        content: content,
-        replyToMessageId: _resolveReplyToMessageId(
-            replyTo: replyTo, pendingReply: pendingReply),
-        replyToContent: _resolveReplyContentForSend(
-          replyTo: replyTo,
-          pendingReply: pendingReply,
-        ),
-        replyToSenderName: _resolveReplySenderNameForSend(
-          replyTo: replyTo,
-          pendingReply: pendingReply,
-        ),
-        replyToKind:
-            _resolveReplyToKind(replyTo: replyTo, pendingReply: pendingReply),
-        recipientPublicKey:
-            widget.args.isSecret ? _otherUserProfile?.publicKey : null,
-      );
-
-      if (!mounted) return;
-
-      final result =
-          await ref.read(chatActionControllerProvider.notifier).sendMessage(
-                conversationId: params.conversationId,
-                content: params.content,
-                replyToMessageId: params.replyToMessageId,
-                replyToContent: params.replyToContent,
-                replyToSenderName: params.replyToSenderName,
-                replyToKind: params.replyToKind,
-                recipientPublicKey:
-                    widget.args.isSecret ? params.recipientPublicKey : null,
-              );
-
-      if (!mounted) return;
-
-      if (result.isSuccess) {
-        if (wasEmpty) {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(
-              builder: (_) => ModernChatScreen(
-                args: ChatScreenArgs(
-                  conversationId: targetConvId,
-                  otherUserId: widget.args.otherUserId,
-                  otherUserName: widget.args.otherUserName,
-                  otherUserAvatar: widget.args.otherUserAvatar,
-                  isGroup: widget.args.isGroup,
-                  isSecret: widget.args.isSecret,
-                ),
+      // بعد از ارسال تمام بخش‌ها
+      if (shouldPushReplacement) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ModernChatScreen(
+              args: ChatScreenArgs(
+                conversationId: targetConvId,
+                otherUserId: widget.args.otherUserId,
+                otherUserName: widget.args.otherUserName,
+                otherUserAvatar: widget.args.otherUserAvatar,
+                isGroup: widget.args.isGroup,
+                isSecret: widget.args.isSecret,
               ),
             ),
-          );
-          return;
-        }
-        // Scroll to bottom after sending
-        _scrollToBottom();
-
-        // ✅ آپدیت آخرین پیام برای sync تیک در لیست مکالمات
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          _registerLastMessage();
-        });
-      } else {
-        _showErrorSnackBar(result.error ?? 'خطا در ارسال پیام');
+          ),
+        );
+        return;
       }
+
+      // Scroll to bottom after sending
+      _scrollToBottom();
+
+      // ✅ آپدیت آخرین پیام برای sync تیک در لیست مکالمات
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _registerLastMessage();
+      });
     } catch (e) {
       debugPrint('Error sending message: $e');
       if (mounted) {
@@ -6498,6 +6540,23 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
   void _showErrorSnackBar(dynamic error) {
     UserFriendlyErrorUtils.showErrorSnackBar(context, error);
+  }
+
+  void _showInfoSnackBar(String text, {SnackBarAction? action}) {
+    if (!mounted) return;
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    final bottomMargin = 80.0 + bottomInset;
+
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        margin: EdgeInsets.only(bottom: bottomMargin, left: 16, right: 16),
+        content: Text(text),
+        duration: const Duration(seconds: 4),
+        action: action,
+      ),
+    );
   }
 
   // ═══════════════════════════════════════════════════════════════════════════

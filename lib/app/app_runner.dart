@@ -18,6 +18,7 @@ import 'package:Vista/services/deep_link_service.dart' as new_deep_link;
 import 'package:Vista/services/PushNotificationService.dart';
 import 'package:Vista/services/notification_navigation_service.dart';
 import 'package:Vista/services/session_manager_service_v2.dart';
+import 'package:Vista/services/share_receiver_service.dart';
 
 import 'package:Vista/services/auto_lock_service.dart';
 import 'package:Vista/services/network_state_service.dart';
@@ -73,6 +74,7 @@ import 'package:Vista/features/emoji/domain/modern_emoji_lookup.dart';
 
 // Stories Module
 import 'package:Vista/features/stories/stories.dart';
+import 'package:Vista/features/share/share_target_screen.dart';
 
 import 'package:Vista/screens/maintenance_screen.dart';
 import 'package:Vista/screens/banned_screen.dart';
@@ -230,6 +232,7 @@ class MyApp extends ConsumerStatefulWidget {
 class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
   late final AppLinks _appLinks;
   StreamSubscription? _linkSubscription;
+  StreamSubscription<SharedContent>? _shareSubscription;
   Timer? _sessionCheckTimer;
   Timer? _systemStatusTimer;
   bool _isLoading = false;
@@ -242,6 +245,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
     _sessionCheckTimer?.cancel();
     _systemStatusTimer?.cancel();
     _linkSubscription?.cancel();
+    _shareSubscription?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     try {
       SessionManagerServiceV2().onSessionTerminated = null;
@@ -257,6 +261,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _appLinks = AppLinks();
     _setupDeepLinkHandling();
+    _setupShareIntentHandling();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(_bootstrapAppServices());
     });
@@ -498,6 +503,35 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
     _linkSubscription = _appLinks.uriLinkStream.listen((uri) {
       _processDeepLink(uri);
     });
+  }
+
+  // ═══════════════════════════════════════════════════════
+  //  Share Intent Handling
+  // ═══════════════════════════════════════════════════════
+
+  void _setupShareIntentHandling() {
+    final svc = ShareReceiverService.instance;
+    svc.initialize();
+
+    // اگر اپ از طریق share باز شده (cold start)
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await Future.delayed(const Duration(milliseconds: 800));
+      final initial = await svc.getInitialShare();
+      if (initial != null && mounted) {
+        _showShareSheet(initial);
+      }
+    });
+
+    // وقتی اپ در حال اجراست و share جدید می‌رسد (warm start)
+    _shareSubscription = svc.stream.listen((content) {
+      if (mounted) _showShareSheet(content);
+    });
+  }
+
+  void _showShareSheet(SharedContent content) {
+    final ctx = navigatorKey.currentContext;
+    if (ctx == null || !ctx.mounted) return;
+    showShareTargetSheet(ctx, content);
   }
 
   Future<void> _processInitialLink() async {

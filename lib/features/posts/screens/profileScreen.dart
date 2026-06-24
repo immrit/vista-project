@@ -743,6 +743,7 @@ class _ProfileHeader extends ConsumerWidget {
                                   targetUserId: profile.id,
                                   avatarUrl: profile.avatarUrl,
                                   viewerUserId: ref.read(authProvider)?.id,
+                                  cachedAllowProfileZoom: profile.allowProfileZoom,
                                 );
                               }
                             : null,
@@ -1997,26 +1998,12 @@ class _PostsGridView extends ConsumerStatefulWidget {
 }
 
 class _PostsGridViewState extends ConsumerState<_PostsGridView> {
-  final ScrollController _scrollController = ScrollController();
   bool _loadingMore = false;
 
-  @override
-  void initState() {
-    super.initState();
-    _scrollController.addListener(_onScroll);
-  }
-
-  @override
-  void dispose() {
-    _scrollController.removeListener(_onScroll);
-    _scrollController.dispose();
-    super.dispose();
-  }
-
-  void _onScroll() {
-    if (!_scrollController.hasClients || _loadingMore) return;
-    final threshold = _scrollController.position.maxScrollExtent * 0.75;
-    if (_scrollController.position.pixels >= threshold) {
+  void _onScroll(ScrollMetrics metrics) {
+    if (_loadingMore) return;
+    final threshold = metrics.maxScrollExtent * 0.75;
+    if (metrics.pixels >= threshold) {
       _triggerLoadMore();
     }
   }
@@ -2050,51 +2037,56 @@ class _PostsGridViewState extends ConsumerState<_PostsGridView> {
 
     final reelsPlaylist = ReelsViewerLauncher.videoPlaylist(displayPosts);
 
-    return ListView.separated(
-      controller: _scrollController,
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewPadding.bottom + 110,
-      ),
-      itemCount: displayPosts.length + 1,
-      separatorBuilder: (context, index) => Divider(
-        height: 1,
-        color:
-            widget.isDark ? const Color(0xFF303D4F) : const Color(0xFFE4E6E9),
-      ),
-      itemBuilder: (context, index) {
-        if (index == displayPosts.length) {
-          if (isLoading && hasMore) {
-            return const Padding(
-              padding: EdgeInsets.symmetric(vertical: 16),
-              child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
-            );
-          }
-          if (!hasMore && displayPosts.isNotEmpty) {
-            return Padding(
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              child: Center(
-                child: Text(
-                  'پست دیگری وجود ندارد',
-                  style: TextStyle(
-                    color: widget.isDark ? Colors.grey[500] : Colors.grey[600],
-                    fontSize: 12,
+    return NotificationListener<ScrollUpdateNotification>(
+      onNotification: (notification) {
+        _onScroll(notification.metrics);
+        return false;
+      },
+      child: ListView.separated(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewPadding.bottom + 110,
+        ),
+        itemCount: displayPosts.length + 1,
+        separatorBuilder: (context, index) => Divider(
+          height: 1,
+          color:
+              widget.isDark ? const Color(0xFF303D4F) : const Color(0xFFE4E6E9),
+        ),
+        itemBuilder: (context, index) {
+          if (index == displayPosts.length) {
+            if (isLoading && hasMore) {
+              return const Padding(
+                padding: EdgeInsets.symmetric(vertical: 16),
+                child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+              );
+            }
+            if (!hasMore && displayPosts.isNotEmpty) {
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                child: Center(
+                  child: Text(
+                    'پست دیگری وجود ندارد',
+                    style: TextStyle(
+                      color: widget.isDark ? Colors.grey[500] : Colors.grey[600],
+                      fontSize: 12,
+                    ),
                   ),
                 ),
-              ),
-            );
+              );
+            }
+            return const SizedBox.shrink();
           }
-          return const SizedBox.shrink();
-        }
-        final post = displayPosts[index];
-        return KeyedSubtree(
-          key: ValueKey<String>(post.id),
-          child: _PostListItem(
-            post: post,
-            isDark: widget.isDark,
-            reelsPlaylist: reelsPlaylist,
-          ),
-        );
-      },
+          final post = displayPosts[index];
+          return KeyedSubtree(
+            key: ValueKey<String>(post.id),
+            child: _PostListItem(
+              post: post,
+              isDark: widget.isDark,
+              reelsPlaylist: reelsPlaylist,
+            ),
+          );
+        },
+      ),
     );
   }
 }

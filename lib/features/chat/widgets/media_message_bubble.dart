@@ -454,7 +454,8 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
                 ),
               if (!hasCaption)
                 Positioned(
-                  right: 6,
+                  right: widget.isMe ? 6 : null,
+                  left: !widget.isMe ? 6 : null,
                   bottom: 6,
                   child: _buildTimestampPill(theme),
                 ),
@@ -736,9 +737,10 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
                   fontFamily: 'Vazir',
                 ),
               ),
-              PositionedDirectional(
+              Positioned(
                 bottom: -20,
-                end: 0,
+                right: widget.isMe ? 0 : null,
+                left: !widget.isMe ? 0 : null,
                 child: Row(
                   children: [
                     if (widget.isMe) ...[

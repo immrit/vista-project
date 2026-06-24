@@ -385,7 +385,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       return;
     }
     // خروج از برنامه
-    io.exit(0);
+    SystemNavigator.pop();
   }
 
   @override

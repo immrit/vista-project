@@ -212,6 +212,9 @@ class UserFriendlyErrorUtils {
 
     final message = getUserFriendlyMessage(error);
 
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    final bottomMargin = 80.0 + bottomInset;
+
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -234,7 +237,7 @@ class UserFriendlyErrorUtils {
         backgroundColor: Colors.red.shade700,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        margin: const EdgeInsets.only(bottom: 80, left: 16, right: 16),
+        margin: EdgeInsets.only(bottom: bottomMargin, left: 16, right: 16),
         duration: const Duration(seconds: 4),
         action: SnackBarAction(
           label: 'باشه',
@@ -247,6 +250,9 @@ class UserFriendlyErrorUtils {
 
   static void showSuccessSnackBar(BuildContext context, String message) {
     if (!context.mounted) return;
+
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    final bottomMargin = 80.0 + bottomInset;
 
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
     ScaffoldMessenger.of(context).showSnackBar(
@@ -267,7 +273,8 @@ class UserFriendlyErrorUtils {
         backgroundColor: Colors.green.shade700,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        margin: const EdgeInsets.only(bottom: 80, left: 16, right: 16),
+        margin: EdgeInsets.only(bottom: bottomMargin, left: 16, right: 16),
+        duration: const Duration(seconds: 3),
       ),
     );
   }

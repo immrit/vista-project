@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
 import '../../../domain/entities/entities.dart';
+import '../../../utils/story_preloader.dart';
 import '../../providers/story_providers.dart';
 import '../../../../../widgets/verification_badge_icon.dart';
 
@@ -12,11 +13,37 @@ const String _defaultAvatarAsset = 'lib/utils/images/default-avatar.jpg';
 /// - استوری‌های دیده‌نشده اول
 /// - استوری‌های دیده‌شده آخر
 /// - حلقه گرادیانت برای دیده‌نشده، خاکستری برای دیده‌شده
-class StoryBar extends ConsumerWidget {
+class StoryBar extends ConsumerStatefulWidget {
   const StoryBar({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<StoryBar> createState() => _StoryBarState();
+}
+
+class _StoryBarState extends ConsumerState<StoryBar>
+    with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // Refresh stories and seen state from server when app comes to foreground
+      ref.invalidate(activeStoriesProvider);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final storiesAsync = ref.watch(activeStoriesProvider);
 
     return SizedBox(
@@ -188,10 +215,12 @@ class _AnimatedStoryRing extends ConsumerStatefulWidget {
 }
 
 class _AnimatedStoryRingState extends ConsumerState<_AnimatedStoryRing>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late AnimationController _animController;
+  late AnimationController _spinController;
   late Animation<double> _colorAnimation;
   bool _wasUnseen = true;
+  bool _isLoadingStory = false;
 
   @override
   void initState() {
@@ -201,10 +230,42 @@ class _AnimatedStoryRingState extends ConsumerState<_AnimatedStoryRing>
       duration: const Duration(milliseconds: 500),
       vsync: this,
     );
+    _spinController = AnimationController(
+      duration: const Duration(seconds: 1),
+      vsync: this,
+    );
     _colorAnimation = CurvedAnimation(
       parent: _animController,
       curve: Curves.easeInOut,
     );
+  }
+
+  Future<void> _handleTap() async {
+    if (_isLoadingStory) return;
+
+    setState(() {
+      _isLoadingStory = true;
+      _spinController.repeat();
+    });
+
+    try {
+      final sessionSeen = ref.read(sessionSeenStoriesProvider);
+      int initialStoryIndex = widget.user.stories.indexWhere(
+        (s) => !s.isViewed && !sessionSeen.contains(s.id),
+      );
+      if (initialStoryIndex == -1) initialStoryIndex = 0;
+
+      final firstStory = widget.user.stories[initialStoryIndex];
+      await StoryPreloader.preloadStory(context, firstStory);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingStory = false;
+          _spinController.stop();
+        });
+        widget.onTap();
+      }
+    }
   }
 
   @override
@@ -223,6 +284,7 @@ class _AnimatedStoryRingState extends ConsumerState<_AnimatedStoryRing>
   @override
   void dispose() {
     _animController.dispose();
+    _spinController.dispose();
     super.dispose();
   }
 
@@ -248,7 +310,7 @@ class _AnimatedStoryRingState extends ConsumerState<_AnimatedStoryRing>
         return Padding(
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
           child: GestureDetector(
-            onTap: effectiveUser.stories.isEmpty ? null : widget.onTap,
+            onTap: effectiveUser.stories.isEmpty ? null : _handleTap,
             child: Column(
               children: [
                 _buildAnimatedRing(isDarkMode, hasUnseenStories),
@@ -275,35 +337,42 @@ class _AnimatedStoryRingState extends ConsumerState<_AnimatedStoryRing>
             isDarkMode ? const Color(0xFF303030) : const Color(0xFFBDBDBD),
           ];
 
-    return Container(
-      width: 74,
-      height: 74, // Slightly larger to accommodate thinner ring visual
-      padding: const EdgeInsets.all(2.0), // Thinner ring
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: LinearGradient(
-          colors: gradientColors,
-          begin: Alignment.topRight,
-          end: Alignment.bottomLeft,
-        ),
-        boxShadow: hasUnseenStories
-            ? [
-                BoxShadow(
-                  color: const Color(0xFF8B5CF6)
-                      .withValues(alpha: 0.3), // Vista violet shadow
-                  blurRadius: 8,
-                  spreadRadius: 0,
-                ),
-              ]
-            : null,
-      ),
+    return RotationTransition(
+      turns: _spinController,
       child: Container(
-        padding: const EdgeInsets.all(2.5),
+        width: 74,
+        height: 74, // Slightly larger to accommodate thinner ring visual
+        padding: const EdgeInsets.all(2.0), // Thinner ring
         decoration: BoxDecoration(
-          color: isDarkMode ? Colors.black : Colors.white,
           shape: BoxShape.circle,
+          gradient: LinearGradient(
+            colors: gradientColors,
+            begin: Alignment.topRight,
+            end: Alignment.bottomLeft,
+          ),
+          boxShadow: hasUnseenStories
+              ? [
+                  BoxShadow(
+                    color: const Color(0xFF8B5CF6)
+                        .withValues(alpha: 0.3), // Vista violet shadow
+                    blurRadius: 8,
+                    spreadRadius: 0,
+                  ),
+                ]
+              : null,
         ),
-        child: _buildAvatar(),
+        child: Container(
+          padding: const EdgeInsets.all(2.5),
+          decoration: BoxDecoration(
+            color: isDarkMode ? Colors.black : Colors.white,
+            shape: BoxShape.circle,
+          ),
+          child: RotationTransition(
+            turns: Tween(begin: 0.0, end: -1.0).animate(
+                _spinController), // counter-rotate avatar to keep it upright
+            child: _buildAvatar(),
+          ),
+        ),
       ),
     );
   }
@@ -444,24 +513,24 @@ class AddStoryButton extends StatelessWidget {
                   shape: BoxShape.circle,
                 ),
                 child: Center(
-                child: Container(
-                  width: 28,
-                  height: 28,
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)], // برند
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
+                  child: Container(
+                    width: 28,
+                    height: 28,
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)], // برند
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      shape: BoxShape.circle,
                     ),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.add,
-                    size: 20,
-                    color: Colors.white,
+                    child: const Icon(
+                      Icons.add,
+                      size: 20,
+                      color: Colors.white,
+                    ),
                   ),
                 ),
-              ),
               ),
             ),
             const SizedBox(height: 4),

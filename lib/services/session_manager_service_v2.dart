@@ -852,8 +852,16 @@ class SessionManagerServiceV2 {
     return await _quickSessionCheck();
   }
 
+  /// در هر ورود صدا زده می‌شود؛ snapshot می‌گیرد و پروفایل را sync می‌کند.
+  /// sync واقعی فقط هر ۲۴ ساعت یا اگر شهر تغییر کرده انجام می‌شود.
   Future<void> updateLocationAndIP() async {
     _updateActivity();
+    try {
+      final snapshot = await _getDeviceLocationSnapshot();
+      if (snapshot != null) {
+        unawaited(_syncProfileLocationIfNeeded(snapshot));
+      }
+    } catch (_) {}
   }
 
   Future<bool> updateFcmToken(String fcmToken) async {
@@ -964,60 +972,98 @@ class SessionManagerServiceV2 {
       }
     }
 
+    // ── تلاش اول: GPS دستگاه ────────────────────────────────────────────
     try {
       final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) {
-        return cached;
+      if (serviceEnabled) {
+        final permission = await Geolocator.checkPermission();
+        // فقط اگه قبلاً اجازه داده — درخواست در nearby_screen انجام می‌شه
+        if (permission == LocationPermission.always ||
+            permission == LocationPermission.whileInUse) {
+          final position = await Geolocator.getCurrentPosition(
+            locationSettings: const LocationSettings(
+              accuracy: LocationAccuracy.high,
+              timeLimit: Duration(seconds: 12),
+            ),
+          );
+
+          final placemarks = await placemarkFromCoordinates(
+            position.latitude,
+            position.longitude,
+          );
+          final place = placemarks.isNotEmpty ? placemarks.first : null;
+
+          // locality → subAdministrativeArea → administrativeArea
+          final city = (place?.locality?.trim().isNotEmpty ?? false)
+              ? place!.locality!.trim()
+              : (place?.subAdministrativeArea?.trim().isNotEmpty ?? false)
+                  ? place!.subAdministrativeArea!.trim()
+                  : (place?.administrativeArea?.trim().isNotEmpty ?? false)
+                      ? place!.administrativeArea!.trim()
+                      : '';
+
+          if (city.isNotEmpty) {
+            final snap = _DeviceLocationSnapshot(
+              city: city,
+              country: place?.country?.trim(),
+              region: place?.administrativeArea?.trim(),
+              latitude: position.latitude,
+              longitude: position.longitude,
+              capturedAt: DateTime.now(),
+              source: 'device_gps',
+            );
+            await _cacheLocationSnapshot(snap);
+            return snap;
+          }
+        }
       }
-
-      var permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-
-      final denied = permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever;
-      if (denied) {
-        return cached;
-      }
-
-      final position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.medium,
-        timeLimit: const Duration(seconds: 10),
-      );
-
-      final placemarks = await placemarkFromCoordinates(
-        position.latitude,
-        position.longitude,
-      );
-      final place = placemarks.isNotEmpty ? placemarks.first : null;
-
-      final city = (place?.locality?.trim().isNotEmpty ?? false)
-          ? place!.locality!.trim()
-          : (place?.subAdministrativeArea?.trim().isNotEmpty ?? false)
-              ? place!.subAdministrativeArea!.trim()
-              : (place?.administrativeArea?.trim().isNotEmpty ?? false)
-                  ? place!.administrativeArea!.trim()
-                  : '';
-
-      if (city.isEmpty) {
-        return cached;
-      }
-
-      final snapshot = _DeviceLocationSnapshot(
-        city: city,
-        country: place?.country?.trim(),
-        region: place?.administrativeArea?.trim(),
-        latitude: position.latitude,
-        longitude: position.longitude,
-        capturedAt: DateTime.now(),
-      );
-
-      await _cacheLocationSnapshot(snapshot);
-      return snapshot;
     } catch (e) {
-      logInfo('⚠️ Device location read failed, using cache if any: $e');
-      return cached;
+      logInfo('⚠️ GPS location failed, will try IP fallback: $e');
+    }
+
+    // ── تلاش دوم: IP Geolocation ──────────────────────────────────────
+    try {
+      final ipSnap = await _getIpLocationSnapshot();
+      if (ipSnap != null) {
+        await _cacheLocationSnapshot(ipSnap);
+        return ipSnap;
+      }
+    } catch (e) {
+      logInfo('⚠️ IP location failed: $e');
+    }
+
+    // ── آخرین fallback: cache قدیمی ──────────────────────────────────
+    return cached;
+  }
+
+  /// IP-based geolocation — city level — بدون نیاز به مجوز
+  Future<_DeviceLocationSnapshot?> _getIpLocationSnapshot() async {
+    try {
+      final response = await http
+          .get(
+            Uri.parse(
+                'http://ip-api.com/json/?fields=city,regionName,country,lat,lon,status'),
+          )
+          .timeout(const Duration(seconds: 8));
+
+      if (response.statusCode != 200) return null;
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      if (data['status'] != 'success') return null;
+
+      final city = (data['city'] as String?)?.trim() ?? '';
+      if (city.isEmpty) return null;
+
+      return _DeviceLocationSnapshot(
+        city: city,
+        country: (data['country'] as String?)?.trim(),
+        region: (data['regionName'] as String?)?.trim(),
+        latitude: (data['lat'] as num?)?.toDouble(),
+        longitude: (data['lon'] as num?)?.toDouble(),
+        capturedAt: DateTime.now(),
+        source: 'ip_geolocation',
+      );
+    } catch (_) {
+      return null;
     }
   }
 
@@ -1159,6 +1205,7 @@ class _DeviceLocationSnapshot {
   final double? latitude;
   final double? longitude;
   final DateTime capturedAt;
+  final String source;
 
   const _DeviceLocationSnapshot({
     required this.city,
@@ -1167,6 +1214,7 @@ class _DeviceLocationSnapshot {
     required this.latitude,
     required this.longitude,
     required this.capturedAt,
+    this.source = 'device_gps',
   });
 
   Map<String, dynamic> toBackendLocationPayload() {
@@ -1177,7 +1225,7 @@ class _DeviceLocationSnapshot {
       if (latitude != null) 'latitude': latitude,
       if (longitude != null) 'longitude': longitude,
       'captured_at': capturedAt.toIso8601String(),
-      'source': 'device_gps',
+      'source': source,
     };
   }
 }

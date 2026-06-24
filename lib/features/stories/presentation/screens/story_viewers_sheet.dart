@@ -158,71 +158,89 @@ class StoryViewersSheet extends ConsumerWidget {
             message: 'هنوز کسی استوری شما را ندیده',
           );
         }
-        return ListView.builder(
-          controller: scrollController,
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          itemCount: views.length,
-          itemBuilder: (context, index) {
-            final view = views[index];
-            return ListTile(
-              onTap: () {
-                onClose();
-                Navigator.pushNamed(
-                  context,
-                  '/profile',
-                  arguments: {
-                    'userId': view.viewerId,
-                    'username': view.viewerUsername ?? 'کاربر',
+        return NotificationListener<ScrollNotification>(
+            onNotification: (ScrollNotification scrollInfo) {
+              if (scrollInfo.metrics.pixels >=
+                  scrollInfo.metrics.maxScrollExtent - 200) {
+                ref.read(storyViewsProvider(storyId).notifier).loadMore();
+              }
+              return false;
+            },
+            child: ListView.builder(
+              controller: scrollController,
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              itemCount: views.length +
+                  (ref.watch(storyViewsProvider(storyId)).isLoading ? 1 : 0),
+              itemBuilder: (context, index) {
+                if (index == views.length) {
+                  return const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(8.0),
+                      child: CircularProgressIndicator(),
+                    ),
+                  );
+                }
+                final view = views[index];
+                return ListTile(
+                  onTap: () {
+                    onClose();
+                    Navigator.pushNamed(
+                      context,
+                      '/profile',
+                      arguments: {
+                        'userId': view.viewerId,
+                        'username': view.viewerUsername ?? 'کاربر',
+                      },
+                    );
                   },
-                );
-              },
-              leading: CircleAvatar(
-                backgroundImage: view.viewerAvatarUrl != null
-                    ? CachedNetworkImageProvider(view.viewerAvatarUrl!)
-                    : const AssetImage(_defaultAvatarAsset) as ImageProvider,
-              ),
-              title: Row(
-                children: [
-                  Flexible(
-                    child: Text(
-                      view.viewerUsername ?? 'کاربر',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: textColor,
-                        fontFamily: 'Vazir',
+                  leading: CircleAvatar(
+                    backgroundImage: view.viewerAvatarUrl != null
+                        ? CachedNetworkImageProvider(view.viewerAvatarUrl!)
+                        : const AssetImage(_defaultAvatarAsset)
+                            as ImageProvider,
+                  ),
+                  title: Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          view.viewerUsername ?? 'کاربر',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: textColor,
+                            fontFamily: 'Vazir',
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                      if (view.isVerified) ...[
+                        const SizedBox(width: 4),
+                        VerificationBadgeIcon(
+                          isVerified: view.isVerified,
+                          verificationType: view.verificationType,
+                          role: view.role,
+                          size: 16,
+                        ),
+                      ],
+                    ],
+                  ),
+                  subtitle: Text(
+                    _getTimeAgo(view.viewedAt),
+                    style: TextStyle(
+                      color: textColor.withValues(alpha: 0.6),
+                      fontSize: 12,
+                      fontFamily: 'Vazir',
                     ),
                   ),
-                  if (view.isVerified) ...[
-                    const SizedBox(width: 4),
-                    VerificationBadgeIcon(
-                      isVerified: view.isVerified,
-                      verificationType: view.verificationType,
-                      role: view.role,
-                      size: 16,
-                    ),
-                  ],
-                ],
-              ),
-              subtitle: Text(
-                _getTimeAgo(view.viewedAt),
-                style: TextStyle(
-                  color: textColor.withValues(alpha: 0.6),
-                  fontSize: 12,
-                  fontFamily: 'Vazir',
-                ),
-              ),
-              trailing: view.reaction != null
-                  ? Text(
-                      view.reaction!.emoji,
-                      style: const TextStyle(fontSize: 20),
-                    )
-                  : null,
-            );
-          },
-        );
+                  trailing: view.reaction != null
+                      ? Text(
+                          view.reaction!.emoji,
+                          style: const TextStyle(fontSize: 20),
+                        )
+                      : null,
+                );
+              },
+            ));
       },
     );
   }

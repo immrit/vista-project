@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:just_audio/just_audio.dart';
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 
 import '../../domain/entities/entities.dart';
 import '../../domain/entities/story_editor_models.dart' as editor_models;
@@ -26,6 +27,7 @@ import '../../../../model/message_model.dart';
 import '../../../chat/utils/story_reply_media_utils.dart';
 import '../../../chat/providers/chat_providers.dart';
 import '../../../../provider/optimized_conversations_provider.dart';
+import '../../utils/story_preloader.dart';
 
 /// صفحه پخش استوری
 class StoryPlayerScreen extends ConsumerStatefulWidget {
@@ -54,6 +56,7 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
   bool _isPaused = false;
   bool _isLoading = true;
   bool _showingViewers = false;
+  bool _isLongPressing = false;
   StoryReplyPermission _replyPermission = StoryReplyPermission.everyone;
   bool _canReplyToStory = true;
   final Map<String, StoryPollResult> _pollResultsCache = {};
@@ -148,6 +151,16 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
       _loadReplyState(),
     ]);
 
+    // Preload the next 10 stories in the background
+    StoryPreloader.preloadNextStories(
+      context, 
+      widget.users, 
+      _currentUserIndex, 
+      _currentStoryIndex, 
+      count: 10,
+      maxVideos: 2,
+    );
+
     // Optimistically update seen rings in the active stories provider.
     if (mounted) {
       ref.read(sessionSeenStoriesProvider.notifier).markSeen(storyId);
@@ -200,20 +213,43 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
   }
 
   Future<void> _initVideo() async {
-    _videoController?.dispose();
-    _videoController = VideoPlayerController.networkUrl(
-      Uri.parse(_currentStory.media.url),
+    final currentStoryUrl = _currentStory.media.url;
+    final controller = VideoPlayerController.networkUrl(
+      Uri.parse(currentStoryUrl),
     );
 
+    _videoController?.dispose();
+    _videoController = controller;
+
     try {
-      await _videoController!.initialize();
+      await controller.initialize();
+      
+      // If unmounted or user skipped to another story, dispose and abort
+      if (!mounted || _videoController != controller) {
+        controller.dispose();
+        return;
+      }
 
       // Set duration based on video length
-      final videoDuration = _videoController!.value.duration;
+      final videoDuration = controller.value.duration;
       _progressController.duration = videoDuration;
 
-      _videoController!.play();
-      _videoController!.setLooping(false);
+      // Listener for buffering logic
+      controller.addListener(() {
+        if (!mounted || _videoController != controller) return;
+        if (controller.value.isBuffering) {
+          if (_progressController.isAnimating) {
+            _progressController.stop();
+          }
+        } else if (controller.value.isPlaying && !_isPaused) {
+          if (!_progressController.isAnimating) {
+            _progressController.forward();
+          }
+        }
+      });
+
+      controller.play();
+      controller.setLooping(false);
     } catch (e) {
       debugPrint('Error initializing video: $e');
     }
@@ -309,14 +345,22 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
   void _onLongPressStart(LongPressStartDetails details) {
     _progressController.stop();
     _videoController?.pause();
-    setState(() => _isPaused = true);
+    setState(() {
+      _isPaused = true;
+      _isLongPressing = true;
+    });
   }
 
   void _onLongPressEnd(LongPressEndDetails details) {
     if (!_showingViewers) {
       _progressController.forward();
       _videoController?.play();
-      setState(() => _isPaused = false);
+      setState(() {
+        _isPaused = false;
+        _isLongPressing = false;
+      });
+    } else {
+      setState(() => _isLongPressing = false);
     }
   }
 
@@ -363,8 +407,8 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
         1.0 - (_dragOffsetY.abs() / MediaQuery.of(context).size.height * 0.3);
 
     return Scaffold(
-      backgroundColor:
-          Colors.black, // Keep background black so it reveals behind
+      backgroundColor: Colors.black,
+      resizeToAvoidBottomInset: false, // Prevent keyboard from crushing video
       body: GestureDetector(
         // Store position on down so onTap can use it.
         onTapDown: (d) => _lastTapPosition = d.globalPosition,
@@ -409,7 +453,7 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
                 _buildAnimatedStoryContent(),
 
                 // نوار پیشرفت
-                if (_dragOffsetY == 0) // Hide UI when dragging for cleaner look
+                if (_dragOffsetY == 0 && !_isLongPressing) // Hide UI when dragging or long pressing
                   Positioned(
                     top: MediaQuery.of(context).padding.top + 8,
                     left: 8,
@@ -422,7 +466,7 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
                   ),
 
                 // هدر
-                if (_dragOffsetY == 0) // Hide UI when dragging
+                if (_dragOffsetY == 0 && !_isLongPressing) // Hide UI when dragging or long pressing
                   Positioned(
                     top: MediaQuery.of(context).padding.top + 24,
                     left: 0,
@@ -436,7 +480,7 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
                   ),
 
                 // اکشن‌ها (پایین صفحه)
-                if (_dragOffsetY == 0) // Hide UI when dragging
+                if (_dragOffsetY == 0 && !_isLongPressing) // Hide UI when dragging or long pressing
                   Positioned(
                     bottom: MediaQuery.of(context).padding.bottom + 20,
                     left: 16,
@@ -492,17 +536,35 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
       switchInCurve: Curves.easeOutCubic,
       switchOutCurve: Curves.easeInCubic,
       transitionBuilder: (child, animation) {
-        final slideAnimation = Tween<Offset>(
-          begin: Offset(signedDir * 0.12, 0),
-          end: Offset.zero,
-        ).animate(animation);
+        final bool isNext = child.key == ValueKey('story_${_currentUserIndex}_$_currentStoryIndex');
+        
+        return AnimatedBuilder(
+          animation: animation,
+          builder: (context, _) {
+            final value = animation.value;
+            // When entering (value goes 0->1)
+            // When exiting (value goes 1->0)
+            
+            // We want the new screen to rotate from 90 degrees to 0.
+            // We want the old screen to rotate from 0 to -90 degrees.
+            final rotation = isNext ? (1 - value) * (math.pi / 2) * signedDir : -value * (math.pi / 2) * signedDir;
+            
+            // Alignment depends on direction
+            final alignment = signedDir > 0
+                ? (isNext ? Alignment.centerRight : Alignment.centerLeft)
+                : (isNext ? Alignment.centerLeft : Alignment.centerRight);
 
-        return FadeTransition(
-          opacity: animation,
-          child: SlideTransition(
-            position: slideAnimation,
-            child: child,
-          ),
+            return Transform(
+              transform: Matrix4.identity()
+                ..setEntry(3, 2, 0.001) // perspective
+                ..rotateY(rotation),
+              alignment: alignment,
+              child: Opacity(
+                opacity: isNext ? value : 1 - value,
+                child: child,
+              ),
+            );
+          },
         );
       },
       layoutBuilder: (currentChild, previousChildren) {
@@ -515,8 +577,7 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
         );
       },
       child: KeyedSubtree(
-        // Animate only when changing user, not while changing story within user.
-        key: ValueKey('story_user_$_currentUserIndex'),
+        key: ValueKey('story_${_currentUserIndex}_$_currentStoryIndex'),
         child: _buildContent(),
       ),
     );

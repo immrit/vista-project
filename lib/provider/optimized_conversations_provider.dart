@@ -462,6 +462,12 @@ class OptimizedConversationsNotifier extends StateNotifier<ConversationsState> {
         ..write(c.otherUserName ?? '')
         ..write('|')
         ..write(c.otherUserAvatar ?? '')
+        ..write('|')
+        ..write(c.isPinned ? '1' : '0')
+        ..write('|')
+        ..write(c.isMuted ? '1' : '0')
+        ..write('|')
+        ..write(c.isArchived ? '1' : '0')
         ..write(';');
     }
     return buffer.toString();

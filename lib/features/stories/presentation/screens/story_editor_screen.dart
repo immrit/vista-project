@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
+import 'package:video_player/video_player.dart';
 
 import '../../core/story_enums.dart' hide StoryInteractionType;
 import '../../domain/entities/story_editor_models.dart';
@@ -57,6 +58,7 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
 
   // Text Settings
   Color _textColor = Colors.white;
+  Color? _textBgColor;
   double _fontSize = 28;
   final String _fontFamily = 'Vazir';
   final TextAlign _textAlign = TextAlign.center;
@@ -70,6 +72,8 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
   late ui.Image? _backgroundImage;
   bool _imageLoaded = false;
   double _dragStartY = 0;
+  VideoPlayerController? _videoController;
+  bool _isVideoInitialized = false;
 
   // Gesture State
   bool _isDragging = false;
@@ -85,26 +89,41 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
   @override
   void initState() {
     super.initState();
-    _loadImage();
+    _loadMedia();
   }
 
   @override
   void dispose() {
     _textController.dispose();
+    _videoController?.dispose();
     super.dispose();
   }
 
-  Future<void> _loadImage() async {
-    try {
-      final data = await widget.mediaFile.readAsBytes();
-      final codec = await ui.instantiateImageCodec(data);
-      final frame = await codec.getNextFrame();
-      setState(() {
-        _backgroundImage = frame.image;
-        _imageLoaded = true;
-      });
-    } catch (e) {
-      debugPrint('Error loading image: $e');
+  Future<void> _loadMedia() async {
+    if (widget.mediaType == StoryMediaType.video) {
+      _videoController = VideoPlayerController.file(widget.mediaFile);
+      try {
+        await _videoController!.initialize();
+        await _videoController!.setLooping(true);
+        await _videoController!.play();
+        setState(() {
+          _isVideoInitialized = true;
+        });
+      } catch (e) {
+        debugPrint('Error loading video: $e');
+      }
+    } else {
+      try {
+        final data = await widget.mediaFile.readAsBytes();
+        final codec = await ui.instantiateImageCodec(data);
+        final frame = await codec.getNextFrame();
+        setState(() {
+          _backgroundImage = frame.image;
+          _imageLoaded = true;
+        });
+      } catch (e) {
+        debugPrint('Error loading image: $e');
+      }
     }
   }
 
@@ -227,6 +246,7 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
       y: screenSize.height / 2,
       text: text,
       color: _textColor,
+      backgroundColor: _textBgColor,
       fontSize: _fontSize,
       fontFamily: _fontFamily,
       textAlign: _textAlign,
@@ -341,8 +361,19 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
-                      // تصویر پس‌زمینه
-                      if (_imageLoaded && _backgroundImage != null)
+                      // تصویر یا ویدیوی پس‌زمینه
+                      if (widget.mediaType == StoryMediaType.video && _isVideoInitialized && _videoController != null)
+                        SizedBox.expand(
+                          child: FittedBox(
+                            fit: BoxFit.cover,
+                            child: SizedBox(
+                              width: _videoController!.value.size.width,
+                              height: _videoController!.value.size.height,
+                              child: VideoPlayer(_videoController!),
+                            ),
+                          ),
+                        )
+                      else if (_imageLoaded && _backgroundImage != null)
                         RawImage(
                           image: _backgroundImage,
                           fit: BoxFit.cover,
@@ -989,23 +1020,40 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
     try {
       await Future.delayed(const Duration(milliseconds: 100));
 
-      final RenderRepaintBoundary boundary = _canvasKey.currentContext!
-          .findRenderObject() as RenderRepaintBoundary;
+      File finalMedia;
 
-      final ui.Image image = await boundary.toImage(pixelRatio: 3.0);
-      final ByteData? byteData =
-          await image.toByteData(format: ui.ImageByteFormat.png);
+      if (widget.mediaType == StoryMediaType.video) {
+        finalMedia = widget.mediaFile;
+      } else {
+        final RenderRepaintBoundary boundary = _canvasKey.currentContext!
+            .findRenderObject() as RenderRepaintBoundary;
 
-      if (byteData == null) {
-        throw Exception('خطا در تبدیل تصویر');
+        double pixelRatio = 3.0;
+        if (_backgroundImage != null) {
+          final canvasSize = _resolveCanvasSize();
+          if (canvasSize.width > 0 && canvasSize.height > 0) {
+            final ratioX = _backgroundImage!.width / canvasSize.width;
+            final ratioY = _backgroundImage!.height / canvasSize.height;
+            pixelRatio = (ratioX > ratioY ? ratioX : ratioY).clamp(1.0, 5.0);
+          }
+        }
+
+        final ui.Image image = await boundary.toImage(pixelRatio: pixelRatio);
+        final ByteData? byteData =
+            await image.toByteData(format: ui.ImageByteFormat.png);
+
+        if (byteData == null) {
+          throw Exception('خطا در تبدیل تصویر');
+        }
+
+        final Uint8List pngBytes = byteData.buffer.asUint8List();
+
+        final tempDir = Directory.systemTemp;
+        final tempFile = File(
+            '${tempDir.path}/story_${DateTime.now().millisecondsSinceEpoch}.png');
+        await tempFile.writeAsBytes(pngBytes);
+        finalMedia = tempFile;
       }
-
-      final Uint8List pngBytes = byteData.buffer.asUint8List();
-
-      final tempDir = Directory.systemTemp;
-      final tempFile = File(
-          '${tempDir.path}/story_${DateTime.now().millisecondsSinceEpoch}.png');
-      await tempFile.writeAsBytes(pngBytes);
 
       final caption =
           _items.whereType<TextStoryItem>().map((e) => e.text).join('\n');
@@ -1017,7 +1065,7 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
         // Hide loading before popping
         _hideLoadingOverlay();
         Navigator.pop(context, {
-          'media': tempFile,
+          'media': finalMedia,
           'caption': caption.isEmpty ? null : caption,
           'duration': _storyDuration,
           'privacy': privacy,
@@ -1069,22 +1117,7 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
       final yNorm = _normalizedCoordinate(item.y, canvasSize.height);
 
       if (item is TextStoryItem) {
-        return StoryElement(
-          elementId: item.id,
-          text: item.text,
-          x: item.x,
-          y: item.y,
-          xNorm: xNorm,
-          yNorm: yNorm,
-          color: item.color,
-          fontSize: item.fontSize,
-          scale: item.scale,
-          rotation: item.rotation,
-          fontFamily: item.fontFamily,
-          textAlign: item.textAlign,
-          styleIndex: item.styleIndex,
-          interactionType: StoryInteractionType.none,
-        );
+        return null; // Baked into image
       }
 
       if (item is StickerStoryItem) {
@@ -1112,39 +1145,11 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
       }
 
       if (item is ImageStoryItem) {
-        return StoryElement(
-          elementId: item.id,
-          text: '',
-          x: item.x,
-          y: item.y,
-          xNorm: xNorm,
-          yNorm: yNorm,
-          rotation: item.rotation,
-          scale: item.scale,
-          color: Colors.white,
-          fontSize: 16,
-          interactionType: StoryInteractionType.photo,
-          interactionData: {
-            'imagePath': item.imagePath,
-            'style': 0,
-          },
-          styleIndex: 0,
-          width: item.width,
-          height: item.height,
-        );
+        return null; // Baked into image
       }
 
-      return StoryElement(
-        elementId: item.id,
-        text: '',
-        x: item.x,
-        y: item.y,
-        xNorm: xNorm,
-        yNorm: yNorm,
-        color: Colors.white,
-        fontSize: 16,
-      );
-    }).toList();
+      return null;
+    }).whereType<StoryElement>().toList();
   }
 
   OverlayEntry? _loadingOverlay;
@@ -1278,6 +1283,40 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
                     ),
                   ),
                   const SizedBox(width: 8),
+                  // تغییر رنگ پس‌زمینه متن
+                  GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        if (_textBgColor == null) {
+                          _textBgColor = _textColor.computeLuminance() > 0.5 ? Colors.black : Colors.white;
+                        } else if (_textBgColor!.alpha == 255) {
+                          _textBgColor = _textBgColor!.withAlpha(128);
+                        } else {
+                          _textBgColor = null;
+                        }
+                      });
+                    },
+                    child: Container(
+                      width: 28,
+                      height: 28,
+                      decoration: BoxDecoration(
+                        color: _textBgColor ?? Colors.transparent,
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: Colors.white, width: 2),
+                      ),
+                      child: Center(
+                        child: Text(
+                          'A',
+                          style: TextStyle(
+                            color: _textBgColor == null ? Colors.white : _textColor,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
                   // تغییر رنگ
                   GestureDetector(
                     onTap: _showTextColorPicker,
@@ -1373,7 +1412,15 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
           child: BlockPicker(
             pickerColor: _textColor,
             onColorChanged: (color) {
-              setState(() => _textColor = color);
+              setState(() {
+                 _textColor = color;
+                 // Update bg color if it exists to maintain contrast logic
+                 if (_textBgColor != null) {
+                    final targetAlpha = _textBgColor!.alpha;
+                    final solidBg = color.computeLuminance() > 0.5 ? Colors.black : Colors.white;
+                    _textBgColor = solidBg.withAlpha(targetAlpha);
+                 }
+              });
               Navigator.pop(context);
             },
           ),

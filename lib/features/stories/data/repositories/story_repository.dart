@@ -179,9 +179,10 @@ class StoryRepository implements IStoryRepository {
   }
 
   @override
-  Future<StoryResult<List<StoryView>>> getStoryViews(String storyId) async {
+  Future<StoryResult<List<StoryView>>> getStoryViews(String storyId, {int limit = 50, int offset = 0}) async {
     try {
       final response = await _dio.get('/stories/$storyId/views',
+          queryParameters: {'limit': limit, 'offset': offset},
           options: await _authOptions());
       final views = _asList(_asMap(response.data)['views'])
           .whereType<Map>()

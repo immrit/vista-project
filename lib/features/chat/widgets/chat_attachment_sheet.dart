@@ -1511,16 +1511,19 @@ class _ChatImagePreviewScreenState extends State<_ChatImagePreviewScreen> {
                                     ),
                                   ],
                                 ),
-                                child: TextField(
-                                  controller: _captionController,
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w400,
-                                  ),
-                                  cursorColor: Colors.white,
-                                  maxLines: 3,
-                                  minLines: 1,
-                                  textInputAction: TextInputAction.newline,
+                                  child: TextField(
+                                    controller: _captionController,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w400,
+                                    ),
+                                    cursorColor: Colors.white,
+                                    maxLines: 3,
+                                    minLines: 1,
+                                    maxLength: 1024,
+                                    maxLengthEnforcement: MaxLengthEnforcement.enforced,
+                                    buildCounter: (_, {required currentLength, required isFocused, maxLength}) => null,
+                                    textInputAction: TextInputAction.newline,
                                   decoration: InputDecoration(
                                     hintText: isAlbum
                                         ? 'نوشتن کپشن برای آلبوم...'
