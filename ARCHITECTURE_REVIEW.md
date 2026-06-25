@@ -24,11 +24,11 @@ Implementation order = impact, build-heaviness/slowness first (per refactor plan
 - [x] **P1** — feed row: added `RepaintBoundary` per row + `memCacheWidth` on feed image. `_ThreadPostItem` was **already** a `ConsumerWidget` and `cacheExtent` (`scrollCacheExtent`) already tuned by the team (review snapshot stale). §3.1 / §8.2 *(minor follow-up: `profileProvider` per-row watch — fires on menu-open only, not per-frame; left as-is)*
 - [x] **P2** — non-destructive pagination errors in both feed notifiers: keep loaded items, `loadMoreError` flag + inline `_LoadMoreRetryRow`, auto-load gated after failure; full error only when list empty. §3.2 / §8.3
 - [x] **P3** — **batched feed analytics** (the per-scroll request storm): buffer + 4s debounce + dedup, token read once per flush instead of per gesture. §3.4 / §8.4 *(STAGED remainder: consolidate the 43 ad-hoc `Dio` into one client + central 401-refresh/retry interceptor — sweeping, needs runtime verification; see MEMORY.md "Staged".)*
-- [ ] **P4** — provider hygiene: `autoDispose` defaults + `keepAlive` only where needed. §3.2 / §8.5
-- [ ] **P5** — finish migration + prune redundant deps + dead Supabase code; plan Isar 3 exit. §4.1 / §8.6 *(large — staged)*
-- [ ] **P6** — media transcode off UI isolate / server-side; gate + cap resolution. §3.5 / §8.7 *(backend-dependent)*
+- [ ] **P4** — provider hygiene: `autoDispose` defaults + `keepAlive` only where needed. §3.2 / §8.5 *(**STAGED** — blanket `autoDispose` over ~370 providers risks state-loss regressions invisible to `flutter test`; needs per-provider runtime verification. Safe approach documented in MEMORY.md.)*
+- [ ] **P5** — finish migration + prune redundant deps + dead Supabase code; plan Isar 3 exit. §4.1 / §8.6 *(**STAGED** — multi-week human-driven migration; see MEMORY.md.)*
+- [ ] **P6** — media transcode off UI isolate / server-side; gate + cap resolution. §3.5 / §8.7 *(**STAGED** — backend-dependent + needs device profiling; see MEMORY.md.)*
 
-> Heavy/cross-cutting items (P3/P5/P6) are staged and may land partial with follow-ups noted in `MEMORY.md`. See `MEMORY.md` for global changes + rollback map.
+> **Done (8):** BF1–BF4, SEC1, P1, P2, P3-batching — all build-heaviness/perf items the plan prioritized are resolved. **Staged (P3-remainder, P4, P5, P6):** large cross-cutting refactors that can't be runtime-verified in this environment; each has a concrete approach + rollback in `MEMORY.md`. **Out-of-band:** S3 key rotation + git-history purge (need user). See `MEMORY.md` for the full recovery map.
 
 ---
 
