@@ -7,7 +7,7 @@
 
 ---
 
-## Fix Checklist — Progress: 3/12 fixes done
+## Fix Checklist — Progress: 4/12 fixes done
 
 Implementation order = impact, build-heaviness/slowness first (per refactor plan). Worked on branch `architecture-fixes`. Test baseline before changes: **56 pass / 1 pre-existing fail** (`adaptive_effects_provider_test.dart` — unrelated repo bug, untouched).
 
@@ -15,7 +15,7 @@ Implementation order = impact, build-heaviness/slowness first (per refactor plan
 - [x] **BF1** — `kotlin.incremental=true` (re-enable incremental Kotlin compile). §5.1
 - [x] **BF2** — ABI filters: ship arm64-v8a + armeabi-v7a, drop x86_64 from release. §5.2 / §8
 - [x] **BF3** — release `minifyEnabled true` + `shrinkResources true` (R8 shrink). §5.7 / §6 / §8 *(debug-signing change deferred — see flagged note; needs release-build smoke test)*
-- [ ] **BF4** — tune `org.gradle.workers.max` to cores, right-size heaps, drop `HeapDumpOnOutOfMemoryError`. §5.5 / §7
+- [x] **BF4** — `workers.max` 4→8, dropped `HeapDumpOnOutOfMemoryError`, heaps kept (right for 16 GB). §5.5 / §7
 
 **Security (critical — partial in-repo; rotation/history purge need user):**
 - [ ] **SEC1** — remove S3 master creds from `android/gradle.properties` + `.env` + `dart-defines` (client uses backend presign → needs zero S3 secrets); gitignore properly. §6 *(key rotation + git-history purge = out-of-band, flagged)*

@@ -44,6 +44,12 @@ Branch: `architecture-fixes`. Implements `ARCHITECTURE_REVIEW.md` fixes.
 - **Revert:** set both back to `false`.
 - **Deferred (NOT changed):** `debug { signingConfig signingConfigs.release }` left as-is. Review flags it (debug signed w/ release key), but it's likely intentional for Firebase/Poolakey SHA-matching during debug; removing risks breaking debug auth/payments. User decision.
 
+### BF4 — Gradle resource tuning (this 16 GB / 12-logical-core host)
+- **What:** dropped `-XX:+HeapDumpOnOutOfMemoryError` from `org.gradle.jvmargs`; `org.gradle.workers.max` 4→8. Heaps left at 4G Gradle / 2G Kotlin daemon.
+- **Why:** heap-dump-on-OOM wrote a multi-GB file to disk mid-build → froze the box (§7). `workers.max=4` under-used 12 logical cores. Heaps not raised: 16 GB box would swap-thrash (§5.5/§7).
+- **Files:** `android/gradle.properties`.
+- **Revert:** restore `-XX:+HeapDumpOnOutOfMemoryError` in jvmargs and set `org.gradle.workers.max=4`.
+
 ---
 
 ## Flagged — needs user / out-of-band (NOT done here)
