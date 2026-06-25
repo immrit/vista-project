@@ -7,7 +7,7 @@
 
 ---
 
-## Fix Checklist — Progress: 5/12 fixes done
+## Fix Checklist — Progress: 6/12 fixes done
 
 Implementation order = impact, build-heaviness/slowness first (per refactor plan). Worked on branch `architecture-fixes`. Test baseline before changes: **56 pass / 1 pre-existing fail** (`adaptive_effects_provider_test.dart` — unrelated repo bug, untouched).
 
@@ -21,7 +21,7 @@ Implementation order = impact, build-heaviness/slowness first (per refactor plan
 - [x] **SEC1** — removed S3 master creds from `gradle.properties` (AWS_* + dart-defines) and `.env`; untracked `.env`. Verified no Dart code reads `AWS_*` (dead leak). §6 *(⚠ key rotation + git-history purge still REQUIRED — out-of-band, see MEMORY.md)*
 
 **Perf / architecture (after build):**
-- [ ] **P1** — feed row: extract `_ThreadPostItem`, `RepaintBoundary` per row, `const` subtrees, stop per-row global-provider watches, `memCacheWidth` on feed images, `cacheExtent`. §3.1 / §8.2
+- [x] **P1** — feed row: added `RepaintBoundary` per row + `memCacheWidth` on feed image. `_ThreadPostItem` was **already** a `ConsumerWidget` and `cacheExtent` (`scrollCacheExtent`) already tuned by the team (review snapshot stale). §3.1 / §8.2 *(minor follow-up: `profileProvider` per-row watch — fires on menu-open only, not per-frame; left as-is)*
 - [ ] **P2** — non-destructive pagination errors: keep loaded items, inline retry row, never `AsyncValue.error` over populated list. §3.2 / §8.3
 - [ ] **P3** — single shared `Dio` client: interceptors for auth (in-memory token, central 401 refresh), retry/backoff; batch analytics POSTs. §3.4 / §8.4
 - [ ] **P4** — provider hygiene: `autoDispose` defaults + `keepAlive` only where needed. §3.2 / §8.5

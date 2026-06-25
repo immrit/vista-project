@@ -339,32 +339,36 @@ class _ForYouTab extends ConsumerWidget {
                 }
 
                 final post = posts[index];
-                return DwellDetector(
-                  key: ValueKey<String>(post.id),
-                  itemKey: post.id,
-                  onView: () {
-                    unawaited(
-                        ref.read(goPostsRepositoryProvider).trackFeedEvent(
-                              postId: post.id,
-                              eventType: 'view',
-                            ));
-                  },
-                  onDwell: () {
-                    unawaited(
-                        ref.read(goPostsRepositoryProvider).trackFeedEvent(
-                              postId: post.id,
-                              eventType: 'dwell',
-                            ));
-                  },
-                  child: Column(
-                    children: [
-                      _ThreadPostItem(
-                        post: post,
-                        isForYou: true,
-                        reelsPlaylist: reelsPlaylist,
-                      ),
-                      const Divider(height: 0.5, thickness: 0.5),
-                    ],
+                // P1: isolate each row's painting so one row repaint doesn't
+                // invalidate the whole list layer during scroll.
+                return RepaintBoundary(
+                  child: DwellDetector(
+                    key: ValueKey<String>(post.id),
+                    itemKey: post.id,
+                    onView: () {
+                      unawaited(
+                          ref.read(goPostsRepositoryProvider).trackFeedEvent(
+                                postId: post.id,
+                                eventType: 'view',
+                              ));
+                    },
+                    onDwell: () {
+                      unawaited(
+                          ref.read(goPostsRepositoryProvider).trackFeedEvent(
+                                postId: post.id,
+                                eventType: 'dwell',
+                              ));
+                    },
+                    child: Column(
+                      children: [
+                        _ThreadPostItem(
+                          post: post,
+                          isForYou: true,
+                          reelsPlaylist: reelsPlaylist,
+                        ),
+                        const Divider(height: 0.5, thickness: 0.5),
+                      ],
+                    ),
                   ),
                 );
               },
@@ -445,32 +449,36 @@ class _FollowingTab extends ConsumerWidget {
                 }
 
                 final post = posts[index];
-                return DwellDetector(
-                  key: ValueKey<String>(post.id),
-                  itemKey: post.id,
-                  onView: () {
-                    unawaited(
-                        ref.read(goPostsRepositoryProvider).trackFeedEvent(
-                              postId: post.id,
-                              eventType: 'view',
-                            ));
-                  },
-                  onDwell: () {
-                    unawaited(
-                        ref.read(goPostsRepositoryProvider).trackFeedEvent(
-                              postId: post.id,
-                              eventType: 'dwell',
-                            ));
-                  },
-                  child: Column(
-                    children: [
-                      _ThreadPostItem(
-                        post: post,
-                        isForYou: false,
-                        reelsPlaylist: reelsPlaylist,
-                      ),
-                      const Divider(height: 0.5, thickness: 0.5),
-                    ],
+                // P1: isolate each row's painting so one row repaint doesn't
+                // invalidate the whole list layer during scroll.
+                return RepaintBoundary(
+                  child: DwellDetector(
+                    key: ValueKey<String>(post.id),
+                    itemKey: post.id,
+                    onView: () {
+                      unawaited(
+                          ref.read(goPostsRepositoryProvider).trackFeedEvent(
+                                postId: post.id,
+                                eventType: 'view',
+                              ));
+                    },
+                    onDwell: () {
+                      unawaited(
+                          ref.read(goPostsRepositoryProvider).trackFeedEvent(
+                                postId: post.id,
+                                eventType: 'dwell',
+                              ));
+                    },
+                    child: Column(
+                      children: [
+                        _ThreadPostItem(
+                          post: post,
+                          isForYou: false,
+                          reelsPlaylist: reelsPlaylist,
+                        ),
+                        const Divider(height: 0.5, thickness: 0.5),
+                      ],
+                    ),
                   ),
                 );
               },
@@ -1031,6 +1039,11 @@ class _ThreadPostItem extends ConsumerWidget {
                             imageUrl: post.imageUrl!,
                             width: double.infinity,
                             fit: BoxFit.cover,
+                            // P1: decode at display size, not full source res, to
+                            // stop image-cache thrash / GC pauses while scrolling.
+                            memCacheWidth: (MediaQuery.of(context).size.width *
+                                    MediaQuery.of(context).devicePixelRatio)
+                                .round(),
                             placeholder: (_, __) => Container(
                               height: 180,
                               color:

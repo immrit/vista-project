@@ -59,6 +59,16 @@ Branch: `architecture-fixes`. Implements `ARCHITECTURE_REVIEW.md` fixes.
 
 ---
 
+## Perf changes (feature-local — listed for rollback)
+
+### P1 — Feed row scroll perf
+- **What:** Wrapped each feed row in `RepaintBoundary`; added `memCacheWidth` (display-size decode) to the feed body `CachedNetworkImage`.
+- **Why:** No per-row paint isolation + full-res image decode caused scroll jank + image-cache thrash/GC (§3.1). NOTE: `_ThreadPostItem` was already a `ConsumerWidget` and `scrollCacheExtent` already set — review snapshot predated team work.
+- **Files:** `lib/features/posts/screens/ExploreFeedScreen.dart`.
+- **Revert:** remove the `RepaintBoundary(child: …)` wrappers (2 list builders) and the `memCacheWidth:` line.
+
+---
+
 ## Flagged — needs user / out-of-band (NOT done here)
 
 - **S3 key rotation:** the leaked ArvanCloud keys (`ARVAN_*` / `AWS_*`) must be rotated on the provider console — external action, cannot do from repo. Assume compromised.
