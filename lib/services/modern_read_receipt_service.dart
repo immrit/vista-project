@@ -6,6 +6,7 @@ import 'package:Vista/utils/env_config.dart';
 
 import '../features/auth/providers/auth_controller.dart';
 import '../features/chat/services/sse_manager.dart';
+import 'http_client_factory.dart';
 
 enum MessageDeliveryStatus { pending, sent, delivered, read, failed }
 
@@ -52,14 +53,8 @@ class ModernReadReceiptService {
   static String get _backendUrl =>
       EnvConfig.apiBaseUrl;
 
-  late final Dio _dio = Dio(
-    BaseOptions(
-      baseUrl: '$_backendUrl/v1',
-      connectTimeout: const Duration(seconds: 10),
-      receiveTimeout: const Duration(seconds: 10),
-      headers: {'Content-Type': 'application/json'},
-    ),
-  );
+  // P3: shared pinned client (cert pinning + god-mode interceptors).
+  late final Dio _dio = createApiV1Dio(baseUrl: _backendUrl);
 
   final _statusUpdatesController =
       StreamController<Map<String, MessageStatusInfo>>.broadcast();

@@ -6,6 +6,7 @@ import 'package:Vista/utils/env_config.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../features/auth/providers/auth_controller.dart';
 import '../features/profile/data/profile_repository.dart';
+import '../services/http_client_factory.dart';
 
 /// سرویس کش برای تنظیمات کاربر
 /// این سرویس تمام تنظیمات کاربر را کش می‌کند تا در حالت آفلاین نیز قابل دسترسی باشد
@@ -31,14 +32,8 @@ class SettingsCacheService {
   final Map<String, dynamic> _privacySettingsCache = {};
   final Map<String, dynamic> _notificationSettingsCache = {};
   final Map<String, DateTime> _lastFetch = {};
-  late final Dio _dio = Dio(
-    BaseOptions(
-      baseUrl: '${EnvConfig.apiBaseUrl}/v1',
-      connectTimeout: const Duration(seconds: 15),
-      receiveTimeout: const Duration(seconds: 15),
-      headers: {'Content-Type': 'application/json'},
-    ),
-  );
+  // P3: shared pinned client (cert pinning + god-mode interceptors).
+  late final Dio _dio = createApiV1Dio(baseUrl: EnvConfig.apiBaseUrl);
 
   /// مقداردهی اولیه سرویس کش
   Future<void> initialize() async {

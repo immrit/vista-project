@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 
 import 'package:Vista/utils/env_config.dart';
 import 'package:Vista/features/auth/providers/auth_controller.dart';
+import 'package:Vista/services/http_client_factory.dart';
 import 'package:Vista/services/session_manager_service_v2.dart';
 import '../models/nearby_models.dart';
 
@@ -20,12 +21,12 @@ class NearbyRepository {
   late final Dio _dio;
 
   NearbyRepository() {
-    _dio = Dio(BaseOptions(
+    // P3: shared pinned client (cert pinning + god-mode interceptors).
+    // Custom /v1/nearby base, so use the pinned factory directly.
+    _dio = createPinnedDioClient(
       baseUrl: '$_baseUrl/v1/nearby',
-      connectTimeout: const Duration(seconds: 15),
-      receiveTimeout: const Duration(seconds: 15),
       headers: {'Content-Type': 'application/json'},
-    ));
+    );
   }
 
   Future<Options> _authOptions() async {

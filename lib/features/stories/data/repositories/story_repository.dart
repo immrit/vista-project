@@ -2,7 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:Vista/utils/env_config.dart';
 
 import '../../../../security/logging_utility.dart';
-import '../../../../services/device_id_service.dart';
+import '../../../../services/http_client_factory.dart';
 import '../../../../services/system_status_service.dart';
 import '../../../auth/providers/auth_controller.dart';
 import '../../core/story_enums.dart';
@@ -12,17 +12,8 @@ import '../services/story_upload_service.dart';
 
 class StoryRepository implements IStoryRepository {
   StoryRepository() {
-    _dio = Dio(
-      BaseOptions(
-        baseUrl: '$_backendUrl/v1',
-        connectTimeout: const Duration(seconds: 15),
-        receiveTimeout: const Duration(seconds: 20),
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Device-ID': DeviceIdService.id,
-        },
-      ),
-    );
+    // P3: shared pinned client (cert pinning + god-mode interceptors).
+    _dio = createApiV1Dio(baseUrl: _backendUrl);
   }
 
   late final Dio _dio;

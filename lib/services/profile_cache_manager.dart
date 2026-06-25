@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import 'package:Vista/utils/env_config.dart';
 
 import '../features/auth/providers/auth_controller.dart' show TokenStorage;
+import 'http_client_factory.dart';
 
 /// مدیریت مرکزی کشینگ پروفایل‌ها با batching هوشمند و real-time updates
 class ProfileCacheManager {
@@ -27,14 +28,8 @@ class ProfileCacheManager {
   final StreamController<Map<String, Map<String, String?>>> _profileUpdates =
       StreamController.broadcast();
 
-  late final Dio _dio = Dio(
-    BaseOptions(
-      baseUrl: '${EnvConfig.apiBaseUrl}/v1',
-      connectTimeout: const Duration(seconds: 10),
-      receiveTimeout: const Duration(seconds: 20),
-      headers: {'Content-Type': 'application/json'},
-    ),
-  );
+  // P3: shared pinned client (cert pinning + god-mode interceptors).
+  late final Dio _dio = createApiV1Dio(baseUrl: EnvConfig.apiBaseUrl);
 
   Stream<Map<String, Map<String, String?>>> get profileUpdates =>
       _profileUpdates.stream;

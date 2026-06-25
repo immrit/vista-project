@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:Vista/utils/env_config.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../services/http_client_factory.dart';
 import '../../auth/data/auth_repository.dart';
 import '../../auth/providers/auth_controller.dart';
 import '../../chat/screens/modern_chat_screen.dart';
@@ -25,14 +26,8 @@ class _ContactUsScreenState extends State<ContactUsScreen> {
 
   bool _isSubmitting = false;
   bool _isOpeningSupportChat = false;
-  late final Dio _dio = Dio(
-    BaseOptions(
-      baseUrl: '${EnvConfig.apiBaseUrl}/v1',
-      connectTimeout: const Duration(seconds: 15),
-      receiveTimeout: const Duration(seconds: 15),
-      headers: {'Content-Type': 'application/json'},
-    ),
-  );
+  // P3: shared pinned client (cert pinning + god-mode interceptors).
+  late final Dio _dio = createApiV1Dio(baseUrl: EnvConfig.apiBaseUrl);
 
   @override
   void initState() {

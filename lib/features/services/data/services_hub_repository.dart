@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:Vista/utils/env_config.dart';
 import 'package:Vista/features/auth/providers/auth_controller.dart';
+import 'package:Vista/services/http_client_factory.dart';
 import 'package:Vista/services/session_manager_service_v2.dart';
 import '../models/services_hub_model.dart';
 
@@ -10,12 +11,8 @@ class ServicesHubRepository {
   late final Dio _dio;
 
   ServicesHubRepository() {
-    _dio = Dio(BaseOptions(
-      baseUrl: '$_baseUrl/v1',
-      connectTimeout: const Duration(seconds: 15),
-      receiveTimeout: const Duration(seconds: 15),
-      headers: {'Content-Type': 'application/json'},
-    ));
+    // P3: shared pinned client (cert pinning + god-mode interceptors).
+    _dio = createApiV1Dio(baseUrl: _baseUrl);
   }
 
   Future<Options> _authOptions() async {

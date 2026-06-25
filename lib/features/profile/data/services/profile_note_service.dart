@@ -3,6 +3,7 @@ import 'package:Vista/utils/env_config.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../security/logging_utility.dart';
+import '../../../../services/http_client_factory.dart';
 import '../../../auth/providers/auth_controller.dart';
 import '../models/profile_note_model.dart';
 
@@ -14,12 +15,8 @@ class ProfileNoteService {
   late final Dio _dio;
 
   ProfileNoteService() {
-    _dio = Dio(BaseOptions(
-      baseUrl: '$_backendUrl/v1',
-      connectTimeout: const Duration(seconds: 15),
-      receiveTimeout: const Duration(seconds: 15),
-      headers: {'Content-Type': 'application/json'},
-    ));
+    // P3: shared pinned client (cert pinning + god-mode interceptors).
+    _dio = createApiV1Dio(baseUrl: _backendUrl);
   }
 
   Future<Options> _authOptions() async {

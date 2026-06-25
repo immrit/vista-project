@@ -8,14 +8,11 @@ import '../features/auth/data/auth_repository.dart';
 import '../features/auth/providers/auth_controller.dart';
 import '../model/MusicModel.dart';
 import 'backend_upload_service.dart';
+import 'http_client_factory.dart';
 
 class MusicService {
-  late final Dio _dio = Dio(BaseOptions(
-    baseUrl: '${EnvConfig.apiBaseUrl}/v1',
-    connectTimeout: const Duration(seconds: 15),
-    receiveTimeout: const Duration(seconds: 15),
-    headers: {'Content-Type': 'application/json'},
-  ));
+  // P3: shared pinned client (cert pinning + god-mode interceptors).
+  late final Dio _dio = createApiV1Dio(baseUrl: EnvConfig.apiBaseUrl);
 
   Future<String> uploadMusic(File file) async {
     final userId = await _currentUserId();

@@ -3,7 +3,7 @@ import 'package:Vista/utils/env_config.dart';
 
 import '../features/auth/providers/auth_controller.dart';
 import '../model/CommentModel.dart';
-import 'device_id_service.dart';
+import 'http_client_factory.dart';
 import 'system_status_service.dart';
 
 class CommentPage {
@@ -21,15 +21,8 @@ class CommentRepository {
   late final Dio _dio;
 
   CommentRepository() {
-    _dio = Dio(BaseOptions(
-      baseUrl: '$_backendUrl/v1',
-      connectTimeout: const Duration(seconds: 15),
-      receiveTimeout: const Duration(seconds: 20),
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Device-ID': DeviceIdService.id,
-      },
-    ));
+    // P3: shared pinned client (cert pinning + god-mode interceptors).
+    _dio = createApiV1Dio(baseUrl: _backendUrl);
   }
 
   static String get _backendUrl => EnvConfig.apiBaseUrl;

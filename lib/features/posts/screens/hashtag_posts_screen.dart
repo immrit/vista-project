@@ -11,8 +11,11 @@ import '../../../model/publicPostModel.dart';
 import '../data/go_posts_repository.dart';
 
 /// Provider for fetching posts by hashtag
+// P4: autoDispose — one instance accumulates per hashtag opened; screen-scoped,
+// so dispose when the hashtag screen closes instead of leaking for the session.
 final hashtagPostsProvider =
-    FutureProvider.family<List<PublicPostModel>, String>((ref, hashtag) async {
+    FutureProvider.autoDispose.family<List<PublicPostModel>, String>(
+        (ref, hashtag) async {
   final repo = ref.read(goPostsRepositoryProvider);
   return await repo.searchPostsByHashtag(hashtag: hashtag);
 });

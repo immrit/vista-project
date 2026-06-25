@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:Vista/utils/env_config.dart';
 
+import '../../../services/http_client_factory.dart';
 import '../../../security/logging_utility.dart';
 import '../../../model/ProfileModel.dart';
 import '../../auth/providers/auth_controller.dart';
@@ -16,12 +17,8 @@ class ProfileRepository {
   late final Dio _dio;
 
   ProfileRepository() {
-    _dio = Dio(BaseOptions(
-      baseUrl: '$_backendUrl/v1',
-      connectTimeout: const Duration(seconds: 15),
-      receiveTimeout: const Duration(seconds: 15),
-      headers: {'Content-Type': 'application/json'},
-    ));
+    // P3: shared pinned client (cert pinning + god-mode interceptors).
+    _dio = createApiV1Dio(baseUrl: _backendUrl);
   }
 
   Future<Options> _authOptions() async {

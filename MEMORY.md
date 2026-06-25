@@ -82,6 +82,12 @@ Branch: `architecture-fixes`. Implements `ARCHITECTURE_REVIEW.md` fixes.
 
 ---
 
+### P3c/P4b (delivered) — bare-Dio → shared pinned client sweep + more autoDispose
+- **P3c:** converted 15 more backend repos/services from bare `Dio(BaseOptions(...))` to the shared factory (`createApiV1Dio`, or `createPinnedDioClient` for nearby's `/v1/nearby` base): `comment_repository`, `profile_repository`, `profile_note_service`, `privacy_settings_repository`, `services_hub_repository`, `user_presence_service`, `typing_service`, `notification_provider`, `MusicService`, `profile_cache_manager`, `settings_cache_service`, `modern_read_receipt_service`, `story_repository`, `ContactUs`, `nearby_repository`. All now get cert pinning + god-mode interceptors. Removed now-unused `device_id_service` imports from `comment_repository`/`story_repository` (factory injects X-Device-ID). **Verified on emulator-5554:** `/v1/notifications`, `/v1/me/profile`, `/v1/me/note`, `/v1/presence/update`, `/v1/stories/active`, `/v1/profiles/notes/batch`, profile posts, saved — all 2xx, 0 exceptions.
+- **Left bare intentionally:** external APIs (`geocoder_service` nominatim/IP), multipart upload Dios (`backend_upload_service`, `payment_service`), `auth_repository` (`/v1/auth` suffix), raw media-download `Dio()` in chat/image viewers.
+- **P4b:** `hashtagPostsProvider` → `autoDispose.family` (same per-arg leak as `postProvider`; screen-scoped).
+- **Revert:** restore each file's original `Dio(BaseOptions(...))` block + its `device_id_service` import; drop `.autoDispose` on hashtag/post providers.
+
 ### P3b/P4a/P5a (delivered) — client routing, autoDispose, dead-code
 - **P3b:** `GoPostsRepository` now builds its Dio via `createApiV1Dio(baseUrl: _backendUrl)` (the shared pinned factory) instead of a bare `Dio(BaseOptions(...))`. Gains cert pinning + god-mode interceptors (maintenance/ban/rate-limit/feature-disabled). Pinning is currently inert (only a placeholder fingerprint configured) so TLS behavior is unchanged. Files: `lib/features/posts/data/go_posts_repository.dart`. Revert: restore the bare `Dio(BaseOptions(baseUrl: '$_backendUrl/v1', ... 'X-Device-ID': DeviceIdService.id))` + re-add the `device_id_service` import.
 - **P4a:** `postProvider` → `FutureProvider.autoDispose.family` (was leaking one instance per opened post). Only used by `PostDetailPage` (watch + invalidate) → safe. Files: `lib/features/posts/providers/posts_provider.dart`. Revert: drop `.autoDispose`.

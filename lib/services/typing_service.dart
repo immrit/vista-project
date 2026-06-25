@@ -6,6 +6,7 @@ import 'package:Vista/utils/env_config.dart';
 import '../features/auth/providers/auth_controller.dart';
 import '../features/chat/services/sse_manager.dart';
 import '../security/logging_utility.dart';
+import 'http_client_factory.dart';
 
 class TypingService {
   static final TypingService _instance = TypingService._internal();
@@ -18,14 +19,8 @@ class TypingService {
   static const Duration _typingTimeout = Duration(seconds: 8);
   static const Duration _typingSyncThrottle = Duration(seconds: 1);
 
-  late final Dio _dio = Dio(
-    BaseOptions(
-      baseUrl: '$_backendUrl/v1',
-      connectTimeout: const Duration(seconds: 10),
-      receiveTimeout: const Duration(seconds: 10),
-      headers: {'Content-Type': 'application/json'},
-    ),
-  );
+  // P3: shared pinned client (cert pinning + god-mode interceptors).
+  late final Dio _dio = createApiV1Dio(baseUrl: _backendUrl);
 
   final Map<String, Timer> _typingTimers = {};
   final Map<String, Set<String>> _typingUsers = {};

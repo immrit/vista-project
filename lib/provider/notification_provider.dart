@@ -10,6 +10,7 @@ import '../features/auth/providers/auth_controller.dart';
 import '../model/notificationModel.dart';
 import '../security/logging_utility.dart';
 import '../services/current_user_service.dart';
+import '../services/http_client_factory.dart';
 import '../services/local_notification_center.dart';
 
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
@@ -71,12 +72,8 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
   }
 
   final Ref _ref;
-  late final Dio _dio = Dio(BaseOptions(
-    baseUrl: '${EnvConfig.apiBaseUrl}/v1',
-    connectTimeout: const Duration(seconds: 15),
-    receiveTimeout: const Duration(seconds: 15),
-    headers: {'Content-Type': 'application/json'},
-  ));
+  // P3: shared pinned client (cert pinning + god-mode interceptors).
+  late final Dio _dio = createApiV1Dio(baseUrl: EnvConfig.apiBaseUrl);
 
   String? _userId;
   int _page = 0;

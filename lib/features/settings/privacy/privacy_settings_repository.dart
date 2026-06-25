@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:Vista/utils/env_config.dart';
 import '../../../DB/settings_cache_service.dart';
 import '../../../security/logging_utility.dart';
+import '../../../services/http_client_factory.dart';
 import '../../auth/providers/auth_controller.dart';
 
 /// Canonical privacy/security settings are stored in `user_settings` on frontend.
@@ -14,12 +15,8 @@ class PrivacySettingsRepository {
       EnvConfig.apiBaseUrl;
 
   PrivacySettingsRepository() {
-    _dio = Dio(BaseOptions(
-      baseUrl: '$_backendUrl/v1',
-      connectTimeout: const Duration(seconds: 15),
-      receiveTimeout: const Duration(seconds: 15),
-      headers: {'Content-Type': 'application/json'},
-    ));
+    // P3: shared pinned client (cert pinning + god-mode interceptors).
+    _dio = createApiV1Dio(baseUrl: _backendUrl);
   }
 
   Future<Options> _authOptions() async {
