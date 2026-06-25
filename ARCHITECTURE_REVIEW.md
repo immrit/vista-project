@@ -7,7 +7,7 @@
 
 ---
 
-## Fix Checklist — Progress: 8/12 fixes done (+ BF5 build-signing fix found via emulator run)
+## Fix Checklist — Progress: 11/12 done + BF5 (build-signing). Only P5 partial — its one open piece is the feature-first migration, which the review itself scopes as "weeks of unglamorous work" (tracked R1–R8 in MEMORY.md).
 
 Implementation order = impact, build-heaviness/slowness first (per refactor plan). Worked on branch `architecture-fixes`. Test baseline before changes: **56 pass / 1 pre-existing fail** (`adaptive_effects_provider_test.dart` — unrelated repo bug, untouched).
 
