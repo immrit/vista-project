@@ -1,30 +1,77 @@
 import 'dart:convert';
+import 'dart:math';
 import 'dart:typed_data';
 import 'package:cryptography/cryptography.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+/// End-to-end encryption service for secret chats.
+///
+/// Crypto design (v1 envelope):
+///   1. X25519 ECDH → raw shared secret (root key material).
+///   2. Per-message AES key = HKDF-SHA256(ikm: rootSecret, salt: randomSalt,
+///      info: _kHkdfInfo). A fresh 16-byte salt per message means every message
+///      uses a distinct AES key → AES-GCM nonce reuse across messages is
+///      impossible by construction (fixes the static-key/nonce-collision risk).
+///   3. AES-256-GCM authenticated encryption.
+///
+/// Envelope layout (base64, prefixed with [_kEnvelopeV1] so detection is
+/// explicit — no fragile "looks-encrypted" heuristics):
+///   "VE2E1:" + base64( salt(16) | nonceLen(1) | nonce | macLen(1) | mac | ct )
+///
+/// Legacy messages (pre-v1, no prefix) used the raw shared secret directly as
+/// the AES key. [decryptMessage] still reads them: MAC verification is the
+/// oracle — if it fails the bytes were never ciphertext, so we return them
+/// as-is instead of guessing by length.
+///
+/// NOTE — forward secrecy: this provides confidentiality + integrity + a
+/// distinct key per message, but NOT forward secrecy / post-compromise
+/// security. The root secret is long-lived, so leaking it exposes all
+/// messages. True FS needs a Double-Ratchet-style design, which is
+/// incompatible with the current "store ciphertext, re-derive on every stream
+/// emit" architecture (a forward-deleting ratchet cannot re-decrypt history
+/// after restart). Tracked separately as an architecture change.
 class E2EEncryptionService {
   final _algorithm = X25519(); // Elliptic Curve Diffie-Hellman
   final _cipher = AesGcm.with256bits();
-  final _storage = const FlutterSecureStorage();
+
+  // Explicit Android options. On flutter_secure_storage v10 the defaults are
+  // already AES/GCM/NoPadding for data + RSA-OAEP-SHA256 for key wrapping
+  // (EncryptedSharedPreferences is deprecated and ignored), so this mainly
+  // documents intent and pins us to the strong default ciphers.
+  final _storage = const FlutterSecureStorage(
+    aOptions: AndroidOptions.defaultOptions,
+  );
+
+  /// Envelope version tag for v1 (HKDF per-message key) ciphertext.
+  static const String _kEnvelopeV1 = 'VE2E1:';
+
+  /// HKDF context string — binds derived keys to this app/protocol version.
+  static const String _kHkdfInfo = 'vista-e2e-msg-v1';
+
+  static const int _kSaltLength = 16;
 
   // Singleton instance
-  static final E2EEncryptionService _instance = E2EEncryptionService._internal();
+  static final E2EEncryptionService _instance =
+      E2EEncryptionService._internal();
   factory E2EEncryptionService() => _instance;
   E2EEncryptionService._internal();
+
+  final Random _rng = Random.secure();
 
   /// تولید جفت کلید (عمومی و خصوصی) برای دیوایس فعلی و ذخیره آن‌ها
   Future<SimpleKeyPair> generateAndSaveKeyPair(String userId) async {
     final keyPair = await _algorithm.newKeyPair();
-    
+
     // استخراج بایت‌های کلید خصوصی
     final privateKeyBytes = await keyPair.extractPrivateKeyBytes();
     final publicKey = await keyPair.extractPublicKey();
-    
+
     // ذخیره در فضای امن
-    await _storage.write(key: 'e2e_priv_$userId', value: base64Encode(privateKeyBytes));
-    await _storage.write(key: 'e2e_pub_$userId', value: base64Encode(publicKey.bytes));
-    
+    await _storage.write(
+        key: 'e2e_priv_$userId', value: base64Encode(privateKeyBytes));
+    await _storage.write(
+        key: 'e2e_pub_$userId', value: base64Encode(publicKey.bytes));
+
     return keyPair;
   }
 
@@ -32,13 +79,13 @@ class E2EEncryptionService {
   Future<SimpleKeyPair?> getSavedKeyPair(String userId) async {
     final privB64 = await _storage.read(key: 'e2e_priv_$userId');
     final pubB64 = await _storage.read(key: 'e2e_pub_$userId');
-    
+
     if (privB64 == null || pubB64 == null) return null;
-    
+
     try {
       final privBytes = base64Decode(privB64);
       final pubBytes = base64Decode(pubB64);
-      
+
       return SimpleKeyPairData(
         privBytes,
         publicKey: SimplePublicKey(pubBytes, type: KeyPairType.x25519),
@@ -71,31 +118,106 @@ class E2EEncryptionService {
     );
   }
 
-  /// رمزنگاری پیام متنی با استفاده از کلید مشترک
+  /// Derive a fresh per-message AES-256 key from the root shared secret.
+  Future<SecretKey> _deriveMessageKey(
+    SecretKey rootSecret,
+    List<int> salt,
+  ) async {
+    final hkdf = Hkdf(hmac: Hmac.sha256(), outputLength: 32);
+    return hkdf.deriveKey(
+      secretKey: rootSecret,
+      nonce: salt, // HKDF salt
+      info: utf8.encode(_kHkdfInfo),
+    );
+  }
+
+  List<int> _randomBytes(int length) {
+    final out = Uint8List(length);
+    for (var i = 0; i < length; i++) {
+      out[i] = _rng.nextInt(256);
+    }
+    return out;
+  }
+
+  /// رمزنگاری پیام متنی (v1 envelope: HKDF per-message key + AES-256-GCM)
   Future<String> encryptMessage(
       String plainText, SecretKey sharedSecret) async {
+    final salt = _randomBytes(_kSaltLength);
+    final messageKey = await _deriveMessageKey(sharedSecret, salt);
+
     final clearTextBytes = utf8.encode(plainText);
     final secretBox = await _cipher.encrypt(
       clearTextBytes,
-      secretKey: sharedSecret,
+      secretKey: messageKey,
     );
 
-    // ساختار: [nonce_length (1 byte)] + [nonce] + [mac_length (1 byte)] + [mac] + [cipher_text]
+    // ساختار: [salt(16)] + [nonce_length (1)] + [nonce] + [mac_length (1)] + [mac] + [cipher_text]
     final buffer = BytesBuilder();
+    buffer.add(salt);
     buffer.addByte(secretBox.nonce.length);
     buffer.add(secretBox.nonce);
     buffer.addByte(secretBox.mac.bytes.length);
     buffer.add(secretBox.mac.bytes);
     buffer.add(secretBox.cipherText);
 
-    return base64Encode(buffer.toBytes());
+    return _kEnvelopeV1 + base64Encode(buffer.toBytes());
   }
 
-  /// رمزگشایی پیام متنی با استفاده از کلید مشترک
+  /// رمزگشایی پیام متنی.
+  ///
+  /// Throws [E2EDecryptException] when bytes ARE a v1 envelope but fail MAC
+  /// verification (tampering or wrong key) — callers can surface a tamper
+  /// warning. For legacy/plaintext, returns best-effort (see class docs).
   Future<String> decryptMessage(
-      String encryptedBase64, SecretKey sharedSecret) async {
+      String encrypted, SecretKey sharedSecret) async {
+    if (encrypted.startsWith(_kEnvelopeV1)) {
+      return _decryptV1(encrypted.substring(_kEnvelopeV1.length), sharedSecret);
+    }
+    return _decryptLegacy(encrypted, sharedSecret);
+  }
+
+  Future<String> _decryptV1(String b64, SecretKey sharedSecret) async {
+    final Uint8List bytes;
     try {
-      final bytes = base64Decode(encryptedBase64);
+      bytes = base64Decode(b64);
+    } catch (_) {
+      throw const E2EDecryptException('malformed v1 envelope (base64)');
+    }
+    try {
+      var offset = 0;
+      final salt = bytes.sublist(offset, offset + _kSaltLength);
+      offset += _kSaltLength;
+
+      final nonceLength = bytes[offset++];
+      final nonce = bytes.sublist(offset, offset + nonceLength);
+      offset += nonceLength;
+
+      final macLength = bytes[offset++];
+      final macBytes = bytes.sublist(offset, offset + macLength);
+      offset += macLength;
+
+      final cipherText = bytes.sublist(offset);
+
+      final messageKey = await _deriveMessageKey(sharedSecret, salt);
+      final clearTextBytes = await _cipher.decrypt(
+        SecretBox(cipherText, nonce: nonce, mac: Mac(macBytes)),
+        secretKey: messageKey,
+      );
+      return utf8.decode(clearTextBytes);
+    } on SecretBoxAuthenticationError {
+      // MAC failed on a real v1 envelope → tampering or wrong key. Surface it.
+      throw const E2EDecryptException('authentication failed (tampered?)');
+    } catch (_) {
+      throw const E2EDecryptException('v1 decrypt failed');
+    }
+  }
+
+  /// Legacy (pre-v1) path: raw shared secret used directly as the AES key, no
+  /// version prefix. MAC verification is the oracle — failure means the bytes
+  /// were never ciphertext (i.e. plaintext), so return them unchanged.
+  Future<String> _decryptLegacy(String encrypted, SecretKey sharedSecret) async {
+    try {
+      final bytes = base64Decode(encrypted);
       var offset = 0;
 
       final nonceLength = bytes[offset++];
@@ -108,20 +230,70 @@ class E2EEncryptionService {
 
       final cipherText = bytes.sublist(offset);
 
-      final secretBox = SecretBox(
-        cipherText,
-        nonce: nonce,
-        mac: Mac(macBytes),
-      );
-
       final clearTextBytes = await _cipher.decrypt(
-        secretBox,
+        SecretBox(cipherText, nonce: nonce, mac: Mac(macBytes)),
         secretKey: sharedSecret,
       );
-
       return utf8.decode(clearTextBytes);
-    } catch (e) {
-      return '[پیام غیرقابل رمزگشایی]';
+    } catch (_) {
+      // Not legacy ciphertext (MAC mismatch / not base64) → treat as plaintext.
+      return encrypted;
     }
   }
+
+  /// Whether [content] is a v1-encrypted envelope. Replaces the old
+  /// length/space heuristic with an exact prefix check.
+  bool isEncryptedEnvelope(String content) =>
+      content.startsWith(_kEnvelopeV1);
+
+  /// Safety number (fingerprint) for out-of-band verification — defends against
+  /// MITM key substitution. Both peers compute the SAME number by hashing the
+  /// two public keys in a canonical (sorted) order. Render it for the user to
+  /// compare with their contact (like Signal's safety numbers).
+  Future<String> computeSafetyNumber(
+    List<int> myPublicKey,
+    List<int> peerPublicKey,
+  ) async {
+    // Canonical ordering so both sides agree regardless of who is "me".
+    final a = Uint8List.fromList(myPublicKey);
+    final b = Uint8List.fromList(peerPublicKey);
+    final first = _compareBytes(a, b) <= 0 ? a : b;
+    final second = identical(first, a) ? b : a;
+
+    final digest = await Sha256().hash([...first, ...second]);
+    return _formatSafetyNumber(digest.bytes);
+  }
+
+  int _compareBytes(List<int> a, List<int> b) {
+    final len = a.length < b.length ? a.length : b.length;
+    for (var i = 0; i < len; i++) {
+      final d = a[i] - b[i];
+      if (d != 0) return d;
+    }
+    return a.length - b.length;
+  }
+
+  /// Render the first 30 digits of the fingerprint as 6 groups of 5, the same
+  /// readable grouping Signal uses.
+  String _formatSafetyNumber(List<int> hash) {
+    final sb = StringBuffer();
+    for (final byte in hash) {
+      sb.write(byte.toString().padLeft(3, '0'));
+    }
+    final digits = sb.toString().substring(0, 30);
+    final groups = <String>[];
+    for (var i = 0; i < digits.length; i += 5) {
+      groups.add(digits.substring(i, i + 5));
+    }
+    return groups.join(' ');
+  }
+}
+
+/// Raised when a v1 envelope fails authenticated decryption — distinct from a
+/// plaintext/legacy message so callers can warn about possible tampering.
+class E2EDecryptException implements Exception {
+  final String message;
+  const E2EDecryptException(this.message);
+  @override
+  String toString() => 'E2EDecryptException: $message';
 }

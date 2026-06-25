@@ -138,20 +138,27 @@ class ChatMessages extends _$ChatMessages {
         continue;
       }
 
-      // Cache miss: decrypt and store
+      // Cache miss. decryptMessage handles all three cases via the envelope
+      // prefix + MAC oracle (no fragile length/space heuristic):
+      //   v1 envelope   → decrypts, or throws E2EDecryptException on tamper
+      //   legacy cipher → decrypts (raw shared secret)
+      //   plaintext     → returned unchanged (MAC mismatch / not base64)
       try {
-        if (m.content.length > 20 && !m.content.contains(' ')) {
-          final decryptedContent =
-              await e2e.decryptMessage(m.content, sharedSecret);
-          if (decryptedContent != '[پیام غیرقابل رمزگشایی]') {
-            _decryptCache[cacheKey] = decryptedContent;
-            decryptedList.add(m.copyWith(content: decryptedContent));
-            continue;
-          }
+        final decryptedContent =
+            await e2e.decryptMessage(m.content, sharedSecret);
+        if (decryptedContent == m.content) {
+          // Plaintext (or undecryptable) — don't cache, leave as-is.
+          decryptedList.add(m);
+        } else {
+          _decryptCache[cacheKey] = decryptedContent;
+          decryptedList.add(m.copyWith(content: decryptedContent));
         }
-      } catch (_) {}
-
-      decryptedList.add(m);
+      } on E2EDecryptException {
+        // Authenticated v1 envelope failed MAC → tampering or wrong key.
+        decryptedList.add(m.copyWith(content: '⚠️ پیام دستکاری‌شده'));
+      } catch (_) {
+        decryptedList.add(m);
+      }
     }
     return decryptedList;
   }

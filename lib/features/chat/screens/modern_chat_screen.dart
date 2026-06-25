@@ -362,6 +362,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   final Map<String, String> _secretDecryptedContentByMessageId =
       <String, String>{};
   final Set<String> _secretDecryptInFlight = <String>{};
+  // TOFU: once a peer-key-change warning is shown, don't spam it every emit.
+  bool _peerKeyChangeWarned = false;
   ProviderSubscription<AsyncValue<List<MessageModel>>>? _messagesListener;
   ProviderSubscription<AsyncValue<Map<String, dynamic>>>?
       _performanceSettingsListener;
@@ -932,8 +934,13 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     final conversationId = widget.args.conversationId;
     final peerPubB64 = prefs.getString('e2e_peer_pub_$conversationId');
 
-    // اگر کلید طرف مقابل را داریم، دیگر نیازی به هندل کردن پیام‌های تبادل کلید نیست
-    if (peerPubB64 != null) return;
+    // اگر کلید طرف مقابل را قبلاً pin کرده‌ایم: کلیدِ جدیدِ متفاوت = تلاش برای
+    // جایگزینی کلید (MITM). به‌جای پذیرش بی‌صدا، هشدار می‌دهیم و کلیدِ pin‌شده را
+    // نگه می‌داریم (Trust-On-First-Use).
+    if (peerPubB64 != null) {
+      _detectPeerKeyChange(messages, peerPubB64);
+      return;
+    }
 
     // ۱. بررسی پیام exchange_key از طرف مقابل
     final peerKeyMessage = messages.firstWhere(
@@ -960,8 +967,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
         attachmentType: 'exchange_key_reply',
       ));
 
-      _addSecretSystemNotice(
-          'کلید امنیتی با موفقیت تبادل شد. ارتباط رمزنگاری شده برقرار است.');
+      await _announceSecureChannel(myPubBytes, peerKeyMessage.content);
       unawaited(_prepareSecretSharedSecret());
       return;
     }
@@ -1001,16 +1007,63 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     if (peerReplyMessage.id.isNotEmpty) {
       await prefs.setString(
           'e2e_peer_pub_$conversationId', peerReplyMessage.content);
-      _addSecretSystemNotice(
-          'ارتباط کاملا امن و رمزنگاری شده (E2EE) برقرار شد.');
+      final myKeyPair = await e2e.getSavedKeyPair(_currentUserId!);
+      final myPubBytes =
+          myKeyPair == null ? null : await e2e.getPublicKeyBytes(myKeyPair);
+      await _announceSecureChannel(myPubBytes, peerReplyMessage.content);
       unawaited(_prepareSecretSharedSecret());
+    }
+  }
+
+  /// Post the "secure channel established" notice plus the safety number, so the
+  /// user can verify it out-of-band against their contact (defends against MITM
+  /// key substitution — the server can swap keys but cannot fake a matching
+  /// safety number on both devices).
+  Future<void> _announceSecureChannel(
+      List<int>? myPubBytes, String peerPubB64) async {
+    if (myPubBytes == null) {
+      _addSecretSystemNotice(
+          'ارتباط رمزنگاری‌شده (E2EE) برقرار شد.');
+      return;
+    }
+    try {
+      final peerPub = base64Decode(peerPubB64);
+      final safety = await E2EEncryptionService()
+          .computeSafetyNumber(myPubBytes, peerPub);
+      _addSecretSystemNotice(
+          'ارتباط رمزنگاری‌شده (E2EE) برقرار شد.\n'
+          'کد امنیتی (با مخاطب مقایسه کنید):\n$safety');
+    } catch (_) {
+      _addSecretSystemNotice('ارتباط رمزنگاری‌شده (E2EE) برقرار شد.');
+    }
+  }
+
+  /// Detect a pinned-peer-key mismatch (possible MITM / device change).
+  void _detectPeerKeyChange(List<MessageModel> messages, String pinnedPubB64) {
+    if (_peerKeyChangeWarned) return;
+    for (final m in messages) {
+      if (m.isMe) continue;
+      final type = m.attachmentType ?? m.messageType;
+      if (type != 'exchange_key' && type != 'exchange_key_reply') continue;
+      if (m.content.isNotEmpty && m.content != pinnedPubB64) {
+        _peerKeyChangeWarned = true;
+        _addSecretSystemNotice(
+            '⚠️ کلید امنیتی مخاطب تغییر کرده است! ممکن است دستگاه طرف مقابل عوض '
+            'شده باشد یا کسی در حال شنود باشد. کد امنیتی را دوباره با مخاطب '
+            'مقایسه کنید.');
+        break;
+      }
     }
   }
 
   bool _looksEncryptedSecretPayload(String raw) {
     final text = raw.trim();
     if (text.isEmpty) return false;
-    if (text.startsWith('e2ee:v1:')) return true;
+    // v1 envelope is detected by exact prefix — authoritative, no guessing.
+    if (E2EEncryptionService().isEncryptedEnvelope(text)) return true;
+    // Legacy (pre-v1, unprefixed) messages: fall back to a base64-shape check.
+    // decryptMessage uses the MAC as the oracle, so a false positive here just
+    // round-trips back to plaintext rather than corrupting anything.
     if (text.startsWith('{') || text.contains(' ') || text.contains('\n')) {
       return false;
     }
@@ -1048,10 +1101,16 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       _secretDecryptInFlight.add(message.id);
       try {
         final clear = await e2e.decryptMessage(message.content, secret);
-        if (clear.isNotEmpty && clear != '[پیام غیرقابل رمزگشایی]') {
+        // decryptMessage returns the input unchanged for plaintext/legacy
+        // non-ciphertext; only store a genuine decryption result.
+        if (clear.isNotEmpty && clear != message.content) {
           _secretDecryptedContentByMessageId[message.id] = clear;
           changed = true;
         }
+      } on E2EDecryptException {
+        // Authenticated v1 envelope failed MAC → tampering or wrong key.
+        _secretDecryptedContentByMessageId[message.id] = '⚠️ پیام دستکاری‌شده';
+        changed = true;
       } catch (_) {
         // keep secure placeholder
       } finally {

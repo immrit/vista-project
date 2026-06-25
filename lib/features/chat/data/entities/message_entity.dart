@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:isar/isar.dart';
 import '../../../../model/message_model.dart';
+import '../../services/local_content_cipher.dart';
 
 part 'message_entity.g.dart';
 
@@ -76,7 +77,8 @@ class MessageEntity {
       ..id = model.id
       ..conversationId = model.conversationId
       ..senderId = model.senderId
-      ..content = model.content
+      // SEC-10: encrypt message body at rest (LC1: envelope, sync AES-GCM).
+      ..content = LocalContentCipher.instance.encryptField(model.content)
       ..createdAt = model.createdAt
       ..editedAt = model.editedAt
       ..isMe = model.isMe
@@ -159,7 +161,8 @@ class MessageEntity {
       id: id,
       conversationId: conversationId,
       senderId: senderId,
-      content: content,
+      // SEC-10: decrypt at-rest body; legacy/plaintext rows pass through.
+      content: LocalContentCipher.instance.decryptField(content),
       createdAt: createdAt,
       editedAt: editedAt,
       isMe: isMe,

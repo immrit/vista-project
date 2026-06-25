@@ -7,6 +7,7 @@ import 'package:isar/isar.dart';
 import 'package:path_provider/path_provider.dart';
 import '../features/chat/data/entities/message_entity.dart';
 import '../features/chat/data/entities/conversation_entity.dart';
+import '../features/chat/services/local_content_cipher.dart';
 import '../features/profile/data/entities/profile_entity.dart';
 import '../features/posts/data/entities/post_entity.dart';
 import '../security/secure_kv_store.dart';
@@ -113,6 +114,11 @@ class IsarDatabaseManager {
   }
 
   Future<Isar> _init() async {
+    // Load the at-rest content cipher key BEFORE returning the Isar instance.
+    // Every entity read/write awaits `instance`, so this guarantees the
+    // synchronous LocalContentCipher.encryptField/decryptField (used in
+    // MessageEntity to/fromModel) always have their key ready. (SEC-10)
+    await LocalContentCipher.instance.init();
     final dir = await getApplicationDocumentsDirectory();
     final encryptionKey = await _getEncryptionKey(dir);
     return _openIsarWithRetry(dir, encryptionKey);

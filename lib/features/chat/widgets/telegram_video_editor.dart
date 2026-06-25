@@ -1,9 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:video_editor/video_editor.dart';
-import 'package:ffmpeg_kit_flutter_min_gpl/ffmpeg_kit.dart';
-import 'package:ffmpeg_kit_flutter_min_gpl/return_code.dart';
-import 'package:path_provider/path_provider.dart';
+import 'package:video_compress/video_compress.dart';
 import 'media_editor_result.dart';
 
 class TelegramVideoEditor extends StatefulWidget {
@@ -44,6 +42,7 @@ class _TelegramVideoEditorState extends State<TelegramVideoEditor> {
 
   @override
   void dispose() {
+    VideoCompress.cancelCompression();
     _captionController.dispose();
     _controller.dispose();
     super.dispose();
@@ -53,27 +52,24 @@ class _TelegramVideoEditorState extends State<TelegramVideoEditor> {
     setState(() => _isExporting = true);
 
     try {
-      final start = _controller.startTrim;
-      final end = _controller.endTrim;
+      final startSec = _controller.startTrim.inSeconds;
+      final durationSec =
+          _controller.endTrim.inSeconds - startSec;
 
-      final tempDir = await getTemporaryDirectory();
-      final outPath =
-          '${tempDir.path}/trimmed_${DateTime.now().millisecondsSinceEpoch}.mp4';
-
-      // Stream copy — fast, no re-encode
-      final audioFlag = _isMuted ? '-an' : '-c:a copy';
-      final command =
-          '-i "${widget.file.path}" -ss ${start.inMilliseconds / 1000} '
-          '-to ${end.inMilliseconds / 1000} -c:v copy $audioFlag "$outPath"';
-
-      final session = await FFmpegKit.execute(command);
-      final returnCode = await session.getReturnCode();
+      final info = await VideoCompress.compressVideo(
+        widget.file.path,
+        quality: VideoQuality.DefaultQuality,
+        deleteOrigin: false,
+        startTime: startSec,
+        duration: durationSec,
+        includeAudio: !_isMuted,
+      );
 
       if (!mounted) return;
-      if (ReturnCode.isSuccess(returnCode)) {
+      if (info?.file != null) {
         Navigator.pop(
           context,
-          MediaEditorResult(File(outPath), _captionController.text.trim()),
+          MediaEditorResult(info!.file!, _captionController.text.trim()),
         );
       } else {
         setState(() => _isExporting = false);

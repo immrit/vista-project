@@ -68,27 +68,43 @@ class DateDivider extends StatelessWidget {
   }
 }
 
+// PERF: cache formatted date strings. Each visible DateDivider rebuild called
+// Jalali.fromDateTime (a non-trivial calendar conversion). Key includes the
+// current day so relative labels ("امروز"/"دیروز") can't go stale across
+// midnight while a chat stays open.
+final Map<String, String> _persianDateCache = <String, String>{};
+
 /// فرمت تاریخ شمسی - استفاده مشترک
 String formatPersianDate(DateTime date) {
   final now = DateTime.now();
   final today = DateTime(now.year, now.month, now.day);
-  final yesterday = today.subtract(const Duration(days: 1));
   final dateOnly = DateTime(date.year, date.month, date.day);
 
-  // تاریخ شمسی
+  final cacheKey = '${today.millisecondsSinceEpoch}'
+      '|${dateOnly.millisecondsSinceEpoch}';
+  final cached = _persianDateCache[cacheKey];
+  if (cached != null) return cached;
+
+  final yesterday = today.subtract(const Duration(days: 1));
   final jalali = Jalali.fromDateTime(date);
 
+  final String result;
   if (dateOnly == today) {
-    return 'امروز';
+    result = 'امروز';
   } else if (dateOnly == yesterday) {
-    return 'دیروز';
+    result = 'دیروز';
   } else if (now.difference(date).inDays < 7) {
-    return _getPersianWeekday(date.weekday);
+    result = _getPersianWeekday(date.weekday);
   } else if (date.year == now.year) {
-    return '${jalali.day} ${_getPersianMonth(jalali.month)}';
+    result = '${jalali.day} ${_getPersianMonth(jalali.month)}';
   } else {
-    return '${jalali.day} ${_getPersianMonth(jalali.month)} ${jalali.year}';
+    result = '${jalali.day} ${_getPersianMonth(jalali.month)} ${jalali.year}';
   }
+
+  // Bound the cache: drop stale "today" keys from previous days.
+  if (_persianDateCache.length > 64) _persianDateCache.clear();
+  _persianDateCache[cacheKey] = result;
+  return result;
 }
 
 String _getPersianWeekday(int weekday) {

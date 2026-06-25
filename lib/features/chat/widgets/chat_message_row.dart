@@ -218,27 +218,22 @@ class _SelectionCheckbox extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = context.chatTheme;
-    return AnimatedScale(
-      scale: 1.0,
-      duration: const Duration(milliseconds: 200),
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          width: 24,
-          height: 24,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: selected ? theme.sendButtonColor : Colors.transparent,
-            border: Border.all(
-              color:
-                  selected ? theme.sendButtonColor : theme.secondaryTextColor,
-              width: 2,
-            ),
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 24,
+        height: 24,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: selected ? theme.sendButtonColor : Colors.transparent,
+          border: Border.all(
+            color: selected ? theme.sendButtonColor : theme.secondaryTextColor,
+            width: 2,
           ),
-          child: selected
-              ? const Icon(Icons.check, color: Colors.white, size: 16)
-              : null,
         ),
+        child: selected
+            ? const Icon(Icons.check, color: Colors.white, size: 16)
+            : null,
       ),
     );
   }

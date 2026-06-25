@@ -78,9 +78,11 @@ class ChatMessageListView extends ConsumerWidget {
     };
 
     // PERF: descriptors فقط به (uiMessages, renderCap) وابسته‌اند، نه overlayRevision.
-    // قبلاً هر tick از overlayRevision (reaction/edit/...) کل clip+build را دوباره
-    // اجرا می‌کرد. memoize با کلید renderCap: تا وقتی build() دوباره اجرا نشده
-    // (یعنی uiMessages عوض نشده)، تغییر overlay دیگر descriptors را بازنمی‌سازد.
+    // این cache در طولِ یک build() زنده است: وقتی overlayRevision تیک می‌خورد،
+    // ValueListenableBuilderِ بیرونی subtree را بازمی‌سازد ولی outer build دوباره
+    // اجرا نمی‌شود، پس descriptors برای همان renderCap از cache می‌آید و clip+build
+    // دوباره اجرا نمی‌شود. (outer build فقط با تغییر structureVersion ری‌ران می‌شود،
+    // که آن‌جا remap اجتناب‌ناپذیر است.)
     final descriptorCache = <int, List<ChatRenderDescriptor>>{};
 
     return ValueListenableBuilder<int>(

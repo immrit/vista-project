@@ -271,9 +271,10 @@ class ChatTheme {
         blurRadius: 4,
         offset: const Offset(0, 2),
       ),
+      // UX: 0.03 عملاً نامرئی بود؛ حباب دیگران روی پس‌زمینهٔ سفید «شناور» نمی‌شد.
       otherBubbleShadow: BoxShadow(
-        color: Colors.black.withValues(alpha: 0.03),
-        blurRadius: 3,
+        color: Colors.black.withValues(alpha: 0.07),
+        blurRadius: 5,
         offset: const Offset(0, 1),
       ),
       inputShadow: BoxShadow(
@@ -298,11 +299,14 @@ class ChatTheme {
 
     return ChatTheme(
       isDark: true,
-      backgroundColor: const Color(0xFF000000),
-      appBarColor: const Color(0xFF000000).withValues(alpha: 0.95),
+      // UX: lifted off pure-black. #000 + #1E1E1E gave a flat, low-contrast
+      // "empty OLED" look; a slightly raised cool-charcoal background reads as
+      // depth and lets other-bubbles separate cleanly.
+      backgroundColor: const Color(0xFF0A0E13),
+      appBarColor: const Color(0xFF0A0E13).withValues(alpha: 0.95),
       textColor: const Color(0xFFF1F5F9),
       secondaryTextColor: const Color(0xFF94A3B8),
-      dividerColor: const Color(0xFF222222),
+      dividerColor: const Color(0xFF1E2630),
 
       // حباب پیام من - Vista Brand Gradient
       myBubbleColor: accent,
@@ -313,9 +317,8 @@ class ChatTheme {
       ),
       myBubbleTextColor: Colors.white,
 
-      // حباب پیام دیگران - خاکستری روشن‌تر برای کنتراست بهتر
-      otherBubbleColor:
-          const Color(0xFF1E1E1E), // Slightly darker for glass look
+      // حباب پیام دیگران - راهِ روشن‌تر/سردتر برای کنتراست مشخص با پس‌زمینه
+      otherBubbleColor: const Color(0xFF1E2630),
       otherBubbleTextColor: Colors.white,
 
       // وضعیت‌ها
@@ -333,16 +336,17 @@ class ChatTheme {
       sendButtonColor: accent,
       iconColor: const Color(0xFF94A3B8), // Slate 400
 
-      // سایه‌ها
+      // سایه‌ها — UX: سایهٔ سفیدِ قبلی روی حباب «من» هاله‌ی نوریِ غیرطبیعی می‌ساخت.
+      // سایهٔ تیرهٔ ملایم طبیعی‌تر است و حباب را روی پس‌زمینه می‌نشاند.
       myBubbleShadow: BoxShadow(
-        color: Colors.white.withValues(alpha: 0.1),
-        blurRadius: 4,
-        offset: const Offset(0, 1),
+        color: Colors.black.withValues(alpha: 0.28),
+        blurRadius: 6,
+        offset: const Offset(0, 2),
       ),
       otherBubbleShadow: BoxShadow(
-        color: Colors.black.withValues(alpha: 0.2),
-        blurRadius: 4,
-        offset: const Offset(0, 1),
+        color: Colors.black.withValues(alpha: 0.22),
+        blurRadius: 5,
+        offset: const Offset(0, 2),
       ),
       inputShadow: BoxShadow(
         color: Colors.black.withValues(alpha: 0.2),
@@ -359,15 +363,21 @@ class ChatTheme {
   // 🏭 Factory - از تم Flutter
   // ═══════════════════════════════════════════════════════════════════════════
 
+  // PERF: cache the two variants. fromTheme() is reached via the
+  // `context.chatTheme` extension from every bubble/divider/row, many times per
+  // frame during scroll. The factories ignore primaryColor (they pull from
+  // AppColors directly), so the result is constant per brightness — building a
+  // fresh object (≈25 Colors + a LinearGradient + 3 BoxShadows) each call was
+  // pure GC churn. Now it's a map lookup.
+  static ChatTheme? _cachedDark;
+  static ChatTheme? _cachedLight;
+
   factory ChatTheme.fromTheme(ThemeData theme) {
     final isDark = theme.brightness == Brightness.dark;
-    final primaryColor = theme.primaryColor;
-
     if (isDark) {
-      return ChatTheme.dark(primaryColor: primaryColor);
-    } else {
-      return ChatTheme.light(primaryColor: primaryColor);
+      return _cachedDark ??= ChatTheme.dark();
     }
+    return _cachedLight ??= ChatTheme.light();
   }
 }
 
