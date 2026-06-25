@@ -93,12 +93,22 @@ Branch: `architecture-fixes`. Implements `ARCHITECTURE_REVIEW.md` fixes.
 - **P4a:** `postProvider` → `FutureProvider.autoDispose.family` (was leaking one instance per opened post). Only used by `PostDetailPage` (watch + invalidate) → safe. Files: `lib/features/posts/providers/posts_provider.dart`. Revert: drop `.autoDispose`.
 - **P5a:** removed unused `supabaseUrl`/`supabaseAnonKey` consts (`lib/utils/env_config.dart`) and the dead commented Supabase `FutureProvider` block (`lib/features/posts/providers/posts_provider.dart`). No code referenced them. Revert: restore from prior commit.
 
-## Staged — large items not safely completable without runtime verification
+## Examined & intentionally NOT changed (with reasons)
 
-- **P3 remainder — HTTP client consolidation:** 43 ad-hoc `Dio(...)` instances + per-request `TokenStorage.getAccessToken()` reads remain. Target: one shared `Dio` (the existing `lib/services/http_client_factory.dart`) with a central auth interceptor (in-memory cached token, 401→refresh→retry) + retry/backoff. Sweeping cross-file change, no test coverage, can't runtime-verify here → not attempted. Delivered the contained, highest-impact slice instead (feed-event batching, see below).
-- **P4 — provider hygiene (autoDispose):** ~370 of ~400 providers never dispose (§3.2). Blanket-adding `autoDispose` is dangerous — auto-disposing a provider that holds in-use session state causes refetch loops / lost state, and `flutter test` (no widget-navigation coverage here) won't catch it. **Safe approach (not applied):** (1) start with `.family` providers backing transient detail/profile/search screens — these accumulate one instance per argument and are the clearest leak; (2) add `.autoDispose` + `ref.keepAlive()` guarded by a short timer where brief caching is wanted; (3) leave always-on tab providers (feed) alone — autoDispose there just causes refetch on tab switch. Each change must be smoke-tested by navigating in/out of the screen.
-- **P5 — finish migration / prune deps / exit Isar 3:** "weeks of unglamorous work" per review §8.6 (old `lib/provider|services|model|widgets` vs `lib/features`, dead Supabase code, ~120 deps incl. redundant HTTP/image/video stacks, unmaintained Isar 3). Not safely scriptable; needs incremental human-driven migration. Documented, not attempted.
-- **P6 — media transcode off-isolate / server-side:** backend-dependent (server-side transcode) + needs device runtime profiling to gate on-device ffmpeg. Out of static-edit scope.
+- **P3 central 401-refresh interceptor:** the app already refreshes proactively — `SessionManagerServiceV2.ensureValidAuthSession()` runs inside `_authOptions()` before authed requests, and `auth_repository.refreshToken()` exists. A reactive 401 interceptor in the shared factory would risk double-refresh / refresh loops against that existing flow. Left out deliberately. If added later: single-flight guard + per-request retry-once flag + never retry the refresh call itself.
+- **P6 media transcode (UI-isolate part):** already fine. `VideoCompress` / `FlutterImageCompress` are native plugins (work runs on native threads via platform channels, not the Dart UI isolate); `telegram_image_editor` already offloads pixel rotate/crop via `compute()`. The only remaining P6 item is the product/backend call to move transcode server-side / cap resolution — not a client code change.
+
+## Staged — large items that need dedicated, human-driven, multi-session work
+
+These are NOT safely completable by automated edits here (high regression risk, no runtime coverage). Each has a concrete approach; they are deliberately left for focused follow-up.
+
+- **P3 remainder — central auth interceptor:** see "Examined & intentionally NOT changed" above — proactive refresh already exists; reactive 401 interceptor risks loops. The bare-`Dio` consolidation itself is DONE for the 16 backend services (P3c).
+- **P4 remainder — full provider autoDispose pass:** done the clear screen-scoped leaks (`postProvider`, `hashtagPostsProvider`). The rest of ~370 providers were examined — most `.family` ones carry deliberate caching (profile inflight-dedup, settings, presence); blanket `autoDispose` would cause refetch churn / state loss that `flutter test` can't catch. Needs per-provider review + navigate-in/out smoke test.
+- **P5 remainder — migration / dep prune / KGP / Isar:**
+  - Finish `lib/provider|services|model|widgets` → `lib/features` move (review §4.1). Mechanical but huge; risk of touching the wrong duplicate.
+  - **KGP plugin migration** (emulator warns): `audio_waveforms, audioplayers_android, camera_android_camerax, device_info_plus, emoji_picker_flutter, file_picker, flutter_contacts, flutter_exif_rotation, flutter_image_compress_common, flutter_native_video_trimmer, flutter_poolakey, local_auth_android, mobile_scanner, package_info_plus, photo_manager, record_android, screen_protector, share_plus, shared_preferences_android, video_compress` apply the legacy Kotlin Gradle Plugin. **Future-Flutter break, not current.** Fix = bump each to a Built-in-Kotlin-compatible version → full rebuild + per-plugin regression test. High churn, low current value → not done blind.
+  - Dep prune (redundant image/video/HTTP stacks) + Isar 3 → Drift/sqlite3: each needs careful per-dep removal + runtime test; weeks of work.
+- **P6 remainder — server-side transcode / resolution cap:** product + backend decision (the client-side isolate concern is already handled, see above).
 
 ---
 

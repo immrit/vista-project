@@ -26,15 +26,16 @@ Implementation order = impact, build-heaviness/slowness first (per refactor plan
 - [x] **P3** — **batched feed analytics** + **16 backend repositories/services now use the shared pinned client** (`createApiV1Dio`/`createPinnedDioClient` → cert pinning + god-mode interceptors) instead of bare `Dio`: posts, comments, profile, profile-notes, privacy, services-hub, presence, typing, notifications, music, profile-cache, settings-cache, read-receipts, stories, contact-us, nearby. §3.4 / §8.4. Verified on emulator (all endpoints 2xx, 0 exceptions). *(remaining bare-`Dio`: external APIs (geocoder/nominatim/IP), multipart uploads, auth `/v1/auth`, raw media downloads — intentionally left. Central 401-refresh interceptor still pending — see MEMORY.md.)*
 - [~] **P4** — provider hygiene: screen-scoped detail providers → `autoDispose` (`postProvider`, `hashtagPostsProvider`). §3.2 / §8.5 *(remaining ~370 NOT blanket-converted: examined the `.family` set — most carry deliberate caching (profile inflight-dedup, settings, presence); blind autoDispose would cause refetch churn. Per-provider review needed; approach in MEMORY.md.)*
 - [~] **P5** — **dead Supabase code removed** (`env_config` consts + commented block in `posts_provider`). §4.1 / §8.6 *(full migration + dep prune + Isar 3 exit = multi-week, stays staged; see MEMORY.md.)*
-- [ ] **P6** — media transcode off UI isolate / server-side; gate + cap resolution. §3.5 / §8.7 *(**STAGED** — backend-dependent + needs device profiling; see MEMORY.md.)*
+- [~] **P6** — media transcode: **examined — the UI-isolate concern is already addressed.** `VideoCompress`/`FlutterImageCompress` are native plugins (run on native threads via platform channels, not the Dart UI isolate), and `telegram_image_editor` already runs pixel ops via `compute()`. §3.5 / §8.7 *(remaining = product/backend decision: move transcode server-side / cap resolution — not a client code fix; see MEMORY.md.)*
 
-> **Done + verified on emulator-5554:** BF1–BF5, SEC1, P1, P2, P3 (batching + shared pinned client on the hot path), P4a (`postProvider` autoDispose), P5a (dead Supabase code). App builds → installs → launches → restores session → loads feed (`/v1/explore`) and flushes batched `/v1/feed/event` (200) through the shared client; **0 crashes** across a full run. The only 404 is the intentional `system/status` path-probe.
+> **Done + verified on emulator-5554:** BF1–BF5, SEC1, P1, P2, P3 (batched analytics + 16 backend services routed through the shared pinned client), P4 (`postProvider` + `hashtagPostsProvider` autoDispose), P5a (dead Supabase code). Two full device runs: build → install → launch → session restore → feed (`/v1/explore`), notifications, profile, presence, stories, notes, saved all return 2xx through the shared client; **0 exceptions** across the runs. Only 404 = the intentional `system/status` path-probe.
 >
-> **Still staged (large, multi-session, can't be safely finished here — concrete approach + rollback in `MEMORY.md`):**
-> - P3 remainder: route the other ~25 bare-`Dio` services through `createApiV1Dio` + add a central 401-refresh/retry interceptor (touches auth; needs token-expiry runtime testing).
-> - P4 remainder: `autoDispose` pass over the rest of ~370 providers (per-provider runtime verification).
-> - P5 remainder: finish `lib/provider|services|model|widgets` → `lib/features` migration, prune redundant deps, **migrate KGP plugins** (emulator warned: 20 plugins apply the legacy Kotlin Gradle Plugin — future-Flutter break), exit Isar 3.
-> - P6: move media transcode off the UI isolate / server-side (backend + device profiling).
+> **Examined, intentionally not changed (see `MEMORY.md`):** central 401-refresh interceptor (proactive refresh via `SessionManagerServiceV2` already exists — reactive interceptor would risk loops); P6 UI-isolate (compression is native/off-isolate already + editor uses `compute()`).
+>
+> **Genuinely remaining — dedicated multi-session work, not safe to automate here (`MEMORY.md` has the plan):**
+> - Full provider `autoDispose` pass (most `.family` providers carry deliberate caching — per-provider review needed).
+> - Finish `lib/provider|services|model|widgets` → `lib/features` migration; prune redundant deps; **migrate the 20 KGP plugins** (future-Flutter break, not current); exit Isar 3.
+> - P6 server-side transcode / resolution cap (product + backend decision).
 >
 > **Out-of-band (need user):** rotate leaked S3 keys; purge them from git history.
 
