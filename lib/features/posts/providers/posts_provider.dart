@@ -173,58 +173,10 @@ final fetchFollowingPostsProvider = StateNotifierProvider<
     FollowingPostsNotifier, AsyncValue<List<PublicPostModel>>>((ref) {
   return FollowingPostsNotifier();
 });
-// final fetchFollowingPostsProvider =
-//     FutureProvider<List<PublicPostModel>>((ref) async {
-//   try {
-//     if (currentUserId == null) return [];
 
-//     // Check followings first
-//         .from('follows')
-//         .select('following_id')
-//         .eq('follower_id', currentUserId);
-
-//     if (followingResponse.isEmpty) {
-//       return []; // Return empty list if no followings
-//     }
-
-//     final followingIds =
-//         followingResponse.map((e) => e['following_id'] as String).toList();
-
-//         .from('posts')
-//         .select('''
-//           *,
-//           profiles!posts_user_id_fkey (
-//             username,
-//             avatar_url,
-//             is_verified
-//           ),
-//           likes (user_id),
-//           comments (id)
-//         ''')
-//         .inFilter('user_id', followingIds)
-//         .order('created_at', ascending: false);
-
-//     return response.map((post) {
-//       final likes = List<Map<String, dynamic>>.from(post['likes'] ?? []);
-//       final comments = List<Map<String, dynamic>>.from(post['comments'] ?? []);
-//       final profile = post['profiles'] as Map<String, dynamic>;
-
-//       return PublicPostModel.fromMap({
-//         ...post,
-//         'like_count': likes.length,
-//         'is_liked': likes.any((like) => like['user_id'] == currentUserId),
-//         'username': profile['username'],
-//         'avatar_url': profile['avatar_url'] ?? '',
-//         'is_verified': profile['is_verified'] ?? false,
-//         'comment_count': comments.length,
-//       });
-//     }).toList();
-//   } catch (e) {
-//     print('Error fetching following posts: $e');
-//     return []; // Return empty list instead of throwing error
-//   }
-// });
+// P4: autoDispose — one instance accumulates per postId visited; without
+// autoDispose every opened post detail stayed in memory for the session.
 final postProvider =
-    FutureProvider.family<PublicPostModel, String>((ref, postId) async {
+    FutureProvider.autoDispose.family<PublicPostModel, String>((ref, postId) async {
   return GoPostsRepository().getPost(postId);
 });

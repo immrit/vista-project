@@ -82,6 +82,11 @@ Branch: `architecture-fixes`. Implements `ARCHITECTURE_REVIEW.md` fixes.
 
 ---
 
+### P3b/P4a/P5a (delivered) — client routing, autoDispose, dead-code
+- **P3b:** `GoPostsRepository` now builds its Dio via `createApiV1Dio(baseUrl: _backendUrl)` (the shared pinned factory) instead of a bare `Dio(BaseOptions(...))`. Gains cert pinning + god-mode interceptors (maintenance/ban/rate-limit/feature-disabled). Pinning is currently inert (only a placeholder fingerprint configured) so TLS behavior is unchanged. Files: `lib/features/posts/data/go_posts_repository.dart`. Revert: restore the bare `Dio(BaseOptions(baseUrl: '$_backendUrl/v1', ... 'X-Device-ID': DeviceIdService.id))` + re-add the `device_id_service` import.
+- **P4a:** `postProvider` → `FutureProvider.autoDispose.family` (was leaking one instance per opened post). Only used by `PostDetailPage` (watch + invalidate) → safe. Files: `lib/features/posts/providers/posts_provider.dart`. Revert: drop `.autoDispose`.
+- **P5a:** removed unused `supabaseUrl`/`supabaseAnonKey` consts (`lib/utils/env_config.dart`) and the dead commented Supabase `FutureProvider` block (`lib/features/posts/providers/posts_provider.dart`). No code referenced them. Revert: restore from prior commit.
+
 ## Staged — large items not safely completable without runtime verification
 
 - **P3 remainder — HTTP client consolidation:** 43 ad-hoc `Dio(...)` instances + per-request `TokenStorage.getAccessToken()` reads remain. Target: one shared `Dio` (the existing `lib/services/http_client_factory.dart`) with a central auth interceptor (in-memory cached token, 401→refresh→retry) + retry/backoff. Sweeping cross-file change, no test coverage, can't runtime-verify here → not attempted. Delivered the contained, highest-impact slice instead (feed-event batching, see below).

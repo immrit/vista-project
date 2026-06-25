@@ -5,7 +5,7 @@ import 'package:Vista/utils/env_config.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../model/publicPostModel.dart';
-import '../../../services/device_id_service.dart';
+import '../../../services/http_client_factory.dart';
 import '../../../services/orphaned_media_cleanup_service.dart';
 import '../../../services/system_status_service.dart';
 import '../../auth/providers/auth_controller.dart';
@@ -68,15 +68,10 @@ class GoPostsRepository {
   Timer? _feedEventFlushTimer;
 
   GoPostsRepository() {
-    _dio = Dio(BaseOptions(
-      baseUrl: '$_backendUrl/v1',
-      connectTimeout: const Duration(seconds: 15),
-      receiveTimeout: const Duration(seconds: 20),
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Device-ID': DeviceIdService.id,
-      },
-    ));
+    // P3: use the shared pinned client instead of a bare Dio, so the feed/posts
+    // hot path gets cert pinning + the god-mode interceptors (maintenance/ban/
+    // rate-limit/feature-disabled) and X-Device-ID that every other service has.
+    _dio = createApiV1Dio(baseUrl: _backendUrl);
   }
 
   Future<void> _ensureFeedEnabled() {
