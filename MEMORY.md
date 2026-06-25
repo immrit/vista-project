@@ -67,6 +67,12 @@ Branch: `architecture-fixes`. Implements `ARCHITECTURE_REVIEW.md` fixes.
 - **Files:** `lib/features/posts/screens/ExploreFeedScreen.dart`.
 - **Revert:** remove the `RepaintBoundary(child: …)` wrappers (2 list builders) and the `memCacheWidth:` line.
 
+### P2 — Non-destructive feed pagination errors
+- **What:** Both feed notifiers no longer call `state = AsyncValue.error` on a page-fetch failure when the feed already has content. They keep the loaded list, set a `loadMoreError` getter, and the list footer renders `_LoadMoreRetryRow` (retry → `retryLoadMore()`). Auto-load is gated while an error is pending. Full error state only when nothing is loaded.
+- **Why:** A failed page-N fetch previously wiped the entire feed to a full-screen error (§3.2/§8.3).
+- **Files:** `lib/provider/personalized_feed_provider.dart`, `lib/features/posts/providers/posts_provider.dart`, `lib/features/posts/screens/ExploreFeedScreen.dart`.
+- **Revert:** restore the single `state = AsyncValue.error(...)` in each notifier's `catch`; drop `_loadMoreError`/`retryLoadMore`/`_LoadMoreRetryRow` and the footer branch.
+
 ---
 
 ## Flagged — needs user / out-of-band (NOT done here)

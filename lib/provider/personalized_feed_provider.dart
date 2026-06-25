@@ -43,9 +43,15 @@ class PersonalizedFeedNotifier
   bool _hasMore = true;
   bool _isLoading = false;
   int _offset = 0;
+  FeedDisplayError? _loadMoreError;
 
   bool hasMorePosts() => _hasMore;
   bool isLoading() => _isLoading;
+
+  /// Non-null when a *pagination* (load-more) request failed while the feed
+  /// already had content. The loaded posts are kept; the UI shows an inline
+  /// retry row instead of wiping the feed. See [retryLoadMore].
+  FeedDisplayError? get loadMoreError => _loadMoreError;
 
   /// Update follow status for all posts by a specific author in the current feed.
   /// This is used for optimistic UI updates on the "Follow" button in the For You tab.
@@ -65,12 +71,14 @@ class PersonalizedFeedNotifier
     _hasMore = true;
     _isLoading = false;
     _offset = 0;
+    _loadMoreError = null;
     await _loadMore();
   }
 
   Future<void> _loadMore() async {
     if (_isLoading || !_hasMore) return;
     _isLoading = true;
+    _loadMoreError = null;
 
     try {
       final items = await _repo.exploreFeed(limit: _limit, offset: _offset);
@@ -80,7 +88,18 @@ class PersonalizedFeedNotifier
       final current = state.value ?? const <PublicPostModel>[];
       state = AsyncValue.data([...current, ...items]);
     } catch (e, st) {
-      state = AsyncValue.error(FeedDisplayError.from(e), st);
+      final current = state.value ?? const <PublicPostModel>[];
+      if (current.isEmpty) {
+        // Initial load failed and nothing is shown — a full error state is
+        // the correct UX here.
+        state = AsyncValue.error(FeedDisplayError.from(e), st);
+      } else {
+        // Pagination failed but we already have a populated feed. NEVER wipe
+        // loaded content (§3.2/§8.3): keep it and flag an inline, retriable
+        // tail error.
+        _loadMoreError = FeedDisplayError.from(e);
+        state = AsyncValue.data(current);
+      }
     } finally {
       _isLoading = false;
     }
@@ -91,6 +110,17 @@ class PersonalizedFeedNotifier
   }
 
   Future<void> loadMorePosts() async {
+    // Don't auto-hammer the backend after a tail failure; wait for explicit
+    // retry via [retryLoadMore].
+    if (_loadMoreError != null) return;
+    await _loadMore();
+  }
+
+  /// Retry a failed pagination request, keeping the already-loaded feed.
+  Future<void> retryLoadMore() async {
+    _loadMoreError = null;
+    final current = state.value ?? const <PublicPostModel>[];
+    state = AsyncValue.data(current); // re-emit so the row shows a spinner
     await _loadMore();
   }
 }

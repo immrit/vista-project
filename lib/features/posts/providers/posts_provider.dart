@@ -83,21 +83,29 @@ class FollowingPostsNotifier
   dynamic _offset = 0;
   bool _hasMore = true;
   bool _isLoading = false;
+  Object? _loadMoreError;
 
   FollowingPostsNotifier() : super(const AsyncValue.loading()) {
     _loadInitialPosts();
   }
 
+  /// Non-null when a load-more request failed while the feed already had
+  /// content. Loaded posts are kept; UI shows an inline retry row instead of
+  /// wiping the feed (§3.2/§8.3). See [retryLoadMore].
+  Object? get loadMoreError => _loadMoreError;
+
   Future<void> _loadInitialPosts() async {
     state = const AsyncValue.loading();
     _offset = 0;
     _hasMore = true;
+    _loadMoreError = null;
     await _loadMorePosts(replace: true);
   }
 
   Future<void> _loadMorePosts({bool replace = false}) async {
     if (!_hasMore || _isLoading) return;
     _isLoading = true;
+    _loadMoreError = null;
     try {
       final posts = await _postsRepository.getFollowingFeed(
         limit: _limit,
@@ -118,16 +126,44 @@ class FollowingPostsNotifier
           .toList();
       VideoPreloadService().preloadVideos(videoUrls);
     } catch (e, stackTrace) {
-      state = AsyncValue.error(e, stackTrace);
+      final current = state.value ?? const <PublicPostModel>[];
+      if (current.isEmpty) {
+        // Nothing loaded yet — a full error state is correct.
+        state = AsyncValue.error(e, stackTrace);
+      } else {
+        // Keep the populated feed; surface a retriable inline tail error
+        // instead of destroying loaded content.
+        _loadMoreError = e;
+        state = AsyncValue.data(current);
+      }
     } finally {
       _isLoading = false;
     }
   }
 
-  Future<void> loadMore() => _loadMorePosts();
+  Future<void> loadMore() {
+    if (_loadMoreError != null) return Future.value();
+    return _loadMorePosts();
+  }
+
   Future<void> refresh() => _loadInitialPosts();
-  Future<void> loadMorePosts() => _loadMorePosts();
+
+  Future<void> loadMorePosts() {
+    // Don't auto-hammer the backend after a tail failure; wait for retry.
+    if (_loadMoreError != null) return Future.value();
+    return _loadMorePosts();
+  }
+
   Future<void> refreshPosts() => _loadInitialPosts();
+
+  /// Retry a failed pagination request, keeping the already-loaded feed.
+  Future<void> retryLoadMore() async {
+    _loadMoreError = null;
+    final current = state.value ?? const <PublicPostModel>[];
+    state = AsyncValue.data(current); // re-emit so the row shows a spinner
+    await _loadMorePosts();
+  }
+
   bool hasMorePosts() => _hasMore;
   bool get hasMore => _hasMore;
   bool get isLoading => _isLoading;

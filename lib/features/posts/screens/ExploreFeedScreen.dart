@@ -329,6 +329,13 @@ class _ForYouTab extends ConsumerWidget {
               itemCount: posts.length + (notifier.hasMorePosts() ? 1 : 0),
               itemBuilder: (context, index) {
                 if (index == posts.length) {
+                  // P2: a failed *page* fetch keeps the loaded feed and shows
+                  // an inline retry row here, never a full-screen error.
+                  if (notifier.loadMoreError != null) {
+                    return _LoadMoreRetryRow(
+                      onRetry: () => notifier.retryLoadMore(),
+                    );
+                  }
                   return const Padding(
                     padding: EdgeInsets.all(16),
                     child: Center(
@@ -439,6 +446,13 @@ class _FollowingTab extends ConsumerWidget {
               itemCount: posts.length + (notifier.hasMorePosts() ? 1 : 0),
               itemBuilder: (context, index) {
                 if (index == posts.length) {
+                  // P2: a failed *page* fetch keeps the loaded feed and shows
+                  // an inline retry row here, never a full-screen error.
+                  if (notifier.loadMoreError != null) {
+                    return _LoadMoreRetryRow(
+                      onRetry: () => notifier.retryLoadMore(),
+                    );
+                  }
                   return const Padding(
                     padding: EdgeInsets.all(16),
                     child: Center(
@@ -618,6 +632,40 @@ class _FeedErrorState extends StatelessWidget {
                     Text(AppLocalizations.of(context)?.retry ?? 'تلاش مجدد')),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Inline footer shown when a *pagination* (load-more) request fails. Unlike
+/// [_FeedErrorState] it never replaces the loaded feed — it sits at the list
+/// bottom and lets the user retry just the next page (§3.2/§8.3).
+class _LoadMoreRetryRow extends StatelessWidget {
+  const _LoadMoreRetryRow({required this.onRetry});
+
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.error_outline, size: 18, color: Colors.orange),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              'بارگذاری پست‌های بیشتر ناموفق بود.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
+          const SizedBox(width: 8),
+          TextButton(
+            onPressed: onRetry,
+            child: Text(AppLocalizations.of(context)?.retry ?? 'تلاش مجدد'),
+          ),
+        ],
       ),
     );
   }
