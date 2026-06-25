@@ -33,7 +33,8 @@ class _StoryReplyThumbnailState extends ConsumerState<StoryReplyThumbnail> {
   @override
   void initState() {
     super.initState();
-    _imageUrl = StoryReplyMediaUtils.resolveMediaUrl(widget.data.storyThumbnailUrl);
+    _imageUrl =
+        StoryReplyMediaUtils.resolveMediaUrl(widget.data.storyThumbnailUrl);
     if (_imageUrl == null || _imageUrl!.isEmpty) {
       _fetchFromStoryApi();
     }
@@ -90,10 +91,15 @@ class _StoryReplyThumbnailState extends ConsumerState<StoryReplyThumbnail> {
               CachedNetworkImage(
                 imageUrl: _imageUrl!,
                 fit: BoxFit.cover,
-                memCacheWidth: (widget.size * MediaQuery.of(context).devicePixelRatio).round(),
-                memCacheHeight: (widget.size * MediaQuery.of(context).devicePixelRatio).round(),
+                memCacheWidth:
+                    (widget.size * MediaQuery.of(context).devicePixelRatio)
+                        .round(),
+                memCacheHeight:
+                    (widget.size * MediaQuery.of(context).devicePixelRatio)
+                        .round(),
                 fadeInDuration: const Duration(milliseconds: 150),
-                placeholder: (context, url) => _placeholder(isQuestion, isVideo),
+                placeholder: (context, url) =>
+                    _placeholder(isQuestion, isVideo),
                 errorWidget: (context, url, error) =>
                     _placeholder(isQuestion, isVideo),
               )

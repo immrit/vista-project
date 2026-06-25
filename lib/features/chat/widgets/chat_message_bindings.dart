@@ -61,7 +61,8 @@ class ChatAlbumBubbleBuildRequest {
 }
 
 typedef ChatBubbleBuilder = Widget Function(ChatBubbleBuildRequest request);
-typedef ChatAlbumBubbleBuilder = Widget Function(ChatAlbumBubbleBuildRequest request);
+typedef ChatAlbumBubbleBuilder = Widget Function(
+    ChatAlbumBubbleBuildRequest request);
 
 /// Screen-owned callbacks for message row rendering.
 @immutable
@@ -107,7 +108,8 @@ class ChatMessageBindings {
   final int unreadCount;
   final bool Function(List<String> messageIds, int index, int totalRows)
       shouldShowUnreadDivider;
-  final (bool, bool) Function(int primaryIndex, int spanLength) getMessageGroupPosition;
+  final (bool, bool) Function(int primaryIndex, int spanLength)
+      getMessageGroupPosition;
   final bool Function(DateTime current, DateTime? older) shouldShowDateDivider;
   final ({
     List<GalleryItem> items,
@@ -125,8 +127,8 @@ class ChatMessageBindingsScope extends InheritedWidget {
   final ChatMessageBindings bindings;
 
   static ChatMessageBindings of(BuildContext context) {
-    final scope = context
-        .dependOnInheritedWidgetOfExactType<ChatMessageBindingsScope>();
+    final scope =
+        context.dependOnInheritedWidgetOfExactType<ChatMessageBindingsScope>();
     assert(scope != null, 'ChatMessageBindingsScope not found in context');
     return scope!.bindings;
   }

@@ -204,8 +204,7 @@ class _ChatConversationsScreenState
                     indicatorColor = Colors.red;
                     break;
                 }
-                final isConnecting =
-                    status == ConnectionStatus.connecting;
+                final isConnecting = status == ConnectionStatus.connecting;
                 return AnimatedSize(
                   duration: const Duration(milliseconds: 300),
                   curve: Curves.easeInOut,
@@ -216,8 +215,7 @@ class _ChatConversationsScreenState
                     alignment: Alignment.center,
                     margin: const EdgeInsetsDirectional.only(start: 8),
                     padding: isConnecting
-                        ? const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 0)
+                        ? const EdgeInsets.symmetric(horizontal: 8, vertical: 0)
                         : EdgeInsets.zero,
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(12),
@@ -588,7 +586,8 @@ class _ChatConversationsScreenState
   }
 
   // ✅ لیست مکالمات بر پایه Optimized Provider (منبع واحد برای badge + ترتیب)
-  Widget _buildUnifiedList(BuildContext context, WidgetRef scopedRef, ThemeData theme, String searchQuery) {
+  Widget _buildUnifiedList(BuildContext context, WidgetRef scopedRef,
+      ThemeData theme, String searchQuery) {
     final conversationsState = scopedRef.watch(
       optimizedConversationsProvider.select(
         (state) => (
@@ -602,10 +601,9 @@ class _ChatConversationsScreenState
     final status = conversationsState.$2;
     final errorMessage = conversationsState.$3;
 
-    final isInitialLoading =
-        (status == ConversationsStatus.loading ||
-                status == ConversationsStatus.initial) &&
-            conversations.isEmpty;
+    final isInitialLoading = (status == ConversationsStatus.loading ||
+            status == ConversationsStatus.initial) &&
+        conversations.isEmpty;
     if (isInitialLoading) {
       return _buildLoadingState(theme);
     }
@@ -729,9 +727,11 @@ class _ChatConversationsScreenState
                   );
                 },
                 findChildIndexCallback: (key) {
-                  if (key is ValueKey<String> && key.value.startsWith('conv_')) {
+                  if (key is ValueKey<String> &&
+                      key.value.startsWith('conv_')) {
                     final id = key.value.substring(5);
-                    final index = requestConversations.indexWhere((c) => c.id == id);
+                    final index =
+                        requestConversations.indexWhere((c) => c.id == id);
                     if (index >= 0) return index;
                   }
                   return null;
@@ -752,9 +752,11 @@ class _ChatConversationsScreenState
                       isPinnedSection: true);
                 },
                 findChildIndexCallback: (key) {
-                  if (key is ValueKey<String> && key.value.startsWith('conv_')) {
+                  if (key is ValueKey<String> &&
+                      key.value.startsWith('conv_')) {
                     final id = key.value.substring(5);
-                    final index = pinnedConversations.indexWhere((c) => c.id == id);
+                    final index =
+                        pinnedConversations.indexWhere((c) => c.id == id);
                     if (index >= 0) return index;
                   }
                   return null;
@@ -775,9 +777,11 @@ class _ChatConversationsScreenState
                       isPinnedSection: false);
                 },
                 findChildIndexCallback: (key) {
-                  if (key is ValueKey<String> && key.value.startsWith('conv_')) {
+                  if (key is ValueKey<String> &&
+                      key.value.startsWith('conv_')) {
                     final id = key.value.substring(5);
-                    final index = regularConversations.indexWhere((c) => c.id == id);
+                    final index =
+                        regularConversations.indexWhere((c) => c.id == id);
                     if (index >= 0) return index;
                   }
                   return null;

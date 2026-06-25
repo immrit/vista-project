@@ -516,9 +516,7 @@ class _SharedContentBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bgColor = isDark
-        ? const Color(0xFF2C2C2E)
-        : const Color(0xFFF0F0F5);
+    final bgColor = isDark ? const Color(0xFF2C2C2E) : const Color(0xFFF0F0F5);
     final textColor = isDark ? Colors.white70 : Colors.black87;
 
     String label;
@@ -527,14 +525,12 @@ class _SharedContentBanner extends StatelessWidget {
       label = content.text ?? 'متن';
       icon = Icons.text_fields_rounded;
     } else if (content.isImage) {
-      label = content.isMultiple
-          ? '${content.filePaths.length} تصویر'
-          : 'یک تصویر';
+      label =
+          content.isMultiple ? '${content.filePaths.length} تصویر' : 'یک تصویر';
       icon = Icons.image_rounded;
     } else if (content.isVideo) {
-      label = content.isMultiple
-          ? '${content.filePaths.length} ویدیو'
-          : 'یک ویدیو';
+      label =
+          content.isMultiple ? '${content.filePaths.length} ویدیو' : 'یک ویدیو';
       icon = Icons.videocam_rounded;
     } else {
       label = 'فایل';

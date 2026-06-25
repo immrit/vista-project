@@ -301,7 +301,9 @@ class _DocumentUploadSheetState extends State<DocumentUploadSheet>
         maxLines: 3,
         maxLength: 1024,
         maxLengthEnforcement: MaxLengthEnforcement.enforced,
-        buildCounter: (_, {required currentLength, required isFocused, maxLength}) => null,
+        buildCounter: (_,
+                {required currentLength, required isFocused, maxLength}) =>
+            null,
         decoration: InputDecoration(
           hintText: 'کپشن فایل (اختیاری)...',
           filled: true,

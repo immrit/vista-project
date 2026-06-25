@@ -1,7 +1,7 @@
+import 'package:Vista/security/logging_utility.dart';
 import 'dart:async';
 
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart';
 import 'package:Vista/utils/env_config.dart';
 
 import '../../../features/auth/providers/auth_controller.dart';
@@ -150,7 +150,7 @@ class MessageReactionsService {
         _publish(messageId, _parseReactionList(data['reactions']));
       },
       onError: (Object error, StackTrace stackTrace) {
-        debugPrint('MessageReactionsService SSE error: $error');
+        logInfo('MessageReactionsService SSE error: $error');
       },
     );
   }

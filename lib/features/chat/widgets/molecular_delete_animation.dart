@@ -29,13 +29,20 @@ class _MolecularDeleteAnimationState extends State<MolecularDeleteAnimation>
   void _setupAnimations() {
     final ctrl = AnimationController(duration: widget.duration, vsync: this);
     _fade = Tween<double>(begin: 1, end: 0).animate(
-      CurvedAnimation(parent: ctrl, curve: const Interval(0.0, 0.75, curve: Curves.easeOut)),
+      CurvedAnimation(
+          parent: ctrl,
+          curve: const Interval(0.0, 0.75, curve: Curves.easeOut)),
     );
     _size = Tween<double>(begin: 1, end: 0).animate(
-      CurvedAnimation(parent: ctrl, curve: const Interval(0.12, 1.0, curve: Curves.easeInCubic)),
+      CurvedAnimation(
+          parent: ctrl,
+          curve: const Interval(0.12, 1.0, curve: Curves.easeInCubic)),
     );
-    _slide = Tween<Offset>(begin: Offset.zero, end: const Offset(0.06, 0.0)).animate(
-      CurvedAnimation(parent: ctrl, curve: const Interval(0.0, 0.8, curve: Curves.easeOutCubic)),
+    _slide =
+        Tween<Offset>(begin: Offset.zero, end: const Offset(0.06, 0.0)).animate(
+      CurvedAnimation(
+          parent: ctrl,
+          curve: const Interval(0.0, 0.8, curve: Curves.easeOutCubic)),
     );
     ctrl.addStatusListener((status) {
       if (status == AnimationStatus.completed) widget.onAnimationComplete();

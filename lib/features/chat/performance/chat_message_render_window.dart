@@ -34,8 +34,7 @@ class ChatMessageRenderWindow {
 
   static bool shouldKeepAliveMessage(MessageModel message) {
     final rawType = message.attachmentType;
-    final attachmentType =
-        rawType == null ? '' : rawType.trim().toLowerCase();
+    final attachmentType = rawType == null ? '' : rawType.trim().toLowerCase();
     if (attachmentType == 'image' ||
         attachmentType == 'video' ||
         attachmentType == 'voice' ||

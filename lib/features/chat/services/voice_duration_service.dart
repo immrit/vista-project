@@ -1,3 +1,4 @@
+import 'package:Vista/security/logging_utility.dart';
 // lib/features/chat/services/voice_duration_service.dart
 //
 // سرویس محاسبه مدت زمان فایل‌های صوتی
@@ -12,7 +13,6 @@
 import 'dart:io';
 import 'dart:async';
 import 'package:audio_waveforms/audio_waveforms.dart';
-import '../../../security/logging_utility.dart';
 
 /// نتیجه محاسبه مدت زمان
 class DurationResult {
@@ -132,7 +132,9 @@ class VoiceDurationService {
         // در صورت خطا در dispose
         try {
           playerController.dispose();
-        } catch (_) {}
+        } catch (e) {
+          logError('Silent error swallowed', error: e);
+        }
         rethrow;
       }
     } catch (e, stackTrace) {

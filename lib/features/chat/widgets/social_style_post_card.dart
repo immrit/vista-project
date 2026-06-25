@@ -132,7 +132,8 @@ class _SocialStylePostCardState extends State<SocialStylePostCard>
     final cardBorderColor = widget.isMine
         ? theme.myBubbleTextColor.withValues(alpha: 0.16)
         : theme.otherBubbleTextColor.withValues(alpha: 0.12);
-    final cardShadow = widget.isMine ? theme.myBubbleShadow : theme.otherBubbleShadow;
+    final cardShadow =
+        widget.isMine ? theme.myBubbleShadow : theme.otherBubbleShadow;
 
     return ScaleTransition(
       scale: _scaleAnimation,
@@ -174,8 +175,8 @@ class _SocialStylePostCardState extends State<SocialStylePostCard>
                       ? [cardShadow]
                       : [
                           BoxShadow(
-                            color: Colors.black.withValues(
-                                alpha: theme.isDark ? 0.26 : 0.08),
+                            color: Colors.black
+                                .withValues(alpha: theme.isDark ? 0.26 : 0.08),
                             blurRadius: 14,
                             offset: const Offset(0, 3),
                           ),
@@ -184,28 +185,29 @@ class _SocialStylePostCardState extends State<SocialStylePostCard>
                 child: Directionality(
                   textDirection: TextDirection.rtl,
                   child: ClipRRect(
-                  borderRadius: BorderRadius.circular(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // هدر پست
-                      _buildPostHeader(theme),
+                    borderRadius: BorderRadius.circular(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // هدر پست
+                        _buildPostHeader(theme),
 
-                      // محتوای متنی
-                      if (_cleanContent.isNotEmpty) _buildPostContent(theme),
+                        // محتوای متنی
+                        if (_cleanContent.isNotEmpty) _buildPostContent(theme),
 
-                      // هشتگ‌ها
-                      if (hashtags.isNotEmpty) _buildHashtags(theme, hashtags),
+                        // هشتگ‌ها
+                        if (hashtags.isNotEmpty)
+                          _buildHashtags(theme, hashtags),
 
-                      // مدیا
-                      if (hasMedia) _buildMediaSection(theme),
+                        // مدیا
+                        if (hasMedia) _buildMediaSection(theme),
 
-                      // آمار و اکشن‌ها + زمان ارسال
-                      _buildEngagementSection(theme),
-                    ],
+                        // آمار و اکشن‌ها + زمان ارسال
+                        _buildEngagementSection(theme),
+                      ],
+                    ),
                   ),
-                ),
                 ),
               ),
             ],
@@ -257,19 +259,19 @@ class _SocialStylePostCardState extends State<SocialStylePostCard>
                         widget.authorAvatar!.isNotEmpty
                     ? CachedNetworkImageProvider(widget.authorAvatar!)
                     : null,
-                child: widget.authorAvatar == null ||
-                        widget.authorAvatar!.isEmpty
-                    ? Text(
-                        widget.authorName.isNotEmpty
-                            ? widget.authorName[0].toUpperCase()
-                            : '?',
-                        style: TextStyle(
-                          color: primaryTextColor,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      )
-                    : null,
+                child:
+                    widget.authorAvatar == null || widget.authorAvatar!.isEmpty
+                        ? Text(
+                            widget.authorName.isNotEmpty
+                                ? widget.authorName[0].toUpperCase()
+                                : '?',
+                            style: TextStyle(
+                              color: primaryTextColor,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          )
+                        : null,
               ),
             ),
           ),

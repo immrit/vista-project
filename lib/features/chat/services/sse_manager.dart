@@ -9,9 +9,10 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart';
 import 'package:Vista/utils/env_config.dart';
+import 'package:Vista/security/logging_utility.dart';
 
 import '../../auth/providers/auth_controller.dart';
 import '../../../services/session_manager_service_v2.dart';
@@ -73,14 +74,14 @@ class SseManager {
         final sessionReady =
             await SessionManagerServiceV2.instance.ensureValidAuthSession();
         if (!sessionReady) {
-          debugPrint('SseManager: no valid session, waiting 5s...');
+          logInfo('SseManager: no valid session, waiting 5s...');
           await Future.delayed(const Duration(seconds: 5));
           continue;
         }
 
         final token = await TokenStorage.getAccessToken();
         if (token == null || token.isEmpty) {
-          debugPrint('SseManager: no token, waiting 5s...');
+          logInfo('SseManager: no token, waiting 5s...');
           await Future.delayed(const Duration(seconds: 5));
           continue;
         }
@@ -107,7 +108,7 @@ class SseManager {
 
         await for (final dynamic message in _activeClient!) {
           if (!_running) break;
-          
+
           if (message is String) {
             final parsed = _parseWsMessage(message);
             if (parsed != null) {
@@ -116,7 +117,7 @@ class SseManager {
           }
         }
       } catch (e) {
-        debugPrint('SseManager (WS): error: $e');
+        logError('SseManager (WS): error: $e');
       }
 
       if (!_running) break;
@@ -124,9 +125,12 @@ class SseManager {
       _setState(SseConnectionState.disconnected);
       _activeClient?.close();
       _activeClient = null;
-      
-      debugPrint('SseManager: reconnecting in ${backoffSeconds}s...');
-      await Future.delayed(Duration(seconds: backoffSeconds));
+
+      final jitter = (math.Random().nextDouble() * 0.4) - 0.2; // +/- 20%
+      final delaySeconds = (backoffSeconds * (1 + jitter)).toInt().clamp(1, 30);
+
+      logInfo('SseManager: reconnecting in ${delaySeconds}s...');
+      await Future.delayed(Duration(seconds: delaySeconds));
       backoffSeconds = (backoffSeconds * 2).clamp(1, 30);
     }
   }
@@ -163,4 +167,3 @@ class SseManager {
     });
   }
 }
-

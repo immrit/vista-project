@@ -1,3 +1,4 @@
+import 'package:Vista/security/logging_utility.dart';
 // lib/features/chat/screens/document_preview_screen.dart
 //
 // Preview اسناد با قابلیت‌های حرفه‌ای
@@ -79,7 +80,7 @@ class _DocumentPreviewScreenState extends State<DocumentPreviewScreen>
         setState(() => _localFile = file);
       }
     } catch (e) {
-      debugPrint('Error checking local file: $e');
+      logInfo('Error checking local file: $e');
     }
   }
 
@@ -581,7 +582,7 @@ class _DocumentPreviewScreenState extends State<DocumentPreviewScreen>
 
       HapticFeedback.heavyImpact();
     } catch (e) {
-      debugPrint('Error downloading file: $e');
+      logInfo('Error downloading file: $e');
       setState(() => _isDownloading = false);
 
       if (mounted) {
@@ -601,7 +602,7 @@ class _DocumentPreviewScreenState extends State<DocumentPreviewScreen>
         subject: widget.documentName,
       );
     } catch (e) {
-      debugPrint('Error sharing file: $e');
+      logInfo('Error sharing file: $e');
     }
   }
 
@@ -633,7 +634,7 @@ class _DocumentPreviewScreenState extends State<DocumentPreviewScreen>
         setState(() => _localFile = null);
         HapticFeedback.heavyImpact();
       } catch (e) {
-        debugPrint('Error deleting file: $e');
+        logInfo('Error deleting file: $e');
       }
     }
   }
@@ -649,7 +650,7 @@ class _DocumentPreviewScreenState extends State<DocumentPreviewScreen>
         subject: widget.documentName,
       );
     } catch (e) {
-      debugPrint('Error opening file: $e');
+      logInfo('Error opening file: $e');
     }
   }
 }

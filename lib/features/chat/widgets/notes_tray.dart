@@ -37,9 +37,8 @@ class NotesTray extends ConsumerWidget {
               if (notesMap.isEmpty) return const SizedBox.shrink();
 
               // فقط یادداشت‌های منقضی نشده را فیلتر و لیست می‌کنیم
-              final activeNotes = notesMap.entries
-                  .where((e) => !e.value.isExpired)
-                  .toList();
+              final activeNotes =
+                  notesMap.entries.where((e) => !e.value.isExpired).toList();
 
               if (activeNotes.isEmpty) return const SizedBox.shrink();
 
@@ -127,9 +126,7 @@ class NotesTray extends ConsumerWidget {
                         shape: BoxShape.circle,
                         color: isDark ? Colors.grey[800] : Colors.grey[300],
                         border: Border.all(
-                          color: isDark
-                              ? Colors.grey[700]!
-                              : Colors.grey[200]!,
+                          color: isDark ? Colors.grey[700]! : Colors.grey[200]!,
                           width: 1,
                         ),
                       ),
@@ -188,7 +185,9 @@ class _EmptyThoughtBubble extends StatelessWidget {
       constraints: const BoxConstraints(maxWidth: 65),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: isDark ? Colors.grey[800]?.withValues(alpha: 0.9) : Colors.white.withValues(alpha: 0.9),
+        color: isDark
+            ? Colors.grey[800]?.withValues(alpha: 0.9)
+            : Colors.white.withValues(alpha: 0.9),
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
@@ -315,7 +314,6 @@ class _NoteTrayItem extends ConsumerWidget {
       );
     }
   }
-
 }
 
 Future<bool> showNoteQuickReplyBottomSheet(
@@ -433,7 +431,8 @@ class _NoteQuickReplySheetState extends ConsumerState<_NoteQuickReplySheet> {
     final secondaryColor = theme.textTheme.bodySmall?.color;
 
     return Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      padding:
+          EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
@@ -565,7 +564,9 @@ class _TopThoughtBubble extends StatelessWidget {
       constraints: const BoxConstraints(maxWidth: 65), // عرض بسیار کوچک
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: isDark ? Colors.grey[800]?.withValues(alpha: 0.9) : Colors.white.withValues(alpha: 0.9),
+        color: isDark
+            ? Colors.grey[800]?.withValues(alpha: 0.9)
+            : Colors.white.withValues(alpha: 0.9),
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(

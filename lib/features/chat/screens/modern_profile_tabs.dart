@@ -516,7 +516,9 @@ extension ModernProfileTabsExt on _VistaChatProfileScreenState {
       if (decoded is Map) {
         return Map<String, dynamic>.from(decoded);
       }
-    } catch (_) {}
+    } catch (e) {
+      logError('Silent error swallowed', error: e);
+    }
     return null;
   }
 
@@ -607,7 +609,9 @@ extension ModernProfileTabsExt on _VistaChatProfileScreenState {
         final map = Map<String, dynamic>.from(decoded);
         return map['postId'] != null || map['post_id'] != null;
       }
-    } catch (_) {}
+    } catch (e) {
+      logError('Silent error swallowed', error: e);
+    }
     return false;
   }
 

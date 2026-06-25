@@ -12,7 +12,7 @@ class ChatScrollPhysics extends ScrollPhysics {
 }
 
 ScrollPhysics chatListScrollPhysics(BuildContext context) {
-  // Use BouncingScrollPhysics across all platforms for a smoother, iOS-like 
+  // Use BouncingScrollPhysics across all platforms for a smoother, iOS-like
   // or Telegram-like feeling, eliminating the "dry" and sudden ClampingScrollPhysics.
   const ScrollPhysics platformPhysics = BouncingScrollPhysics(
     decelerationRate: ScrollDecelerationRate.normal,

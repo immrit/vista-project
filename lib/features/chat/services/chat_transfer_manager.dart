@@ -1,3 +1,4 @@
+import 'package:Vista/security/logging_utility.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -9,7 +10,6 @@ import 'package:path_provider/path_provider.dart';
 
 import '../../../security/secure_kv_store.dart';
 
-import '../../../security/logging_utility.dart';
 
 enum TransferTaskStatus {
   queued,
@@ -177,7 +177,8 @@ class ChatTransferManager {
             );
             if (row == null) continue;
 
-            if (row.status == TransferTaskStatus.downloading || row.status == TransferTaskStatus.uploading) {
+            if (row.status == TransferTaskStatus.downloading ||
+                row.status == TransferTaskStatus.uploading) {
               row.status = TransferTaskStatus.paused;
             }
 
@@ -265,7 +266,8 @@ class ChatTransferManager {
       return existing.taskId;
     }
 
-    final taskId = '${messageId}_upload_${DateTime.now().millisecondsSinceEpoch}';
+    final taskId =
+        '${messageId}_upload_${DateTime.now().millisecondsSinceEpoch}';
     final row = _TransferTaskRecord(
       taskId: taskId,
       messageId: messageId,
@@ -288,7 +290,7 @@ class ChatTransferManager {
   void updateUploadProgress(String messageId, int sentBytes, int totalBytes) {
     final row = _recordForMessage(messageId);
     if (row == null) return;
-    
+
     row.status = TransferTaskStatus.uploading;
     row.receivedBytes = sentBytes;
     row.totalBytes = totalBytes;
@@ -326,7 +328,8 @@ class ChatTransferManager {
       return;
     }
 
-    final taskId = '${messageId}_local_${DateTime.now().millisecondsSinceEpoch}';
+    final taskId =
+        '${messageId}_local_${DateTime.now().millisecondsSinceEpoch}';
     final row = _TransferTaskRecord(
       taskId: taskId,
       messageId: messageId,
@@ -615,16 +618,22 @@ class ChatTransferManager {
     try {
       final finalFile = File(finalPath);
       if (await finalFile.exists()) await finalFile.delete();
-    } catch (_) {}
+    } catch (e) {
+      logError('Silent error swallowed', error: e);
+    }
     try {
       final partFile = File(partPath);
       if (await partFile.exists()) await partFile.delete();
-    } catch (_) {}
+    } catch (e) {
+      logError('Silent error swallowed', error: e);
+    }
     if (task.localPath != null) {
       try {
         final local = File(task.localPath!);
         if (await local.exists()) await local.delete();
-      } catch (_) {}
+      } catch (e) {
+        logError('Silent error swallowed', error: e);
+      }
     }
   }
 
@@ -650,20 +659,24 @@ class ChatTransferManager {
       for (final entity in files) {
         if (entity is File) {
           final stat = entity.statSync();
-          if (stat.accessed.isBefore(cutoff) && stat.modified.isBefore(cutoff)) {
+          if (stat.accessed.isBefore(cutoff) &&
+              stat.modified.isBefore(cutoff)) {
             try {
               entity.deleteSync();
               deletedCount++;
-            } catch (_) {}
+            } catch (e) {
+              logError('Silent error swallowed', error: e);
+            }
           }
         }
       }
-      
+
       if (deletedCount > 0) {
         logInfo('cleanupCache: Deleted $deletedCount old cached files.');
       }
     } catch (e, s) {
-      logError('cleanupCache: Failed to cleanup cache', error: e, stackTrace: s);
+      logError('cleanupCache: Failed to cleanup cache',
+          error: e, stackTrace: s);
     }
   }
 

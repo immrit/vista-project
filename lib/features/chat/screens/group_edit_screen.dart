@@ -273,9 +273,11 @@ class _GroupEditScreenState extends ConsumerState<GroupEditScreen> {
                 decoration: BoxDecoration(
                   color: theme.colorScheme.primary,
                   shape: BoxShape.circle,
-                  border: Border.all(color: theme.scaffoldBackgroundColor, width: 2),
+                  border: Border.all(
+                      color: theme.scaffoldBackgroundColor, width: 2),
                 ),
-                child: const Icon(Icons.camera_alt, color: Colors.white, size: 20),
+                child:
+                    const Icon(Icons.camera_alt, color: Colors.white, size: 20),
               ),
             ),
           ),
@@ -304,7 +306,8 @@ class _GroupEditScreenState extends ConsumerState<GroupEditScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: Text(
             'لینک دعوت',
-            style: TextStyle(color: theme.colorScheme.primary, fontWeight: FontWeight.bold),
+            style: TextStyle(
+                color: theme.colorScheme.primary, fontWeight: FontWeight.bold),
           ),
         ),
         Material(
@@ -312,7 +315,8 @@ class _GroupEditScreenState extends ConsumerState<GroupEditScreen> {
           child: Column(
             children: [
               ListTile(
-                title: Text(_inviteCode == null ? 'لینک هنوز ساخته نشده' : _inviteLink,
+                title: Text(
+                    _inviteCode == null ? 'لینک هنوز ساخته نشده' : _inviteLink,
                     style: TextStyle(color: theme.hintColor, fontSize: 14)),
                 trailing: IconButton(
                   icon: const Icon(Icons.copy),
@@ -344,7 +348,8 @@ class _GroupEditScreenState extends ConsumerState<GroupEditScreen> {
     return Material(
       color: theme.cardColor,
       child: ListTile(
-        leading: Icon(isDeleting ? Icons.delete_forever : Icons.exit_to_app, color: Colors.red),
+        leading: Icon(isDeleting ? Icons.delete_forever : Icons.exit_to_app,
+            color: Colors.red),
         title: Text(
           isDeleting ? 'حذف گروه' : 'خروج از گروه',
           style: const TextStyle(color: Colors.red),

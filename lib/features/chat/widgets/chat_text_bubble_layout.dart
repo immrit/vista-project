@@ -128,7 +128,7 @@ class RenderChatTextBubbleLayout extends RenderBox
       isRtl ? width - text.size.width : 0.0,
       0.0,
     );
-    
+
     // Pin footer to the edge of the screen (outer edge of the bubble).
     // isMe (Sent): right edge in both LTR/RTL, so width - footer.size.width
     // !isMe (Received): left edge in both LTR/RTL, so 0.0

@@ -270,8 +270,7 @@ class ModernConnectionBanner extends StatefulWidget {
   });
 
   @override
-  State<ModernConnectionBanner> createState() =>
-      _ModernConnectionBannerState();
+  State<ModernConnectionBanner> createState() => _ModernConnectionBannerState();
 }
 
 class _ModernConnectionBannerState extends State<ModernConnectionBanner>

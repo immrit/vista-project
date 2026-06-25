@@ -57,7 +57,8 @@ abstract final class ChatMessageVisualEquality {
   }
 
   /// True when only delivery/status fields differ — safe to patch in-place.
-  static bool isDeliveryOnlyChange(MessageModel existing, MessageModel incoming) {
+  static bool isDeliveryOnlyChange(
+      MessageModel existing, MessageModel incoming) {
     if (identical(existing, incoming)) return false;
     if (existing.id != incoming.id) return false;
     if (equals(existing, incoming)) return false;

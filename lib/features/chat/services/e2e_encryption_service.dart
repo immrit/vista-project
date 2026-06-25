@@ -215,7 +215,8 @@ class E2EEncryptionService {
   /// Legacy (pre-v1) path: raw shared secret used directly as the AES key, no
   /// version prefix. MAC verification is the oracle — failure means the bytes
   /// were never ciphertext (i.e. plaintext), so return them unchanged.
-  Future<String> _decryptLegacy(String encrypted, SecretKey sharedSecret) async {
+  Future<String> _decryptLegacy(
+      String encrypted, SecretKey sharedSecret) async {
     try {
       final bytes = base64Decode(encrypted);
       var offset = 0;
@@ -243,8 +244,7 @@ class E2EEncryptionService {
 
   /// Whether [content] is a v1-encrypted envelope. Replaces the old
   /// length/space heuristic with an exact prefix check.
-  bool isEncryptedEnvelope(String content) =>
-      content.startsWith(_kEnvelopeV1);
+  bool isEncryptedEnvelope(String content) => content.startsWith(_kEnvelopeV1);
 
   /// Safety number (fingerprint) for out-of-band verification — defends against
   /// MITM key substitution. Both peers compute the SAME number by hashing the

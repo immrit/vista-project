@@ -1,6 +1,6 @@
+import 'package:Vista/security/logging_utility.dart';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:screen_protector/screen_protector.dart';
 
 /// Manages screenshot/screen-record protection for secret chat screens.
@@ -21,7 +21,7 @@ class SecretChatPrivacyService {
     try {
       await ScreenProtector.preventScreenshotOn();
     } catch (e) {
-      debugPrint('Failed to enable secure display: $e');
+      logInfo('Failed to enable secure display: $e');
     }
   }
 
@@ -34,7 +34,7 @@ class SecretChatPrivacyService {
     try {
       await ScreenProtector.preventScreenshotOff();
     } catch (e) {
-      debugPrint('Failed to disable secure display: $e');
+      logInfo('Failed to disable secure display: $e');
     }
   }
 }

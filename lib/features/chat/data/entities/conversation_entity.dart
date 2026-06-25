@@ -1,6 +1,7 @@
 import 'package:isar/isar.dart';
 import '../../../../model/conversation_model.dart';
 import '../../../../services/modern_read_receipt_service.dart'; // ✅ Correct import
+import '../../services/local_content_cipher.dart';
 
 part 'conversation_entity.g.dart';
 
@@ -50,7 +51,7 @@ class ConversationEntity {
       ..id = model.id
       ..createdAt = model.createdAt
       ..updatedAt = model.updatedAt
-      ..lastMessage = model.lastMessage
+      ..lastMessage = model.lastMessage != null ? LocalContentCipher.instance.encryptField(model.lastMessage!) : null
       ..lastMessageTime = model.lastMessageTime
       ..participants =
           model.participants.map(ParticipantEntity.fromModel).toList()
@@ -79,7 +80,7 @@ class ConversationEntity {
       id: id,
       createdAt: createdAt,
       updatedAt: updatedAt,
-      lastMessage: lastMessage,
+      lastMessage: lastMessage != null ? LocalContentCipher.instance.decryptField(lastMessage!) : null,
       lastMessageTime: lastMessageTime,
       participants: participants?.map((p) => p.toModel()).toList() ?? [],
       otherUserName: otherUserName,

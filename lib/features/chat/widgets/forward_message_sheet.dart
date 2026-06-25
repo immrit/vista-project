@@ -196,8 +196,7 @@ class _ForwardMessageSheetState extends ConsumerState<ForwardMessageSheet>
     return _buildSocialStyleGrid(theme, filteredConversations);
   }
 
-  Widget _buildSocialStyleGrid(
-      ThemeData theme, List<dynamic> conversations) {
+  Widget _buildSocialStyleGrid(ThemeData theme, List<dynamic> conversations) {
     return GridView.builder(
       padding: const EdgeInsets.all(20),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(

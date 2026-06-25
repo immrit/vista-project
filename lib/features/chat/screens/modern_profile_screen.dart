@@ -14,6 +14,7 @@
 
 import 'dart:convert';
 import 'dart:io';
+import 'package:Vista/security/logging_utility.dart';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -26,7 +27,8 @@ import 'package:shimmer/shimmer.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:path_provider/path_provider.dart';
 import '../../../model/message_model.dart';
-import '../../../features/chat/providers/legacy_chat_providers.dart' as legacy_chat;
+import '../../../features/chat/providers/legacy_chat_providers.dart'
+    as legacy_chat;
 import '../../../provider/chat_screen_provider.dart';
 import '../../../provider/presence_provider.dart';
 import 'package:photo_view/photo_view_gallery.dart';
@@ -105,8 +107,6 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
   late ScrollController _scrollController;
   double _headerOpacity = 0.0;
   bool _showCollapsedTitle = false;
-
-
 
   /// دریافت رنگ اصلی از تم
   Color get _primaryColor => Theme.of(context).primaryColor;
@@ -560,7 +560,8 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
       return;
     }
 
-    final conversation = ref.read(legacy_chat.conversationProvider(widget.conversationId)).value;
+    final conversation =
+        ref.read(legacy_chat.conversationProvider(widget.conversationId)).value;
     final cachedAllowProfileZoom = conversation?.allowProfileZoom ?? true;
 
     await ProfileZoomPolicy.openEnlargedAvatar(

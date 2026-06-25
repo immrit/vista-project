@@ -68,9 +68,8 @@ class _ReactionsDetailSheetState extends State<_ReactionsDetailSheet>
 
   @override
   Widget build(BuildContext context) {
-    final bg = widget.theme.isDark
-        ? const Color(0xFF1C1C2E)
-        : const Color(0xFFF5F5F5);
+    final bg =
+        widget.theme.isDark ? const Color(0xFF1C1C2E) : const Color(0xFFF5F5F5);
 
     return DraggableScrollableSheet(
       initialChildSize: 0.4,
@@ -99,7 +98,8 @@ class _ReactionsDetailSheetState extends State<_ReactionsDetailSheet>
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                 child: Text(
                   'واکنش‌ها',
                   style: TextStyle(
@@ -114,8 +114,7 @@ class _ReactionsDetailSheetState extends State<_ReactionsDetailSheet>
                 isScrollable: true,
                 indicatorColor: widget.theme.sendButtonColor,
                 labelColor: widget.theme.sendButtonColor,
-                unselectedLabelColor:
-                    widget.theme.secondaryTextColor,
+                unselectedLabelColor: widget.theme.secondaryTextColor,
                 indicatorSize: TabBarIndicatorSize.label,
                 tabs: _tabs.map((emoji) {
                   final count = _countForTab(emoji);
@@ -203,15 +202,14 @@ class _ReactionUserTile extends StatelessWidget {
                 reactor.userAvatar != null && reactor.userAvatar!.isNotEmpty
                     ? NetworkImage(reactor.userAvatar!)
                     : null,
-            child:
-                reactor.userAvatar == null || reactor.userAvatar!.isEmpty
-                    ? Text(
-                        (reactor.userName?.isNotEmpty == true
-                            ? reactor.userName![0]
-                            : '?'),
-                        style: const TextStyle(fontSize: 14),
-                      )
-                    : null,
+            child: reactor.userAvatar == null || reactor.userAvatar!.isEmpty
+                ? Text(
+                    (reactor.userName?.isNotEmpty == true
+                        ? reactor.userName![0]
+                        : '?'),
+                    style: const TextStyle(fontSize: 14),
+                  )
+                : null,
           ),
           title: Text(
             reactor.userName ?? reactor.userId,

@@ -301,7 +301,8 @@ class _GroupDetailsScreenState extends ConsumerState<GroupDetailsScreen> {
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('حذف گروه'),
-        content: const Text('آیا از حذف کامل این گروه اطمینان دارید؟ این عملیات غیرقابل بازگشت است.'),
+        content: const Text(
+            'آیا از حذف کامل این گروه اطمینان دارید؟ این عملیات غیرقابل بازگشت است.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -583,7 +584,8 @@ class _GroupDetailsScreenState extends ConsumerState<GroupDetailsScreen> {
   Widget _buildMemberTile(GroupMemberItem member, ThemeData theme) {
     final isMe = member.userId == _currentUserId;
     final isTargetCreator = member.userId == _createdBy;
-    final canManage = _isCreator || (_isAdmin && !member.isAdmin && !isTargetCreator);
+    final canManage =
+        _isCreator || (_isAdmin && !member.isAdmin && !isTargetCreator);
 
     return ListTile(
       contentPadding: EdgeInsets.zero,
@@ -723,11 +725,13 @@ class _AddMembersSheetState extends State<_AddMembersSheet> {
 
     setState(() => _isSearching = true);
     try {
-      final users = await _service.searchUsers(q, cancelToken: _searchCancelToken);
+      final users =
+          await _service.searchUsers(q, cancelToken: _searchCancelToken);
       if (!mounted) return;
       setState(() {
-        _results =
-            users.where((u) => !widget.existingMemberIds.contains(u.id)).toList();
+        _results = users
+            .where((u) => !widget.existingMemberIds.contains(u.id))
+            .toList();
         _isSearching = false;
       });
     } catch (e) {

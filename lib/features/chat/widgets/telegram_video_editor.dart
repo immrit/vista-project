@@ -53,8 +53,7 @@ class _TelegramVideoEditorState extends State<TelegramVideoEditor> {
 
     try {
       final startSec = _controller.startTrim.inSeconds;
-      final durationSec =
-          _controller.endTrim.inSeconds - startSec;
+      final durationSec = _controller.endTrim.inSeconds - startSec;
 
       final info = await VideoCompress.compressVideo(
         widget.file.path,

@@ -1,6 +1,7 @@
 import 'package:isar/isar.dart';
 import 'package:rxdart/rxdart.dart';
 import '../../../../model/message_model.dart';
+import '../../services/local_content_cipher.dart';
 import '../../../../model/conversation_model.dart';
 import '../../../../DB/isar_database_manager.dart';
 import '../../utils/conversation_name_utils.dart';
@@ -55,7 +56,8 @@ class _CachedEntityRecord {
     required this.model,
   });
 
-  factory _CachedEntityRecord.snapshot(MessageEntity entity, MessageModel model) {
+  factory _CachedEntityRecord.snapshot(
+      MessageEntity entity, MessageModel model) {
     return _CachedEntityRecord(
       content: entity.content,
       reactionsJson: entity.reactionsJson,
@@ -159,8 +161,10 @@ class ChatLocalDataSourceIsar {
     // 2. Debounced watchLazy — coalesces concurrent writes; 16ms = 1 frame at 60fps
     // so any single write (send/edit/delete) appears in the next frame. Bulk sync
     // still coalesces because debounce resets on each write.
-    final rawWatcher = limit == null ? base.watchLazy() : base.limit(limit).watchLazy();
-    final debouncedWatcher = rawWatcher.debounceTime(const Duration(milliseconds: 16));
+    final rawWatcher =
+        limit == null ? base.watchLazy() : base.limit(limit).watchLazy();
+    final debouncedWatcher =
+        rawWatcher.debounceTime(const Duration(milliseconds: 16));
 
     await for (final _ in debouncedWatcher) {
       final entities = limit == null
@@ -237,7 +241,7 @@ class ChatLocalDataSourceIsar {
             !merged.createdAt.isBefore(conversation.lastMessageTime!);
 
         if (isLatestMessage) {
-          conversation.lastMessage = merged.content;
+          conversation.lastMessage = LocalContentCipher.instance.encryptField(merged.content);
           conversation.lastMessageTime = merged.createdAt;
 
           if (merged.createdAt.isAfter(conversation.updatedAt)) {
@@ -290,7 +294,7 @@ class ChatLocalDataSourceIsar {
           ..id = message.conversationId
           ..createdAt = merged.createdAt
           ..updatedAt = merged.createdAt
-          ..lastMessage = merged.content
+          ..lastMessage = LocalContentCipher.instance.encryptField(merged.content)
           ..lastMessageTime = merged.createdAt
           ..lastMessageType = merged.attachmentType ?? 'text'
           ..isLastMessageFromMe = merged.isMe
@@ -420,7 +424,7 @@ class ChatLocalDataSourceIsar {
     if (latestMessageEntity != null) {
       final latestMessage = latestMessageEntity.toModel();
       conversation
-        ..lastMessage = latestMessage.content
+        ..lastMessage = LocalContentCipher.instance.encryptField(latestMessage.content)
         ..lastMessageTime = latestMessage.createdAt
         ..lastMessageType = latestMessage.attachmentType ?? 'text'
         ..isLastMessageFromMe = latestMessage.isMe
@@ -634,7 +638,7 @@ class ChatLocalDataSourceIsar {
       if (latestMessageEntity != null) {
         final latestMessage = latestMessageEntity.toModel();
         conversation
-          ..lastMessage = latestMessage.content
+          ..lastMessage = LocalContentCipher.instance.encryptField(latestMessage.content)
           ..lastMessageTime = latestMessage.createdAt
           ..lastMessageType = latestMessage.attachmentType ?? 'text'
           ..isLastMessageFromMe = latestMessage.isMe
@@ -749,7 +753,8 @@ class ChatLocalDataSourceIsar {
     yield initialEntities.map((e) => e.toModel()).toList();
 
     // Debounced watchLazy — conversations change less often but batch updates happen
-    await for (final _ in query.watchLazy().debounceTime(const Duration(milliseconds: 100))) {
+    await for (final _
+        in query.watchLazy().debounceTime(const Duration(milliseconds: 100))) {
       final entities = await query.findAll();
       yield entities.map((e) => e.toModel()).toList();
     }

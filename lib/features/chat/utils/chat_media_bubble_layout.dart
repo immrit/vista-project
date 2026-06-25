@@ -84,7 +84,8 @@ class ChatMediaBubbleLayout {
     bool useFullWidth = true,
   }) {
     final layoutWidth = bubbleMaxWidth ??
-        (math.min(screenWidth, screenHeight) * 0.75).clamp(minLayoutWidth, screenWidth);
+        (math.min(screenWidth, screenHeight) * 0.75)
+            .clamp(minLayoutWidth, screenWidth);
 
     if (useFullWidth) {
       var layoutHeight = layoutWidth * maxHeightRatioFitWidth;
@@ -92,8 +93,7 @@ class ChatMediaBubbleLayout {
           imageHeight != null &&
           imageWidth > 0 &&
           imageHeight > 0) {
-        final scaledHeight =
-            imageHeight * (layoutWidth / imageWidth);
+        final scaledHeight = imageHeight * (layoutWidth / imageWidth);
         layoutHeight = math.min(layoutHeight, scaledHeight);
       }
       return computeDisplaySize(

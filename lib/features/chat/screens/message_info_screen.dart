@@ -1,4 +1,4 @@
-﻿// lib/features/chat/screens/message_info_screen.dart
+// lib/features/chat/screens/message_info_screen.dart
 //
 // اطلاعات دقیق پیام (الهام از ویستا)
 //
@@ -400,17 +400,17 @@ class MessageInfoScreen extends StatelessWidget {
               color: theme.primaryColor.withValues(alpha: 0.08),
             ),
             child: ClipOval(
-              child: reaction.userAvatar != null &&
-                      reaction.userAvatar!.isNotEmpty
-                  ? AvatarAssetUtils.image(
-                      source: reaction.userAvatar,
-                      fit: BoxFit.cover,
-                      memCacheWidth: 72,
-                      memCacheHeight: 72,
-                      placeholder: _buildInitialAvatar(theme, initial),
-                      fallback: _buildInitialAvatar(theme, initial),
-                    )
-                  : _buildInitialAvatar(theme, initial),
+              child:
+                  reaction.userAvatar != null && reaction.userAvatar!.isNotEmpty
+                      ? AvatarAssetUtils.image(
+                          source: reaction.userAvatar,
+                          fit: BoxFit.cover,
+                          memCacheWidth: 72,
+                          memCacheHeight: 72,
+                          placeholder: _buildInitialAvatar(theme, initial),
+                          fallback: _buildInitialAvatar(theme, initial),
+                        )
+                      : _buildInitialAvatar(theme, initial),
             ),
           ),
           const SizedBox(width: 12),

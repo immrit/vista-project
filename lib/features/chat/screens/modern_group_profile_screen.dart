@@ -1806,7 +1806,8 @@ class _GroupSharedMessagesTab extends ConsumerStatefulWidget {
       _GroupSharedMessagesTabState();
 }
 
-class _GroupSharedMessagesTabState extends ConsumerState<_GroupSharedMessagesTab>
+class _GroupSharedMessagesTabState
+    extends ConsumerState<_GroupSharedMessagesTab>
     with AutomaticKeepAliveClientMixin {
   @override
   bool get wantKeepAlive => true;
@@ -1836,8 +1837,7 @@ class _GroupSharedMessagesTabState extends ConsumerState<_GroupSharedMessagesTab
               mainAxisSpacing: 6,
             ),
             itemCount: items.length,
-            itemBuilder: (context, index) =>
-                _MediaThumb(message: items[index]),
+            itemBuilder: (context, index) => _MediaThumb(message: items[index]),
           );
         }
         return ListView.separated(

@@ -1,3 +1,4 @@
+import 'package:Vista/security/logging_utility.dart';
 // lib/features/chat/widgets/gif_picker_widget.dart
 //
 // ویجت انتخاب GIF - مشابه ویستا
@@ -236,13 +237,13 @@ class _GifPickerWidgetState extends State<GifPickerWidget>
   Widget _buildGifItem(GifItem gif, bool isDark) {
     return InkWell(
       onTap: () {
-        print('🎞️ ========== GIF TAPPED ==========');
-        print('🎞️ GIF URL: ${gif.url}');
+        logInfo('🎞️ ========== GIF TAPPED ==========');
+        logInfo('🎞️ GIF URL: ${gif.url}');
         HapticFeedback.lightImpact();
-        print('🎞️ Calling widget.onGifSelected...');
+        logInfo('🎞️ Calling widget.onGifSelected...');
         widget.onGifSelected(gif.url);
-        print('🎞️ widget.onGifSelected called');
-        print('🎞️ ========== GIF TAPPED END ==========');
+        logInfo('🎞️ widget.onGifSelected called');
+        logInfo('🎞️ ========== GIF TAPPED END ==========');
       },
       borderRadius: BorderRadius.circular(8),
       child: ClipRRect(

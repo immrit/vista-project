@@ -81,8 +81,7 @@ class LocalContentCipher {
     if (encrypter == null || plain.isEmpty) return plain;
     try {
       final iv = enc.IV(_randomBytes(_ivLength));
-      final encrypted =
-          encrypter.encrypt(plain, iv: iv); // sync (AES-GCM)
+      final encrypted = encrypter.encrypt(plain, iv: iv); // sync (AES-GCM)
       final buffer = BytesBuilder()
         ..add(iv.bytes)
         ..add(encrypted.bytes);

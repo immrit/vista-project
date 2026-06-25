@@ -71,7 +71,6 @@ extension ModernProfileActionsExt on _VistaChatProfileScreenState {
 
           const SizedBox(width: 8),
 
-
           // دکمه جستجو
           _buildActionButton(
             icon: Icons.search,

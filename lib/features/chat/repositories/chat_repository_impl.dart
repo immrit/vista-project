@@ -1,3 +1,4 @@
+import 'package:Vista/security/logging_utility.dart';
 // lib/features/chat/repositories/chat_repository_impl.dart
 //
 // âœ… Ù¾ÛŒØ§Ø¯Ù‡â€ŒØ³Ø§Ø²ÛŒ Ú©Ø§Ù…Ù„ Ø¨Ø§ Go backend
@@ -42,14 +43,12 @@ class ChatRepositoryImpl implements ChatRepository {
   Timer? _heartbeatTimer;
 
   // â”€â”€ throttle maps (Ø¨Ø±Ø§ÛŒ Ø¬Ù„ÙˆÚ¯ÛŒØ±ÛŒ Ø§Ø² sync Ø¨ÛŒØ´ Ø§Ø² Ø­Ø¯) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  final Map<String, int> _lastMsgSyncMs = {};
+  final Map<String, Timer?> _msgSyncTimers = {};
   final Map<String, bool> _msgSyncInFlight = {};
-  int _lastConvSyncMs = 0;
+  Timer? _convSyncTimer;
   bool _convSyncInFlight = false;
   int _convRateLimitedUntilMs = 0;
 
-  static const Duration _msgSyncThrottle = Duration(milliseconds: 800);
-  static const Duration _convSyncThrottle = Duration(seconds: 2);
   static const int _msgPageSize = 50;
 
   static String get _base => EnvConfig.apiBaseUrl;
@@ -60,6 +59,19 @@ class ChatRepositoryImpl implements ChatRepository {
 
     // âœ… SSE singleton Ø´Ø±ÙˆØ¹ Ù…ÛŒØ´Ù‡ â€” Ù‡Ù…Ù‡ provider Ù‡Ø§ Ø§Ø² ÛŒÙ‡ Ú©Ø§Ù†Ú©Ø´Ù† Ø§Ø³ØªÙØ§Ø¯Ù‡ Ù…ÛŒâ€ŒÚ©Ù†Ù†
     SseManager.instance.start();
+
+    SseManager.instance.connectionState.listen((state) {
+      if (state == SseConnectionState.connected) {
+        _userId().then((uid) {
+          if (uid != null) {
+            _syncConversations(uid);
+            if (_activeConversationId != null) {
+              _syncMessages(_activeConversationId!, uid);
+            }
+          }
+        });
+      }
+    });
   }
 
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
@@ -145,7 +157,7 @@ class ChatRepositoryImpl implements ChatRepository {
 
     sseSub = SseManager.instance.events.listen((event) async {
       final type = event['type'] as String?;
-      
+
       if (type == 'message_deleted') {
         final data = event['data'] as Map<String, dynamic>?;
         final msgId = data?['message_id']?.toString();
@@ -156,7 +168,7 @@ class ChatRepositoryImpl implements ChatRepository {
               .markDeletedRemotely(msgId, conversationId));
         }
       }
-      
+
       if (type == 'new_message' ||
           type == 'conversation_updated' ||
           type == 'conversation_cleared') {
@@ -751,7 +763,7 @@ class ChatRepositoryImpl implements ChatRepository {
           .toList()
           .reversed
           .toList();
-          
+
       if (msgs.isNotEmpty) {
         final sortedServer = List<MessageModel>.from(msgs)
           ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
@@ -838,7 +850,9 @@ class ChatRepositoryImpl implements ChatRepository {
           options: opts,
         );
         yield _reactionMap(_asList(_asMap(res.data)['reactions']));
-      } catch (_) {}
+      } catch (e) {
+        logError('Silent error swallowed', error: e);
+      }
     }
 
     // SSE updates
@@ -863,7 +877,9 @@ class ChatRepositoryImpl implements ChatRepository {
         '/chat/conversations/$conversationId/typing',
         options: opts,
       );
-    } catch (_) {}
+    } catch (e) {
+      logError('Silent error swallowed', error: e);
+    }
   }
 
   /// Go backend Ø¨Ø§ÛŒØ¯ Ø§ÛŒÙ† event Ø±Ùˆ Ø§Ø² SSE Ø¨ÙØ±Ø³ØªÙ‡:
@@ -932,7 +948,9 @@ class ChatRepositoryImpl implements ChatRepository {
         '/chat/conversations/$conversationId/read',
         options: opts,
       );
-    } catch (_) {}
+    } catch (e) {
+      logError('Silent error swallowed', error: e);
+    }
   }
 
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
@@ -1033,21 +1051,22 @@ class ChatRepositoryImpl implements ChatRepository {
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
   Future<void> _syncConversations(String uid) async {
-    if (_convSyncInFlight) return;
-    final now = DateTime.now().millisecondsSinceEpoch;
-    if (now < _convRateLimitedUntilMs) return;
-    if (now - _lastConvSyncMs < _convSyncThrottle.inMilliseconds) return;
-    _lastConvSyncMs = now;
-    _convSyncInFlight = true;
+    if (_convSyncTimer?.isActive ?? false) return;
+    _convSyncTimer = Timer(const Duration(milliseconds: 500), () async {
+      if (_convSyncInFlight) return;
+      final now = DateTime.now().millisecondsSinceEpoch;
+      if (now < _convRateLimitedUntilMs) return;
+      _convSyncInFlight = true;
 
-    try {
-      final result = await _fetchConversationsFromServer(uid);
-      if (result.isSuccess) {
-        await _local.saveConversations(result.data!);
+      try {
+        final result = await _fetchConversationsFromServer(uid);
+        if (result.isSuccess) {
+          await _local.saveConversations(result.data!);
+        }
+      } finally {
+        _convSyncInFlight = false;
       }
-    } finally {
-      _convSyncInFlight = false;
-    }
+    });
   }
 
   Future<ChatResult<List<ConversationModel>>> _fetchConversationsFromServer(
@@ -1102,48 +1121,46 @@ class ChatRepositoryImpl implements ChatRepository {
   }
 
   Future<void> _syncMessages(String conversationId, String uid) async {
-    if (_msgSyncInFlight[conversationId] == true) return;
-    final now = DateTime.now().millisecondsSinceEpoch;
-    if (now - (_lastMsgSyncMs[conversationId] ?? 0) <
-        _msgSyncThrottle.inMilliseconds) {
-      return;
-    }
-    _lastMsgSyncMs[conversationId] = now;
-    _msgSyncInFlight[conversationId] = true;
+    if (_msgSyncTimers[conversationId]?.isActive ?? false) return;
+    _msgSyncTimers[conversationId] =
+        Timer(const Duration(milliseconds: 500), () async {
+      if (_msgSyncInFlight[conversationId] == true) return;
+      _msgSyncInFlight[conversationId] = true;
 
-    try {
-      final opts = await _authOptions();
-      if (opts == null) return;
+      try {
+        final opts = await _authOptions();
+        if (opts == null) return;
 
-      final res = await _dio.get(
-        '/chat/conversations/$conversationId/messages',
-        queryParameters: {'limit': _msgPageSize},
-        options: opts,
-      );
+        final res = await _dio.get(
+          '/chat/conversations/$conversationId/messages',
+          queryParameters: {'limit': _msgPageSize},
+          options: opts,
+        );
 
-      final tombstones = await _getTombstones(conversationId);
-      final msgs = _asList(_asMap(res.data)['messages'])
-          .whereType<Map>()
-          .map((e) => _msgFromGo(e.cast<String, dynamic>(), uid))
-          .where((m) => !tombstones.contains(m.id))
-          .toList()
-          .reversed
-          .toList();
+        final tombstones = await _getTombstones(conversationId);
+        final msgs = _asList(_asMap(res.data)['messages'])
+            .whereType<Map>()
+            .map((e) => _msgFromGo(e.cast<String, dynamic>(), uid))
+            .where((m) => !tombstones.contains(m.id))
+            .toList()
+            .reversed
+            .toList();
 
-      await _local.reconcileMessages(conversationId, msgs);
+        await _local.reconcileMessages(conversationId, msgs);
 
-      // mark seen Ø§Ú¯Ù‡ Ø§ÛŒÙ† conversation ÙØ¹Ø§Ù„Ù‡
-      if (conversationId == _activeConversationId) {
-        unawaited(markMessagesAsSeen(conversationId));
+        // mark seen Ø§Ú¯Ù‡ Ø§ÛŒÙ† conversation ÙØ¹Ø§Ù„Ù‡
+        if (conversationId == _activeConversationId) {
+          unawaited(markMessagesAsSeen(conversationId));
+        }
+      } on DioException catch (e) {
+        logWarning(
+            '_syncMessages DioException: ${e.response?.statusCode} - ${e.response?.data}');
+      } catch (e) {
+        logWarning('_syncMessages error: $e');
+      } finally {
+        _msgSyncInFlight.remove(conversationId);
       }
-    } on DioException catch (e) {
-      logWarning(
-          '_syncMessages DioException: ${e.response?.statusCode} - ${e.response?.data}');
-    } catch (e) {
-      logWarning('_syncMessages error: $e');
-    } finally {
-      _msgSyncInFlight.remove(conversationId);
-    }
+    });
   }
 
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
@@ -1208,7 +1225,6 @@ class ChatRepositoryImpl implements ChatRepository {
     await _local.clearMessages(conversationId);
     await _local.deleteConversation(conversationId);
     _msgSyncInFlight.remove(conversationId);
-    _lastMsgSyncMs.remove(conversationId);
   }
 
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
@@ -1232,7 +1248,9 @@ class ChatRepositoryImpl implements ChatRepository {
         data: {'active': active},
         options: opts,
       );
-    } catch (_) {}
+    } catch (e) {
+      logError('Silent error swallowed', error: e);
+    }
   }
 
   Future<void> _heartbeat(String conversationId) async {
@@ -1243,7 +1261,9 @@ class ChatRepositoryImpl implements ChatRepository {
         '/chat/conversations/$conversationId/heartbeat',
         options: opts,
       );
-    } catch (_) {}
+    } catch (e) {
+      logError('Silent error swallowed', error: e);
+    }
   }
 
   Future<ChatResult<void>> _toggleFlag(

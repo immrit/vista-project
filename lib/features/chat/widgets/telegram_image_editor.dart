@@ -35,7 +35,8 @@ class _DrawPath {
   List<Offset> points;
   final Color color;
   final double strokeWidth;
-  _DrawPath({required this.points, required this.color, required this.strokeWidth});
+  _DrawPath(
+      {required this.points, required this.color, required this.strokeWidth});
 }
 
 enum _CropHandle { topLeft, topRight, bottomLeft, bottomRight, move, none }
@@ -58,9 +59,15 @@ class _TelegramImageEditorState extends State<TelegramImageEditor> {
   static const double _strokeWidth = 5.0;
 
   static const List<Color> _palette = [
-    Color(0xFFFFFFFF), Color(0xFFFF453A), Color(0xFFFF9F0A),
-    Color(0xFFFFD60A), Color(0xFF30D158), Color(0xFF64D2FF),
-    Color(0xFF0A84FF), Color(0xFFBF5AF2), Color(0xFFFF375F),
+    Color(0xFFFFFFFF),
+    Color(0xFFFF453A),
+    Color(0xFFFF9F0A),
+    Color(0xFFFFD60A),
+    Color(0xFF30D158),
+    Color(0xFF64D2FF),
+    Color(0xFF0A84FF),
+    Color(0xFFBF5AF2),
+    Color(0xFFFF375F),
     Color(0xFF000000),
   ];
 
@@ -170,8 +177,8 @@ class _TelegramImageEditorState extends State<TelegramImageEditor> {
     setState(() => _isProcessing = true);
 
     try {
-      final boundary =
-          _repaintKey.currentContext!.findRenderObject()! as RenderRepaintBoundary;
+      final boundary = _repaintKey.currentContext!.findRenderObject()!
+          as RenderRepaintBoundary;
       final pixelRatio = MediaQuery.of(context).devicePixelRatio;
       final uiImage = await boundary.toImage(pixelRatio: pixelRatio);
       final byteData = await uiImage.toByteData(format: ui.ImageByteFormat.png);
@@ -179,8 +186,10 @@ class _TelegramImageEditorState extends State<TelegramImageEditor> {
 
       final cr = _cropRect!;
       final cropArgs = <double>[
-        cr.left * pixelRatio, cr.top * pixelRatio,
-        cr.width * pixelRatio, cr.height * pixelRatio,
+        cr.left * pixelRatio,
+        cr.top * pixelRatio,
+        cr.width * pixelRatio,
+        cr.height * pixelRatio,
       ];
       final cropped = await compute(
         _cropBytes,
@@ -237,8 +246,8 @@ class _TelegramImageEditorState extends State<TelegramImageEditor> {
     if (!mounted) return;
 
     try {
-      final boundary =
-          _repaintKey.currentContext!.findRenderObject()! as RenderRepaintBoundary;
+      final boundary = _repaintKey.currentContext!.findRenderObject()!
+          as RenderRepaintBoundary;
       final pixelRatio = MediaQuery.of(context).devicePixelRatio;
       final uiImage = await boundary.toImage(pixelRatio: pixelRatio);
       final byteData = await uiImage.toByteData(format: ui.ImageByteFormat.png);
@@ -248,8 +257,10 @@ class _TelegramImageEditorState extends State<TelegramImageEditor> {
       if (_cropRect != null) {
         final cr = _cropRect!;
         final cropArgs = <double>[
-          cr.left * pixelRatio, cr.top * pixelRatio,
-          cr.width * pixelRatio, cr.height * pixelRatio,
+          cr.left * pixelRatio,
+          cr.top * pixelRatio,
+          cr.width * pixelRatio,
+          cr.height * pixelRatio,
         ];
         bytes = await compute(
           _cropBytes,
@@ -425,7 +436,10 @@ class _TelegramImageEditorState extends State<TelegramImageEditor> {
                   width: selected ? 3.0 : 1.5,
                 ),
                 boxShadow: selected
-                    ? [BoxShadow(color: color.withValues(alpha:0.7), blurRadius: 8)]
+                    ? [
+                        BoxShadow(
+                            color: color.withValues(alpha: 0.7), blurRadius: 8)
+                      ]
                     : null,
               ),
             ),
@@ -491,7 +505,8 @@ class _TelegramImageEditorState extends State<TelegramImageEditor> {
           child: TextField(
             controller: _captionController,
             focusNode: _captionFocus,
-            style: const TextStyle(color: Colors.white, fontFamily: 'Vazirmatn'),
+            style:
+                const TextStyle(color: Colors.white, fontFamily: 'Vazirmatn'),
             textDirection: TextDirection.rtl,
             maxLines: null,
             decoration: InputDecoration(
@@ -600,7 +615,8 @@ class _DrawPainter extends CustomPainter {
       final p0 = dp.points[i - 1];
       final p1 = dp.points[i];
       path.quadraticBezierTo(
-        p0.dx, p0.dy,
+        p0.dx,
+        p0.dy,
         (p0.dx + p1.dx) / 2,
         (p0.dy + p1.dy) / 2,
       );
@@ -639,7 +655,8 @@ class _CropOverlayState extends State<_CropOverlay> {
 
       // Initialize rect once
       if (_rect == null) {
-        _rect = widget.initialRect ?? Rect.fromLTWH(0, 0, size.width, size.height);
+        _rect =
+            widget.initialRect ?? Rect.fromLTWH(0, 0, size.width, size.height);
         WidgetsBinding.instance.addPostFrameCallback(
           (_) => widget.onChanged(_rect!),
         );
@@ -666,7 +683,9 @@ class _CropOverlayState extends State<_CropOverlay> {
     if ((p - r.topLeft).distance < _hitRadius) return _CropHandle.topLeft;
     if ((p - r.topRight).distance < _hitRadius) return _CropHandle.topRight;
     if ((p - r.bottomLeft).distance < _hitRadius) return _CropHandle.bottomLeft;
-    if ((p - r.bottomRight).distance < _hitRadius) return _CropHandle.bottomRight;
+    if ((p - r.bottomRight).distance < _hitRadius) {
+      return _CropHandle.bottomRight;
+    }
     if (r.contains(p)) return _CropHandle.move;
     return _CropHandle.none;
   }
@@ -690,7 +709,10 @@ class _CropOverlayState extends State<_CropOverlay> {
       case _CropHandle.move:
         final dx = d.dx.clamp(-l, bounds.width - rt);
         final dy = d.dy.clamp(-t, bounds.height - b);
-        l += dx; rt += dx; t += dy; b += dy;
+        l += dx;
+        rt += dx;
+        t += dy;
+        b += dy;
       case _CropHandle.none:
         break;
     }
@@ -706,11 +728,13 @@ class _CropPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     // Dark mask around crop area
-    final mask = Paint()..color = Colors.black.withValues(alpha:0.55);
+    final mask = Paint()..color = Colors.black.withValues(alpha: 0.55);
     canvas.drawRect(Rect.fromLTRB(0, 0, size.width, rect.top), mask);
-    canvas.drawRect(Rect.fromLTRB(0, rect.bottom, size.width, size.height), mask);
+    canvas.drawRect(
+        Rect.fromLTRB(0, rect.bottom, size.width, size.height), mask);
     canvas.drawRect(Rect.fromLTRB(0, rect.top, rect.left, rect.bottom), mask);
-    canvas.drawRect(Rect.fromLTRB(rect.right, rect.top, size.width, rect.bottom), mask);
+    canvas.drawRect(
+        Rect.fromLTRB(rect.right, rect.top, size.width, rect.bottom), mask);
 
     // Crop rect border
     canvas.drawRect(
@@ -723,7 +747,7 @@ class _CropPainter extends CustomPainter {
 
     // Rule of thirds grid
     final thirds = Paint()
-      ..color = Colors.white.withValues(alpha:0.35)
+      ..color = Colors.white.withValues(alpha: 0.35)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 0.7;
     for (int i = 1; i <= 2; i++) {

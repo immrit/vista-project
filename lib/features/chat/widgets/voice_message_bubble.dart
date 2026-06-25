@@ -1,3 +1,4 @@
+import 'package:Vista/security/logging_utility.dart';
 // lib/features/chat/widgets/voice_message_bubble.dart
 //
 // ویجت پیام صوتی مدرن با الهام از ویستا
@@ -216,7 +217,9 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble>
     if (_localFilePath != null) {
       try {
         File(_localFilePath!).deleteSync();
-      } catch (_) {}
+      } catch (e) {
+        logError('Silent error swallowed', error: e);
+      }
     }
 
     super.dispose();
@@ -395,8 +398,7 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble>
                 alignment: AlignmentDirectional.centerStart,
                 child: ModernEmojiText(
                   widget.caption!,
-                  useModernEmoji:
-                      EmojiRenderPolicy.useModernEmojiRenderer(),
+                  useModernEmoji: EmojiRenderPolicy.useModernEmojiRenderer(),
                   textDirection: captionDirection,
                   textAlign: TextAlign.start,
                   style: TextStyle(

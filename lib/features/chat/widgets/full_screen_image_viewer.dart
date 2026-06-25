@@ -545,7 +545,8 @@ class _FullScreenImageViewerState extends State<FullScreenImageViewer>
                       child: Hero(
                         tag: item.heroTag,
                         // ✅ اضافه کردن flightShuttleBuilder برای جلوگیری از مشکل رندر متن‌ها یا پس‌زمینه‌ها در حین پرواز
-                        flightShuttleBuilder: (flightContext, animation, flightDirection, fromHeroContext, toHeroContext) {
+                        flightShuttleBuilder: (flightContext, animation,
+                            flightDirection, fromHeroContext, toHeroContext) {
                           final Widget toHero = toHeroContext.widget;
                           return AnimatedBuilder(
                             animation: animation,
@@ -569,7 +570,8 @@ class _FullScreenImageViewerState extends State<FullScreenImageViewer>
                                 maxScale: PhotoViewComputedScale.covered * 3,
                                 initialScale: PhotoViewComputedScale.contained,
                                 backgroundDecoration: const BoxDecoration(
-                                  color: Colors.transparent, // ✅ تغییر به transparent برای جلوگیری از پرواز پس‌زمینه سیاه
+                                  color: Colors
+                                      .transparent, // ✅ تغییر به transparent برای جلوگیری از پرواز پس‌زمینه سیاه
                                 ),
                                 loadingBuilder: (context, event) => Center(
                                   child: CircularProgressIndicator(
@@ -634,8 +636,8 @@ class _FullScreenImageViewerState extends State<FullScreenImageViewer>
                         // Forward Button
                         if (!widget.isSecretMode)
                           IconButton(
-                            icon:
-                                const Icon(Icons.download_rounded, color: Colors.white),
+                            icon: const Icon(Icons.download_rounded,
+                                color: Colors.white),
                             onPressed: _isSaving ? null : _saveToGallery,
                             tooltip: 'ذخیره در گالری',
                           ),

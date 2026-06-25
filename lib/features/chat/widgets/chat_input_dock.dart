@@ -98,7 +98,8 @@ class ChatInputDock extends StatelessWidget {
     double liveInset,
     ChatInputDockLayout layout,
   ) {
-    final keyboardVisible = liveInset > ChatInputDockLayout.keyboardVisibleThreshold;
+    final keyboardVisible =
+        liveInset > ChatInputDockLayout.keyboardVisibleThreshold;
     if (layout.showEmojiPanel ||
         layout.lockEmojiPanel ||
         layout.isKeyboardOpening) {

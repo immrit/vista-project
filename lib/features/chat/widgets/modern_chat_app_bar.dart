@@ -450,7 +450,9 @@ class ModernChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
 
     final resolvedAvatarUrl = otherUserProfile?.avatarUrl?.isNotEmpty == true
         ? otherUserProfile!.avatarUrl!
-        : (args.otherUserAvatar?.isNotEmpty == true ? args.otherUserAvatar : null);
+        : (args.otherUserAvatar?.isNotEmpty == true
+            ? args.otherUserAvatar
+            : null);
 
     if (resolvedAvatarUrl != null) {
       final avatarUrl = resolvedAvatarUrl;

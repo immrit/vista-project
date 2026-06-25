@@ -184,13 +184,14 @@ class ChatTheme {
     final double mergedRadius = bubbleMergedRadius.clamp(0.0, baseRadius);
     final Radius r = Radius.circular(baseRadius);
     final Radius mr = Radius.circular(mergedRadius);
-    
+
     // In reverse ListView (index 0 = newest = bottom):
     // isFirstInGroup = true for the OLDEST message in group (visually at the TOP, no same-sender above).
     // isLastInGroup = true for the NEWEST message in group (visually at the BOTTOM, no same-sender below).
 
     final bool isVisuallyTop = isFirstInGroup && !isLastInGroup;
-    final bool isVisuallyBottom = isLastInGroup; // single messages (both true) also get bottom style
+    final bool isVisuallyBottom =
+        isLastInGroup; // single messages (both true) also get bottom style
 
     // Based on Telegram X design & user feedback:
     // - Visually Top: Top edge is fully rounded, bottom is merged.
@@ -198,7 +199,7 @@ class ChatTheme {
     // - Middle & Single messages: Both top and bottom are merged (less rounded on the wall side).
     final bool topMerged = !isVisuallyTop;
     final bool bottomMerged = !isVisuallyBottom;
-    
+
     final bool bubbleOnRight =
         textDirection == TextDirection.ltr ? isMe : !isMe;
 

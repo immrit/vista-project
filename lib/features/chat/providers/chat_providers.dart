@@ -5,9 +5,9 @@
 
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
+import '../repositories/chat_repository_impl.dart';
 import 'chat_messages_provider.dart';
 import '../repositories/chat_repository.dart';
-import '../repositories/chat_repository_impl.dart';
 import '../data/datasources/chat_local_datasource_isar.dart';
 import '../../../model/conversation_model.dart';
 

@@ -135,50 +135,72 @@ class _MusicTrimSheetState extends State<_MusicTrimSheet>
     _player.playerStateStream.listen((s) {
       if (mounted) setState(() => _isPlaying = s.playing);
     });
+    
+    _player.durationStream.listen((dur) {
+      if (!mounted || dur == null || dur <= Duration.zero) return;
+      if (_duration <= Duration.zero) {
+        _initializeTrim(dur);
+      }
+    });
 
     _loadAudio();
   }
 
   Future<void> _loadAudio() async {
     try {
-      // setFilePath returns Duration? directly
-      final dur = await _player.setFilePath(widget.file.path);
-      if (!mounted) return;
-      if (dur == null || dur <= Duration.zero) {
-        setState(() => _isLoaded = true);
-        return;
+      String audioPath = widget.file.path;
+      
+      // On Windows and Android, Media Foundation / ExoPlayer rely heavily on file extensions 
+      // to sniff the format. FilePicker sometimes returns files without extensions.
+      // If there's no extension (or a very long extension which means it's not a real extension),
+      // we copy it to a temporary .mp3 file to ensure decoding works.
+      final extensionIndex = audioPath.lastIndexOf('.');
+      if (extensionIndex == -1 || audioPath.length - extensionIndex > 5) {
+        final tempDir = Directory.systemTemp;
+        final tempFile = File('${tempDir.path}/temp_audio_${DateTime.now().millisecondsSinceEpoch}.mp3');
+        await widget.file.copy(tempFile.path);
+        audioPath = tempFile.path;
       }
 
-      final clip = dur < const Duration(seconds: 30) ? dur : const Duration(seconds: 30);
-
-      // Restore previous trim if provided
-      final initEnd = widget.initialEnd;
-      final restoredClip =
-          (initEnd != null && initEnd > widget.initialStart)
-              ? initEnd - widget.initialStart
-              : clip;
-
-      // Compute _startFrac from initialStart
-      double startFrac = dur.inMilliseconds > 0
-          ? widget.initialStart.inMilliseconds / dur.inMilliseconds
-          : 0.0;
-
-      // Clamp so trimEnd doesn't exceed duration
-      final clipFracNow =
-          restoredClip.inMilliseconds / dur.inMilliseconds;
-      final maxFrac = (1.0 - clipFracNow).clamp(0.0, 1.0);
-      startFrac = startFrac.clamp(0.0, maxFrac);
-
-      setState(() {
-        _duration = dur;
-        _clipDuration = restoredClip;
-        _startFrac = startFrac;
-        _isLoaded = true;
-      });
+      // Using setFilePath is the most robust method for local files in just_audio
+      final dur = await _player.setFilePath(audioPath) ?? _player.duration;
+      if (!mounted) return;
+      
+      if (dur != null && dur > Duration.zero) {
+        _initializeTrim(dur);
+      } else {
+        setState(() => _isLoaded = true);
+      }
     } catch (e) {
       debugPrint('MusicTrimSheet: audio load error: $e');
       if (mounted) setState(() => _isLoaded = true);
     }
+  }
+
+  void _initializeTrim(Duration dur) {
+    if (_duration > Duration.zero) return; // Already initialized
+    
+    final clip = dur < const Duration(seconds: 30) ? dur : const Duration(seconds: 30);
+    final initEnd = widget.initialEnd;
+    final restoredClip =
+        (initEnd != null && initEnd > widget.initialStart)
+            ? initEnd - widget.initialStart
+            : clip;
+
+    double startFrac = dur.inMilliseconds > 0
+        ? widget.initialStart.inMilliseconds / dur.inMilliseconds
+        : 0.0;
+
+    final clipFracNow = restoredClip.inMilliseconds / dur.inMilliseconds;
+    final maxFrac = (1.0 - clipFracNow).clamp(0.0, 1.0);
+    startFrac = startFrac.clamp(0.0, maxFrac);
+
+    setState(() {
+      _duration = dur;
+      _clipDuration = restoredClip;
+      _startFrac = startFrac;
+      _isLoaded = true;
+    });
   }
 
   // ── Drag logic ────────────────────────────────────────────────────────────

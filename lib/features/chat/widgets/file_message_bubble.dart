@@ -201,8 +201,7 @@ class _FileMessageBubbleState extends State<FileMessageBubble> {
                 alignment: AlignmentDirectional.centerStart,
                 child: ModernEmojiText(
                   widget.caption!,
-                  useModernEmoji:
-                      EmojiRenderPolicy.useModernEmojiRenderer(),
+                  useModernEmoji: EmojiRenderPolicy.useModernEmojiRenderer(),
                   textDirection: captionDirection,
                   textAlign: TextAlign.start,
                   style: TextStyle(

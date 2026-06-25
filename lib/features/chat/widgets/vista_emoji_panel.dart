@@ -1,3 +1,4 @@
+import 'package:Vista/security/logging_utility.dart';
 import 'dart:async';
 import 'dart:ui' as ui;
 
@@ -126,7 +127,9 @@ class _VistaEmojiPanelState extends State<VistaEmojiPanel> {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setStringList(_recentsStorageKey, _recentEmojis);
-    } catch (_) {}
+    } catch (e) {
+      logError('Silent error swallowed', error: e);
+    }
   }
 
   void _onSearchChanged() {

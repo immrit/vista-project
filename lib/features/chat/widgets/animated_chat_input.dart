@@ -318,7 +318,9 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
       _replyController.reverse();
     }
 
-    if (widget.isEditing && !oldWidget.isEditing && widget.controller.text.isNotEmpty) {
+    if (widget.isEditing &&
+        !oldWidget.isEditing &&
+        widget.controller.text.isNotEmpty) {
       _sendButtonController.forward();
     }
   }
@@ -571,7 +573,9 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
             ),
           );
         },
-        child: _hasContextPreview ? _buildContextPreviewBody(theme) : const SizedBox.shrink(),
+        child: _hasContextPreview
+            ? _buildContextPreviewBody(theme)
+            : const SizedBox.shrink(),
       ),
     );
   }
@@ -581,11 +585,9 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
     final previewTitle = isEditing
         ? (widget.editPreviewTitle ?? 'ویرایش پیام')
         : (widget.replyToSenderName ?? 'پاسخ به');
-    final previewContent = isEditing
-        ? widget.editPreviewContent!
-        : (widget.replyToContent ?? '');
-    final accentColor =
-        isEditing ? theme.sendButtonColor : theme.typingColor;
+    final previewContent =
+        isEditing ? widget.editPreviewContent! : (widget.replyToContent ?? '');
+    final accentColor = isEditing ? theme.sendButtonColor : theme.typingColor;
     final onClose = isEditing ? widget.onCancelEdit : widget.onCancelReply;
 
     return Container(
@@ -682,8 +684,9 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
                       child: _buildIconButton(
                         icon: Icons.attach_file_rounded,
                         onTap: () {
-                          _attachRotationController.forward().then(
-                              (_) => _attachRotationController.reverse());
+                          _attachRotationController
+                              .forward()
+                              .then((_) => _attachRotationController.reverse());
                           widget.onAttachment?.call();
                         },
                         theme: theme,

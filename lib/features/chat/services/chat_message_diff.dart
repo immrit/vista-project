@@ -66,9 +66,8 @@ abstract final class ChatMessageDiff {
       structureVersion: structureChanged
           ? current.structureVersion + 1
           : current.structureVersion,
-      contentVersion: contentChanged
-          ? current.contentVersion + 1
-          : current.contentVersion,
+      contentVersion:
+          contentChanged ? current.contentVersion + 1 : current.contentVersion,
     );
   }
 

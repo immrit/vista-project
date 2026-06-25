@@ -81,7 +81,7 @@ class MessageTombstoneService {
       row.deletionMode = 1;
       row.retryCount = 0;
       // Use max valid JS integer (9007199254740991) to prevent sync worker from picking it up
-      row.nextAttempt = 9007199254740991; 
+      row.nextAttempt = 9007199254740991;
       row.timestamp = DateTime.now().toUtc().millisecondsSinceEpoch;
       row.s3Key = null;
       await isar.deletionTaskEntitys.put(row);

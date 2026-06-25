@@ -322,7 +322,7 @@ class _ChatAttachmentSheetState extends State<ChatAttachmentSheet>
       final isVideo = _isVideo(files.first.file.path);
       final mediaResult = await Navigator.of(context).push<MediaEditorResult>(
         MaterialPageRoute(
-          builder: (_) => isVideo 
+          builder: (_) => isVideo
               ? TelegramVideoEditor(
                   file: files.first.file,
                   initialCaption: _captionController.text.trim(),
@@ -1207,7 +1207,8 @@ class _ChatImagePreviewScreenState extends State<_ChatImagePreviewScreen> {
     final currentFile = _previewFiles[_currentIndex].file;
 
     final ext = currentFile.path.toLowerCase();
-    final isVideo = ext.endsWith('.mp4') || ext.endsWith('.mov') || ext.endsWith('.avi');
+    final isVideo =
+        ext.endsWith('.mp4') || ext.endsWith('.mov') || ext.endsWith('.avi');
 
     if (isVideo) {
       final videoResult = await Navigator.push<MediaEditorResult>(
@@ -1215,9 +1216,11 @@ class _ChatImagePreviewScreenState extends State<_ChatImagePreviewScreen> {
         MaterialPageRoute(
           builder: (context) => TelegramVideoEditor(
             file: currentFile,
-            initialCaption: _previewFiles[_currentIndex].displayFileName == p.basename(currentFile.path) 
-                ? '' 
-                : _previewFiles[_currentIndex].displayFileName, // Not ideal, but we keep it empty or use existing logic
+            initialCaption: _previewFiles[_currentIndex].displayFileName ==
+                    p.basename(currentFile.path)
+                ? ''
+                : _previewFiles[_currentIndex]
+                    .displayFileName, // Not ideal, but we keep it empty or use existing logic
           ),
         ),
       );
@@ -1236,8 +1239,9 @@ class _ChatImagePreviewScreenState extends State<_ChatImagePreviewScreen> {
         MaterialPageRoute(
           builder: (context) => TelegramImageEditor(
             file: currentFile,
-            initialCaption: _previewFiles[_currentIndex].displayFileName == p.basename(currentFile.path) 
-                ? '' 
+            initialCaption: _previewFiles[_currentIndex].displayFileName ==
+                    p.basename(currentFile.path)
+                ? ''
                 : _previewFiles[_currentIndex].displayFileName,
           ),
         ),
@@ -1639,19 +1643,24 @@ class _ChatImagePreviewScreenState extends State<_ChatImagePreviewScreen> {
                                     ),
                                   ],
                                 ),
-                                  child: TextField(
-                                    controller: _captionController,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.w400,
-                                    ),
-                                    cursorColor: Colors.white,
-                                    maxLines: 3,
-                                    minLines: 1,
-                                    maxLength: 1024,
-                                    maxLengthEnforcement: MaxLengthEnforcement.enforced,
-                                    buildCounter: (_, {required currentLength, required isFocused, maxLength}) => null,
-                                    textInputAction: TextInputAction.newline,
+                                child: TextField(
+                                  controller: _captionController,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w400,
+                                  ),
+                                  cursorColor: Colors.white,
+                                  maxLines: 3,
+                                  minLines: 1,
+                                  maxLength: 1024,
+                                  maxLengthEnforcement:
+                                      MaxLengthEnforcement.enforced,
+                                  buildCounter: (_,
+                                          {required currentLength,
+                                          required isFocused,
+                                          maxLength}) =>
+                                      null,
+                                  textInputAction: TextInputAction.newline,
                                   decoration: InputDecoration(
                                     hintText: isAlbum
                                         ? 'نوشتن کپشن برای آلبوم...'

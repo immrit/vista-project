@@ -23,8 +23,7 @@ class StoryReplyMediaUtils {
   static String thumbnailFromStory(Story story) {
     final thumb = story.media.thumbnailUrl?.trim();
     final media = story.media.url.trim();
-    final picked =
-        (thumb != null && thumb.isNotEmpty) ? thumb : media;
+    final picked = (thumb != null && thumb.isNotEmpty) ? thumb : media;
     return resolveMediaUrl(picked) ?? '';
   }
 

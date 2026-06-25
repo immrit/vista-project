@@ -95,7 +95,8 @@ class GroupService {
         id: peerId,
         username: profile['username']?.toString() ?? '',
         fullName: profile['full_name']?.toString(),
-        avatarUrl: AvatarAssetUtils.resolveUrl(profile['avatar_url']?.toString()),
+        avatarUrl:
+            AvatarAssetUtils.resolveUrl(profile['avatar_url']?.toString()),
         conversationId: row['id']?.toString(),
         messageCount: _interactionCount(row),
       );
@@ -185,7 +186,8 @@ class GroupService {
         userId: userId,
         username: profile['username']?.toString() ?? '',
         fullName: profile['full_name']?.toString(),
-        avatarUrl: AvatarAssetUtils.resolveUrl(profile['avatar_url']?.toString()),
+        avatarUrl:
+            AvatarAssetUtils.resolveUrl(profile['avatar_url']?.toString()),
         isAdmin: row['is_admin'] == true,
         joinedAt: DateTime.tryParse(row['joined_at']?.toString() ?? ''),
       );
@@ -288,7 +290,8 @@ class GroupService {
             id: id,
             username: row['username']?.toString() ?? '',
             fullName: row['full_name']?.toString(),
-            avatarUrl: AvatarAssetUtils.resolveUrl(row['avatar_url']?.toString()),
+            avatarUrl:
+                AvatarAssetUtils.resolveUrl(row['avatar_url']?.toString()),
           );
         }
       } catch (_) {
