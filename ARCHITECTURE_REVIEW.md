@@ -28,7 +28,15 @@ Implementation order = impact, build-heaviness/slowness first (per refactor plan
 - [~] **P5** — **dead Supabase code removed** (`env_config` consts + commented block in `posts_provider`). §4.1 / §8.6 *(full migration + dep prune + Isar 3 exit = multi-week, stays staged; see MEMORY.md.)*
 - [ ] **P6** — media transcode off UI isolate / server-side; gate + cap resolution. §3.5 / §8.7 *(**STAGED** — backend-dependent + needs device profiling; see MEMORY.md.)*
 
-> **Done (8):** BF1–BF4, SEC1, P1, P2, P3-batching — all build-heaviness/perf items the plan prioritized are resolved. **Staged (P3-remainder, P4, P5, P6):** large cross-cutting refactors that can't be runtime-verified in this environment; each has a concrete approach + rollback in `MEMORY.md`. **Out-of-band:** S3 key rotation + git-history purge (need user). See `MEMORY.md` for the full recovery map.
+> **Done + verified on emulator-5554:** BF1–BF5, SEC1, P1, P2, P3 (batching + shared pinned client on the hot path), P4a (`postProvider` autoDispose), P5a (dead Supabase code). App builds → installs → launches → restores session → loads feed (`/v1/explore`) and flushes batched `/v1/feed/event` (200) through the shared client; **0 crashes** across a full run. The only 404 is the intentional `system/status` path-probe.
+>
+> **Still staged (large, multi-session, can't be safely finished here — concrete approach + rollback in `MEMORY.md`):**
+> - P3 remainder: route the other ~25 bare-`Dio` services through `createApiV1Dio` + add a central 401-refresh/retry interceptor (touches auth; needs token-expiry runtime testing).
+> - P4 remainder: `autoDispose` pass over the rest of ~370 providers (per-provider runtime verification).
+> - P5 remainder: finish `lib/provider|services|model|widgets` → `lib/features` migration, prune redundant deps, **migrate KGP plugins** (emulator warned: 20 plugins apply the legacy Kotlin Gradle Plugin — future-Flutter break), exit Isar 3.
+> - P6: move media transcode off the UI isolate / server-side (backend + device profiling).
+>
+> **Out-of-band (need user):** rotate leaked S3 keys; purge them from git history.
 
 ---
 
