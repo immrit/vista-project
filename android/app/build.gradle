@@ -9,7 +9,8 @@ plugins {
 
 def keystoreProperties = new Properties()
 def keystorePropertiesFile = rootProject.file('key.properties')
-if (keystorePropertiesFile.exists()) {
+def hasReleaseKeystore = keystorePropertiesFile.exists()
+if (hasReleaseKeystore) {
     keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
 }
 
@@ -47,7 +48,13 @@ android {
 
     buildTypes {
         release {
-            signingConfig signingConfigs.release
+            // Sign with the real key only when key.properties is present;
+            // otherwise fall back to debug signing so the build doesn't fail
+            // with "SigningConfig release is missing required property storeFile"
+            // (e.g. in a worktree/CI without the machine-local keystore).
+            signingConfig hasReleaseKeystore
+                ? signingConfigs.release
+                : signingConfigs.debug
             // BF3: R8 code-shrink + resource-shrink for release. Smaller, harder
             // to reverse-engineer APK. Keep rules in proguard-rules.pro are
             // comprehensive (Flutter, media plugins, app pkg, AWS, Adtrace).
@@ -64,9 +71,14 @@ android {
             }
         }
         
-        // 🔴 این بخش را حتماً اضافه کن تا در حالت دیباگ هم امضای اصلی داشته باشی
+        // Debug uses the release signing config ONLY when the keystore exists
+        // (keeps Firebase/Poolakey SHA matching for the maintainer). Without
+        // key.properties it falls back to the default debug keystore so debug
+        // builds work everywhere instead of failing on a missing storeFile.
         debug {
-            signingConfig signingConfigs.release 
+            signingConfig hasReleaseKeystore
+                ? signingConfigs.release
+                : signingConfigs.debug
         }
     }
 }

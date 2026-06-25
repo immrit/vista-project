@@ -44,6 +44,13 @@ Branch: `architecture-fixes`. Implements `ARCHITECTURE_REVIEW.md` fixes.
 - **Revert:** set both back to `false`.
 - **Deferred (NOT changed):** `debug { signingConfig signingConfigs.release }` left as-is. Review flags it (debug signed w/ release key), but it's likely intentional for Firebase/Poolakey SHA-matching during debug; removing risks breaking debug auth/payments. User decision.
 
+### BF5 — Fix debug build failing without the release keystore
+- **What:** `signingConfigs.release` is now used by the `debug` and `release` build types **only when `key.properties` exists** (`def hasReleaseKeystore = keystorePropertiesFile.exists()`); otherwise both fall back to `signingConfigs.debug` (default debug keystore).
+- **Why:** `debug { signingConfig signingConfigs.release }` hard-required the machine-local keystore. Without `key.properties` (this worktree, CI, any other dev) the build died: `Execution failed for task ':app:packageDebug' > SigningConfig "release" is missing required property "storeFile"`. **Reproduced + fixed live on emulator-5554** (build → install → launch OK). Also resolves the BF3-deferred "debug signed with release key" concern without losing the maintainer's Firebase/Poolakey SHA match (release signing still used when the keystore is present).
+- **Files:** `android/app/build.gradle`.
+- **Revert:** set both `signingConfig` lines back to `signingConfigs.release` and drop `hasReleaseKeystore`.
+- **Note:** installing this debug build over an existing release-key-signed install triggers `INSTALL_FAILED_UPDATE_INCOMPATIBLE` (different signature) — `flutter run` auto-uninstalls + reinstalls. Expected.
+
 ### BF4 — Gradle resource tuning (this 16 GB / 12-logical-core host)
 - **What:** dropped `-XX:+HeapDumpOnOutOfMemoryError` from `org.gradle.jvmargs`; `org.gradle.workers.max` 4→8. Heaps left at 4G Gradle / 2G Kotlin daemon.
 - **Why:** heap-dump-on-OOM wrote a multi-GB file to disk mid-build → froze the box (§7). `workers.max=4` under-used 12 logical cores. Heaps not raised: 16 GB box would swap-thrash (§5.5/§7).

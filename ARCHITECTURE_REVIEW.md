@@ -7,14 +7,14 @@
 
 ---
 
-## Fix Checklist — Progress: 8/12 fixes done
+## Fix Checklist — Progress: 8/12 fixes done (+ BF5 build-signing fix found via emulator run)
 
 Implementation order = impact, build-heaviness/slowness first (per refactor plan). Worked on branch `architecture-fixes`. Test baseline before changes: **56 pass / 1 pre-existing fail** (`adaptive_effects_provider_test.dart` — unrelated repo bug, untouched).
 
 **Build-time (do first — cheapest "lighter & faster"):**
 - [x] **BF1** — `kotlin.incremental=true` (re-enable incremental Kotlin compile). §5.1
 - [x] **BF2** — ABI filters: ship arm64-v8a + armeabi-v7a, drop x86_64 from release. §5.2 / §8
-- [x] **BF3** — release `minifyEnabled true` + `shrinkResources true` (R8 shrink). §5.7 / §6 / §8 *(debug-signing change deferred — see flagged note; needs release-build smoke test)*
+- [x] **BF3** — release `minifyEnabled true` + `shrinkResources true` (R8 shrink). §5.7 / §6 / §8. **Debug-signing FIXED** (BF5): debug/release now use the release keystore only when `key.properties` exists, else fall back to the default debug keystore (was hard-failing the build without the keystore). *(release minify still needs a release-build smoke test)*
 - [x] **BF4** — `workers.max` 4→8, dropped `HeapDumpOnOutOfMemoryError`, heaps kept (right for 16 GB). §5.5 / §7
 
 **Security (critical — partial in-repo; rotation/history purge need user):**
