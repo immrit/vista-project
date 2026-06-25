@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:Vista/utils/env_config.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -55,6 +57,15 @@ class GoPostsRepository {
   static String get _backendUrl => EnvConfig.apiBaseUrl;
 
   late final Dio _dio;
+
+  // P3: feed-event batching. Scrolling fired one HTTP POST + one secure-storage
+  // token read per gesture (view/dwell/open/like/...). Buffer + debounce + dedup
+  // so we flush in bursts and read the token once per flush, not per event.
+  static const Duration _feedEventFlushInterval = Duration(seconds: 4);
+  static const int _maxFeedEventBatch = 25;
+  final List<Map<String, String>> _pendingFeedEvents = [];
+  final Set<String> _pendingFeedEventKeys = {};
+  Timer? _feedEventFlushTimer;
 
   GoPostsRepository() {
     _dio = Dio(BaseOptions(
@@ -408,17 +419,42 @@ class GoPostsRepository {
     required String eventType,
   }) async {
     if (postId.isEmpty || eventType.isEmpty) return;
+
+    // Enqueue instead of firing immediately. Dedup identical (post,event) within
+    // the current flush window; flush on size or on the debounce timer.
+    final key = '$postId|$eventType';
+    if (_pendingFeedEventKeys.add(key)) {
+      _pendingFeedEvents.add({'post_id': postId, 'event_type': eventType});
+    }
+
+    if (_pendingFeedEvents.length >= _maxFeedEventBatch) {
+      unawaited(_flushFeedEvents());
+    } else {
+      _feedEventFlushTimer ??=
+          Timer(_feedEventFlushInterval, () => unawaited(_flushFeedEvents()));
+    }
+  }
+
+  Future<void> _flushFeedEvents() async {
+    _feedEventFlushTimer?.cancel();
+    _feedEventFlushTimer = null;
+    if (_pendingFeedEvents.isEmpty) return;
+
+    final batch = List<Map<String, String>>.from(_pendingFeedEvents);
+    _pendingFeedEvents.clear();
+    _pendingFeedEventKeys.clear();
+
+    // Read the token ONCE per flush, not once per event.
     final token = await TokenStorage.getAccessToken();
     if (token == null || token.isEmpty) return;
+    final options = Options(headers: {'Authorization': 'Bearer $token'});
 
-    try {
-      await _dio.post(
-        '/feed/event',
-        data: {'post_id': postId, 'event_type': eventType},
-        options: Options(headers: {'Authorization': 'Bearer $token'}),
-      );
-    } catch (_) {
-      // Feed analytics must never block the user action itself.
+    for (final event in batch) {
+      try {
+        await _dio.post('/feed/event', data: event, options: options);
+      } catch (_) {
+        // Feed analytics must never block the user action itself.
+      }
     }
   }
 

@@ -75,6 +75,22 @@ Branch: `architecture-fixes`. Implements `ARCHITECTURE_REVIEW.md` fixes.
 
 ---
 
+## Staged — large items not safely completable without runtime verification
+
+- **P3 remainder — HTTP client consolidation:** 43 ad-hoc `Dio(...)` instances + per-request `TokenStorage.getAccessToken()` reads remain. Target: one shared `Dio` (the existing `lib/services/http_client_factory.dart`) with a central auth interceptor (in-memory cached token, 401→refresh→retry) + retry/backoff. Sweeping cross-file change, no test coverage, can't runtime-verify here → not attempted. Delivered the contained, highest-impact slice instead (feed-event batching, see below).
+- **P5 — finish migration / prune deps / exit Isar 3:** "weeks of unglamorous work" per review §8.6 (old `lib/provider|services|model|widgets` vs `lib/features`, dead Supabase code, ~120 deps incl. redundant HTTP/image/video stacks, unmaintained Isar 3). Not safely scriptable; needs incremental human-driven migration. Documented, not attempted.
+- **P6 — media transcode off-isolate / server-side:** backend-dependent (server-side transcode) + needs device runtime profiling to gate on-device ffmpeg. Out of static-edit scope.
+
+---
+
+### P3 (delivered) — Feed-event analytics batching
+- **What:** `trackFeedEvent` now enqueues into an in-memory buffer (dedup by `postId|eventType`) and flushes on a 4s debounce or at 25 events; token read once per flush. Was: one HTTP POST + one secure-storage read per gesture.
+- **Why:** Scrolling fired an unbatched POST storm + a keystore read per event (§3.4). Endpoint unchanged (`/feed/event`) — folding into one batch request needs a backend `/feed/events` endpoint (follow-up).
+- **Files:** `lib/features/posts/data/go_posts_repository.dart`.
+- **Revert:** restore the immediate-POST `trackFeedEvent` body; drop the `_pendingFeedEvents`/`_pendingFeedEventKeys`/`_feedEventFlushTimer` fields, `_flushFeedEvents`, and the `dart:async` import.
+
+---
+
 ## Flagged — needs user / out-of-band (NOT done here)
 
 - **S3 key rotation:** the leaked ArvanCloud keys (`ARVAN_*` / `AWS_*`) must be rotated on the provider console — external action, cannot do from repo. Assume compromised.

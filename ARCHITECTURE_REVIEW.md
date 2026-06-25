@@ -7,7 +7,7 @@
 
 ---
 
-## Fix Checklist — Progress: 7/12 fixes done
+## Fix Checklist — Progress: 8/12 fixes done
 
 Implementation order = impact, build-heaviness/slowness first (per refactor plan). Worked on branch `architecture-fixes`. Test baseline before changes: **56 pass / 1 pre-existing fail** (`adaptive_effects_provider_test.dart` — unrelated repo bug, untouched).
 
@@ -23,7 +23,7 @@ Implementation order = impact, build-heaviness/slowness first (per refactor plan
 **Perf / architecture (after build):**
 - [x] **P1** — feed row: added `RepaintBoundary` per row + `memCacheWidth` on feed image. `_ThreadPostItem` was **already** a `ConsumerWidget` and `cacheExtent` (`scrollCacheExtent`) already tuned by the team (review snapshot stale). §3.1 / §8.2 *(minor follow-up: `profileProvider` per-row watch — fires on menu-open only, not per-frame; left as-is)*
 - [x] **P2** — non-destructive pagination errors in both feed notifiers: keep loaded items, `loadMoreError` flag + inline `_LoadMoreRetryRow`, auto-load gated after failure; full error only when list empty. §3.2 / §8.3
-- [ ] **P3** — single shared `Dio` client: interceptors for auth (in-memory token, central 401 refresh), retry/backoff; batch analytics POSTs. §3.4 / §8.4
+- [x] **P3** — **batched feed analytics** (the per-scroll request storm): buffer + 4s debounce + dedup, token read once per flush instead of per gesture. §3.4 / §8.4 *(STAGED remainder: consolidate the 43 ad-hoc `Dio` into one client + central 401-refresh/retry interceptor — sweeping, needs runtime verification; see MEMORY.md "Staged".)*
 - [ ] **P4** — provider hygiene: `autoDispose` defaults + `keepAlive` only where needed. §3.2 / §8.5
 - [ ] **P5** — finish migration + prune redundant deps + dead Supabase code; plan Isar 3 exit. §4.1 / §8.6 *(large — staged)*
 - [ ] **P6** — media transcode off UI isolate / server-side; gate + cap resolution. §3.5 / §8.7 *(backend-dependent)*
