@@ -36,6 +36,14 @@ Branch: `architecture-fixes`. Implements `ARCHITECTURE_REVIEW.md` fixes.
 - **Files:** `android/app/build.gradle`.
 - **Revert:** remove the `ndk { abiFilters ... }` block from `release`.
 
+### BF3 — Release R8 minify + resource shrink
+- **What:** `minifyEnabled false`→`true`, `shrinkResources false`→`true` in `release`.
+- **Why:** Unminified release = bigger APK + trivially recoverable strings (§5.7/§6). Keep rules in `proguard-rules.pro` are comprehensive, so R8 is safe to enable.
+- **⚠ Verification gap:** `flutter test` does NOT exercise R8. **Smoke-test a real release build before shipping.** If a release-only crash/missing-class appears, add the needed `-keep` rule, or revert.
+- **Files:** `android/app/build.gradle`.
+- **Revert:** set both back to `false`.
+- **Deferred (NOT changed):** `debug { signingConfig signingConfigs.release }` left as-is. Review flags it (debug signed w/ release key), but it's likely intentional for Firebase/Poolakey SHA-matching during debug; removing risks breaking debug auth/payments. User decision.
+
 ---
 
 ## Flagged — needs user / out-of-band (NOT done here)

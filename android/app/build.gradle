@@ -48,8 +48,13 @@ android {
     buildTypes {
         release {
             signingConfig signingConfigs.release
-            minifyEnabled false
-            shrinkResources false
+            // BF3: R8 code-shrink + resource-shrink for release. Smaller, harder
+            // to reverse-engineer APK. Keep rules in proguard-rules.pro are
+            // comprehensive (Flutter, media plugins, app pkg, AWS, Adtrace).
+            // NOTE: not exercised by `flutter test`; smoke-test a release build
+            // before shipping. Revert to false if a release-only crash appears.
+            minifyEnabled true
+            shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             // BF2: ship only ARM ABIs in release. Drops x86_64 native packaging
             // (ffmpeg/isar .so) → smaller APK + less native merge/strip work.
