@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:Vista/model/message_model.dart';
 import 'package:Vista/features/chat/providers/chat_providers.dart';
@@ -82,51 +83,44 @@ class ChatActionController extends _$ChatActionController {
       return const ActionResult.failure('User not logged in');
     }
 
-    state = state.copyWith(isLoading: true);
+    final repository = ref.read(chatRepositoryProvider);
 
-    try {
-      final repository = ref.read(chatRepositoryProvider);
+    final payload = MessagePayload(
+      conversationId: conversationId,
+      content: content,
+      id: id,
+      attachmentUrl: attachmentUrl,
+      attachmentType: attachmentType,
+      attachmentFileName: attachmentFileName,
+      attachmentMimeType: attachmentMimeType,
+      attachmentSizeBytes: attachmentSizeBytes,
+      audioTitle: audioTitle,
+      audioArtist: audioArtist,
+      audioAlbum: audioAlbum,
+      duration: duration,
+      replyToMessageId: replyToMessageId ?? state.replyMessage?.id,
+      replyToContent: replyToContent ?? state.replyMessage?.content,
+      replyToSenderName: replyToSenderName ?? state.replyMessage?.senderName,
+      replyToKind: replyToKind,
+      mediaGroupId: mediaGroupId,
+      recipientPublicKey: recipientPublicKey,
+    );
 
-      final payload = MessagePayload(
-        conversationId: conversationId,
-        content: content,
-        id: id,
-        attachmentUrl: attachmentUrl,
-        attachmentType: attachmentType,
-        attachmentFileName: attachmentFileName,
-        attachmentMimeType: attachmentMimeType,
-        attachmentSizeBytes: attachmentSizeBytes,
-        audioTitle: audioTitle,
-        audioArtist: audioArtist,
-        audioAlbum: audioAlbum,
-        duration: duration,
-        replyToMessageId: replyToMessageId ?? state.replyMessage?.id,
-        replyToContent: replyToContent ?? state.replyMessage?.content,
-        replyToSenderName: replyToSenderName ?? state.replyMessage?.senderName,
-        replyToKind: replyToKind,
-        mediaGroupId: mediaGroupId,
-        recipientPublicKey: recipientPublicKey,
+    // Reset action state immediately — don't block UI waiting for HTTP response.
+    // Repository writes optimistic message to Isar synchronously before the HTTP
+    // call, so the message appears in the chat list within 1 frame (16ms debounce).
+    // Send failure is reflected via isFailed=true on the message bubble (retry tap).
+    state = const ChatActionState();
+    NotificationSoundService.instance.playMessageSentSound();
+
+    unawaited(repository.sendMessage(payload).then((result) {
+      result.fold(
+        (_) => null, // Stream confirms via Isar write — no-op here
+        (error) => logInfo('sendMessage background error: $error'),
       );
+    }));
 
-      final result = await repository.sendMessage(payload);
-
-      return result.fold(
-        (success) {
-          state = const ChatActionState(); // Reset state on success
-          NotificationSoundService.instance.playMessageSentSound();
-          return const ActionResult.success();
-        },
-        (failure) {
-          state = state.copyWith(isLoading: false);
-          return ActionResult.failure(failure);
-        },
-      );
-    } catch (e) {
-      logInfo('Send Message Failed: $e');
-      state = state.copyWith(isLoading: false);
-      final errMsg = e.toString().replaceFirst('Exception: ', '');
-      return ActionResult.failure(errMsg);
-    }
+    return const ActionResult.success();
   }
 
   Future<ActionResult<void>> resendMessage(MessageModel message) async {
@@ -150,34 +144,82 @@ class ChatActionController extends _$ChatActionController {
     required String messageId,
     required String newContent,
   }) async {
-    state = state.copyWith(isLoading: true);
+    final original = state.editMessage;
+    final conversationId = original?.conversationId;
 
-    try {
-      final repository = ref.read(chatRepositoryProvider);
-
-      await repository.editMessage(messageId, newContent);
-
-      state = const ChatActionState();
-      return const ActionResult.success();
-    } catch (e) {
-      logInfo('Edit Message Failed: $e');
-      state = state.copyWith(isLoading: false);
-      final errMsg = e.toString().replaceFirst('Exception: ', '');
-      return ActionResult.failure(errMsg);
+    if (original != null && conversationId != null) {
+      ref
+          .read(chatMessagesProvider(conversationId).notifier)
+          .updateOptimisticMessage(original.copyWith(
+            content: newContent,
+            editedAt: DateTime.now(),
+          ));
     }
+
+    state = const ChatActionState(); // dismiss edit bar immediately
+
+    unawaited(
+      ref.read(chatRepositoryProvider).editMessage(messageId, newContent).then(
+        (result) {
+          result.fold(
+            (_) => null, // Isar stream confirms — no-op
+            (error) {
+              logInfo('editMessage background error: $error');
+              // Rollback: restore original content
+              if (original != null && conversationId != null) {
+                ref
+                    .read(chatMessagesProvider(conversationId).notifier)
+                    .updateOptimisticMessage(original);
+              }
+            },
+          );
+        },
+      ),
+    );
+
+    return const ActionResult.success();
   }
 
-  Future<void> deleteMessage(String conversationId, String messageId,
-      {bool forEveryone = false}) async {
-    state = state.copyWith(isLoading: true);
-    try {
-      final repository = ref.read(chatRepositoryProvider);
-      await repository.deleteMessage(messageId, forEveryone: forEveryone);
-      state = state.copyWith(isLoading: false);
-    } catch (e) {
-      logInfo('Delete Message Failed: $e');
-      state = state.copyWith(isLoading: false);
+  Future<void> deleteMessage(
+    String conversationId,
+    String messageId, {
+    bool forEveryone = false,
+  }) async {
+    final messagesNotifier =
+        ref.read(chatMessagesProvider(conversationId).notifier);
+
+    // Snapshot for rollback before removing (null = no rollback on failure)
+    final msgs = ref.read(chatMessagesProvider(conversationId)).valueOrNull;
+    MessageModel? snapshot;
+    if (msgs != null) {
+      for (final m in msgs) {
+        if (m.id == messageId) {
+          snapshot = m;
+          break;
+        }
+      }
     }
+
+    messagesNotifier.removeMessageLocally(messageId);
+    state = state.copyWith(isLoading: false);
+
+    unawaited(
+      ref
+          .read(chatRepositoryProvider)
+          .deleteMessage(messageId, forEveryone: forEveryone)
+          .then((result) {
+        result.fold(
+          (_) => null, // Isar confirms — no-op
+          (error) {
+            logInfo('deleteMessage background error: $error');
+            // Rollback: put message back
+            if (snapshot != null) {
+              messagesNotifier.restoreMessageLocally(snapshot);
+            }
+          },
+        );
+      }),
+    );
   }
 
   // Keep toggleReaction for compatibility or move logic

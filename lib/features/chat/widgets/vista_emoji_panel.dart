@@ -44,6 +44,7 @@ class _VistaEmojiPanelState extends State<VistaEmojiPanel> {
   String _searchQuery = '';
   List<String> _recentEmojis = <String>[];
   Map<Category, List<Emoji>> _emojiByCategory = <Category, List<Emoji>>{};
+  Timer? _backspaceLongPressTimer;
 
   final List<_EmojiCategory> _categories = const [
     _EmojiCategory(icon: Icons.access_time_rounded, category: Category.RECENT),
@@ -74,6 +75,7 @@ class _VistaEmojiPanelState extends State<VistaEmojiPanel> {
 
   @override
   void dispose() {
+    _backspaceLongPressTimer?.cancel();
     _pageController.dispose();
     _searchController
       ..removeListener(_onSearchChanged)
@@ -119,8 +121,8 @@ class _VistaEmojiPanelState extends State<VistaEmojiPanel> {
     if (_recentEmojis.length > 48) {
       _recentEmojis = _recentEmojis.sublist(0, 48);
     }
-    if (mounted) setState(() {});
-
+    // No setState here — grid stays stable while panel is open.
+    // Updated order shows on next panel open or when user leaves/returns to recent tab.
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setStringList(_recentsStorageKey, _recentEmojis);
@@ -322,9 +324,17 @@ class _VistaEmojiPanelState extends State<VistaEmojiPanel> {
                       if (_currentView == PanelView.emoji)
                         GestureDetector(
                           onTap: _onBackspace,
-                          onLongPress: () {
+                          onLongPressStart: (_) {
                             HapticFeedback.mediumImpact();
                             _onBackspace();
+                            _backspaceLongPressTimer = Timer.periodic(
+                              const Duration(milliseconds: 80),
+                              (_) => _onBackspace(),
+                            );
+                          },
+                          onLongPressEnd: (_) {
+                            _backspaceLongPressTimer?.cancel();
+                            _backspaceLongPressTimer = null;
                           },
                           child: Container(
                             width: 60,
@@ -512,7 +522,15 @@ class _VistaEmojiPanelState extends State<VistaEmojiPanel> {
     return GestureDetector(
       onTap: () {
         HapticFeedback.selectionClick();
-        setState(() => _currentView = view);
+        if (view != PanelView.emoji && _searchQuery.isNotEmpty) {
+          _searchController.removeListener(_onSearchChanged);
+          _searchController.clear();
+          _searchController.addListener(_onSearchChanged);
+        }
+        setState(() {
+          _currentView = view;
+          if (view != PanelView.emoji) _searchQuery = '';
+        });
       },
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),

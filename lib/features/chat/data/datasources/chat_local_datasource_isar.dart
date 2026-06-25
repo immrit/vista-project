@@ -1,26 +1,122 @@
 import 'package:isar/isar.dart';
+import 'package:rxdart/rxdart.dart';
 import '../../../../model/message_model.dart';
 import '../../../../model/conversation_model.dart';
 import '../../../../DB/isar_database_manager.dart';
 import '../../utils/conversation_name_utils.dart';
 import '../entities/message_entity.dart' hide fastHash;
 import '../entities/conversation_entity.dart';
-import 'package:flutter/foundation.dart';
 
-Future<List<MessageModel>> _fetchAndMapMessagesIsolate(Map<String, dynamic> args) async {
-  final params = args['params'] as IsarOpenParams;
-  final conversationId = args['conversationId'] as String;
-  final limit = args['limit'] as int?;
+// ──────────────────────────────────────────────────────────────────────────────
+// Entity → Model snapshot cache
+//
+// Problem: every stream emit calls toModel() for all N messages (up to 300).
+// toModel() runs jsonDecode(reactionsJson/sharedPostDataJson/storyReplyDataJson)
+// even when only 1 message changed (e.g. delivery status update). The other 299
+// new MessageModel instances are created and immediately discarded by
+// ChatMessageDiff.apply (which reuses the old instance via patchDeliveryStatus).
+//
+// Fix: cache entity "content fields" → MessageModel. On each emit, skip toModel()
+// for entities whose content hasn't changed; reuse the cached model.
+// Delivery fields (isSeen/isRead/…) are intentionally excluded from the
+// matchesEntity check — ChatMessageDiff handles those via in-place status patch.
+// ──────────────────────────────────────────────────────────────────────────────
 
-  final isar = IsarDatabaseManager.openIsarSynchronously(params);
-  
-  final query = isar.messageEntitys
-      .filter()
-      .conversationIdEqualTo(conversationId)
-      .sortByCreatedAtDesc();
-      
-  final entities = limit == null ? query.findAllSync() : query.limit(limit).findAllSync();
-  return entities.map((e) => e.toModel()).toList();
+class _CachedEntityRecord {
+  final String content;
+  final String? reactionsJson;
+  final String? sharedPostDataJson;
+  final String? storyReplyDataJson;
+  final String? attachmentUrl;
+  final String? audioUrl;
+  final String? localImagePath;
+  final String? localFilePath;
+  final bool deletedGlobally;
+  final String? messageType;
+  final DateTime? editedAt;
+  final bool isUploading;
+  final double? uploadProgress;
+  final MessageModel model;
+
+  const _CachedEntityRecord({
+    required this.content,
+    this.reactionsJson,
+    this.sharedPostDataJson,
+    this.storyReplyDataJson,
+    this.attachmentUrl,
+    this.audioUrl,
+    this.localImagePath,
+    this.localFilePath,
+    required this.deletedGlobally,
+    this.messageType,
+    this.editedAt,
+    required this.isUploading,
+    this.uploadProgress,
+    required this.model,
+  });
+
+  factory _CachedEntityRecord.snapshot(MessageEntity entity, MessageModel model) {
+    return _CachedEntityRecord(
+      content: entity.content,
+      reactionsJson: entity.reactionsJson,
+      sharedPostDataJson: entity.sharedPostDataJson,
+      storyReplyDataJson: entity.storyReplyDataJson,
+      attachmentUrl: entity.attachmentUrl,
+      audioUrl: entity.audioUrl,
+      localImagePath: entity.localImagePath,
+      localFilePath: entity.localFilePath,
+      deletedGlobally: entity.deletedGlobally,
+      messageType: entity.messageType,
+      editedAt: entity.editedAt,
+      isUploading: entity.isUploading,
+      uploadProgress: entity.uploadProgress,
+      model: model,
+    );
+  }
+
+  bool matchesEntity(MessageEntity entity) {
+    return entity.content == content &&
+        entity.reactionsJson == reactionsJson &&
+        entity.sharedPostDataJson == sharedPostDataJson &&
+        entity.storyReplyDataJson == storyReplyDataJson &&
+        entity.attachmentUrl == attachmentUrl &&
+        entity.audioUrl == audioUrl &&
+        entity.localImagePath == localImagePath &&
+        entity.localFilePath == localFilePath &&
+        entity.deletedGlobally == deletedGlobally &&
+        entity.messageType == messageType &&
+        entity.editedAt == editedAt &&
+        entity.isUploading == isUploading &&
+        entity.uploadProgress == uploadProgress;
+  }
+}
+
+List<MessageModel> _mapEntitiesWithCache(
+  List<MessageEntity> entities,
+  Map<int, _CachedEntityRecord> cache,
+) {
+  final result = <MessageModel>[];
+  final nextCache = <int, _CachedEntityRecord>{};
+
+  for (final entity in entities) {
+    final key = entity.isarId!;
+    final cached = cache[key];
+
+    if (cached != null && cached.matchesEntity(entity)) {
+      nextCache[key] = cached;
+      result.add(cached.model);
+    } else {
+      final model = entity.toModel();
+      nextCache[key] = _CachedEntityRecord.snapshot(entity, model);
+      result.add(model);
+    }
+  }
+
+  cache
+    ..clear()
+    ..addAll(nextCache);
+
+  return result;
 }
 
 class ChatLocalDataSourceIsar {
@@ -47,20 +143,30 @@ class ChatLocalDataSourceIsar {
     final base = isar.messageEntitys
         .filter()
         .conversationIdEqualTo(conversationId)
-        .sortByCreatedAtDesc(); 
+        .sortByCreatedAtDesc();
 
-    final Stream<void> watcher = limit == null
-        ? base.watchLazy() // Removed fireImmediately: true, we handle it manually
-        : base.limit(limit).watchLazy();
+    // Per-stream entity cache. Lives as long as this stream subscription is active.
+    // Delivery fields (isSeen/isRead/…) are excluded from the cache key — those are
+    // patched in-place on the cached model by ChatMessageDiff.patchDeliveryStatus.
+    final entityCache = <int, _CachedEntityRecord>{};
 
-    // 1. Guaranteed initial load
-    final initialEntities = limit == null ? base.findAllSync() : base.limit(limit).findAllSync();
-    yield initialEntities.map((e) => e.toModel()).toList();
+    // 1. Guaranteed initial load — async, non-blocking
+    final initialEntities = limit == null
+        ? await base.findAll()
+        : await base.limit(limit).findAll();
+    yield _mapEntitiesWithCache(initialEntities, entityCache);
 
-    // 2. Listen to subsequent changes
-    await for (final _ in watcher) {
-      final entities = limit == null ? base.findAllSync() : base.limit(limit).findAllSync();
-      yield entities.map((e) => e.toModel()).toList();
+    // 2. Debounced watchLazy — coalesces concurrent writes; 16ms = 1 frame at 60fps
+    // so any single write (send/edit/delete) appears in the next frame. Bulk sync
+    // still coalesces because debounce resets on each write.
+    final rawWatcher = limit == null ? base.watchLazy() : base.limit(limit).watchLazy();
+    final debouncedWatcher = rawWatcher.debounceTime(const Duration(milliseconds: 16));
+
+    await for (final _ in debouncedWatcher) {
+      final entities = limit == null
+          ? await base.findAll()
+          : await base.limit(limit).findAll();
+      yield _mapEntitiesWithCache(entities, entityCache);
     }
   }
 
@@ -636,11 +742,17 @@ class ChatLocalDataSourceIsar {
   Stream<List<ConversationModel>> watchConversations(
       String currentUserId) async* {
     final isar = await _dbManager.instance;
-    yield* isar.conversationEntitys
-        .where()
-        .sortByUpdatedAtDesc()
-        .watch(fireImmediately: true)
-        .map((entities) => entities.map((e) => e.toModel()).toList());
+    final query = isar.conversationEntitys.where().sortByUpdatedAtDesc();
+
+    // Initial load — async, non-blocking
+    final initialEntities = await query.findAll();
+    yield initialEntities.map((e) => e.toModel()).toList();
+
+    // Debounced watchLazy — conversations change less often but batch updates happen
+    await for (final _ in query.watchLazy().debounceTime(const Duration(milliseconds: 100))) {
+      final entities = await query.findAll();
+      yield entities.map((e) => e.toModel()).toList();
+    }
   }
 
   Future<List<ConversationModel>> getConversations() async {

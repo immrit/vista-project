@@ -7,6 +7,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:Vista/core/theme/app_theme.dart';
 import '../models/nearby_models.dart';
 import '../providers/nearby_provider.dart';
+import '../services/geocoder_service.dart';
 import '../widgets/nearby_card.dart';
 import '../widgets/location_permission_dialog.dart';
 import 'nearby_likes_screen.dart';
@@ -28,6 +29,8 @@ class _NearbyScreenState extends ConsumerState<NearbyScreen>
   // Browsing state
   int _index = 0;
   bool _liking = false;
+  String? _currentZone; // tracks zone of current card for transition detection
+  String? _zoneTransition; // non-null = show zone-change banner
 
   // Swipe drag state
   Offset _dragOffset = Offset.zero;
@@ -134,9 +137,18 @@ class _NearbyScreenState extends ConsumerState<NearbyScreen>
       final pos = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
       );
-      await ref
-          .read(nearbyRepositoryProvider)
-          .updateLocation(pos.latitude, pos.longitude);
+
+      // Reverse-geocode in parallel with nothing (it's the first async op here).
+      // Non-blocking: if Nominatim is unreachable we still update with lat/lng.
+      final geo =
+          await GeocoderService.lookup(pos.latitude, pos.longitude);
+
+      await ref.read(nearbyRepositoryProvider).updateLocation(
+            pos.latitude,
+            pos.longitude,
+            cityName: geo?.cityName,
+            provinceName: geo?.provinceName,
+          );
       if (!mounted) return;
       setState(() => _locating = false);
       ref.read(discoverProvider.notifier).load(reset: true);
@@ -152,15 +164,60 @@ class _NearbyScreenState extends ConsumerState<NearbyScreen>
   // ── Browsing ──────────────────────────────────────────────────────────────
   // forward=true → next card, forward=false → previous card.
   void _advance(bool forward) {
-    final count = ref.read(discoverProvider).cards.length;
+    final cards = ref.read(discoverProvider).cards;
     if (forward) {
-      if (_index < count - 1) {
-        setState(() => _index++);
-        if (_index >= count - 3) ref.read(discoverProvider.notifier).load();
+      if (_index < cards.length - 1) {
+        final newIndex = _index + 1;
+        final transition = _detectZoneChange(cards[newIndex]);
+        setState(() {
+          _index = newIndex;
+          if (transition != null) _zoneTransition = transition;
+        });
+        if (transition != null) {
+          Future.delayed(const Duration(seconds: 3), () {
+            if (mounted) setState(() => _zoneTransition = null);
+          });
+        }
+        if (_index >= cards.length - 5) {
+          ref.read(discoverProvider.notifier).load();
+        }
       }
     } else {
-      if (_index > 0) setState(() => _index--);
+      if (_index > 0) {
+        final newIndex = _index - 1;
+        final transition = _detectZoneChange(cards[newIndex]);
+        setState(() {
+          _index = newIndex;
+          if (transition != null) _zoneTransition = transition;
+        });
+        if (transition != null) {
+          Future.delayed(const Duration(seconds: 3), () {
+            if (mounted) setState(() => _zoneTransition = null);
+          });
+        }
+      }
     }
+  }
+
+  /// Returns a banner message when the card's city differs from the last one,
+  /// so the user sees the layered city-by-city progression. Tracks the city
+  /// name (finer than zone) and updates [_currentZone] in place. Null = no
+  /// transition.
+  String? _detectZoneChange(NearbyCandidate card) {
+    // Key on the real place name when known, else on the coarse zone bucket.
+    final key = card.cityLabel.isNotEmpty ? card.cityLabel : card.zoneType;
+    if (_currentZone == null) {
+      _currentZone = key;
+      return null;
+    }
+    if (_currentZone == key) return null;
+    _currentZone = key;
+
+    if (card.cityLabel.isNotEmpty) {
+      return 'افراد ${card.cityLabel}';
+    }
+    // No place name resolved — fall back to a generic, non-vague hint.
+    return 'افراد دورتر';
   }
 
   // ── Swipe gesture handlers ────────────────────────────────────────────────
@@ -597,6 +654,9 @@ class _NearbyScreenState extends ConsumerState<NearbyScreen>
     final card = cards[safeIndex];
     final isGoingBack = _dragOffset.dx > 0 && safeIndex > 0;
 
+    // Initialize zone tracking on first card shown (no banner on first card).
+    _currentZone ??= card.cityLabel.isNotEmpty ? card.cityLabel : card.zoneType;
+
     return Column(
       children: [
         Expanded(
@@ -619,6 +679,14 @@ class _NearbyScreenState extends ConsumerState<NearbyScreen>
                       _backingCard(cards[safeIndex + 1]),
                     _topCard(card),
                   ],
+                  // Zone transition banner — floats above cards
+                  if (_zoneTransition != null)
+                    Positioned(
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      child: _zoneBanner(_zoneTransition!),
+                    ),
                 ],
               ),
             ),
@@ -626,6 +694,37 @@ class _NearbyScreenState extends ConsumerState<NearbyScreen>
         ),
         _actionBar(cards),
       ],
+    );
+  }
+
+  Widget _zoneBanner(String message) {
+    return AnimatedOpacity(
+      opacity: 1.0,
+      duration: const Duration(milliseconds: 300),
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.78),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.layers_rounded, color: Colors.white70, size: 15),
+            const SizedBox(width: 6),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -830,12 +929,10 @@ class _NearbyScreenState extends ConsumerState<NearbyScreen>
     return _centeredMessage(
       icon: Icons.radar_rounded,
       message:
-          'فعلا کسی این اطراف نیست!\nبعدا دوباره سر بزن یا محدوده رو بیشتر کن',
-      actionLabel: 'تنظیم محدوده',
-      onAction: _openPreferences,
+          'فعلا کسی آنلاین نیست!\nهمه آنلاین‌های نزدیک رو دیدی. بعداً دوباره سر بزن.',
+      actionLabel: 'تلاش مجدد',
+      onAction: () => ref.read(discoverProvider.notifier).load(reset: true),
       isDark: isDark,
-      secondaryLabel: 'تلاش مجدد',
-      onSecondary: () => ref.read(discoverProvider.notifier).load(reset: true),
     );
   }
 
@@ -1088,19 +1185,6 @@ class _PreferencesSheetState extends ConsumerState<_PreferencesSheet> {
                   labels: RangeLabels('${p.minAge}', '${p.maxAge}'),
                   onChanged: (v) => setState(() => _prefs = p.copyWith(
                       minAge: v.start.round(), maxAge: v.end.round())),
-                ),
-                const SizedBox(height: 8),
-
-                _label('حداکثر فاصله: ${p.maxDistanceKm} کیلومتر'),
-                Slider(
-                  value: p.maxDistanceKm.toDouble().clamp(1, 200),
-                  min: 1,
-                  max: 200,
-                  divisions: 199,
-                  activeColor: AppColors.primary,
-                  label: '${p.maxDistanceKm}',
-                  onChanged: (v) => setState(
-                      () => _prefs = p.copyWith(maxDistanceKm: v.round())),
                 ),
                 const SizedBox(height: 20),
 

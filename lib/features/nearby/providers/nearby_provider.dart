@@ -67,15 +67,17 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
     if (_fetching) return;
     _fetching = true;
     final randomOnline = setRandomOnline ?? state.isRandomOnline;
+    // offset = total unique users seen so far; backend returns next batch
+    final offset = reset ? 0 : _seenIds.length;
     if (reset) _seenIds.clear();
     state = state.copyWith(
         loading: true, clearError: true, isRandomOnline: randomOnline);
     try {
       final raw = randomOnline
           ? await _repo.discoverRandomOnline(limit: 20)
-          : await _repo.discover(limit: 20);
+          : await _repo.discover(limit: 20, offset: offset);
+      // Backend guarantees recently-online filter — deduplicate only
       final cards = raw.where((c) {
-        if (!c.isRecentlyOnline) return false;
         if (_seenIds.contains(c.userId)) return false;
         _seenIds.add(c.userId);
         return true;
@@ -100,7 +102,7 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
     final rest = state.cards.sublist(1);
     state = state.copyWith(cards: rest);
     // Prefetch more when the deck runs low.
-    if (rest.length <= 3 && !_fetching) {
+    if (rest.length <= 5 && !_fetching) {
       load();
     }
   }

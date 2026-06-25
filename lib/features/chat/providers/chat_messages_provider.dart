@@ -30,16 +30,22 @@ class ChatMessages extends _$ChatMessages {
 
   bool _hasMore = true;
 
+  // Delta decryption cache: messageId → decrypted content
+  // Avoids re-decrypting messages whose content hasn't changed between stream emits.
+  final Map<String, String> _decryptCache = {};
+
   @override
   FutureOr<List<MessageModel>> build(String conversationId) async {
     final repository = ref.watch(chatRepositoryProvider);
     _chatRepository = repository;
 
     _realtimeSubscription?.cancel();
+    _decryptCache.clear();
 
     // Cleanup on dispose
     ref.onDispose(() {
       _realtimeSubscription?.cancel();
+      _decryptCache.clear();
     });
 
     // Return the stream from repository directly.
@@ -111,24 +117,40 @@ class ChatMessages extends _$ChatMessages {
       return originalMessages;
     }
 
+    // Remove stale cache entries (messages no longer in the list)
+    final incomingIds = originalMessages.map((m) => m.id).toSet();
+    _decryptCache.removeWhere((id, _) => !incomingIds.contains(id));
+
     final decryptedList = <MessageModel>[];
     for (var m in originalMessages) {
-      // Only try decrypting normal text/media content, not system exchange keys
-      if (m.messageType != 'exchange_key' &&
-          m.messageType != 'exchange_key_reply' &&
-          m.content.isNotEmpty) {
-        try {
-          // Basic check if it looks like base64
-          if (m.content.length > 20 && !m.content.contains(' ')) {
-            final decryptedContent =
-                await e2e.decryptMessage(m.content, sharedSecret);
-            if (decryptedContent != '[پیام غیرقابل رمزگشایی]') {
-              decryptedList.add(m.copyWith(content: decryptedContent));
-              continue;
-            }
-          }
-        } catch (_) {}
+      if (m.messageType == 'exchange_key' ||
+          m.messageType == 'exchange_key_reply' ||
+          m.content.isEmpty) {
+        decryptedList.add(m);
+        continue;
       }
+
+      // Cache hit: same ciphertext → reuse decrypted result
+      final cacheKey = '${m.id}:${m.content}';
+      final cached = _decryptCache[cacheKey];
+      if (cached != null) {
+        decryptedList.add(m.copyWith(content: cached));
+        continue;
+      }
+
+      // Cache miss: decrypt and store
+      try {
+        if (m.content.length > 20 && !m.content.contains(' ')) {
+          final decryptedContent =
+              await e2e.decryptMessage(m.content, sharedSecret);
+          if (decryptedContent != '[پیام غیرقابل رمزگشایی]') {
+            _decryptCache[cacheKey] = decryptedContent;
+            decryptedList.add(m.copyWith(content: decryptedContent));
+            continue;
+          }
+        }
+      } catch (_) {}
+
       decryptedList.add(m);
     }
     return decryptedList;
@@ -170,24 +192,26 @@ class ChatMessages extends _$ChatMessages {
     }
   }
 
-  // Optimistic updates are now handled by the repository saving to Isar immediately.
-  // We keep these methods empty or remove them if UI calls them,
-  // but looking at ModernChatScreen, it doesn't seem to call these directly for sending.
-  // It relies on the provider stream updates.
+  // Optimistic updates: immediately mutate in-memory state (0ms latency).
+  // Stream fires ~16ms later; ChatMessageDiff reconciles without rebuilding
+  // unchanged bubbles (identical() fast path on unchanged instances).
 
-  // If ModernChatScreen calls these, we should ideally remove usage there too,
-  // but to preserve API compatibility we can leave no-ops or delegate to repo if needed.
-  // However, since repo.sendMessage writes to DB, the stream updates automatically.
   void addOptimisticMessage(MessageModel message) {
-    // No-op: Repository handles DB write -> Stream update
+    final current = state.valueOrNull ?? [];
+    if (current.any((m) => m.id == message.id)) return;
+    state = AsyncValue.data([message, ...current]);
   }
 
   void updateOptimisticMessage(MessageModel message) {
-    // No-op: Repository handles DB write -> Stream update
+    final current = state.valueOrNull;
+    if (current == null) return;
+    state = AsyncValue.data([
+      for (final m in current) m.id == message.id ? message : m,
+    ]);
   }
 
   void removeOptimisticMessage(String messageId) {
-    // No-op: Repository handles DB write -> Stream update
+    removeMessageLocally(messageId);
   }
 
   void removeMessageLocally(String messageId) {

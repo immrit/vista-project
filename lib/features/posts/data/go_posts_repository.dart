@@ -203,6 +203,8 @@ class GoPostsRepository {
     String? videoUrl,
     String? musicUrl,
     String? musicTitle,
+    int? musicStartMs,
+    int? musicEndMs,
     List<String>? tags,
     bool hideLikeCount = false,
     bool hideCommentCount = false,
@@ -222,6 +224,8 @@ class GoPostsRepository {
         if (musicUrl != null && musicUrl.isNotEmpty) 'music_url': musicUrl,
         if (musicTitle != null && musicTitle.isNotEmpty)
           'music_title': musicTitle,
+        if (musicStartMs != null) 'music_start_ms': musicStartMs,
+        if (musicEndMs != null) 'music_end_ms': musicEndMs,
         'tags': tags ?? const <String>[],
         'hide_like_count': hideLikeCount,
         'hide_comment_count': hideCommentCount,

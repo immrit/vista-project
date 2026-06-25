@@ -14,6 +14,11 @@ class NearbyCandidate {
   final String verificationType;
   final double distanceKm;
   final String? lastSeenAt; // ISO 8601, null = unknown
+  // Zone fields — populated by backend when available; fallback uses distance.
+  final String? zone; // same_city | same_province | other_province
+  final String? cityName;
+  final String? provinceName;
+  final bool isOnlineNow; // true = currently connected socket
 
   const NearbyCandidate({
     required this.userId,
@@ -29,6 +34,10 @@ class NearbyCandidate {
     required this.verificationType,
     required this.distanceKm,
     this.lastSeenAt,
+    this.zone,
+    this.cityName,
+    this.provinceName,
+    this.isOnlineNow = false,
   });
 
   factory NearbyCandidate.fromJson(Map<String, dynamic> j) => NearbyCandidate(
@@ -45,21 +54,66 @@ class NearbyCandidate {
         verificationType: j['verification_type'] as String? ?? '',
         distanceKm: (j['distance_km'] as num?)?.toDouble() ?? 0,
         lastSeenAt: j['last_seen_at'] as String?,
+        zone: j['zone'] as String?,
+        cityName: j['city_name'] as String?,
+        provinceName: j['province_name'] as String?,
+        isOnlineNow: j['is_online_now'] as bool? ?? false,
       );
+
+  /// Zone type: from backend or derived from distance as fallback.
+  /// Values: same_city | same_province | other_province
+  String get zoneType {
+    if (zone != null && zone!.isNotEmpty) return zone!;
+    if (distanceKm < 30) return 'same_city';
+    if (distanceKm < 200) return 'same_province';
+    return 'other_province';
+  }
+
+  /// The candidate's city — the single, always-shown place label. Falls back to
+  /// province, then empty (caller hides the chip). Never returns vague text.
+  String get cityLabel {
+    if (cityName != null && cityName!.isNotEmpty) return cityName!;
+    if (provinceName != null && provinceName!.isNotEmpty) return provinceName!;
+    return '';
+  }
+
+  /// Presence label: "آنلاین" / "X دقیقه پیش".
+  String get presenceLabel {
+    if (isOnlineNow) return 'آنلاین';
+    if (lastSeenAt == null) return 'اخیراً آنلاین';
+    final t = DateTime.tryParse(lastSeenAt!);
+    if (t == null) return 'اخیراً آنلاین';
+    final diff = DateTime.now().difference(t.toLocal()).inMinutes;
+    if (diff <= 1) return 'همین الان آنلاین بود';
+    if (diff < 60) return '$diff دقیقه پیش';
+    return 'اخیراً آنلاین';
+  }
 
   /// True if user was online within the last 20 minutes (or lastSeenAt unknown).
   bool get isRecentlyOnline {
+    if (isOnlineNow) return true;
     if (lastSeenAt == null) return true;
     final t = DateTime.tryParse(lastSeenAt!);
     if (t == null) return true;
     return DateTime.now().difference(t.toLocal()).inMinutes <= 20;
   }
 
-  /// Localized, human-friendly distance ("۲٫۳ کیلومتر" / "نزدیک شما").
+  /// City + concrete distance, e.g. "تهران • ۳ کیلومتر". City always wins;
+  /// distance is dropped when zero/unknown (random-online mode).
+  String get locationLine {
+    final city = cityLabel;
+    final d = distanceLabel;
+    if (city.isEmpty) return d;
+    if (d.isEmpty) return city;
+    return '$city • $d';
+  }
+
+  /// Concrete distance only — no vague "همین نزدیکی". Empty when zero/unknown.
   String get distanceLabel {
-    if (distanceKm <= 0.1) return 'همین نزدیکی';
+    if (distanceKm <= 0) return '';
     if (distanceKm < 1) return '${(distanceKm * 1000).round()} متر';
-    return '${distanceKm.toStringAsFixed(1)} کیلومتر';
+    if (distanceKm < 10) return '${distanceKm.toStringAsFixed(1)} کیلومتر';
+    return '${distanceKm.round()} کیلومتر';
   }
 }
 

@@ -43,10 +43,21 @@ class NearbyRepository {
     return 'network_error';
   }
 
-  Future<void> updateLocation(double lat, double lng) async {
+  Future<void> updateLocation(
+    double lat,
+    double lng, {
+    String? cityName,
+    String? provinceName,
+  }) async {
     try {
-      await _dio.post('/location',
-          data: {'lat': lat, 'lng': lng}, options: await _authOptions());
+      final body = <String, dynamic>{'lat': lat, 'lng': lng};
+      if (cityName != null && cityName.isNotEmpty) {
+        body['city_name'] = cityName;
+      }
+      if (provinceName != null && provinceName.isNotEmpty) {
+        body['province_name'] = provinceName;
+      }
+      await _dio.post('/location', data: body, options: await _authOptions());
     } on DioException catch (e) {
       throw NearbyException(_codeOf(e));
     }
@@ -80,10 +91,12 @@ class NearbyRepository {
     }
   }
 
-  Future<List<NearbyCandidate>> discover({int limit = 20}) async {
+  Future<List<NearbyCandidate>> discover({int limit = 20, int offset = 0}) async {
     try {
+      final params = <String, dynamic>{'limit': limit};
+      if (offset > 0) params['offset'] = offset;
       final resp = await _dio.get('/discover',
-          queryParameters: {'limit': limit}, options: await _authOptions());
+          queryParameters: params, options: await _authOptions());
       final list =
           (resp.data as Map<String, dynamic>)['candidates'] as List<dynamic>? ??
               [];

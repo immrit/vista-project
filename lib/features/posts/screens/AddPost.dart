@@ -21,6 +21,7 @@ import '../providers/post_upload_provider.dart';
 import '../widgets/hashtag_autocomplete_field.dart';
 import '../widgets/social_text_editing_controller.dart';
 import '../widgets/audio_equalizer_bars.dart';
+import '../widgets/music_trim_sheet.dart';
 import '../../profile/data/profile_repository.dart';
 
 class AddPublicPostScreen extends ConsumerStatefulWidget {
@@ -73,6 +74,9 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
   String? _selectedImageName; // برای وب
   File? _selectedMusic;
   String? _musicFileName;
+  Duration _musicTrimStart = Duration.zero;
+  Duration _musicTrimEnd = Duration.zero;
+  bool _musicBackgroundMode = false;
   File? _selectedVideo;
   File? _videoThumbnail; // متغیر جدید برای ذخیره تامبنیل ویدیو
   Uint8List? _selectedVideoBytes; // برای وب
@@ -318,17 +322,39 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
           setState(() {
             _selectedMusic = File(filePath);
             _musicFileName = result.files.single.name;
-            // Music may sit on top of an image; only video is exclusive.
+            _musicTrimStart = Duration.zero;
+            _musicTrimEnd = Duration.zero;
+            _musicBackgroundMode = false;
             _selectedVideo = null;
             _selectedVideoBytes = null;
             _selectedVideoName = null;
             _videoThumbnail = null;
           });
+          await _openMusicTrimSheet();
         }
       }
     } catch (e) {
       logDebug('Error picking music: $e');
       _showError('خطا در انتخاب موزیک');
+    }
+  }
+
+  Future<void> _openMusicTrimSheet() async {
+    if (_selectedMusic == null) return;
+    final result = await showMusicTrimSheet(
+      context,
+      file: _selectedMusic!,
+      title: _displayMusicTitle(),
+      initialStart: _musicTrimStart,
+      initialEnd: _musicTrimEnd > Duration.zero ? _musicTrimEnd : null,
+      initialBackgroundMode: _musicBackgroundMode,
+    );
+    if (result != null && mounted) {
+      setState(() {
+        _musicTrimStart = result.start;
+        _musicTrimEnd = result.end;
+        _musicBackgroundMode = result.backgroundMode;
+      });
     }
   }
 
@@ -651,8 +677,14 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
             videoName: _selectedVideoName,
             music: _selectedMusic,
             musicName: _musicFileName,
+            musicStartMs: _musicTrimStart.inMilliseconds > 0
+                ? _musicTrimStart.inMilliseconds
+                : null,
+            musicEndMs: _musicTrimEnd.inMilliseconds > 0
+                ? _musicTrimEnd.inMilliseconds
+                : null,
             videoThumbnail: _videoThumbnail,
-            tags: tags, // Tags are derived from #hashtags inside the post text.
+            tags: tags,
             mentionedUserIds: mentionIds,
           );
 
@@ -711,7 +743,7 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
     contentController.dispose();
     _focusNode.dispose();
     _galleryController.dispose();
-    _videoPlayerController?.dispose(); // آزادسازی کنترلر ویدیو
+    _videoPlayerController?.dispose();
     super.dispose();
   }
 
@@ -1124,9 +1156,10 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
             // music-on-photo overlay
             if (hasMusic)
               Positioned(
-                left: 10,
+                left: _musicBackgroundMode ? null : 10,
                 right: 10,
-                bottom: 10,
+                bottom: _musicBackgroundMode ? null : 10,
+                top: _musicBackgroundMode ? 10 : null,
                 child: _musicOverlayBar(),
               ),
           ],
@@ -1183,6 +1216,9 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
   void _removeMusic() => setState(() {
         _selectedMusic = null;
         _musicFileName = null;
+        _musicTrimStart = Duration.zero;
+        _musicTrimEnd = Duration.zero;
+        _musicBackgroundMode = false;
       });
 
   /// Clean display title from the picked audio filename.
@@ -1198,63 +1234,120 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
     return cleaned.isEmpty ? 'موزیک' : cleaned;
   }
 
-  /// Floating music bar shown over a photo (music-on-photo).
+  /// Floating music overlay shown on a photo.
+  /// Background mode → compact button in corner.
+  /// Bubble mode → full bar at bottom.
   Widget _musicOverlayBar() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        gradient: LinearGradient(
-          colors: [
-            Colors.black.withValues(alpha: 0.58),
-            Colors.black.withValues(alpha: 0.42),
+    if (_musicBackgroundMode) {
+      return _buildBackgroundModeCornerBadge();
+    }
+    return _buildBubbleModeBar();
+  }
+
+  Widget _buildBubbleModeBar() {
+    return GestureDetector(
+      onTap: _openMusicTrimSheet,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(22),
+          color: Colors.black.withValues(alpha: 0.55),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _spinningDisc(size: 28),
+            const SizedBox(width: 8),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 140),
+              child: Text(
+                _displayMusicTitle(),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w500,
+                  fontSize: 12,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            const AudioEqualizerBars(
+              color: Colors.white,
+              height: 14,
+              barCount: 3,
+            ),
+            const SizedBox(width: 8),
+            InkWell(
+              onTap: _removeMusic,
+              customBorder: const CircleBorder(),
+              child: Icon(Icons.close,
+                  color: Colors.white.withValues(alpha: 0.55), size: 15),
+            ),
           ],
         ),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
       ),
-      child: Row(
-        children: [
-          _spinningDisc(size: 32),
-          const SizedBox(width: 10),
-          const AudioEqualizerBars(
-            color: Colors.white,
-            height: 16,
-            barCount: 4,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+    );
+  }
+
+  Widget _buildBackgroundModeCornerBadge() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.end,
+      children: [
+        // Edit trim button
+        GestureDetector(
+          onTap: _openMusicTrimSheet,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.55),
+              borderRadius: BorderRadius.circular(20),
+              border:
+                  Border.all(color: Colors.white.withValues(alpha: 0.15)),
+            ),
+            child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
+                _spinningDisc(size: 20),
+                const SizedBox(width: 6),
                 Text(
                   _displayMusicTitle(),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13,
-                  ),
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500),
                 ),
-                const Text(
-                  'موزیک پست',
-                  style: TextStyle(color: Colors.white70, fontSize: 11),
-                ),
+                const SizedBox(width: 6),
+                const Icon(Icons.volume_up_rounded,
+                    color: Colors.white70, size: 14),
               ],
             ),
           ),
-          InkWell(
-            onTap: _removeMusic,
-            customBorder: const CircleBorder(),
-            child: const Padding(
-              padding: EdgeInsets.all(4),
-              child: Icon(Icons.close, color: Colors.white70, size: 18),
+        ),
+        const SizedBox(width: 8),
+        InkWell(
+          onTap: _removeMusic,
+          customBorder: const CircleBorder(),
+          child: Container(
+            padding: const EdgeInsets.all(5),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.50),
+              shape: BoxShape.circle,
             ),
+            child: const Icon(Icons.close, color: Colors.white70, size: 16),
           ),
-        ],
-      ),
+        ),
+      ],
     );
+  }
+
+  String _fmtDur(Duration d) {
+    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return '$m:$s';
   }
 
   /// Whole media region: video (exclusive) OR photo (+optional music) OR
@@ -1392,14 +1485,15 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
           Positioned(
             left: 0,
             right: 0,
-            bottom: hasMusic ? 72 : 12,
+            bottom: (hasMusic && !_musicBackgroundMode) ? 72 : 12,
             child: _buildDots(count, page),
           ),
           if (hasMusic)
             Positioned(
-              left: 10,
+              left: _musicBackgroundMode ? null : 10,
               right: 10,
-              bottom: 10,
+              bottom: _musicBackgroundMode ? null : 10,
+              top: _musicBackgroundMode ? 10 : null,
               child: _musicOverlayBar(),
             ),
         ],
@@ -1626,75 +1720,93 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
     );
   }
 
-  /// Standalone music card (no photo) — soft gradient, spinning disc,
-  /// animated equalizer. Modern "now playing" look.
+  /// Compact music pill (no photo). Tap → open trim sheet.
   Widget _buildMusicPreview(
       bool isDarkMode, Color primaryColor, Color textColor) {
-    return Container(
-      margin: const EdgeInsets.only(top: 4),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(18),
-        gradient: const LinearGradient(
-          colors: [Color(0xFF2B5876), Color(0xFF4E4376)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF4E4376).withValues(alpha: 0.4),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
+    const accent = Color(0xFF8E5CF7);
+    const accentEnd = Color(0xFFDD2A7B);
+    final hasTrim = _musicTrimEnd > Duration.zero;
+
+    return GestureDetector(
+      onTap: _openMusicTrimSheet,
+      child: Container(
+        margin: const EdgeInsets.only(top: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          gradient: const LinearGradient(
+            colors: [Color(0xFF1A1033), Color(0xFF2D1B4E)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
           ),
-        ],
-      ),
-      child: Row(
-        children: [
-          _spinningDisc(size: 54),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  children: const [
-                    Icon(Icons.graphic_eq, color: Colors.white70, size: 14),
-                    SizedBox(width: 6),
-                    Text(
-                      'آماده پخش',
-                      style: TextStyle(color: Colors.white70, fontSize: 12),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  _displayMusicTitle(),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                const AudioEqualizerBars(
-                  color: Colors.white,
-                  height: 20,
-                  barCount: 6,
-                ),
-              ],
+          boxShadow: [
+            BoxShadow(
+              color: accent.withValues(alpha: 0.25),
+              blurRadius: 18,
+              offset: const Offset(0, 6),
             ),
-          ),
-          const SizedBox(width: 8),
-          _circleIconButton(icon: Icons.close, onTap: _removeMusic),
-        ],
+          ],
+        ),
+        child: Row(
+          children: [
+            _spinningDisc(size: 40),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    _displayMusicTitle(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    hasTrim
+                        ? '${_fmtDur(_musicTrimStart)} – ${_fmtDur(_musicTrimEnd)}'
+                        : 'برای برش ضربه بزنید',
+                    style: TextStyle(
+                      color: hasTrim ? accent : Colors.white38,
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            // Mode dot
+            Container(
+              width: 7,
+              height: 7,
+              decoration: BoxDecoration(
+                color: _musicBackgroundMode ? accentEnd : accent,
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 10),
+            // Remove
+            InkWell(
+              onTap: _removeMusic,
+              customBorder: const CircleBorder(),
+              child: Padding(
+                padding: const EdgeInsets.all(6),
+                child: Icon(Icons.close,
+                    color: Colors.white.withValues(alpha: 0.40), size: 17),
+              ),
+            ),
+          ],
+        ),
       ),
-    ).animate().fadeIn(duration: const Duration(milliseconds: 260)).slideY(
-          begin: 0.08,
+    ).animate().fadeIn(duration: const Duration(milliseconds: 240)).slideY(
+          begin: 0.06,
           end: 0,
-          duration: const Duration(milliseconds: 260),
+          duration: const Duration(milliseconds: 240),
         );
   }
 

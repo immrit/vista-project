@@ -25,6 +25,14 @@ abstract final class ChatMessageDiff {
 
     for (final message in incoming) {
       final existing = current.byId[message.id];
+
+      // identical() fast path: entity cache reuses the same instance when content
+      // is unchanged — skip all 30+ field comparisons.
+      if (identical(existing, message)) {
+        nextById[message.id] = existing!;
+        continue;
+      }
+
       if (existing != null &&
           ChatMessageVisualEquality.equals(existing, message)) {
         nextById[message.id] = existing;

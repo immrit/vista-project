@@ -49,38 +49,48 @@ class _TelegramVideoEditorState extends State<TelegramVideoEditor> {
     super.dispose();
   }
 
-  void _exportAndSend() async {
+  Future<void> _exportAndSend() async {
     setState(() => _isExporting = true);
-    
+
     try {
       final start = _controller.startTrim;
       final end = _controller.endTrim;
-      
+
       final tempDir = await getTemporaryDirectory();
-      final outPath = '${tempDir.path}/trimmed_${DateTime.now().millisecondsSinceEpoch}.mp4';
+      final outPath =
+          '${tempDir.path}/trimmed_${DateTime.now().millisecondsSinceEpoch}.mp4';
 
-      // Stream copy is insanely fast.
-      // If _isMuted is true, we add -an to remove audio.
+      // Stream copy — fast, no re-encode
       final audioFlag = _isMuted ? '-an' : '-c:a copy';
-      final command = '-i "${widget.file.path}" -ss ${start.inMilliseconds / 1000} -to ${end.inMilliseconds / 1000} -c:v copy $audioFlag "$outPath"';
+      final command =
+          '-i "${widget.file.path}" -ss ${start.inMilliseconds / 1000} '
+          '-to ${end.inMilliseconds / 1000} -c:v copy $audioFlag "$outPath"';
 
-      await FFmpegKit.execute(command).then((session) async {
-        final returnCode = await session.getReturnCode();
-        if (ReturnCode.isSuccess(returnCode)) {
-          if (mounted) {
-            Navigator.pop(
-              context,
-              MediaEditorResult(File(outPath), _captionController.text.trim()),
-            );
-          }
-        } else {
-          if (mounted) setState(() => _isExporting = false);
-        }
-      });
-    } catch (e) {
+      final session = await FFmpegKit.execute(command);
+      final returnCode = await session.getReturnCode();
+
+      if (!mounted) return;
+      if (ReturnCode.isSuccess(returnCode)) {
+        Navigator.pop(
+          context,
+          MediaEditorResult(File(outPath), _captionController.text.trim()),
+        );
+      } else {
+        setState(() => _isExporting = false);
+      }
+    } catch (_) {
       if (mounted) setState(() => _isExporting = false);
     }
   }
+
+  void _toggleMute() {
+    setState(() {
+      _isMuted = !_isMuted;
+      _controller.video.setVolume(_isMuted ? 0 : 1);
+    });
+  }
+
+  // ─── Build ───────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -95,176 +105,221 @@ class _TelegramVideoEditorState extends State<TelegramVideoEditor> {
       backgroundColor: Colors.black,
       resizeToAvoidBottomInset: true,
       body: SafeArea(
-        child: Column(
-          children: [
-            // Video Preview Area
-            Expanded(
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  GestureDetector(
-                    onTap: () {
-                      if (_controller.isPlaying) {
-                        _controller.video.pause();
-                      } else {
-                        _controller.video.play();
-                      }
-                    },
-                    child: CropGridViewer.preview(controller: _controller),
-                  ),
-                  if (!_controller.isPlaying)
-                    Container(
-                      decoration: const BoxDecoration(
-                        color: Colors.black45,
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.play_arrow,
-                        color: Colors.white,
-                        size: 60,
-                      ),
-                    ),
-                  // Back button
-                  Positioned(
-                    top: 16,
-                    left: 16,
-                    child: GestureDetector(
-                      onTap: () => Navigator.pop(context),
-                      child: Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: const BoxDecoration(
-                          color: Colors.black45,
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(Icons.arrow_back, color: Colors.white),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+        child: Column(children: [
+          Expanded(child: _buildVideoPreview()),
+          _buildBottomControls(),
+        ]),
+      ),
+    );
+  }
 
-            // Bottom Telegram-style Controls
-            Container(
-              color: Colors.black,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Mute and Edit Cover Row
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      IconButton(
-                        icon: Icon(
-                          _isMuted ? Icons.volume_off : Icons.volume_up,
-                          color: Colors.white,
-                        ),
-                        onPressed: () {
-                          setState(() {
-                            _isMuted = !_isMuted;
-                            _controller.video.setVolume(_isMuted ? 0 : 1);
-                          });
-                        },
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              'Edit Cover',
-                              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                            ),
-                            SizedBox(width: 4),
-                            Icon(Icons.chevron_right, color: Colors.white, size: 18),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 48), // Balance the row
-                    ],
-                  ),
-                  
-                  const SizedBox(height: 12),
-                  
-                  // Trim Slider
-                  TrimSlider(
-                    controller: _controller,
-                    height: 40,
-                    horizontalMargin: 8,
-                    child: TrimTimeline(
-                      controller: _controller,
-                      padding: const EdgeInsets.only(top: 10),
-                    ),
-                  ),
-                  
-                  const SizedBox(height: 16),
-                  
-                  // Caption Input
-                  TextField(
-                    controller: _captionController,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: InputDecoration(
-                      hintText: 'Add a caption...',
-                      hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.5)),
-                      filled: true,
-                      fillColor: Colors.white.withValues(alpha: 0.1),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(20),
-                        borderSide: BorderSide.none,
-                      ),
-                    ),
-                  ),
-                  
-                  const SizedBox(height: 16),
-                  
-                  // Toolbar and Send Button
-                  Row(
-                    children: [
-                      // Telegram-style tool pill
-                      Expanded(
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(24),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                            children: [
-                              const Icon(Icons.crop_rotate, color: Colors.white, size: 22),
-                              const Icon(Icons.brush, color: Colors.white, size: 22),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      // Send Button
-                      GestureDetector(
-                        onTap: _isExporting ? null : _exportAndSend,
-                        child: CircleAvatar(
-                          radius: 22,
-                          backgroundColor: Colors.blueAccent,
-                          child: _isExporting
-                              ? const SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                                )
-                              : const Icon(Icons.send, color: Colors.white, size: 20),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
+  Widget _buildVideoPreview() {
+    return Stack(alignment: Alignment.center, children: [
+      GestureDetector(
+        onTap: () {
+          if (_controller.isPlaying) {
+            _controller.video.pause();
+          } else {
+            _controller.video.play();
+          }
+        },
+        child: CropGridViewer.preview(controller: _controller),
+      ),
+      if (!_controller.isPlaying)
+        Container(
+          decoration: const BoxDecoration(
+            color: Colors.black45,
+            shape: BoxShape.circle,
+          ),
+          padding: const EdgeInsets.all(12),
+          child: const Icon(Icons.play_arrow, color: Colors.white, size: 52),
+        ),
+      Positioned(
+        top: 12,
+        left: 12,
+        child: GestureDetector(
+          onTap: () => Navigator.pop(context),
+          child: Container(
+            padding: const EdgeInsets.all(8),
+            decoration: const BoxDecoration(
+              color: Colors.black45,
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.arrow_back, color: Colors.white, size: 20),
+          ),
+        ),
+      ),
+    ]);
+  }
+
+  Widget _buildBottomControls() {
+    return Container(
+      color: Colors.black,
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        _buildTopRow(),
+        const SizedBox(height: 10),
+        _buildTrimBar(),
+        const SizedBox(height: 14),
+        _buildCaptionField(),
+        const SizedBox(height: 12),
+        _buildToolbarRow(),
+      ]),
+    );
+  }
+
+  // Mute (left) | Edit Cover (center) | spacer (right)
+  Widget _buildTopRow() {
+    return Row(children: [
+      // Mute button — outlined circle style
+      GestureDetector(
+        onTap: _toggleMute,
+        child: Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white, width: 2),
+            color: Colors.black,
+          ),
+          child: Icon(
+            _isMuted ? Icons.volume_off : Icons.volume_up,
+            color: Colors.white,
+            size: 20,
+          ),
+        ),
+      ),
+      const Spacer(),
+      // Edit Cover pill
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'ویرایش کاور',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w600,
+                fontFamily: 'Vazirmatn',
+                fontSize: 13,
               ),
             ),
+            SizedBox(width: 2),
+            Icon(Icons.chevron_right, color: Colors.white, size: 16),
           ],
+        ),
+      ),
+      const Spacer(),
+      const SizedBox(width: 40), // balance
+    ]);
+  }
+
+  Widget _buildTrimBar() {
+    return TrimSlider(
+      controller: _controller,
+      height: 50,
+      horizontalMargin: 4,
+      child: TrimTimeline(
+        controller: _controller,
+        padding: const EdgeInsets.only(top: 8),
+        textStyle: const TextStyle(color: Colors.white54, fontSize: 10),
+      ),
+    );
+  }
+
+  Widget _buildCaptionField() {
+    return TextField(
+      controller: _captionController,
+      style: const TextStyle(color: Colors.white, fontFamily: 'Vazirmatn'),
+      textDirection: TextDirection.rtl,
+      maxLines: null,
+      decoration: InputDecoration(
+        hintText: 'کپشن اضافه کنید...',
+        hintStyle: const TextStyle(
+          color: Colors.white38,
+          fontFamily: 'Vazirmatn',
+        ),
+        filled: true,
+        fillColor: Colors.white.withValues(alpha: 0.08),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(22),
+          borderSide: BorderSide.none,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildToolbarRow() {
+    return Row(children: [
+      // Tool pill with 4 icons (matching Telegram)
+      Expanded(
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 9),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: const Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              Icon(Icons.crop_rotate, color: Colors.white70, size: 22),
+              Icon(Icons.brush_outlined, color: Colors.white70, size: 22),
+              _GifIcon(),
+              Icon(Icons.tune, color: Colors.white70, size: 22),
+            ],
+          ),
+        ),
+      ),
+      const SizedBox(width: 10),
+      // Send button
+      GestureDetector(
+        onTap: _isExporting ? null : _exportAndSend,
+        child: Container(
+          width: 46,
+          height: 46,
+          decoration: const BoxDecoration(
+            color: Color(0xFF2AABEE),
+            shape: BoxShape.circle,
+          ),
+          child: _isExporting
+              ? const Padding(
+                  padding: EdgeInsets.all(12),
+                  child: CircularProgressIndicator(
+                      color: Colors.white, strokeWidth: 2),
+                )
+              : const Icon(Icons.send, color: Colors.white, size: 22),
+        ),
+      ),
+    ]);
+  }
+}
+
+// GIF text icon (exactly like Telegram's GIF button)
+class _GifIcon extends StatelessWidget {
+  const _GifIcon();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.white70, width: 1.5),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: const Text(
+        'GIF',
+        style: TextStyle(
+          color: Colors.white70,
+          fontSize: 10,
+          fontWeight: FontWeight.bold,
+          letterSpacing: 0.5,
         ),
       ),
     );

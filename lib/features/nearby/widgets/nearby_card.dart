@@ -78,17 +78,18 @@ class NearbyCard extends StatelessWidget {
             ),
           ),
 
-          // ── Distance chip (top-left)
-          Positioned(
-            top: 16,
-            left: 16,
-            child: _chip(
-              icon: Icons.location_on_rounded,
-              label: c.distanceLabel,
-              bg: Colors.black.withValues(alpha: 0.45),
-              fg: Colors.white,
+          // ── City + distance chip (top-left). Always shows the real city name.
+          if (c.locationLine.isNotEmpty)
+            Positioned(
+              top: 16,
+              left: 16,
+              child: _chip(
+                icon: Icons.location_on_rounded,
+                label: c.locationLine,
+                bg: Colors.black.withValues(alpha: 0.6),
+                fg: Colors.white,
+              ),
             ),
-          ),
 
           // ── Report button (top-right)
           if (onReport != null)
@@ -147,6 +148,41 @@ class NearbyCard extends StatelessWidget {
                     ],
                   ],
                 ),
+                if (c.presenceLabel.isNotEmpty) ...[
+                  const SizedBox(height: 3),
+                  Row(
+                    children: [
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: c.isOnlineNow
+                              ? const Color(0xFF22C55E)
+                              : const Color(0xFF94A3B8),
+                          boxShadow: c.isOnlineNow
+                              ? [
+                                  BoxShadow(
+                                    color: const Color(0xFF22C55E)
+                                        .withValues(alpha: 0.6),
+                                    blurRadius: 4,
+                                  )
+                                ]
+                              : null,
+                        ),
+                      ),
+                      const SizedBox(width: 5),
+                      Text(
+                        c.presenceLabel,
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
                 if (c.username.isNotEmpty) ...[
                   const SizedBox(height: 2),
                   Text(
@@ -187,13 +223,6 @@ class NearbyCard extends StatelessWidget {
                       _chip(
                         icon: Icons.favorite_border_rounded,
                         label: _maritalLabel(c.maritalStatus),
-                        bg: Colors.white.withValues(alpha: 0.18),
-                        fg: Colors.white,
-                      ),
-                    if (c.locationText.isNotEmpty)
-                      _chip(
-                        icon: Icons.place_outlined,
-                        label: c.locationText,
                         bg: Colors.white.withValues(alpha: 0.18),
                         fg: Colors.white,
                       ),

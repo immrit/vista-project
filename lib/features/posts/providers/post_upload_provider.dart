@@ -184,10 +184,10 @@ class PostUploadNotifier extends StateNotifier<List<UploadTask>> {
   Future<void> startUpload({
     required String content,
     required String userId,
-    List<String>? tags, // ✅ Added tags support
-    List<String>? mentionedUserIds, // tagged users (@mention)
+    List<String>? tags,
+    List<String>? mentionedUserIds,
     File? image,
-    List<File>? images, // gallery / carousel (mobile, multi-image)
+    List<File>? images,
     Uint8List? imageBytes,
     String? imageName,
     File? video,
@@ -195,6 +195,8 @@ class PostUploadNotifier extends StateNotifier<List<UploadTask>> {
     String? videoName,
     File? music,
     String? musicName,
+    int? musicStartMs,
+    int? musicEndMs,
     File? videoThumbnail,
   }) async {
     final taskId = _uuid.v4();
@@ -356,6 +358,8 @@ class PostUploadNotifier extends StateNotifier<List<UploadTask>> {
           videoUrl: videoUrl,
           musicUrl: musicUrl,
           musicTitle: musicUrl != null ? musicTitle : null,
+          musicStartMs: musicStartMs,
+          musicEndMs: musicEndMs,
         );
 
         // Tag mentioned users (best-effort; post already created).
