@@ -7,7 +7,7 @@
 
 ---
 
-## Fix Checklist — Progress: 4/12 fixes done
+## Fix Checklist — Progress: 5/12 fixes done
 
 Implementation order = impact, build-heaviness/slowness first (per refactor plan). Worked on branch `architecture-fixes`. Test baseline before changes: **56 pass / 1 pre-existing fail** (`adaptive_effects_provider_test.dart` — unrelated repo bug, untouched).
 
@@ -18,7 +18,7 @@ Implementation order = impact, build-heaviness/slowness first (per refactor plan
 - [x] **BF4** — `workers.max` 4→8, dropped `HeapDumpOnOutOfMemoryError`, heaps kept (right for 16 GB). §5.5 / §7
 
 **Security (critical — partial in-repo; rotation/history purge need user):**
-- [ ] **SEC1** — remove S3 master creds from `android/gradle.properties` + `.env` + `dart-defines` (client uses backend presign → needs zero S3 secrets); gitignore properly. §6 *(key rotation + git-history purge = out-of-band, flagged)*
+- [x] **SEC1** — removed S3 master creds from `gradle.properties` (AWS_* + dart-defines) and `.env`; untracked `.env`. Verified no Dart code reads `AWS_*` (dead leak). §6 *(⚠ key rotation + git-history purge still REQUIRED — out-of-band, see MEMORY.md)*
 
 **Perf / architecture (after build):**
 - [ ] **P1** — feed row: extract `_ThreadPostItem`, `RepaintBoundary` per row, `const` subtrees, stop per-row global-provider watches, `memCacheWidth` on feed images, `cacheExtent`. §3.1 / §8.2

@@ -50,6 +50,13 @@ Branch: `architecture-fixes`. Implements `ARCHITECTURE_REVIEW.md` fixes.
 - **Files:** `android/gradle.properties`.
 - **Revert:** restore `-XX:+HeapDumpOnOutOfMemoryError` in jvmargs and set `org.gradle.workers.max=4`.
 
+### SEC1 — S3 master credentials removed from repo
+- **What:** Deleted `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/`AWS_REGION`/`AWS_ENDPOINT_URL`/`AWS_BUCKET_NAME` + the `dart-defines=` base64 blob from `android/gradle.properties`. Scrubbed `ARVAN_ACCESS_KEY`/`ARVAN_SECRET_KEY` in `.env` (placeholders) and `git rm --cached .env` (now untracked; already in `.gitignore`).
+- **Why:** Live ArvanCloud S3 master keys were committed + baked into the APK via dart-defines. Confirmed **no Dart code reads any `AWS_*`** (`String.fromEnvironment`) and the app never loads `.env` (no `flutter_dotenv`) → the secret was shipped for nothing. Client uses backend presign → needs zero S3 secrets (§6).
+- **Files:** `android/gradle.properties`, `.env` (untracked).
+- **Revert:** `git checkout <prev> -- android/gradle.properties` and `git add -f .env` with old content. (Do NOT — the keys are compromised.)
+- **⚠ Still required (out-of-band):** rotate the Arvan keys; purge them from git history (BFG/`git filter-repo` + force-push). Removing from current files does NOT scrub history.
+
 ---
 
 ## Flagged — needs user / out-of-band (NOT done here)
