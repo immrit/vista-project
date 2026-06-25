@@ -201,14 +201,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "4.2.1"
-  aws_s3_api:
-    dependency: "direct main"
-    description:
-      name: aws_s3_api
-      sha256: a867c92db27cba79ef6c9f1dd82434a99c8793263233328a6ce158e80d785aff
-      url: "https://pub.dev"
-    source: hosted
-    version: "2.0.0"
   badges:
     dependency: "direct main"
     description:
@@ -401,14 +393,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.4.2"
-  clipboard:
-    dependency: "direct main"
-    description:
-      name: clipboard
-      sha256: c0ba5e7214035b824549473fa134870bc544fff0d7b89170d4756c0ac2c0239d
-      url: "https://pub.dev"
-    source: hosted
-    version: "3.0.14"
   clock:
     dependency: transitive
     description:
@@ -1973,14 +1957,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "6.1.0"
-  shared_aws_api:
-    dependency: transitive
-    description:
-      name: shared_aws_api
-      sha256: "6a6eb57d422d5a4b09c6f65703dd9be90d5a0d7a6fa284762139e5c0dea19136"
-      url: "https://pub.dev"
-    source: hosted
-    version: "2.0.2"
   shared_preferences:
     dependency: "direct main"
     description:
@@ -2226,22 +2202,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.7.1"
-  timeline_tile:
-    dependency: "direct main"
-    description:
-      name: timeline_tile
-      sha256: "85ec2023c67137397c2812e3e848b2fb20b410b67cd9aff304bb5480c376fc0c"
-      url: "https://pub.dev"
-    source: hosted
-    version: "2.0.0"
-  timelines_plus:
-    dependency: "direct main"
-    description:
-      name: timelines_plus
-      sha256: b23214b9ac98f4533ead6c46998bc189ce176aede9e7bb7a3d096f1b85dc8dee
-      url: "https://pub.dev"
-    source: hosted
-    version: "2.0.0"
   timezone:
     dependency: transitive
     description:

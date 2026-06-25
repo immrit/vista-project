@@ -6,6 +6,56 @@ Branch: `architecture-fixes`. Implements `ARCHITECTURE_REVIEW.md` fixes.
 
 ---
 
+# ⏳ REMAINING WORK — precise backlog
+
+Everything still open, with exact files, steps, risk, and acceptance criteria. Ordered by value. Items below this section's line are the recovery log for what's already DONE.
+
+### R1 — Full provider `autoDispose` pass  (effort: M, risk: MEDIUM)
+- **Goal:** bound session memory; ~370 of ~400 providers never dispose (§3.2/§8.5).
+- **Done so far:** `postProvider`, `hashtagPostsProvider` (screen-scoped `.family`).
+- **Do NOT blanket-convert.** Many `.family` providers cache deliberately and would refetch-thrash. Convert per-provider, each verified by navigating in/out of its screen.
+  - **Safe candidates (transient, per-arg, screen-scoped):** `lib/features/posts/screens/hashtag_posts_screen.dart` ✅; per-post/detail FutureProviders; one-shot action providers (e.g. `auth_controller.dart:561` change-password `FutureProvider.family`).
+  - **Leave alone (deliberate cache / always-on):** `personalizedFeedProvider`, `fetchFollowingPostsProvider` (tab-alive), `profile_cache_manager`, `user_profile_provider.dart:75/145/151/263` (inflight-dedup), `settings_providers.dart`, `presence_provider.dart`, `comment_provider.dart` notifiers.
+- **Steps:** for each candidate add `.autoDispose`; if short caching wanted, `final link = ref.keepAlive();` + `Timer` to `link.close()`. Run app, open+close the screen twice, confirm no refetch storm / no lost state.
+- **Accept:** memory grows-then-settles across navigation; no functional regression on the converted screens.
+
+### R2 — Finish feature-first migration  (effort: XL, risk: MEDIUM)
+- **Goal:** delete the parallel old architecture (review §1/§4.1). Old `lib/provider`, `lib/services`, `lib/model`, `lib/widgets`, `lib/screens`, `lib/middleware` coexist with `lib/features/*` + `lib/core`.
+- **Steps (incremental, one module at a time):** pick a file in `lib/provider|services|model|widgets` → find its `lib/features` equivalent (or create one) → move → update imports (repo-wide find/replace of the old path) → `flutter analyze` → run on emulator → commit. Repeat. Kill duplicate feed logic if any re-appears.
+- **Risk:** import breakage; touching the wrong duplicate. Do NOT mass-move; one module per commit.
+- **Accept:** `lib/provider|services|model|widgets` emptied/removed; `flutter analyze` clean; app runs.
+
+### R3 — Migrate the 20 KGP plugins  (effort: L, risk: HIGH, NOT urgent)
+- **Why:** emulator build warns — these apply the legacy Kotlin Gradle Plugin; **future** Flutter will fail to build (today it only warns).
+- **Plugins:** `audio_waveforms, audioplayers_android, camera_android_camerax, device_info_plus, emoji_picker_flutter, file_picker, flutter_contacts, flutter_exif_rotation, flutter_image_compress_common, flutter_native_video_trimmer, flutter_poolakey, local_auth_android, mobile_scanner, package_info_plus, photo_manager, record_android, screen_protector, share_plus, shared_preferences_android, video_compress`.
+- **Steps:** `flutter pub outdated`; bump each plugin to a version that supports Built-in Kotlin (check changelogs); `flutter pub get`; full rebuild; **regression-test each plugin's feature** on device (record audio, scan QR, pick file, contacts, camera, share, purchase…). Where no compatible version exists, file upstream issue.
+- **Risk:** version conflicts + API breaks across 20 packages. Don't bump blind — one or two at a time, test, commit.
+- **Accept:** KGP warning gone; all plugin features still work on device.
+
+### R4 — Dependency consolidation + Isar exit  (effort: XL, risk: HIGH)
+- **Done:** removed unused `aws_s3_api`, `clipboard`, `timeline_tile`, `timelines_plus` (R8 below).
+- **http → dio:** `package:http` still imported in 11 files. Migrate each to the shared `createApiV1Dio`/`createPinnedDioClient`, then drop `http`. (Per-file, verify each call.)
+- **video stacks:** `video_compress`(3), `video_trimmer`(1), `video_editor`(1), `get_thumbnail_video`(3), `video_player` all in use. Consolidate to the minimum set after auditing each call site.
+- **Isar 3 (unmaintained) → Drift/sqlite3:** large data-layer rewrite (`lib/features/chat/data/datasources/*isar*`, entities, `*.g.dart`). Weeks. Plan: introduce new DB behind the existing repository interfaces, dual-write, migrate, cut over.
+- **Accept:** fewer deps; `flutter analyze` clean; app runs; data persists across restart.
+
+### R5 — Central 401-refresh interceptor  (effort: S, risk: MEDIUM) — OPTIONAL
+- The app already refreshes proactively (`SessionManagerServiceV2.ensureValidAuthSession()` in `_authOptions`; `auth_repository.refreshToken`). Only add a reactive interceptor if 401s are seen in practice. If added: in `http_client_factory.dart` onError, single-flight refresh (shared `Future`), retry the original request once, never retry the refresh call itself, clear tokens + route to login on refresh failure.
+- **Accept:** expired-token request auto-recovers once; no refresh loop.
+
+### R6 — P6 media: server-side transcode / resolution cap  (effort: L, risk: product)
+- Client-side isolate concern already fine (native plugins + `compute()`). Remaining is a product/backend decision: move heavy transcode server-side, or gate + cap resolution on device (`story_upload_service.dart`, `telegram_video_editor.dart`, `AddPost.dart`).
+
+### R7 — Release smoke-test for BF3 (R8 minify)  (effort: S)
+- `minifyEnabled true` + `shrinkResources true` are NOT exercised by `flutter test`. Build a real release (`flutter build apk --release` with the keystore) and smoke-test before shipping. If a release-only missing-class/crash appears, add the `-keep` rule in `android/app/proguard-rules.pro`.
+
+### R8 — Out-of-band (NEEDS USER — cannot do from repo)
+- **Rotate the leaked ArvanCloud S3 keys** (assume compromised).
+- **Purge secrets from git history** (`git filter-repo`/BFG + force-push). Removing from current files does NOT scrub history.
+- Optional: trim the now-dead AWS `-keep`/`-dontwarn` rules from `proguard-rules.pro` (harmless to leave; `aws_s3_api` removed so the classes no longer exist).
+
+---
+
 ## ENV-0 — Working in a git worktree (not the main checkout)
 
 - **What:** Work happens in worktree `E:/vista-arch` on branch `architecture-fixes`, not in `E:/vista` directly.
@@ -81,6 +131,14 @@ Branch: `architecture-fixes`. Implements `ARCHITECTURE_REVIEW.md` fixes.
 - **Revert:** restore the single `state = AsyncValue.error(...)` in each notifier's `catch`; drop `_loadMoreError`/`retryLoadMore`/`_LoadMoreRetryRow` and the footer branch.
 
 ---
+
+### P5b (delivered) — remove unused dependencies
+- **What:** removed 4 zero-usage packages from `pubspec.yaml`: `aws_s3_api` (the entire AWS S3 SDK — the app uses backend presign, never imported it), `clipboard` (code uses `Clipboard` from `flutter/services`), `timeline_tile`, `timelines_plus`.
+- **Why:** dependency sprawl = build time + binary size + CVE surface (§1/§8.6). `aws_s3_api` was also the heaviest and tied to the S3-secret surface.
+- **Verified:** `git grep package:<pkg>` = 0 repo-wide for all 4; `flutter pub get` OK; emulator build + run.
+- **Files:** `pubspec.yaml` (+ `pubspec.lock`).
+- **Revert:** re-add the four lines under `dependencies:` and `flutter pub get`.
+- **Note:** the AWS `-keep`/`-dontwarn` rules in `proguard-rules.pro` are now dead (harmless — targets no longer exist); optional cleanup (R8).
 
 ### P3c/P4b (delivered) — bare-Dio → shared pinned client sweep + more autoDispose
 - **P3c:** converted 15 more backend repos/services from bare `Dio(BaseOptions(...))` to the shared factory (`createApiV1Dio`, or `createPinnedDioClient` for nearby's `/v1/nearby` base): `comment_repository`, `profile_repository`, `profile_note_service`, `privacy_settings_repository`, `services_hub_repository`, `user_presence_service`, `typing_service`, `notification_provider`, `MusicService`, `profile_cache_manager`, `settings_cache_service`, `modern_read_receipt_service`, `story_repository`, `ContactUs`, `nearby_repository`. All now get cert pinning + god-mode interceptors. Removed now-unused `device_id_service` imports from `comment_repository`/`story_repository` (factory injects X-Device-ID). **Verified on emulator-5554:** `/v1/notifications`, `/v1/me/profile`, `/v1/me/note`, `/v1/presence/update`, `/v1/stories/active`, `/v1/profiles/notes/batch`, profile posts, saved — all 2xx, 0 exceptions.
