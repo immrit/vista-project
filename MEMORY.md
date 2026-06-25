@@ -30,6 +30,12 @@ Branch: `architecture-fixes`. Implements `ARCHITECTURE_REVIEW.md` fixes.
 - **Files:** `android/gradle.properties`.
 - **Revert:** set `kotlin.incremental=false`.
 
+### BF2 — Release ABI filters (drop x86_64)
+- **What:** Added `ndk { abiFilters 'arm64-v8a', 'armeabi-v7a' }` to the `release` buildType.
+- **Why:** Release was packaging all 3 ABIs incl. x86_64; with ffmpeg/isar `.so` that's 3× native merge/strip + fat APK (§5.2). Debug left untouched → x86_64 emulator still works.
+- **Files:** `android/app/build.gradle`.
+- **Revert:** remove the `ndk { abiFilters ... }` block from `release`.
+
 ---
 
 ## Flagged — needs user / out-of-band (NOT done here)

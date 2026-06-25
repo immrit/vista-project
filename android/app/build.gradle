@@ -51,6 +51,12 @@ android {
             minifyEnabled false
             shrinkResources false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            // BF2: ship only ARM ABIs in release. Drops x86_64 native packaging
+            // (ffmpeg/isar .so) → smaller APK + less native merge/strip work.
+            // Debug keeps all ABIs for x86_64 emulator coverage.
+            ndk {
+                abiFilters 'arm64-v8a', 'armeabi-v7a'
+            }
         }
         
         // 🔴 این بخش را حتماً اضافه کن تا در حالت دیباگ هم امضای اصلی داشته باشی
