@@ -132,6 +132,10 @@ Everything still open, with exact files, steps, risk, and acceptance criteria. O
 
 ---
 
+### P4c/P6 (delivered) — action provider autoDispose + P6 verification
+- **P4c:** `changePasswordProvider` → `FutureProvider.autoDispose.family` (one-shot action; shouldn't linger). File: `lib/features/auth/providers/auth_controller.dart`. Revert: drop `.autoDispose`.
+- **P6 (verified, no code change):** client-side asks already met — video compression caps quality (`VideoQuality.MediumQuality` in `story_upload_service.dart`, `DefaultQuality` in `telegram_video_editor.dart`), native plugins run off the Dart UI isolate, `telegram_image_editor` uses `compute()`. Server-side transcode = backend decision (R6).
+
 ### P5b (delivered) — remove unused dependencies
 - **What:** removed 4 zero-usage packages from `pubspec.yaml`: `aws_s3_api` (the entire AWS S3 SDK — the app uses backend presign, never imported it), `clipboard` (code uses `Clipboard` from `flutter/services`), `timeline_tile`, `timelines_plus`.
 - **Why:** dependency sprawl = build time + binary size + CVE surface (§1/§8.6). `aws_s3_api` was also the heaviest and tied to the S3-secret surface.
