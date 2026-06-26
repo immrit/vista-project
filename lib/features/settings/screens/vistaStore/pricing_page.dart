@@ -1,5 +1,3 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -172,6 +170,17 @@ class _PricingPageState extends ConsumerState<PricingPage>
 
   int _approxDaysAddedForPlan(int planIndex) {
     return _plans[planIndex]['durationDays'] as int;
+  }
+
+  /// قیمت معادل ماهانه برای پلن‌های چندماهه (برای درک ارزش واقعی پلن).
+  /// برای پلن ماهانه رشته خالی برمی‌گرداند.
+  String _perMonthLabel(Map<String, dynamic> plan) {
+    final amount = plan['amount'] as int;
+    final days = plan['durationDays'] as int;
+    final months = days / 30.0;
+    if (months <= 1.0) return '';
+    final perMonth = (amount / months).round();
+    return 'ماهی ${_formatToman(perMonth)}';
   }
 
   Future<void> _onPurchaseTap() async {
@@ -503,31 +512,35 @@ class _PricingPageState extends ConsumerState<PricingPage>
             ],
           ),
 
-          // بخش پایینی (باکس خرید)
+          // بخش پایینی (باکس خرید) — بدون BackdropFilter.
+          // blur پشت محتوای اسکرول‌شونده باعث rasterize هر فریم و jank می‌شود؛
+          // پس‌زمینه‌ی مات گرادیانی جایگزین شد (هم‌خوان با تم طلایی).
           Positioned(
             bottom: 0,
             left: 0,
             right: 0,
-            child: ClipRRect(
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                child: Container(
-                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1A1A20).withValues(alpha: 0.85),
-                    border: Border(
-                      top: BorderSide(
-                          color: Colors.white.withValues(alpha: 0.1), width: 1),
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.4),
-                        blurRadius: 20,
-                        offset: const Offset(0, -5),
-                      ),
-                    ],
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Color(0xFF15151B), Color(0xFF0D0D11)],
+                ),
+                border: Border(
+                  top: BorderSide(
+                      color: _goldStart.withValues(alpha: 0.25), width: 1),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.5),
+                    blurRadius: 24,
+                    offset: const Offset(0, -6),
                   ),
-                  child: SafeArea(
+                ],
+              ),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+                child: SafeArea(
                     top: false,
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
@@ -614,6 +627,19 @@ class _PricingPageState extends ConsumerState<PricingPage>
                                               : Colors.white54,
                                         ),
                                       ),
+                                      if (_perMonthLabel(plan).isNotEmpty) ...[
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          _perMonthLabel(plan),
+                                          textAlign: TextAlign.center,
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.w700,
+                                            color: _goldStart
+                                                .withValues(alpha: 0.85),
+                                          ),
+                                        ),
+                                      ],
                                       const SizedBox(height: 4),
                                       Text(
                                         plan['desc'] as String,
@@ -731,7 +757,6 @@ class _PricingPageState extends ConsumerState<PricingPage>
                 ),
               ),
             ),
-          ),
         ],
       ),
     );
