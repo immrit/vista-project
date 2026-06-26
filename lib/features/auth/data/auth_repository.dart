@@ -766,7 +766,10 @@ class AuthRepository {
       return 'خطا در اتصال به سرور. لطفاً اینترنت خود را بررسی کنید';
     }
 
-    logError('$context API Error', error: e);
+    logError(
+      '$context API Error [status=${e.response?.statusCode}, type=${e.type}, data=${e.response?.data}]',
+      error: e,
+    );
     return 'خطا در $context. لطفاً دوباره تلاش کنید';
   }
 

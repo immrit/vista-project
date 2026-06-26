@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 import 'package:flutter/material.dart';
-import 'package:just_audio/just_audio.dart';
+import 'package:audioplayers/audioplayers.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:Vista/core/theme/app_theme.dart';
 
 // ─── Public result ────────────────────────────────────────────────────────────
@@ -26,6 +28,7 @@ Future<MusicTrimResult?> showMusicTrimSheet(
   Duration initialStart = Duration.zero,
   Duration? initialEnd,
   bool initialBackgroundMode = false,
+  bool isPremium = false,
 }) {
   return showModalBottomSheet<MusicTrimResult>(
     context: context,
@@ -38,6 +41,7 @@ Future<MusicTrimResult?> showMusicTrimSheet(
       initialStart: initialStart,
       initialEnd: initialEnd,
       initialBackgroundMode: initialBackgroundMode,
+      isPremium: isPremium,
     ),
   );
 }
@@ -50,6 +54,7 @@ class _MusicTrimSheet extends StatefulWidget {
   final Duration initialStart;
   final Duration? initialEnd;
   final bool initialBackgroundMode;
+  final bool isPremium;
 
   const _MusicTrimSheet({
     required this.file,
@@ -57,6 +62,7 @@ class _MusicTrimSheet extends StatefulWidget {
     required this.initialStart,
     this.initialEnd,
     required this.initialBackgroundMode,
+    required this.isPremium,
   });
 
   @override
@@ -67,6 +73,9 @@ class _MusicTrimSheetState extends State<_MusicTrimSheet>
     with SingleTickerProviderStateMixin {
   // ── Audio ─────────────────────────────────────────────────────────────────
   final AudioPlayer _player = AudioPlayer();
+  StreamSubscription? _positionSub;
+  StreamSubscription? _stateSub;
+  StreamSubscription? _durationSub;
   Duration _duration = Duration.zero;
   Duration _position = Duration.zero;
   bool _isPlaying = false;
@@ -75,7 +84,14 @@ class _MusicTrimSheetState extends State<_MusicTrimSheet>
   // ── Trim: "bracket slides over fixed waveform" ────────────────────────────
   // _startFrac ∈ [0, _maxStartFrac]  —  bracket left edge as fraction of waveform
   double _startFrac = 0.0;
-  Duration _clipDuration = const Duration(seconds: 30);
+  Duration _clipDuration = const Duration(seconds: 15);
+
+  // Available clip durations; premium unlocks 30s and 60s.
+  static const List<Duration> _kClipOptions = [
+    Duration(seconds: 15),
+    Duration(seconds: 30),
+    Duration(seconds: 60),
+  ];
 
   double get _clipFrac =>
       _duration > Duration.zero
@@ -122,26 +138,25 @@ class _MusicTrimSheetState extends State<_MusicTrimSheet>
       duration: const Duration(seconds: 4),
     )..repeat();
 
-    // Register streams before async work so they're always active
-    _player.positionStream.listen((pos) {
+    // Register streams before async work so they're always active.
+    // audioplayers avoids just_audio_background single-player conflict.
+    _positionSub = _player.onPositionChanged.listen((pos) {
       if (!mounted) return;
       setState(() => _position = pos);
-      // Auto-stop at trim end
-      if (_isPlaying && pos >= _trimEnd) {
+      // Auto-stop at trim end — guard on _duration > 0 to avoid premature stop
+      // when audio hasn't loaded yet (_trimEnd would be Duration.zero otherwise).
+      if (_isPlaying && _duration > Duration.zero && pos >= _trimEnd) {
         _player.pause();
         _player.seek(_trimStart);
         if (mounted) setState(() => _isPlaying = false);
       }
     });
-    _player.playerStateStream.listen((s) {
-      if (mounted) setState(() => _isPlaying = s.playing);
+    _stateSub = _player.onPlayerStateChanged.listen((state) {
+      if (mounted) setState(() => _isPlaying = state == PlayerState.playing);
     });
-    
-    _player.durationStream.listen((dur) {
-      if (!mounted || dur == null || dur <= Duration.zero) return;
-      if (_duration <= Duration.zero) {
-        _initializeTrim(dur);
-      }
+    _durationSub = _player.onDurationChanged.listen((dur) {
+      if (!mounted || dur <= Duration.zero) return;
+      if (_duration <= Duration.zero) _initializeTrim(dur);
     });
 
     _loadAudio();
@@ -149,27 +164,28 @@ class _MusicTrimSheetState extends State<_MusicTrimSheet>
 
   Future<void> _loadAudio() async {
     try {
-      String audioPath = widget.file.path;
-      
-      // On Windows and Android, Media Foundation / ExoPlayer rely heavily on file extensions 
-      // to sniff the format. FilePicker sometimes returns files without extensions.
-      // If there's no extension (or a very long extension which means it's not a real extension),
-      // we copy it to a temporary .mp3 file to ensure decoding works.
-      final extensionIndex = audioPath.lastIndexOf('.');
-      if (extensionIndex == -1 || audioPath.length - extensionIndex > 5) {
-        final tempDir = Directory.systemTemp;
-        final tempFile = File('${tempDir.path}/temp_audio_${DateTime.now().millisecondsSinceEpoch}.mp3');
-        await widget.file.copy(tempFile.path);
-        audioPath = tempFile.path;
+      // Always copy to app temp dir — FilePicker paths on iOS (iCloud Inbox,
+      // security-scoped URLs) and Android (content:// URIs resolved by picker)
+      // can be inaccessible to audioplayers' native layer after the picker closes.
+      final tempDir = await getTemporaryDirectory();
+      String ext = 'mp3';
+      final dotIdx = widget.file.path.lastIndexOf('.');
+      if (dotIdx != -1 && widget.file.path.length - dotIdx <= 5) {
+        ext = widget.file.path.substring(dotIdx + 1).toLowerCase();
       }
+      final tempFile = File(
+          '${tempDir.path}/trim_audio_${DateTime.now().millisecondsSinceEpoch}.$ext');
+      await widget.file.copy(tempFile.path);
 
-      // Using setFilePath is the most robust method for local files in just_audio
-      final dur = await _player.setFilePath(audioPath) ?? _player.duration;
+      await _player.setSource(DeviceFileSource(tempFile.path));
       if (!mounted) return;
-      
-      if (dur != null && dur > Duration.zero) {
+
+      final dur = await _player.getDuration();
+      if (!mounted) return;
+      if (dur != null && dur > Duration.zero && _duration <= Duration.zero) {
         _initializeTrim(dur);
-      } else {
+      } else if (_duration <= Duration.zero) {
+        // Duration may arrive via onDurationChanged; mark loaded so UI shows waveform.
         setState(() => _isLoaded = true);
       }
     } catch (e) {
@@ -180,13 +196,19 @@ class _MusicTrimSheetState extends State<_MusicTrimSheet>
 
   void _initializeTrim(Duration dur) {
     if (_duration > Duration.zero) return; // Already initialized
-    
-    final clip = dur < const Duration(seconds: 30) ? dur : const Duration(seconds: 30);
+
+    final maxClip = widget.isPremium
+        ? const Duration(seconds: 60)
+        : const Duration(seconds: 15);
+    final baseClip = dur < maxClip ? dur : maxClip;
+
     final initEnd = widget.initialEnd;
-    final restoredClip =
-        (initEnd != null && initEnd > widget.initialStart)
-            ? initEnd - widget.initialStart
-            : clip;
+    Duration restoredClip = (initEnd != null && initEnd > widget.initialStart)
+        ? initEnd - widget.initialStart
+        : baseClip;
+    // Clamp restored clip to user's tier limit
+    if (restoredClip > maxClip) restoredClip = maxClip;
+    if (restoredClip > dur) restoredClip = dur;
 
     double startFrac = dur.inMilliseconds > 0
         ? widget.initialStart.inMilliseconds / dur.inMilliseconds
@@ -204,16 +226,85 @@ class _MusicTrimSheetState extends State<_MusicTrimSheet>
     });
   }
 
+  void _selectClipDuration(Duration d, BuildContext context) {
+    // Non-premium users are locked to 15s only
+    final isPremiumOption = d > const Duration(seconds: 15);
+    if (isPremiumOption && !widget.isPremium) {
+      _showPremiumUpsell(context);
+      return;
+    }
+    if (_duration <= Duration.zero) return;
+    // Cap to actual song length
+    final clamped = d > _duration ? _duration : d;
+    final clipFracNow = clamped.inMilliseconds / _duration.inMilliseconds;
+    final maxStartFrac = (1.0 - clipFracNow).clamp(0.0, 1.0);
+    setState(() {
+      _clipDuration = clamped;
+      _startFrac = _startFrac.clamp(0.0, maxStartFrac);
+    });
+  }
+
+  void _showPremiumUpsell(BuildContext ctx) {
+    showDialog<void>(
+      context: ctx,
+      builder: (dCtx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A2E),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            const Icon(Icons.lock_rounded, color: AppColors.secondary, size: 20),
+            const SizedBox(width: 8),
+            const Text(
+              'ویژگی پریمیوم',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+        content: const Text(
+          'انتخاب برش ۳۰ یا ۶۰ ثانیه‌ای فقط برای کاربران پریمیوم (تیک طلایی، مشکی یا آبی) در دسترس است.',
+          style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.6),
+          textDirection: TextDirection.rtl,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dCtx),
+            child: const Text(
+              'بستن',
+              style: TextStyle(color: Colors.white54),
+            ),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(dCtx);
+              Navigator.of(ctx, rootNavigator: true).pushNamed('/premium');
+            },
+            child: Text(
+              'ارتقا به پریمیوم',
+              style: TextStyle(
+                color: AppColors.secondary,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   // ── Drag logic ────────────────────────────────────────────────────────────
 
   void _onPanUpdate(double dx) {
     if (_viewW <= 0 || _duration <= Duration.zero) return;
-    final bracketW = _viewW * _clipFrac;
-    final maxOffsetPx = _viewW - bracketW;
-    if (maxOffsetPx <= 0) return; // entire song selected, can't scroll
-    final currentOffsetPx = _startFrac * maxOffsetPx;
-    final newOffsetPx = (currentOffsetPx + dx).clamp(0.0, maxOffsetPx);
-    setState(() => _startFrac = newOffsetPx / maxOffsetPx);
+    // _startFrac is a fraction of TOTAL waveform width (same model as _trimStart).
+    // max = 1 - _clipFrac ensures bracket right edge stays within view.
+    final maxFrac = (1.0 - _clipFrac).clamp(0.0, 1.0);
+    if (maxFrac <= 0) return; // entire song fits in bracket, nothing to drag
+    final newFrac = (_startFrac + dx / _viewW).clamp(0.0, maxFrac);
+    setState(() => _startFrac = newFrac);
     if (_isPlaying) _player.seek(_trimStart);
   }
 
@@ -227,12 +318,15 @@ class _MusicTrimSheetState extends State<_MusicTrimSheet>
       if (pos < _trimStart || pos >= _trimEnd) {
         await _player.seek(_trimStart);
       }
-      await _player.play();
+      await _player.resume();
     }
   }
 
   @override
   void dispose() {
+    _positionSub?.cancel();
+    _stateSub?.cancel();
+    _durationSub?.cancel();
     _player.dispose();
     _rotCtrl.dispose();
     super.dispose();
@@ -279,7 +373,9 @@ class _MusicTrimSheetState extends State<_MusicTrimSheet>
               ),
               const SizedBox(height: 12),
               _buildTimeRow(),
-              const SizedBox(height: 24),
+              const SizedBox(height: 16),
+              _buildDurationSelector(),
+              const SizedBox(height: 20),
               _buildPlayRow(),
             ],
             const SizedBox(height: 28),
@@ -375,7 +471,8 @@ class _MusicTrimSheetState extends State<_MusicTrimSheet>
         if (w > 0) _viewW = w;
 
         final bracketW = (w * _clipFrac).clamp(0.0, w);
-        final bracketX = _startFrac * (w - bracketW);
+        // _startFrac is total-width fraction → bracketX aligns with _trimStart on waveform.
+        final bracketX = (_startFrac * w).clamp(0.0, w - bracketW);
         final playheadFrac = _duration > Duration.zero
             ? (_position.inMilliseconds / _duration.inMilliseconds)
                 .clamp(0.0, 1.0)
@@ -470,32 +567,78 @@ class _MusicTrimSheetState extends State<_MusicTrimSheet>
   }
 
   Widget _buildTimeRow() {
+    // Force LTR so trimStart always appears on the left edge of the waveform
+    // and trimEnd on the right — matching the physical bracket position.
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      child: Directionality(
+        textDirection: TextDirection.ltr,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              _fmt(_trimStart),
+              style: const TextStyle(
+                color: AppColors.secondary,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            Text(
+              '← بکش انتخاب کن →',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.22),
+                fontSize: 11,
+              ),
+            ),
+            Text(
+              _fmt(_trimEnd),
+              style: const TextStyle(
+                color: AppColors.secondary,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDurationSelector() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           Text(
-            _fmt(_trimStart),
-            style: const TextStyle(
-              color: AppColors.secondary,
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          Text(
-            '← بکش انتخاب کن →',
+            'مدت برش',
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.22),
-              fontSize: 11,
+              color: Colors.white.withValues(alpha: 0.35),
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
             ),
           ),
-          Text(
-            _fmt(_trimEnd),
-            style: const TextStyle(
-              color: AppColors.secondary,
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
+          const SizedBox(height: 8),
+          Builder(
+            builder: (ctx) => Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: _kClipOptions.map((d) {
+                final isSelected = _clipDuration == d ||
+                    (_clipDuration > const Duration(seconds: 59) &&
+                        d == const Duration(seconds: 60));
+                final isLocked = d > const Duration(seconds: 15) && !widget.isPremium;
+                final label = '${d.inSeconds}ث';
+                return Padding(
+                  padding: const EdgeInsets.only(left: 8),
+                  child: _DurationChip(
+                    label: label,
+                    selected: isSelected,
+                    locked: isLocked,
+                    onTap: () => _selectClipDuration(d, ctx),
+                  ),
+                );
+              }).toList(),
             ),
           ),
         ],
@@ -730,6 +873,69 @@ class _BracketHandle extends StatelessWidget {
         decoration: BoxDecoration(
           color: Colors.white.withValues(alpha: 0.85),
           borderRadius: BorderRadius.circular(2),
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Duration chip ────────────────────────────────────────────────────────────
+
+class _DurationChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final bool locked;
+  final VoidCallback onTap;
+
+  const _DurationChip({
+    required this.label,
+    required this.selected,
+    required this.locked,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = locked
+        ? Colors.white.withValues(alpha: 0.20)
+        : selected
+            ? AppColors.secondary
+            : Colors.white.withValues(alpha: 0.45);
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        decoration: BoxDecoration(
+          color: selected && !locked
+              ? AppColors.secondary.withValues(alpha: 0.15)
+              : Colors.white.withValues(alpha: 0.04),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: selected && !locked
+                ? AppColors.secondary.withValues(alpha: 0.60)
+                : Colors.white.withValues(alpha: 0.10),
+            width: 1.5,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (locked)
+              Padding(
+                padding: const EdgeInsets.only(left: 4),
+                child: Icon(Icons.lock_rounded,
+                    size: 11, color: Colors.white.withValues(alpha: 0.30)),
+              ),
+            Text(
+              label,
+              style: TextStyle(
+                color: color,
+                fontSize: 12,
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+              ),
+            ),
+          ],
         ),
       ),
     );

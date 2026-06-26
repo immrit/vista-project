@@ -298,9 +298,8 @@ class _ReceivedLikesTab extends ConsumerWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.bolt_rounded,
-                size: 60,
-                color: AppColors.info.withValues(alpha: 0.6)),
+            Icon(Icons.favorite_border_rounded,
+                size: 60, color: AppColors.primary.withValues(alpha: 0.6)),
             const SizedBox(height: 16),
             Text(text,
                 textAlign: TextAlign.center,

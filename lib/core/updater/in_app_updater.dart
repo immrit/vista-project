@@ -1,4 +1,6 @@
 import 'dart:io';
+import 'dart:convert';
+import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' hide appFlavor;
@@ -11,12 +13,16 @@ class UpdateInfo {
   final String? downloadUrl;
   final String? versionName;
   final bool isMandatory;
+  final int minSupportedVersionCode;
+  final String? sha256;
 
   UpdateInfo({
     required this.updateAvailable,
     this.downloadUrl,
     this.versionName,
     this.isMandatory = false,
+    this.minSupportedVersionCode = 1,
+    this.sha256,
   });
 }
 
@@ -45,6 +51,8 @@ class InAppUpdater {
           downloadUrl: v['download_url'],
           versionName: v['version_name'],
           isMandatory: v['is_mandatory'] ?? false,
+          minSupportedVersionCode: v['min_supported_version_code'] ?? 1,
+          sha256: v['sha256'],
         );
       }
     } catch (e) {
@@ -53,7 +61,7 @@ class InAppUpdater {
     return UpdateInfo(updateAvailable: false);
   }
 
-  Future<String?> downloadApk(String url, Function(double) onProgress) async {
+  Future<String?> downloadApk(String url, Function(double) onProgress, {String? expectedSha256}) async {
     try {
       final dir = await getTemporaryDirectory();
       final savePath = '${dir.path}/vista_update.apk';
@@ -67,6 +75,18 @@ class InAppUpdater {
           }
         },
       );
+
+      if (expectedSha256 != null && expectedSha256.isNotEmpty) {
+        final file = File(savePath);
+        final bytes = await file.readAsBytes();
+        final digest = sha256.convert(bytes);
+        if (digest.toString() != expectedSha256) {
+          debugPrint('SHA256 mismatch! Expected $expectedSha256, got $digest');
+          await file.delete();
+          return null;
+        }
+      }
+
       return savePath;
     } catch (e) {
       debugPrint('Download failed: $e');

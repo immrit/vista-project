@@ -349,6 +349,7 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
       initialStart: _musicTrimStart,
       initialEnd: _musicTrimEnd > Duration.zero ? _musicTrimEnd : null,
       initialBackgroundMode: _musicBackgroundMode,
+      isPremium: _isPremiumUser,
     );
     if (result != null && mounted) {
       setState(() {

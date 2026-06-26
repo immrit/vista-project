@@ -427,6 +427,8 @@ class _NearbyScreenState extends ConsumerState<NearbyScreen>
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            Image.asset('assets/images/match_icon.png', width: 90, height: 90),
+            const SizedBox(height: 12),
             ShaderMask(
               shaderCallback: (b) => AppColors.primaryGradient.createShader(b),
               child: const Text('مَچ شدید! 🎉',
@@ -937,7 +939,8 @@ class _NearbyScreenState extends ConsumerState<NearbyScreen>
   }
 
   Widget _centeredMessage({
-    required IconData icon,
+    IconData? icon,
+    Widget? customIcon,
     required String message,
     String? actionLabel,
     VoidCallback? onAction,
@@ -953,7 +956,8 @@ class _NearbyScreenState extends ConsumerState<NearbyScreen>
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon,
+            if (customIcon != null) customIcon
+            else if (icon != null) Icon(icon,
                 size: 64, color: AppColors.primary.withValues(alpha: 0.7)),
             const SizedBox(height: 18),
             Text(message,

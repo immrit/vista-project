@@ -106,6 +106,12 @@ class _PricingPageState extends ConsumerState<PricingPage>
       'subtitle': 'آپلود و برش ویدیو تا ۲ دقیقه (کاربران عادی: ۱ دقیقه).',
     },
     {
+      'icon': Icons.music_note_rounded,
+      'title': 'برش موزیک تا ۶۰ ثانیه',
+      'subtitle':
+          'در پست‌های خود تا ۶۰ ثانیه موزیک انتخاب کنید؛ با گزینه‌های ۱۵، ۳۰ یا ۶۰ ثانیه (کاربران عادی: فقط ۱۵ ثانیه).',
+    },
+    {
       'icon': Icons.collections,
       'title': 'آلبوم چندعکسی تا ۱۰ عکس',
       'subtitle':

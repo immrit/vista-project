@@ -187,8 +187,8 @@ class NearbyMatchesBody extends ConsumerWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.favorite_border_rounded,
-                size: 60, color: AppColors.primary.withValues(alpha: 0.6)),
+            Image.asset('assets/images/match_icon.png',
+                width: 100, height: 100),
             const SizedBox(height: 16),
             Text(text,
                 textAlign: TextAlign.center,

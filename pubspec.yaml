@@ -163,6 +163,7 @@ flutter:
     - assets/images/modern_bg.jpg
     - assets/images/vista_custom_bg.png
     - assets/images/vista_custom_bg_dark.png
+    - assets/images/match_icon.png
     - assets/sounds/
   fonts:
     - family: Vazirmatn
