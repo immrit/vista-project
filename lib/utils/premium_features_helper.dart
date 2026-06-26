@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../model/UserModel.dart';
 import '../model/publicPostModel.dart';
+import 'package:Vista/core/theme/app_theme.dart';
 
 class PremiumFeaturesHelper {
   /// بررسی دسترسی به ویرایش پست
@@ -33,7 +34,7 @@ class PremiumFeaturesHelper {
             borderRadius: BorderRadius.circular(24),
             gradient: const LinearGradient(
               colors: [
-                Color(0xFF2A2A2A), // Dark grey
+                AppColors.darkSurface, // Dark grey
                 Color(0xFF1F1F1F), // Darker grey
               ],
               begin: Alignment.topLeft,
@@ -58,7 +59,7 @@ class PremiumFeaturesHelper {
                   Container(
                     height: 120,
                     decoration: BoxDecoration(
-                      color: const Color(0xFF8774E1).withValues(alpha: 0.2),
+                      color: AppColors.primaryDark.withValues(alpha: 0.2),
                       borderRadius:
                           const BorderRadius.vertical(top: Radius.circular(24)),
                     ),
@@ -70,13 +71,13 @@ class PremiumFeaturesHelper {
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       gradient: const LinearGradient(
-                        colors: [Color(0xFFB66DFF), Color(0xFF8774E1)],
+                        colors: [Color(0xFFB66DFF), AppColors.primaryDark],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: const Color(0xFF8774E1).withValues(alpha: 0.4),
+                          color: AppColors.primaryDark.withValues(alpha: 0.4),
                           blurRadius: 15,
                           spreadRadius: 2,
                         ),
@@ -110,7 +111,7 @@ class PremiumFeaturesHelper {
                         fontSize: 22,
                         fontWeight: FontWeight.bold,
                         color: Colors.white,
-                        fontFamily: 'Vazir',
+                        fontFamily: 'Vazirmatn',
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -121,7 +122,7 @@ class PremiumFeaturesHelper {
                         fontSize: 14,
                         color: Colors.white.withValues(alpha: 0.8),
                         height: 1.5,
-                        fontFamily: 'Vazir',
+                        fontFamily: 'Vazirmatn',
                       ),
                     ),
                     const SizedBox(height: 24),
@@ -149,7 +150,7 @@ class PremiumFeaturesHelper {
                           Navigator.pushNamed(context, '/premium');
                         },
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF8774E1),
+                          backgroundColor: AppColors.primaryDark,
                           foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(vertical: 16),
                           shape: RoundedRectangleBorder(
@@ -162,7 +163,7 @@ class PremiumFeaturesHelper {
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
-                            fontFamily: 'Vazir',
+                            fontFamily: 'Vazirmatn',
                           ),
                         ),
                       ),
@@ -183,10 +184,10 @@ class PremiumFeaturesHelper {
         Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: const Color(0xFF8774E1).withValues(alpha: 0.1),
+            color: AppColors.primaryDark.withValues(alpha: 0.1),
             shape: BoxShape.circle,
           ),
-          child: Icon(icon, color: const Color(0xFF8774E1), size: 20),
+          child: Icon(icon, color: AppColors.primaryDark, size: 20),
         ),
         const SizedBox(width: 12),
         Text(
@@ -194,7 +195,7 @@ class PremiumFeaturesHelper {
           style: const TextStyle(
             color: Colors.white,
             fontSize: 15,
-            fontFamily: 'Vazir',
+            fontFamily: 'Vazirmatn',
           ),
         ),
       ],

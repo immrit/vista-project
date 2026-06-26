@@ -14,6 +14,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../services/user_moderation_service.dart';
 import '../../../services/toast_service.dart';
+import 'package:Vista/core/theme/app_theme.dart';
 
 /// نوع عملیات
 enum ModerationType {
@@ -122,7 +123,7 @@ class _BlockReportBottomSheetState extends State<BlockReportBottomSheet>
         position: _slideAnimation,
         child: Container(
           decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF1A1A1A) : Colors.white,
+            color: isDark ? AppColors.darkSurface : Colors.white,
             borderRadius: const BorderRadius.vertical(
               top: Radius.circular(24),
             ),
@@ -348,7 +349,7 @@ class _BlockReportBottomSheetState extends State<BlockReportBottomSheet>
               hintText: 'جزئیات بیشتر در مورد مشکل...',
               filled: true,
               fillColor:
-                  isDark ? const Color(0xFF2A2A2A) : Colors.grey.shade100,
+                  isDark ? AppColors.darkSurface : Colors.grey.shade100,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
                 borderSide: BorderSide.none,
@@ -558,7 +559,7 @@ class _BlockReportBottomSheetState extends State<BlockReportBottomSheet>
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1A1A1A) : Colors.white,
+        color: isDark ? AppColors.darkSurface : Colors.white,
         border: Border(
           top: BorderSide(
             color: theme.dividerColor.withValues(alpha: 0.3),

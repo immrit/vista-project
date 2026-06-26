@@ -15,6 +15,7 @@ import '../../../chat/widgets/gif_picker_widget.dart';
 import '../../domain/entities/story_editor_models.dart';
 import '../../../../utils/directional_navigation.dart';
 import '../../../../utils/user_friendly_error_utils.dart';
+import 'package:Vista/core/theme/app_theme.dart';
 
 /// Bottom Sheet استیکرهای تعاملی با طراحی Glassmorphism و تب‌بندی
 class StoryStickerSheet extends StatefulWidget {
@@ -239,7 +240,7 @@ class _StoryStickerSheetState extends State<StoryStickerSheet>
         child: Container(
           height: MediaQuery.of(context).size.height * 0.75,
           decoration: BoxDecoration(
-            color: const Color(0xFF1C1C1E).withValues(alpha: 0.85),
+            color: AppColors.darkSurfaceVariant.withValues(alpha: 0.85),
             borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
             border: Border(
               top: BorderSide(
@@ -296,7 +297,7 @@ class _StoryStickerSheetState extends State<StoryStickerSheet>
                 labelColor: Colors.white,
                 unselectedLabelColor: Colors.white.withValues(alpha: 0.5),
                 labelStyle: const TextStyle(
-                    fontFamily: 'Vazir', fontWeight: FontWeight.bold),
+                    fontFamily: 'Vazirmatn', fontWeight: FontWeight.bold),
                 tabs: const [
                   Tab(text: 'استیکرها'),
                   Tab(text: 'ایموجی'),
@@ -332,7 +333,7 @@ class _StoryStickerSheetState extends State<StoryStickerSheet>
       return const Center(
         child: Text(
           'موردی پیدا نشد',
-          style: TextStyle(color: Colors.white70, fontFamily: 'Vazir'),
+          style: TextStyle(color: Colors.white70, fontFamily: 'Vazirmatn'),
         ),
       );
     }
@@ -393,7 +394,7 @@ class _StoryStickerSheetState extends State<StoryStickerSheet>
                     color: Colors.white,
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
-                    fontFamily: 'Vazir',
+                    fontFamily: 'Vazirmatn',
                     shadows: [Shadow(color: Colors.black26, blurRadius: 4)],
                   ),
                 ),
@@ -415,7 +416,7 @@ class _StoryStickerSheetState extends State<StoryStickerSheet>
       return const Center(
         child: Text(
           'ایموجی پیدا نشد',
-          style: TextStyle(color: Colors.white70, fontFamily: 'Vazir'),
+          style: TextStyle(color: Colors.white70, fontFamily: 'Vazirmatn'),
         ),
       );
     }
@@ -596,7 +597,7 @@ class _StoryStickerSheetState extends State<StoryStickerSheet>
         child: Container(
           padding: const EdgeInsets.all(24),
           decoration: const BoxDecoration(
-            color: Color(0xFF1C1C1E),
+            color: AppColors.darkSurfaceVariant,
             borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
           ),
           child: Column(
@@ -766,7 +767,7 @@ class _StoryStickerSheetState extends State<StoryStickerSheet>
       builder: (ctx) => Container(
         height: MediaQuery.of(ctx).size.height * 0.8,
         decoration: const BoxDecoration(
-          color: Color(0xFF1C1C1E),
+          color: AppColors.darkSurfaceVariant,
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         ),
         child: SafeArea(
@@ -794,7 +795,7 @@ class _StoryStickerSheetState extends State<StoryStickerSheet>
                         color: Colors.white,
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
-                        fontFamily: 'Vazir',
+                        fontFamily: 'Vazirmatn',
                       ),
                     ),
                   ],
@@ -921,7 +922,7 @@ class _MusicPickerSheetState extends State<_MusicPickerSheet> {
     return Container(
       height: MediaQuery.of(context).size.height * 0.8,
       decoration: const BoxDecoration(
-        color: Color(0xFF1C1C1E),
+        color: AppColors.darkSurfaceVariant,
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       child: SafeArea(
@@ -949,7 +950,7 @@ class _MusicPickerSheetState extends State<_MusicPickerSheet> {
                       color: Colors.white,
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
-                      fontFamily: 'Vazir',
+                      fontFamily: 'Vazirmatn',
                     ),
                   ),
                 ],
@@ -993,7 +994,7 @@ class _MusicPickerSheetState extends State<_MusicPickerSheet> {
                         'خطا در دریافت لیست موزیک',
                         style: TextStyle(
                           color: Colors.white70,
-                          fontFamily: 'Vazir',
+                          fontFamily: 'Vazirmatn',
                         ),
                       ),
                     );
@@ -1015,7 +1016,7 @@ class _MusicPickerSheetState extends State<_MusicPickerSheet> {
                         'موزیکی پیدا نشد',
                         style: TextStyle(
                           color: Colors.white70,
-                          fontFamily: 'Vazir',
+                          fontFamily: 'Vazirmatn',
                         ),
                       ),
                     );
@@ -1070,7 +1071,7 @@ class _MusicPickerSheetState extends State<_MusicPickerSheet> {
                           style: const TextStyle(
                             color: Colors.white,
                             fontWeight: FontWeight.w600,
-                            fontFamily: 'Vazir',
+                            fontFamily: 'Vazirmatn',
                           ),
                         ),
                         subtitle: Text(
@@ -1079,7 +1080,7 @@ class _MusicPickerSheetState extends State<_MusicPickerSheet> {
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
                             color: Colors.white70,
-                            fontFamily: 'Vazir',
+                            fontFamily: 'Vazirmatn',
                           ),
                         ),
                         trailing: Icon(

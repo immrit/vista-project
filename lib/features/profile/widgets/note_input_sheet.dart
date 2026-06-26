@@ -2,6 +2,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/profile_note_provider.dart';
+import 'package:Vista/core/theme/app_theme.dart';
 
 /// باتم‌شیت ورود متن وضعیت با طراحی مدرن (Glassmorphism)
 class NoteInputSheet extends ConsumerStatefulWidget {
@@ -160,7 +161,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet>
               maxHeight: screenHeight * 0.85,
             ),
             decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF1C1C1E) : Colors.white,
+              color: isDark ? AppColors.darkSurfaceVariant : Colors.white,
               borderRadius:
                   const BorderRadius.vertical(top: Radius.circular(24)),
               boxShadow: [
@@ -254,7 +255,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet>
                               horizontal: 16, vertical: 10),
                           decoration: BoxDecoration(
                             color:
-                                isDark ? const Color(0xFF2C2C2E) : Colors.white,
+                                isDark ? AppColors.darkBorder : Colors.white,
                             borderRadius: BorderRadius.circular(20),
                             boxShadow: [
                               BoxShadow(
@@ -297,7 +298,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet>
                               margin: const EdgeInsets.only(top: 4),
                               decoration: BoxDecoration(
                                 color: isDark
-                                    ? const Color(0xFF2C2C2E)
+                                    ? AppColors.darkBorder
                                     : Colors.white,
                                 shape: BoxShape.circle,
                                 border: Border.all(
@@ -314,7 +315,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet>
                               margin: const EdgeInsets.only(top: 10),
                               decoration: BoxDecoration(
                                 color: isDark
-                                    ? const Color(0xFF2C2C2E)
+                                    ? AppColors.darkBorder
                                     : Colors.white,
                                 shape: BoxShape.circle,
                                 border: Border.all(

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../data/models/profile_note_model.dart';
+import 'package:Vista/core/theme/app_theme.dart';
 
 /// ویجت ابر فکری برای نمایش وضعیت پروفایل
 /// این ویجت به صورت یک حباب متن فشرده در کنار آواتار نمایش داده می‌شود
@@ -59,7 +60,7 @@ class ThoughtBubbleWidget extends StatelessWidget {
       ),
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF2C2C2E) : Colors.white,
+        color: isDark ? AppColors.darkBorder : Colors.white,
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
@@ -79,7 +80,7 @@ class ThoughtBubbleWidget extends StatelessWidget {
           fontSize: 11, // سایز متن کمی کوچکتر
           color: isDark ? Colors.white : Colors.black87,
           height: 1.3,
-          fontFamily: 'Vazir',
+          fontFamily: 'Vazirmatn',
         ),
         textAlign: TextAlign.center,
         textDirection: textDirection,
@@ -147,7 +148,7 @@ class _BubbleTail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final baseColor = isDark ? const Color(0xFF2C2C2E) : Colors.white;
+    final baseColor = isDark ? AppColors.darkBorder : Colors.white;
     final borderColor = isDark ? Colors.grey[700]! : Colors.grey[200]!;
 
     final mediumCircle = Container(
@@ -231,7 +232,7 @@ class CompactThoughtBubble extends StatelessWidget {
         ),
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
         decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF2C2C2E) : Colors.white,
+          color: isDark ? AppColors.darkBorder : Colors.white,
           borderRadius: BorderRadius.circular(10),
           boxShadow: [
             BoxShadow(

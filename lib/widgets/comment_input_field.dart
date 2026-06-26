@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:Vista/features/profile/providers/user_profile_provider.dart';
 import 'package:Vista/utils/comments_bottom_sheet.dart'; // for getDirection
+import 'package:Vista/core/theme/app_theme.dart';
 
 class CommentInputField extends ConsumerWidget {
   final TextEditingController controller;
@@ -37,7 +38,7 @@ class CommentInputField extends ConsumerWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1A1A1A) : Colors.white,
+        color: isDark ? AppColors.darkSurface : Colors.white,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         boxShadow: [
           BoxShadow(

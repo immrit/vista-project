@@ -52,7 +52,7 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
         _QuickBtn(
           label: 'اطراف من',
           icon: Icons.radar_rounded,
-          gradient: const [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+          gradient: const [AppColors.primary, AppColors.secondary],
           onTap: (c) => () => Navigator.push(
                 c,
                 MaterialPageRoute(builder: (_) => const NearbyScreen()),
@@ -78,7 +78,7 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
         _QuickBtn(
           label: 'مخاطبین',
           icon: Icons.contacts_rounded,
-          gradient: const [Color(0xFF2196F3), Color(0xFF21CBF3)],
+          gradient: const [AppColors.info, Color(0xFF21CBF3)],
           onTap: (_) => () {
             Navigator.push(
               context,

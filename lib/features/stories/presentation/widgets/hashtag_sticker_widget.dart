@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../../domain/entities/story_editor_models.dart';
+import 'package:Vista/core/theme/app_theme.dart';
 
 /// استیکر هشتگ با سه استایل مختلف (مشابه ویستا)
 class HashtagStickerWidget extends StatelessWidget {
@@ -54,7 +55,7 @@ class HashtagStickerWidget extends StatelessWidget {
         gradient: const LinearGradient(
           colors: [
             Color(0xFFF58529), // Orange
-            Color(0xFFDD2A7B), // Pink
+            AppColors.accent, // Pink
             Color(0xFF8134AF), // Purple
           ],
           begin: Alignment.topLeft,
@@ -63,7 +64,7 @@ class HashtagStickerWidget extends StatelessWidget {
         borderRadius: BorderRadius.circular(10),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFFDD2A7B).withValues(alpha: 0.4),
+            color: AppColors.accent.withValues(alpha: 0.4),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -75,7 +76,7 @@ class HashtagStickerWidget extends StatelessWidget {
           color: Colors.white,
           fontWeight: FontWeight.bold,
           fontSize: 22,
-          fontFamily: 'Vazir',
+          fontFamily: 'Vazirmatn',
           letterSpacing: 0.5,
         ),
       ),
@@ -121,7 +122,7 @@ class HashtagStickerWidget extends StatelessWidget {
           style: const TextStyle(
             fontWeight: FontWeight.bold,
             fontSize: 22,
-            fontFamily: 'Vazir',
+            fontFamily: 'Vazirmatn',
             letterSpacing: 0.5,
           ),
         ),
@@ -153,7 +154,7 @@ class HashtagStickerWidget extends StatelessWidget {
               color: Colors.white,
               fontWeight: FontWeight.bold,
               fontSize: 22,
-              fontFamily: 'Vazir',
+              fontFamily: 'Vazirmatn',
               letterSpacing: 0.5,
               shadows: [
                 Shadow(

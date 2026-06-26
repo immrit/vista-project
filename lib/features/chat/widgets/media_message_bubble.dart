@@ -734,7 +734,7 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
                       ? theme.myBubbleTextColor
                       : theme.otherBubbleTextColor,
                   fontSize: 15,
-                  fontFamily: 'Vazir',
+                  fontFamily: 'Vazirmatn',
                 ),
               ),
               Positioned(

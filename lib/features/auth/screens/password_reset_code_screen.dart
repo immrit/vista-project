@@ -5,6 +5,7 @@ import 'package:Vista/core/security/input_policy.dart';
 
 import '../../../utils/directional_navigation.dart';
 import '../data/auth_repository.dart';
+import 'package:Vista/core/theme/app_theme.dart';
 
 class PasswordResetCodeScreen extends StatefulWidget {
   const PasswordResetCodeScreen({super.key});
@@ -250,8 +251,8 @@ class _PasswordResetCodeScreenState extends State<PasswordResetCodeScreen>
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: isDark
-                ? [const Color(0xFF0D1117), const Color(0xFF161B22)]
-                : [const Color(0xFFF8FAFC), const Color(0xFFE2E8F0)],
+                ? [AppColors.darkBackground, AppColors.darkSurface]
+                : [AppColors.lightBackground, AppColors.lightBorder],
           ),
         ),
         child: SafeArea(
@@ -297,7 +298,7 @@ class _PasswordResetCodeScreenState extends State<PasswordResetCodeScreen>
                         'ایمیل: $_email',
                         style: TextStyle(
                           fontSize: 14.sp,
-                          color: const Color(0xFF4A80F0),
+                          color: AppColors.primary,
                           fontWeight: FontWeight.w500,
                         ),
                         textAlign: TextAlign.center,
@@ -320,14 +321,14 @@ class _PasswordResetCodeScreenState extends State<PasswordResetCodeScreen>
                             height: 100.w,
                             decoration: BoxDecoration(
                               gradient: const LinearGradient(
-                                colors: [Color(0xFF4A80F0), Color(0xFF00A8E8)],
+                                colors: [AppColors.primary, Color(0xFF00A8E8)],
                                 begin: Alignment.topLeft,
                                 end: Alignment.bottomRight,
                               ),
                               shape: BoxShape.circle,
                               boxShadow: [
                                 BoxShadow(
-                                  color: const Color(0xFF4A80F0)
+                                  color: AppColors.primary
                                       .withValues(alpha: 0.4),
                                   blurRadius: 25,
                                   offset: const Offset(0, 12),
@@ -346,7 +347,7 @@ class _PasswordResetCodeScreenState extends State<PasswordResetCodeScreen>
                           // Title
                           ShaderMask(
                             shaderCallback: (bounds) => const LinearGradient(
-                              colors: [Color(0xFF4A80F0), Color(0xFF00A8E8)],
+                              colors: [AppColors.primary, Color(0xFF00A8E8)],
                               begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
                             ).createShader(bounds),
@@ -413,7 +414,7 @@ class _PasswordResetCodeScreenState extends State<PasswordResetCodeScreen>
                                 ),
                                 prefixIcon: Icon(
                                   Icons.pin,
-                                  color: const Color(0xFF4A80F0),
+                                  color: AppColors.primary,
                                   size: 24.sp,
                                 ),
                                 border: InputBorder.none,
@@ -468,7 +469,7 @@ class _PasswordResetCodeScreenState extends State<PasswordResetCodeScreen>
                                 ),
                                 prefixIcon: Icon(
                                   Icons.lock,
-                                  color: const Color(0xFF4A80F0),
+                                  color: AppColors.primary,
                                   size: 24.sp,
                                 ),
                                 suffixIcon: IconButton(
@@ -476,7 +477,7 @@ class _PasswordResetCodeScreenState extends State<PasswordResetCodeScreen>
                                     _obscureNewPassword
                                         ? Icons.visibility_off
                                         : Icons.visibility,
-                                    color: const Color(0xFF4A80F0),
+                                    color: AppColors.primary,
                                     size: 20.sp,
                                   ),
                                   onPressed: () {
@@ -537,7 +538,7 @@ class _PasswordResetCodeScreenState extends State<PasswordResetCodeScreen>
                                 ),
                                 prefixIcon: Icon(
                                   Icons.lock_outline,
-                                  color: const Color(0xFF4A80F0),
+                                  color: AppColors.primary,
                                   size: 24.sp,
                                 ),
                                 suffixIcon: IconButton(
@@ -545,7 +546,7 @@ class _PasswordResetCodeScreenState extends State<PasswordResetCodeScreen>
                                     _obscureConfirmPassword
                                         ? Icons.visibility_off
                                         : Icons.visibility,
-                                    color: const Color(0xFF4A80F0),
+                                    color: AppColors.primary,
                                     size: 20.sp,
                                   ),
                                   onPressed: () {
@@ -585,7 +586,7 @@ class _PasswordResetCodeScreenState extends State<PasswordResetCodeScreen>
                               child: Text(
                                 'ارسال مجدد کد',
                                 style: TextStyle(
-                                  color: const Color(0xFF4A80F0),
+                                  color: AppColors.primary,
                                   fontSize: 16.sp,
                                   fontWeight: FontWeight.w600,
                                 ),
@@ -604,7 +605,7 @@ class _PasswordResetCodeScreenState extends State<PasswordResetCodeScreen>
                             child: Text(
                               'بازگشت به صفحه ورود',
                               style: TextStyle(
-                                color: const Color(0xFF4A80F0),
+                                color: AppColors.primary,
                                 fontSize: 16.sp,
                                 fontWeight: FontWeight.w600,
                               ),
@@ -639,7 +640,7 @@ class _PasswordResetCodeScreenState extends State<PasswordResetCodeScreen>
                       height: 56.h,
                       decoration: BoxDecoration(
                         gradient: const LinearGradient(
-                          colors: [Color(0xFF4A80F0), Color(0xFF00A8E8)],
+                          colors: [AppColors.primary, Color(0xFF00A8E8)],
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
                         ),
@@ -647,7 +648,7 @@ class _PasswordResetCodeScreenState extends State<PasswordResetCodeScreen>
                         boxShadow: [
                           BoxShadow(
                             color:
-                                const Color(0xFF4A80F0).withValues(alpha: 0.4),
+                                AppColors.primary.withValues(alpha: 0.4),
                             blurRadius: 20,
                             offset: const Offset(0, 10),
                           ),

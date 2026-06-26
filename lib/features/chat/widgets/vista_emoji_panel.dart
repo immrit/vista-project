@@ -14,6 +14,7 @@ import '../../emoji/widgets/modern_emoji_inline.dart';
 import '../utils/chat_text_direction.dart';
 import '../utils/grapheme_text_editing.dart';
 import 'gif_picker_widget.dart';
+import 'package:Vista/core/theme/app_theme.dart';
 
 enum PanelView { emoji, gif }
 
@@ -215,10 +216,10 @@ class _VistaEmojiPanelState extends State<VistaEmojiPanel> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final backgroundColor =
-        isDark ? const Color(0xFF000000) : const Color(0xFFF2F2F7);
+    final Color backgroundColor =
+        isDark ? Colors.black : const Color(0xFFF2F2F7);
     final bottomBarColor = isDark
-        ? const Color(0xFF1C1C1E).withValues(alpha: 0.9)
+        ? AppColors.darkSurfaceVariant.withValues(alpha: 0.9)
         : const Color(0xFFF9F9F9).withValues(alpha: 0.9);
     final activeIconColor = const Color(0xFF3390EC);
 

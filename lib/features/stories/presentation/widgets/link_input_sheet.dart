@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../domain/entities/story_editor_models.dart';
 import 'glass_layer.dart';
+import 'package:Vista/core/theme/app_theme.dart';
 
 /// Premium Link Input Sheet (Social-style)
 class LinkInputSheet extends StatefulWidget {
@@ -18,13 +19,13 @@ class _LinkInputSheetState extends State<LinkInputSheet> {
   int _selectedStyle = 0;
 
   static const List<Color> _colors = [
-    Color(0xFF2196F3), // Blue
-    Color(0xFFE91E63), // Pink
-    Color(0xFF4CAF50), // Green
-    Color(0xFFFF9800), // Orange
-    Color(0xFF9C27B0), // Purple
-    Color(0xFF000000), // Black
-    Color(0xFFFFFFFF), // White
+    AppColors.info, // Blue
+    AppColors.accent, // Pink
+    AppColors.success, // Green
+    AppColors.warning, // Orange
+    AppColors.secondary, // Purple
+    Colors.black, // Black
+    Colors.white, // White
   ];
   int _selectedColorIndex = 0;
 
@@ -74,7 +75,7 @@ class _LinkInputSheetState extends State<LinkInputSheet> {
                     color: Colors.white,
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
-                    fontFamily: 'Vazir',
+                    fontFamily: 'Vazirmatn',
                   ),
                 ),
                 const Spacer(),
@@ -207,7 +208,7 @@ class _LinkInputSheetState extends State<LinkInputSheet> {
                   color: Colors.white,
                   fontWeight: FontWeight.w600,
                   fontSize: 16,
-                  fontFamily: 'Vazir',
+                  fontFamily: 'Vazirmatn',
                 ),
               ),
             ],
@@ -238,7 +239,7 @@ class _LinkInputSheetState extends State<LinkInputSheet> {
                   color: color,
                   fontWeight: FontWeight.bold,
                   fontSize: 16,
-                  fontFamily: 'Vazir',
+                  fontFamily: 'Vazirmatn',
                 ),
               ),
             ],
@@ -278,7 +279,7 @@ class _LinkInputSheetState extends State<LinkInputSheet> {
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
                       fontSize: 15,
-                      fontFamily: 'Vazir',
+                      fontFamily: 'Vazirmatn',
                     ),
                   ),
                   Text(
@@ -329,7 +330,7 @@ class _LinkInputSheetState extends State<LinkInputSheet> {
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 12,
-                fontFamily: 'Vazir',
+                fontFamily: 'Vazirmatn',
               ),
             ),
           ],

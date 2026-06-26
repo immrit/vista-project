@@ -72,15 +72,11 @@ class TopGroupsScreen extends ConsumerWidget {
             child: Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
+                gradient: AppColors.primaryGradient,
                 borderRadius: BorderRadius.circular(20),
                 boxShadow: [
                   BoxShadow(
-                    color: const Color(0xFF6366F1).withValues(alpha: 0.3),
+                    color: AppColors.primary.withValues(alpha: 0.3),
                     blurRadius: 12,
                     offset: const Offset(0, 4),
                   )
@@ -128,7 +124,7 @@ class TopGroupsScreen extends ConsumerWidget {
     final bool isTop3 = index < 3;
     final Color rankColor;
     if (index == 0) {
-      rankColor = const Color(0xFFFFD700); // Gold
+      rankColor = AppColors.warning; // Gold
     } else if (index == 1) {
       rankColor = const Color(0xFFC0C0C0); // Silver
     } else if (index == 2) {

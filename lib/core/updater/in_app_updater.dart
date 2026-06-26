@@ -1,8 +1,10 @@
 import 'dart:io';
 import 'package:dio/dio.dart';
-import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' hide appFlavor;
 import 'package:path_provider/path_provider.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:Vista/core/app_config.dart';
 
 class UpdateInfo {
   final bool updateAvailable;
@@ -21,8 +23,6 @@ class UpdateInfo {
 class InAppUpdater {
   static const MethodChannel _channel = MethodChannel('ir.coffevista.updater');
   final Dio _dio = Dio();
-  // Using localhost or your domain
-  final String _baseUrl = 'https://coffevista.ir/api/v1'; 
 
   Future<UpdateInfo> checkForUpdate() async {
     try {
@@ -30,10 +30,10 @@ class InAppUpdater {
       final currentVersionCode = int.tryParse(packageInfo.buildNumber) ?? 1;
       
       final response = await _dio.get(
-        '$_baseUrl/system/check-update',
+        '$backendUrl/api/v1/system/check-update',
         queryParameters: {
           'version_code': currentVersionCode,
-          'flavor': 'bazaar', // Hardcoded here for the override strategy, or could be dynamic
+          'flavor': appFlavor,
         },
       );
 
@@ -48,7 +48,7 @@ class InAppUpdater {
         );
       }
     } catch (e) {
-      print('Update check failed: $e');
+      debugPrint('Update check failed: $e');
     }
     return UpdateInfo(updateAvailable: false);
   }
@@ -69,7 +69,7 @@ class InAppUpdater {
       );
       return savePath;
     } catch (e) {
-      print('Download failed: $e');
+      debugPrint('Download failed: $e');
       return null;
     }
   }
@@ -79,7 +79,7 @@ class InAppUpdater {
       try {
         await _channel.invokeMethod('installApk', {'filePath': filePath});
       } catch (e) {
-        print("Failed to install APK: $e");
+        debugPrint("Failed to install APK: $e");
       }
     }
   }

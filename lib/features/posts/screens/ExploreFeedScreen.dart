@@ -1300,7 +1300,7 @@ class _ThreadPostItem extends ConsumerWidget {
             borderRadius: BorderRadius.circular(16),
           ),
           elevation: 8,
-          color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+          color: isDark ? AppColors.darkSurface : Colors.white,
           icon: Padding(
             padding: const EdgeInsets.all(4),
             child: Icon(

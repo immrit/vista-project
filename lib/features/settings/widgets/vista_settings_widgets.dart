@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../utils/directional_navigation.dart';
+import 'package:Vista/core/theme/app_theme.dart';
 
 /// ویجت‌های مشترک تنظیمات ویستا
 /// طراحی مدرن و تمیز با الهام از ویستا
@@ -173,7 +174,7 @@ class VistaSettingsGroup extends StatelessWidget {
     return Container(
       margin: margin ?? const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1C1C1E) : Colors.white,
+        color: isDark ? AppColors.darkSurfaceVariant : Colors.white,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -238,7 +239,7 @@ class VistaSettingsChoice<T> extends StatelessWidget {
   void _showChoiceSheet(BuildContext context, bool isDark) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: isDark ? const Color(0xFF1C1C1E) : Colors.white,
+      backgroundColor: isDark ? AppColors.darkSurfaceVariant : Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),

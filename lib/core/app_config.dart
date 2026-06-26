@@ -17,3 +17,9 @@ const String webUrl = String.fromEnvironment(
   'WEB_URL',
   defaultValue: 'https://cafevista.ir',
 );
+
+/// The distribution flavor of the app (e.g. 'bazaar', 'myket', 'direct', 'googleplay')
+const String appFlavor = String.fromEnvironment(
+  'FLAVOR',
+  defaultValue: 'direct',
+);

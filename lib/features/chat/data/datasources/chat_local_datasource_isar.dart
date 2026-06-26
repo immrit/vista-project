@@ -695,6 +695,7 @@ class ChatLocalDataSourceIsar {
       ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
 
     final oldestServerDate = sortedServer.first.createdAt;
+    final newestServerDate = sortedServer.last.createdAt;
 
     // 2. Find local messages in range (that presumably SHOULD match server content)
     // CRITICAL: Exclude pending/failed messages to prevent deleting messages being sent.
@@ -703,9 +704,13 @@ class ChatLocalDataSourceIsar {
         .conversationIdEqualTo(conversationId)
         .createdAtGreaterThan(oldestServerDate, include: true);
 
-    if (endDate != null) {
-      filter = filter.createdAtLessThan(endDate, include: true);
-    }
+    // Bound the deletion window to the newest server message. A just-sent message
+    // whose POST already merged (isPending=false) but that a near-simultaneous sync
+    // GET hasn't observed yet (Scylla eventual consistency) is NEWER than the
+    // server's latest — never delete those, or a rapid-fire burst loses its last
+    // message even though it was sent successfully.
+    final upperBound = endDate ?? newestServerDate;
+    filter = filter.createdAtLessThan(upperBound, include: true);
 
     final localEntities = await filter
         .isPendingEqualTo(false) // Protect pending

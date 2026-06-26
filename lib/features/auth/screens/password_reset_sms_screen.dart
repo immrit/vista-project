@@ -6,6 +6,7 @@ import 'package:Vista/core/security/input_policy.dart';
 
 import '../../../utils/directional_navigation.dart';
 import '../data/auth_repository.dart';
+import 'package:Vista/core/theme/app_theme.dart';
 
 class PasswordResetSmsScreen extends StatefulWidget {
   const PasswordResetSmsScreen({super.key});
@@ -210,8 +211,8 @@ class _PasswordResetSmsScreenState extends State<PasswordResetSmsScreen>
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: isDark
-                ? [const Color(0xFF0D1117), const Color(0xFF161B22)]
-                : [const Color(0xFFF8FAFC), const Color(0xFFE2E8F0)],
+                ? [AppColors.darkBackground, AppColors.darkSurface]
+                : [AppColors.lightBackground, AppColors.lightBorder],
           ),
         ),
         child: SafeArea(

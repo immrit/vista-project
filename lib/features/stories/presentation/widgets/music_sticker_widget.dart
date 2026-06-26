@@ -63,7 +63,7 @@ class MusicStickerWidget extends StatelessWidget {
                   style: TextStyle(
                     color: style == 0 ? Colors.white : Colors.black87,
                     fontWeight: FontWeight.bold,
-                    fontFamily: 'Vazir',
+                    fontFamily: 'Vazirmatn',
                   ),
                 ),
                 Text(
@@ -73,7 +73,7 @@ class MusicStickerWidget extends StatelessWidget {
                   style: TextStyle(
                     color: style == 0 ? Colors.white70 : Colors.black54,
                     fontSize: 12,
-                    fontFamily: 'Vazir',
+                    fontFamily: 'Vazirmatn',
                   ),
                 ),
               ],

@@ -406,7 +406,7 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble>
                         ? theme.myBubbleTextColor
                         : theme.otherBubbleTextColor,
                     fontSize: 15,
-                    fontFamily: 'Vazir',
+                    fontFamily: 'Vazirmatn',
                   ),
                 ),
               ),

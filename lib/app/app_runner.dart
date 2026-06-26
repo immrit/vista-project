@@ -42,6 +42,7 @@ import 'package:Vista/provider/optimized_conversations_provider.dart';
 // Utils
 import 'package:Vista/utils/const.dart';
 import 'package:Vista/utils/themes.dart';
+import 'package:Vista/utils/vista_motion.dart';
 
 // Localization
 import 'package:Vista/l10n/generated/app_localizations.dart';
@@ -79,6 +80,7 @@ import 'package:Vista/features/share/share_target_screen.dart';
 
 import 'package:Vista/screens/maintenance_screen.dart';
 import 'package:Vista/screens/banned_screen.dart';
+import 'package:Vista/core/theme/app_theme.dart';
 
 /// Notification response handler
 Future<void> notificationResponseHandler(NotificationResponse response) async {
@@ -440,7 +442,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
           context: context,
           barrierDismissible: false,
           builder: (ctx) => AlertDialog(
-            backgroundColor: const Color(0xFF1C1C1E),
+            backgroundColor: AppColors.darkSurfaceVariant,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
             ),
@@ -583,6 +585,9 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
             theme: VistaThemes.lightTheme,
             darkTheme: VistaThemes.darkTheme,
             themeMode: ref.watch(themeModeProvider),
+            // گذار نرم light↔dark (به‌جای پرشِ ناگهانی) با توکن motion موجود
+            themeAnimationDuration: VistaMotion.durationMedium,
+            themeAnimationCurve: VistaMotion.smooth,
             locale: currentLocale,
             supportedLocales: AppLocalizations.supportedLocales,
             localizationsDelegates: const [

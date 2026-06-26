@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../services/advanced_security_service.dart';
+import 'package:Vista/core/theme/app_theme.dart';
 
 class BiometricLoginScreen extends ConsumerStatefulWidget {
   final VoidCallback onSuccess;
@@ -202,7 +203,7 @@ class _BiometricLoginScreenState extends ConsumerState<BiometricLoginScreen>
                 style: TextStyle(
                   fontSize: 32.sp,
                   fontWeight: FontWeight.bold,
-                  color: const Color(0xFF4A80F0),
+                  color: AppColors.primary,
                 ),
               ),
 
@@ -223,7 +224,7 @@ class _BiometricLoginScreenState extends ConsumerState<BiometricLoginScreen>
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
                           colors: [
-                            const Color(0xFF4A80F0),
+                            AppColors.primary,
                             const Color(0xFF6B9EFF),
                             const Color(0xFF8BB5FF),
                           ],
@@ -231,7 +232,7 @@ class _BiometricLoginScreenState extends ConsumerState<BiometricLoginScreen>
                         boxShadow: [
                           BoxShadow(
                             color:
-                                const Color(0xFF4A80F0).withValues(alpha: 0.3),
+                                AppColors.primary.withValues(alpha: 0.3),
                             blurRadius: 20,
                             spreadRadius: 5,
                           ),
@@ -300,7 +301,7 @@ class _BiometricLoginScreenState extends ConsumerState<BiometricLoginScreen>
                             child: CircularProgressIndicator(
                               strokeWidth: 3,
                               valueColor: AlwaysStoppedAnimation<Color>(
-                                const Color(0xFF4A80F0),
+                                AppColors.primary,
                               ),
                             ),
                           ),
@@ -344,13 +345,13 @@ class _BiometricLoginScreenState extends ConsumerState<BiometricLoginScreen>
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16.r),
         gradient: const LinearGradient(
-          colors: [Color(0xFF4A80F0), Color(0xFF6B9EFF)],
+          colors: [AppColors.primary, Color(0xFF6B9EFF)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF4A80F0).withValues(alpha: 0.3),
+            color: AppColors.primary.withValues(alpha: 0.3),
             blurRadius: 15,
             offset: const Offset(0, 5),
           ),
@@ -396,13 +397,13 @@ class _BiometricLoginScreenState extends ConsumerState<BiometricLoginScreen>
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16.r),
             gradient: const LinearGradient(
-              colors: [Color(0xFF4A80F0), Color(0xFF6B9EFF)],
+              colors: [AppColors.primary, Color(0xFF6B9EFF)],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFF4A80F0).withValues(alpha: 0.3),
+                color: AppColors.primary.withValues(alpha: 0.3),
                 blurRadius: 15,
                 offset: const Offset(0, 5),
               ),
@@ -450,7 +451,7 @@ class _BiometricLoginScreenState extends ConsumerState<BiometricLoginScreen>
             'فعال‌سازی احراز هویت بیومتریک',
             style: TextStyle(
               fontSize: 16.sp,
-              color: const Color(0xFF4A80F0),
+              color: AppColors.primary,
               fontWeight: FontWeight.w600,
             ),
           ),

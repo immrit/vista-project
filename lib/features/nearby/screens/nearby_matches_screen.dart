@@ -151,7 +151,7 @@ class NearbyMatchesBody extends ConsumerWidget {
                     if (m.isVerified) ...[
                       const SizedBox(width: 4),
                       const Icon(Icons.verified_rounded,
-                          color: Color(0xFF3B82F6), size: 16),
+                          color: AppColors.info, size: 16),
                     ],
                   ],
                 ),

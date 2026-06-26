@@ -231,11 +231,12 @@ class ChatTheme {
 
     return ChatTheme(
       isDark: false,
-      backgroundColor: const Color(0xFFFFFFFF),
-      appBarColor: Colors.white.withValues(alpha: 0.95),
-      textColor: const Color(0xFF000000),
-      secondaryTextColor: const Color(0xFF64748B),
-      dividerColor: const Color(0xFFE5E5E5),
+      // پایه از AppColors (هم‌تراز با کل اپ — حذف پالت slate جدا)
+      backgroundColor: AppColors.lightBackground,
+      appBarColor: AppColors.lightSurface.withValues(alpha: 0.95),
+      textColor: AppColors.lightTextPrimary,
+      secondaryTextColor: AppColors.lightTextSecondary,
+      dividerColor: AppColors.lightBorder,
 
       // حباب پیام من - Vista Brand Gradient
       myBubbleColor: accent,
@@ -246,25 +247,24 @@ class ChatTheme {
       ),
       myBubbleTextColor: Colors.white,
 
-      // حباب پیام دیگران - سفید خالص با سایه ملایم برای تمایز بهتر
-      otherBubbleColor: const Color(
-          0xFFF1F5F9), // Slight gray for better contrast against white background
-      otherBubbleTextColor: Colors.black,
+      // حباب پیام دیگران - surfaceVariant برند + سایه ملایم برای تمایز
+      otherBubbleColor: AppColors.lightSurfaceVariant,
+      otherBubbleTextColor: AppColors.lightTextPrimary,
 
-      // وضعیت‌ها
-      onlineColor: const Color(0xFF22C55E),
-      offlineColor: const Color(0xFF94A3B8),
+      // وضعیت‌ها (semantic مشترک)
+      onlineColor: AppColors.online,
+      offlineColor: AppColors.lightTextTertiary,
       typingColor: accent,
-      pendingColor: const Color(0xFFF59E0B),
-      sentColor: const Color(0xFF22C55E),
-      errorColor: const Color(0xFFEF4444),
+      pendingColor: AppColors.warning,
+      sentColor: AppColors.online,
+      errorColor: AppColors.error,
 
       // Input
       inputBackgroundColor: AppColors.glassBackgroundLight, // Glass effect
       inputBorderColor: AppColors.glassBorderLight,
-      inputHintColor: const Color(0xFF94A3B8),
+      inputHintColor: AppColors.lightTextTertiary,
       sendButtonColor: accent,
-      iconColor: const Color(0xFF64748B), // Slate 500
+      iconColor: AppColors.lightTextSecondary,
 
       // سایه‌ها
       myBubbleShadow: BoxShadow(
@@ -300,14 +300,12 @@ class ChatTheme {
 
     return ChatTheme(
       isDark: true,
-      // UX: lifted off pure-black. #000 + #1E1E1E gave a flat, low-contrast
-      // "empty OLED" look; a slightly raised cool-charcoal background reads as
-      // depth and lets other-bubbles separate cleanly.
-      backgroundColor: const Color(0xFF0A0E13),
-      appBarColor: const Color(0xFF0A0E13).withValues(alpha: 0.95),
-      textColor: const Color(0xFFF1F5F9),
-      secondaryTextColor: const Color(0xFF94A3B8),
-      dividerColor: const Color(0xFF1E2630),
+      // پایه از AppColors (هم‌تراز با کل اپ — حذف پالت slate جدا)
+      backgroundColor: AppColors.darkBackground,
+      appBarColor: AppColors.darkBackground.withValues(alpha: 0.95),
+      textColor: AppColors.darkTextPrimary,
+      secondaryTextColor: AppColors.darkTextSecondary,
+      dividerColor: AppColors.darkBorder,
 
       // حباب پیام من - Vista Brand Gradient
       myBubbleColor: accent,
@@ -318,24 +316,24 @@ class ChatTheme {
       ),
       myBubbleTextColor: Colors.white,
 
-      // حباب پیام دیگران - راهِ روشن‌تر/سردتر برای کنتراست مشخص با پس‌زمینه
-      otherBubbleColor: const Color(0xFF1E2630),
-      otherBubbleTextColor: Colors.white,
+      // حباب پیام دیگران - surfaceVariant برند برای کنتراست با پس‌زمینه
+      otherBubbleColor: AppColors.darkSurfaceVariant,
+      otherBubbleTextColor: AppColors.darkTextPrimary,
 
-      // وضعیت‌ها
-      onlineColor: const Color(0xFF4ADE80),
-      offlineColor: const Color(0xFF64748B),
+      // وضعیت‌ها (semantic مشترک)
+      onlineColor: AppColors.onlineDark,
+      offlineColor: AppColors.darkTextTertiary,
       typingColor: accent,
-      pendingColor: const Color(0xFFFBBF24),
-      sentColor: const Color(0xFF4ADE80),
-      errorColor: const Color(0xFFF87171),
+      pendingColor: AppColors.warningDark,
+      sentColor: AppColors.onlineDark,
+      errorColor: AppColors.errorDark,
 
       // Input
       inputBackgroundColor: AppColors.glassBackgroundDark, // Glass effect
       inputBorderColor: AppColors.glassBorderDark,
-      inputHintColor: const Color(0xFF64748B),
+      inputHintColor: AppColors.darkTextTertiary,
       sendButtonColor: accent,
-      iconColor: const Color(0xFF94A3B8), // Slate 400
+      iconColor: AppColors.darkTextSecondary,
 
       // سایه‌ها — UX: سایهٔ سفیدِ قبلی روی حباب «من» هاله‌ی نوریِ غیرطبیعی می‌ساخت.
       // سایهٔ تیرهٔ ملایم طبیعی‌تر است و حباب را روی پس‌زمینه می‌نشاند.

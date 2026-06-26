@@ -9,6 +9,7 @@ import '../../features/chat/utils/conversation_name_utils.dart';
 import '../provider/typing_provider.dart';
 import '../utils/avatar_asset_utils.dart';
 import 'package:Vista/utils/const.dart';
+import 'package:Vista/core/theme/app_theme.dart';
 
 /// 🚀 ویجت Swipeable برای آیتم مکالمه (مثل ویستا)
 ///
@@ -335,7 +336,7 @@ class _AvatarWidgetState extends State<_AvatarWidget>
               height: 18,
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
-                  colors: [Color(0xFFFFD700), Color(0xFFFFA500)],
+                  colors: [AppColors.warning, Color(0xFFFFA500)],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),

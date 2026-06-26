@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../providers/post_upload_provider.dart';
+import 'package:Vista/core/theme/app_theme.dart';
 
 /// اوورلی نمایش پیشرفت آپلود پست - مشابه اینستاگرام/X
 ///
@@ -85,7 +86,7 @@ class _UploadCard extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1C1C1E) : Colors.white,
+        color: isDark ? AppColors.darkSurfaceVariant : Colors.white,
         borderRadius: BorderRadius.circular(18),
         boxShadow: [
           BoxShadow(

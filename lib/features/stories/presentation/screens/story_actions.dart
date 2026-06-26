@@ -318,7 +318,7 @@ class _StoryActionsState extends State<StoryActions> {
                           enabled: widget.canReply && !widget.isReplySending,
                           style: const TextStyle(
                             color: Colors.white,
-                            fontFamily: 'Vazir',
+                            fontFamily: 'Vazirmatn',
                           ),
                           decoration: InputDecoration(
                             hintText: widget.isReplySending
@@ -326,7 +326,7 @@ class _StoryActionsState extends State<StoryActions> {
                                 : _replyHint(ownerDisplayName),
                             hintStyle: TextStyle(
                               color: Colors.white.withValues(alpha: 0.55),
-                              fontFamily: 'Vazir',
+                              fontFamily: 'Vazirmatn',
                             ),
                             border: InputBorder.none,
                             contentPadding: const EdgeInsets.symmetric(

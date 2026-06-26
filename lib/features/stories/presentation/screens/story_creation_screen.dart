@@ -14,6 +14,7 @@ import '../providers/story_providers.dart';
 import 'story_editor_screen.dart';
 import 'story_privacy_settings_screen.dart';
 import '../../../../utils/user_friendly_error_utils.dart';
+import 'package:Vista/core/theme/app_theme.dart';
 
 /// صفحه ایجاد استوری - مشابه ویستا
 class StoryCreationScreen extends ConsumerStatefulWidget {
@@ -952,7 +953,7 @@ class _AlbumPickerSheet extends StatelessWidget {
     return Container(
       height: MediaQuery.of(context).size.height * 0.5,
       decoration: const BoxDecoration(
-        color: Color(0xFF1E1E1E),
+        color: AppColors.darkSurface,
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       child: Column(

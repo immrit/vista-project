@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../domain/entities/story_editor_models.dart';
+import 'package:Vista/core/theme/app_theme.dart';
 
 /// Premium Mention Input Sheet (Social-style)
 class MentionInputSheet extends StatefulWidget {
@@ -53,7 +54,7 @@ class _MentionInputSheetState extends State<MentionInputSheet> {
                   color: Colors.white,
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
-                  fontFamily: 'Vazir',
+                  fontFamily: 'Vazirmatn',
                 ),
               ),
               const Spacer(),
@@ -94,7 +95,7 @@ class _MentionInputSheetState extends State<MentionInputSheet> {
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(
-                      colors: [Color(0xFFF58529), Color(0xFFDD2A7B)],
+                      colors: [Color(0xFFF58529), AppColors.accent],
                     ),
                     borderRadius: BorderRadius.circular(8),
                   ),
@@ -149,14 +150,14 @@ class _MentionInputSheetState extends State<MentionInputSheet> {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-          colors: [Color(0xFFF58529), Color(0xFFDD2A7B), Color(0xFF8134AF)],
+          colors: [Color(0xFFF58529), AppColors.accent, Color(0xFF8134AF)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFFDD2A7B).withValues(alpha: 0.4),
+            color: AppColors.accent.withValues(alpha: 0.4),
             blurRadius: 15,
             offset: const Offset(0, 5),
           ),
@@ -168,7 +169,7 @@ class _MentionInputSheetState extends State<MentionInputSheet> {
           color: Colors.white,
           fontWeight: FontWeight.bold,
           fontSize: 22,
-          fontFamily: 'Vazir',
+          fontFamily: 'Vazirmatn',
         ),
       ),
     );

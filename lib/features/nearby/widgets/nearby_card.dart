@@ -144,7 +144,7 @@ class NearbyCard extends StatelessWidget {
                     if (c.isVerified) ...[
                       const SizedBox(width: 4),
                       const Icon(Icons.verified_rounded,
-                          color: Color(0xFF3B82F6), size: 20),
+                          color: AppColors.info, size: 20),
                     ],
                   ],
                 ),
@@ -158,12 +158,12 @@ class NearbyCard extends StatelessWidget {
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           color: c.isOnlineNow
-                              ? const Color(0xFF22C55E)
+                              ? AppColors.online
                               : const Color(0xFF94A3B8),
                           boxShadow: c.isOnlineNow
                               ? [
                                   BoxShadow(
-                                    color: const Color(0xFF22C55E)
+                                    color: AppColors.online
                                         .withValues(alpha: 0.6),
                                     blurRadius: 4,
                                   )

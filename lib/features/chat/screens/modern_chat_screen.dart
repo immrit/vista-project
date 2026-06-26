@@ -31,6 +31,7 @@ import '../widgets/modern_chat_app_bar.dart';
 import '../../../DB/profile_cache_service.dart';
 import '../../../model/ProfileModel.dart';
 import '../../../model/message_model.dart';
+import '../../../model/conversation_model.dart';
 import '../../../utils/compat_extensions.dart';
 import '../../../utils/avatar_asset_utils.dart';
 import '../../../utils/time_utils.dart';
@@ -356,6 +357,10 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   Timer? _activeConversationHeartbeatTimer;
   Timer? _typingDebounceTimer;
   final List<Timer> _scheduledSendTimers = <Timer>[];
+  // Guards against rapid-fire sends in a brand-new chat each spawning their own
+  // createConversation call (which would mint duplicate conversations). The first
+  // send owns the creation; concurrent sends await the same future.
+  Future<ChatResult<ConversationModel>>? _pendingConvCreation;
   final Map<String, Timer> _pendingDeleteTimers = <String, Timer>{};
   final Map<String, Timer> _secretAutoDeleteTimers = <String, Timer>{};
   final Set<String> _secretAutoDeletingIds = <String>{};
@@ -2784,7 +2789,7 @@ class _ChatMediaAlbumBubble extends StatelessWidget {
                               : theme.otherBubbleTextColor,
                           fontSize: 14,
                           height: 1.35,
-                          fontFamily: 'Vazir',
+                          fontFamily: 'Vazirmatn',
                         ),
                       ),
                     ),

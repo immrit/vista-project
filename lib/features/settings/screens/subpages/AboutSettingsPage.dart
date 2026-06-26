@@ -8,6 +8,7 @@ import '../widgets/SettingsListItem.dart';
 import 'VistaAboutSlideshow.dart';
 import '../../../../services/BazaarService.dart';
 import '../../../../services/AppInfoService.dart';
+import 'package:Vista/core/theme/app_theme.dart';
 
 class AboutSettingsPage extends StatelessWidget {
   const AboutSettingsPage({super.key});
@@ -19,7 +20,7 @@ class AboutSettingsPage extends StatelessWidget {
 
     return Scaffold(
       backgroundColor:
-          isDark ? const Color(0xFF1E1E1E) : const Color(0xFFF5F5F5),
+          isDark ? AppColors.darkSurface : AppColors.lightSurfaceVariant,
       appBar: AppBar(
         title: const Text('درباره ویستا'),
         centerTitle: true,

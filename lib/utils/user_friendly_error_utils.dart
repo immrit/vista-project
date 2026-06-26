@@ -226,7 +226,7 @@ class UserFriendlyErrorUtils {
               child: Text(
                 message,
                 style: const TextStyle(
-                  fontFamily: 'Vazir',
+                  fontFamily: 'Vazirmatn',
                   color: Colors.white,
                 ),
                 textDirection: TextDirection.rtl,

@@ -212,7 +212,7 @@ class _ReceivedLikesTab extends ConsumerWidget {
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
             color: isSuper
-                ? const Color(0xFF3B82F6).withValues(alpha: 0.5)
+                ? AppColors.info.withValues(alpha: 0.5)
                 : (isDark ? AppColors.darkBorder : AppColors.lightBorder)),
       ),
       padding: const EdgeInsets.all(12),
@@ -241,7 +241,7 @@ class _ReceivedLikesTab extends ConsumerWidget {
                   right: 0,
                   bottom: 0,
                   child: Icon(Icons.star_rounded,
-                      color: Color(0xFF3B82F6), size: 18),
+                      color: AppColors.info, size: 18),
                 ),
             ],
           ),
@@ -262,7 +262,7 @@ class _ReceivedLikesTab extends ConsumerWidget {
                     if (u.isVerified) ...[
                       const SizedBox(width: 4),
                       const Icon(Icons.verified_rounded,
-                          color: Color(0xFF3B82F6), size: 16),
+                          color: AppColors.info, size: 16),
                     ],
                   ],
                 ),
@@ -300,7 +300,7 @@ class _ReceivedLikesTab extends ConsumerWidget {
           children: [
             Icon(Icons.bolt_rounded,
                 size: 60,
-                color: const Color(0xFF3B82F6).withValues(alpha: 0.6)),
+                color: AppColors.info.withValues(alpha: 0.6)),
             const SizedBox(height: 16),
             Text(text,
                 textAlign: TextAlign.center,

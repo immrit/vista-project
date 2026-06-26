@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:Vista/core/theme/app_theme.dart';
 
-const Color kVerifiedGold = Color(0xFFFFD700);
+const Color kVerifiedGold = AppColors.warning;
 
 enum ResolvedVerificationBadgeType {
   none,

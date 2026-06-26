@@ -7,6 +7,7 @@ import '../../../../features/chat/services/user_moderation_service.dart';
 
 import '../../../../provider/provider.dart';
 import '../../../../features/chat/providers/chat_providers.dart';
+import 'package:Vista/core/theme/app_theme.dart';
 
 class BlockedUsersPage extends ConsumerStatefulWidget {
   const BlockedUsersPage({super.key});
@@ -190,12 +191,12 @@ class _BlockedUsersPageState extends ConsumerState<BlockedUsersPage> {
 
     return Scaffold(
       backgroundColor:
-          isDark ? const Color(0xFF1E1E1E) : const Color(0xFFF5F5F5),
+          isDark ? AppColors.darkSurface : AppColors.lightSurfaceVariant,
       appBar: AppBar(
         title: const Text('کاربران مسدود شده'),
         centerTitle: true,
         elevation: 0,
-        backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+        backgroundColor: isDark ? AppColors.darkSurface : Colors.white,
         foregroundColor: isDark ? Colors.white : Colors.black,
       ),
       body: _buildBody(),
@@ -337,7 +338,7 @@ class _BlockedUsersPageState extends ConsumerState<BlockedUsersPage> {
           width: double.infinity,
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
           decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF2A2A2A) : const Color(0xFFF8F9FA),
+            color: isDark ? AppColors.darkSurface : const Color(0xFFF8F9FA),
             border: Border(
               bottom: BorderSide(
                 color:
@@ -393,7 +394,7 @@ class _BlockedUsersPageState extends ConsumerState<BlockedUsersPage> {
           width: double.infinity,
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
           decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF2A2A2A) : const Color(0xFFF8F9FA),
+            color: isDark ? AppColors.darkSurface : const Color(0xFFF8F9FA),
             border: Border(
               bottom: BorderSide(
                 color:
@@ -404,7 +405,7 @@ class _BlockedUsersPageState extends ConsumerState<BlockedUsersPage> {
           ),
           child: Container(
             decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF3A3A3A) : Colors.white,
+              color: isDark ? AppColors.darkSurfaceVariant : Colors.white,
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
                 color:
@@ -477,7 +478,7 @@ class _BlockedUsersPageState extends ConsumerState<BlockedUsersPage> {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-      color: isDark ? const Color(0xFF2A2A2A) : Colors.white,
+      color: isDark ? AppColors.darkSurface : Colors.white,
       child: Row(
         children: [
           // Avatar

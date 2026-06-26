@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import '../theme/chat_theme.dart';
 import 'improved_animated_message_bubble.dart';
+import 'package:Vista/core/theme/app_theme.dart';
 
 /// Shows a DraggableScrollableSheet with per-emoji tab breakdown of reactions.
 Future<void> showReactionsDetailSheet({
@@ -69,7 +70,7 @@ class _ReactionsDetailSheetState extends State<_ReactionsDetailSheet>
   @override
   Widget build(BuildContext context) {
     final bg =
-        widget.theme.isDark ? const Color(0xFF1C1C2E) : const Color(0xFFF5F5F5);
+        widget.theme.isDark ? const Color(0xFF1C1C2E) : AppColors.lightSurfaceVariant;
 
     return DraggableScrollableSheet(
       initialChildSize: 0.4,

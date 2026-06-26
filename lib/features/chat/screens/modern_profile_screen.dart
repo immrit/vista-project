@@ -45,6 +45,7 @@ import '../../../utils/profile_zoom_policy.dart';
 import '../../../utils/user_friendly_error_utils.dart';
 import '../../posts/navigation/content_routes.dart';
 import '../../posts/screens/PostDetailPage.dart';
+import 'package:Vista/core/theme/app_theme.dart';
 
 part 'modern_profile_actions.dart';
 part 'modern_profile_header.dart';
@@ -95,11 +96,11 @@ class VistaChatProfileScreen extends ConsumerStatefulWidget {
 }
 
 // رنگ‌های پایه (بر اساس تم)
-const _darkBg = Color(0xFF17212B);
-const _darkCard = Color(0xFF232E3C);
-const _darkDivider = Color(0xFF303D4F);
-const _lightBg = Color(0xFFFFFFFF);
-const _lightDivider = Color(0xFFE4E6E9);
+const _darkBg = AppColors.darkBackground;
+const _darkCard = AppColors.darkSurface;
+const _darkDivider = AppColors.darkBorder;
+const _lightBg = Colors.white;
+const _lightDivider = AppColors.lightBorder;
 
 class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
     with SingleTickerProviderStateMixin {
@@ -422,8 +423,8 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            isDark ? const Color(0xFF3D5A80) : const Color(0xFF6C9BCF),
-            isDark ? const Color(0xFF293241) : const Color(0xFF4A7C9B),
+            isDark ? AppColors.darkSurfaceVariant : AppColors.primaryLight,
+            isDark ? AppColors.darkElevated : AppColors.primaryDark,
           ],
         ),
       ),

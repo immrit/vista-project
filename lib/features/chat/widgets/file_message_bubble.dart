@@ -208,7 +208,7 @@ class _FileMessageBubbleState extends State<FileMessageBubble> {
                     color: primaryForeground,
                     fontSize: 14,
                     height: 1.35,
-                    fontFamily: 'Vazir',
+                    fontFamily: 'Vazirmatn',
                   ),
                 ),
               ),

@@ -13,6 +13,7 @@ import 'music_sticker_widget.dart';
 import 'gif_sticker_widget.dart';
 import 'date_sticker_widget.dart';
 import 'photo_sticker_widget.dart';
+import 'package:Vista/core/theme/app_theme.dart';
 
 class StickerFactory {
   /// Builds the appropriate sticker widget based on element type.
@@ -63,7 +64,7 @@ class StickerFactory {
         // Default Text Rendering
         return Text(
           element.text,
-          style: element.fontFamily == 'Vazir'
+          style: element.fontFamily == 'Vazirmatn'
               ? TextStyle(
                   fontFamily: element.fontFamily,
                   fontSize: element.fontSize,
@@ -87,7 +88,7 @@ class StickerFactory {
       decoration: BoxDecoration(
         gradient: style == 0
             ? const LinearGradient(
-                colors: [Color(0xFFE91E63), Color(0xFF9C27B0)],
+                colors: [AppColors.accent, AppColors.secondary],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               )
@@ -104,7 +105,7 @@ class StickerFactory {
               color: style == 0 ? Colors.white : Colors.black87,
               fontSize: 16,
               fontWeight: FontWeight.bold,
-              fontFamily: 'Vazir',
+              fontFamily: 'Vazirmatn',
             ),
           ),
           const SizedBox(height: 8),
@@ -121,7 +122,7 @@ class StickerFactory {
                 color:
                     style == 0 ? Colors.white.withValues(alpha: 0.7) : Colors.black54,
                 fontSize: 12,
-                fontFamily: 'Vazir',
+                fontFamily: 'Vazirmatn',
               ),
             ),
           ),

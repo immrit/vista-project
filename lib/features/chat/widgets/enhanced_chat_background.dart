@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:Vista/core/theme/app_theme.dart';
 
 class EnhancedChatBackground extends StatelessWidget {
   final Widget child;
@@ -28,7 +29,7 @@ class EnhancedChatBackground extends StatelessWidget {
       fit: StackFit.expand,
       children: [
         Container(
-          color: isDark ? const Color(0xFF0F0F0F) : const Color(0xFFDFE5E9),
+          color: isDark ? AppColors.darkBackground : const Color(0xFFDFE5E9),
         ),
         if (!isTransitioning)
           Image.asset(

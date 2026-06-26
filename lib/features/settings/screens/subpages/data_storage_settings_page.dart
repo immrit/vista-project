@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import '../../../../services/video_autoplay_service.dart';
 import '../../widgets/vista_settings_widgets.dart';
+import 'package:Vista/core/theme/app_theme.dart';
 
 /// صفحه تنظیمات داده و ذخیره‌سازی - طراحی مشابه ویستا
 class DataStorageSettingsPage extends StatefulWidget {
@@ -84,7 +85,7 @@ class _DataStorageSettingsPageState extends State<DataStorageSettingsPage> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: isDark ? Colors.black : const Color(0xFFF5F5F5),
+      backgroundColor: isDark ? Colors.black : AppColors.lightSurfaceVariant,
       appBar: AppBar(
         title: const Text('داده و ذخیره‌سازی'),
         centerTitle: true,
@@ -236,7 +237,7 @@ class _DataStorageSettingsPageState extends State<DataStorageSettingsPage> {
   void _showQualitySheet(bool isDark) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: isDark ? const Color(0xFF1C1C1E) : Colors.white,
+      backgroundColor: isDark ? AppColors.darkSurfaceVariant : Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
@@ -315,7 +316,7 @@ class _DataStorageSettingsPageState extends State<DataStorageSettingsPage> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: isDark ? const Color(0xFF1C1C1E) : Colors.white,
+        backgroundColor: isDark ? AppColors.darkSurfaceVariant : Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Text(
           'پاکسازی کش',

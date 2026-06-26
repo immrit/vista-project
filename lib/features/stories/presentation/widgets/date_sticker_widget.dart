@@ -49,7 +49,7 @@ class DateStickerWidget extends StatelessWidget {
             style: const TextStyle(
               color: Colors.black87,
               fontWeight: FontWeight.bold,
-              fontFamily: 'Vazir',
+              fontFamily: 'Vazirmatn',
             ),
           ),
         ],
@@ -75,7 +75,7 @@ class DateStickerWidget extends StatelessWidget {
             style: const TextStyle(
               color: Colors.white,
               fontWeight: FontWeight.w700,
-              fontFamily: 'Vazir',
+              fontFamily: 'Vazirmatn',
             ),
           ),
         ],
@@ -90,7 +90,7 @@ class DateStickerWidget extends StatelessWidget {
         color: Colors.white,
         fontSize: 18,
         fontWeight: FontWeight.bold,
-        fontFamily: 'Vazir',
+        fontFamily: 'Vazirmatn',
         shadows: [
           Shadow(color: Colors.black54, blurRadius: 4, offset: Offset(0, 1)),
         ],

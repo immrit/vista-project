@@ -6,6 +6,7 @@ import '../../../domain/entities/entities.dart';
 import '../../../utils/story_preloader.dart';
 import '../../providers/story_providers.dart';
 import '../../../../../widgets/verification_badge_icon.dart';
+import 'package:Vista/core/theme/app_theme.dart';
 
 const String _defaultAvatarAsset = 'lib/utils/images/default-avatar.jpg';
 
@@ -328,9 +329,9 @@ class _AnimatedStoryRingState extends ConsumerState<_AnimatedStoryRing>
     // ✅ گرادیانت برای دیده‌نشده (رنگ‌های جذاب)، خاکستری برای دیده‌شده
     final gradientColors = hasUnseenStories
         ? const [
-            Color(0xFF6366F1), // Indigo (برند Vista)
-            Color(0xFF8B5CF6), // Violet
-            Color(0xFFEC4899), // Pink
+            AppColors.primary, // Indigo (برند Vista)
+            AppColors.secondary, // Violet
+            AppColors.accent, // Pink
           ]
         : [
             isDarkMode ? const Color(0xFF424242) : const Color(0xFFE0E0E0),
@@ -349,7 +350,7 @@ class _AnimatedStoryRingState extends ConsumerState<_AnimatedStoryRing>
               height: 74,
               child: CircularProgressIndicator(
                 valueColor: AlwaysStoppedAnimation<Color>(
-                  hasUnseenStories ? const Color(0xFF6366F1) : (isDarkMode ? Colors.white54 : Colors.black54),
+                  hasUnseenStories ? AppColors.primary : (isDarkMode ? Colors.white54 : Colors.black54),
                 ),
                 strokeWidth: 2.0,
               ),
@@ -381,7 +382,7 @@ class _AnimatedStoryRingState extends ConsumerState<_AnimatedStoryRing>
         boxShadow: hasUnseenStories
             ? [
                 BoxShadow(
-                  color: const Color(0xFF8B5CF6)
+                  color: AppColors.secondary
                       .withValues(alpha: 0.3), // Vista violet shadow
                   blurRadius: 8,
                   spreadRadius: 0,
@@ -540,11 +541,7 @@ class AddStoryButton extends StatelessWidget {
                     width: 28,
                     height: 28,
                     decoration: const BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)], // برند
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
+                      gradient: AppColors.primaryGradient,
                       shape: BoxShape.circle,
                     ),
                     child: const Icon(

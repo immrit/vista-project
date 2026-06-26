@@ -26,6 +26,7 @@ import '../features/chat/data/datasources/chat_local_datasource_isar.dart';
 import '../features/auth/providers/auth_controller.dart' show TokenStorage;
 import '../DB/settings_cache_service.dart';
 import 'device_id_service.dart';
+import 'package:Vista/core/theme/app_theme.dart';
 
 @pragma('vm:entry-point')
 void notificationTapBackground(NotificationResponse details) async {
@@ -829,10 +830,10 @@ class PushNotificationService {
       styleInformation: style,
       largeIcon: largeIcon,
       groupKey: groupKey,
-      color: const Color(0xFF2196F3),
+      color: AppColors.info,
       actions: actions,
       enableLights: true,
-      ledColor: const Color(0xFF2196F3),
+      ledColor: AppColors.info,
       ledOnMs: 1000,
       ledOffMs: 500,
       tag: groupKey,
@@ -994,7 +995,7 @@ class PushNotificationService {
       icon: '@mipmap/ic_launcher',
       // تنظیمات LED
       enableLights: true,
-      ledColor: const Color(0xFFFF9800),
+      ledColor: AppColors.warning,
       ledOnMs: 1000,
       ledOffMs: 500,
     );

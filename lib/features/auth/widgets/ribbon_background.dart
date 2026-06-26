@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:Vista/core/theme/app_theme.dart';
 
 class RibbonBackground extends StatelessWidget {
   const RibbonBackground({super.key});
@@ -11,14 +12,14 @@ class RibbonBackground extends StatelessWidget {
         MediaQuery.of(context).accessibleNavigation;
 
     // Define palette based on theme (Monochrome but with depth)
-    final bgColors = isDark
-        ? [
-            const Color(0xFF000000), // Base
-            const Color(0xFF1A1A1A), // Spot 1
+    final List<Color> bgColors = isDark
+        ? <Color>[
+            Colors.black, // Base
+            AppColors.darkSurface, // Spot 1
             const Color(0xFF121212), // Spot 2
           ]
-        : [
-            const Color(0xFFFFFFFF), // Base
+        : <Color>[
+            Colors.white, // Base
             const Color(0xFFF5F5F7), // Spot 1
             const Color(0xFFEBEBF0), // Spot 2
           ];

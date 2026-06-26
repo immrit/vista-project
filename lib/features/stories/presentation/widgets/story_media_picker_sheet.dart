@@ -16,6 +16,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:photo_manager/photo_manager.dart';
 
 import '../../core/story_enums.dart';
+import 'package:Vista/core/theme/app_theme.dart';
 
 /// نتیجه انتخاب رسانه استوری
 class StoryMediaSelection {
@@ -212,7 +213,7 @@ class _StoryMediaPickerSheetState extends State<StoryMediaPickerSheet>
           height: mediaQuery.size.height * _sheetHeight,
           constraints: BoxConstraints(maxHeight: maxHeight),
           decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+            color: isDark ? AppColors.darkSurface : Colors.white,
             borderRadius: const BorderRadius.vertical(
               top: Radius.circular(20),
             ),

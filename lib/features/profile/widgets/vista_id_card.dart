@@ -5,6 +5,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../../../model/UserModel.dart';
 import '../../../utils/verification_badge_utils.dart';
+import 'package:Vista/core/theme/app_theme.dart';
 
 /// Vista ID Card - Premium 3D Interactive Digital Business Card
 class VistaIDCard extends StatefulWidget {
@@ -138,7 +139,7 @@ class _VistaIDCardState extends State<VistaIDCard>
             style: TextStyle(
               color: Colors.white.withValues(alpha: 0.6),
               fontSize: 12,
-              fontFamily: 'Vazir',
+              fontFamily: 'Vazirmatn',
             ),
           ),
         ],
@@ -287,7 +288,7 @@ class _VistaIDCardState extends State<VistaIDCard>
                                 color: Colors.white,
                                 fontSize: 18,
                                 fontWeight: FontWeight.w600,
-                                fontFamily: 'Vazir',
+                                fontFamily: 'Vazirmatn',
                               ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -382,7 +383,7 @@ class _VistaIDCardState extends State<VistaIDCard>
                       color: Colors.grey[600],
                       fontSize: 12,
                       fontWeight: FontWeight.w500,
-                      fontFamily: 'Vazir',
+                      fontFamily: 'Vazirmatn',
                     ),
                   ),
                   const Spacer(),
@@ -489,7 +490,7 @@ class _VistaIDCardState extends State<VistaIDCard>
       case VerificationType.blackTick:
         return [Colors.grey[600]!, Colors.grey[800]!];
       default:
-        return [const Color(0xFF6366F1), const Color(0xFF8B5CF6)];
+        return [AppColors.primary, AppColors.secondary];
     }
   }
 
@@ -502,7 +503,7 @@ class _VistaIDCardState extends State<VistaIDCard>
       case VerificationType.blackTick:
         return Colors.grey[500]!;
       default:
-        return const Color(0xFF6366F1);
+        return AppColors.primary;
     }
   }
 

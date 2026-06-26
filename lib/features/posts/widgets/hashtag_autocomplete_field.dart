@@ -4,6 +4,7 @@ import '../data/go_posts_repository.dart';
 import '../../profile/data/profile_repository.dart';
 import '../../../model/UserModel.dart';
 import '../../../widgets/verification_badge_icon.dart';
+import 'package:Vista/core/theme/app_theme.dart';
 
 /// Combined autocomplete field for `#hashtags` **and** `@mentions`
 /// (Instagram / X / Threads style).
@@ -307,7 +308,7 @@ class _HashtagAutocompleteFieldState extends State<HashtagAutocompleteField> {
             elevation: 8,
             borderRadius: BorderRadius.circular(14),
             color: Theme.of(context).brightness == Brightness.dark
-                ? const Color(0xFF2A2A2A)
+                ? AppColors.darkSurface
                 : Colors.white,
             child: Container(
               constraints: const BoxConstraints(maxHeight: 240),
@@ -379,7 +380,7 @@ class _HashtagAutocompleteFieldState extends State<HashtagAutocompleteField> {
                   height: 36,
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(
-                      colors: [Color(0xFFF58529), Color(0xFFDD2A7B)],
+                      colors: [Color(0xFFF58529), AppColors.accent],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),

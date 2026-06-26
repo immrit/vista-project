@@ -12,6 +12,7 @@ import '../navigation/chat_screen_route.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/chat_providers.dart';
 import '../../../services/share_receiver_service.dart';
+import 'package:Vista/core/theme/app_theme.dart';
 
 /// صفحه پیام جدید - با پشتیبانی از share intent
 class NewMessageScreen extends ConsumerStatefulWidget {
@@ -516,7 +517,7 @@ class _SharedContentBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bgColor = isDark ? const Color(0xFF2C2C2E) : const Color(0xFFF0F0F5);
+    final bgColor = isDark ? AppColors.darkBorder : const Color(0xFFF0F0F5);
     final textColor = isDark ? Colors.white70 : Colors.black87;
 
     String label;
@@ -544,7 +545,7 @@ class _SharedContentBanner extends StatelessWidget {
         color: bgColor,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: const Color(0xFF6C63FF).withValues(alpha: 0.3),
+          color: AppColors.primary.withValues(alpha: 0.3),
           width: 1,
         ),
       ),
@@ -555,7 +556,7 @@ class _SharedContentBanner extends StatelessWidget {
             height: 32,
             decoration: BoxDecoration(
               gradient: const LinearGradient(
-                colors: [Color(0xFF6C63FF), Color(0xFF3B82F6)],
+                colors: [AppColors.primary, AppColors.info],
               ),
               borderRadius: BorderRadius.circular(8),
             ),

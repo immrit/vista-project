@@ -59,7 +59,7 @@ class _TelegramImageEditorState extends State<TelegramImageEditor> {
   static const double _strokeWidth = 5.0;
 
   static const List<Color> _palette = [
-    Color(0xFFFFFFFF),
+    Colors.white,
     Color(0xFFFF453A),
     Color(0xFFFF9F0A),
     Color(0xFFFFD60A),
@@ -68,7 +68,7 @@ class _TelegramImageEditorState extends State<TelegramImageEditor> {
     Color(0xFF0A84FF),
     Color(0xFFBF5AF2),
     Color(0xFFFF375F),
-    Color(0xFF000000),
+    Colors.black,
   ];
 
   // Crop

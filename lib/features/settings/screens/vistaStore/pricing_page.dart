@@ -12,6 +12,7 @@ import 'package:Vista/services/sensitive_action_guard.dart';
 import 'package:Vista/services/system_ui_bar_service.dart';
 import 'package:Vista/utils/directional_navigation.dart';
 import 'package:Vista/utils/premium_subscription_utils.dart';
+import 'package:Vista/core/theme/app_theme.dart';
 
 /// صفحه خرید اشتراک ویستا پریمیوم از درگاه کافه‌بازار.
 class PricingPage extends ConsumerStatefulWidget {
@@ -24,9 +25,9 @@ class PricingPage extends ConsumerStatefulWidget {
 class _PricingPageState extends ConsumerState<PricingPage>
     with SingleTickerProviderStateMixin {
   // تم رنگی لاکچری و پریمیوم
-  static const Color _goldStart = Color(0xFFFFD700);
+  static const Color _goldStart = AppColors.warning;
   static const Color _goldEnd = Color(0xFFFDB931);
-  static const Color _darkBg = Color(0xFF0F0F13);
+  static const Color _darkBg = AppColors.darkBackground;
 
   final PaymentService _paymentService = PaymentService();
   bool _isBazaarConnected = false;
@@ -270,7 +271,7 @@ class _PricingPageState extends ConsumerState<PricingPage>
     final busy = _isLoading || _isPurchasing;
 
     return Scaffold(
-      backgroundColor: isDark ? _darkBg : const Color(0xFF14141A),
+      backgroundColor: isDark ? _darkBg : AppColors.darkSurface,
       body: Stack(
         children: [
           // پس‌زمینه انیمیشنی پریمیوم
@@ -748,10 +749,10 @@ class _ActivePremiumBanner extends StatelessWidget {
         color: const Color(0xFF1E1C18),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-            color: const Color(0xFFFFD700).withValues(alpha: 0.3), width: 1.5),
+            color: AppColors.warning.withValues(alpha: 0.3), width: 1.5),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFFFFD700).withValues(alpha: 0.1),
+            color: AppColors.warning.withValues(alpha: 0.1),
             blurRadius: 20,
             spreadRadius: 1,
           )
@@ -763,7 +764,7 @@ class _ActivePremiumBanner extends StatelessWidget {
           Row(
             children: [
               const Icon(Icons.stars_rounded,
-                  color: Color(0xFFFFD700), size: 32),
+                  color: AppColors.warning, size: 32),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
@@ -786,7 +787,7 @@ class _ActivePremiumBanner extends StatelessWidget {
                 minHeight: 8,
                 backgroundColor: Colors.white.withValues(alpha: 0.1),
                 valueColor:
-                    const AlwaysStoppedAnimation<Color>(Color(0xFFFFD700)),
+                    const AlwaysStoppedAnimation<Color>(AppColors.warning),
               ),
             ),
           ],
@@ -828,7 +829,7 @@ class _FeatureTileUI extends StatelessWidget {
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [
-                  const Color(0xFFFFD700).withValues(alpha: 0.2),
+                  AppColors.warning.withValues(alpha: 0.2),
                   const Color(0xFFFDB931).withValues(alpha: 0.05),
                 ],
                 begin: Alignment.topLeft,
@@ -836,11 +837,11 @@ class _FeatureTileUI extends StatelessWidget {
               ),
               borderRadius: BorderRadius.circular(14),
               border: Border.all(
-                  color: const Color(0xFFFFD700).withValues(alpha: 0.3)),
+                  color: AppColors.warning.withValues(alpha: 0.3)),
             ),
             child: Icon(
               feature['icon'] as IconData,
-              color: const Color(0xFFFFD700),
+              color: AppColors.warning,
               size: 24,
             ),
           ),

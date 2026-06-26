@@ -530,6 +530,28 @@ extension _ModernChatInputExt on _ModernChatScreenState {
     );
   }
 
+  /// Creates the conversation for a brand-new chat exactly once, even if several
+  /// sends fire before the first one finishes. Concurrent callers await the same
+  /// future and land in the same conversation instead of minting duplicates.
+  Future<ChatResult<ConversationModel>> _ensureConversationCreated() {
+    final existing = _pendingConvCreation;
+    if (existing != null) return existing;
+
+    final future = _chatRepository.createConversation(
+      widget.args.otherUserId,
+      isSecret: widget.args.isSecret,
+    );
+    _pendingConvCreation = future;
+    // Keep a successful result cached for the screen's lifetime; clear on failure
+    // so a later send can retry the creation.
+    future.then((r) {
+      if (!r.isSuccess) _pendingConvCreation = null;
+    }).catchError((_) {
+      _pendingConvCreation = null;
+    });
+    return future;
+  }
+
   Future<void> _sendMessage() async {
     if (!mounted) return;
 
@@ -585,10 +607,7 @@ extension _ModernChatInputExt on _ModernChatScreenState {
         }
 
         if (wasEmpty && i == 0) {
-          final convResult = await _chatRepository.createConversation(
-            widget.args.otherUserId,
-            isSecret: widget.args.isSecret,
-          );
+          final convResult = await _ensureConversationCreated();
           if (!convResult.isSuccess || convResult.data == null) {
             _showErrorSnackBar(convResult.error ?? 'خطا در ایجاد گفتگو');
             return;
@@ -721,10 +740,7 @@ extension _ModernChatInputExt on _ModernChatScreenState {
     bool wasEmpty = targetConvId.isEmpty;
 
     if (wasEmpty) {
-      final convResult = await _chatRepository.createConversation(
-        widget.args.otherUserId,
-        isSecret: widget.args.isSecret,
-      );
+      final convResult = await _ensureConversationCreated();
       if (!convResult.isSuccess || convResult.data == null) {
         _showErrorSnackBar(convResult.error ?? 'خطا در ایجاد گفتگو');
         return;

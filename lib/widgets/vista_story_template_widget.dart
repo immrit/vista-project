@@ -9,6 +9,7 @@ import '../../utils/avatar_asset_utils.dart';
 import '../../services/vista_story_image_preloader.dart';
 import 'verification_badge_icon.dart';
 import 'vista_story_share_theme.dart';
+import 'package:Vista/core/theme/app_theme.dart';
 
 /// ویجت قالب استوری Vista — طراحی شبیه X / Threads
 class VistaStoryTemplateWidget extends StatelessWidget {
@@ -289,7 +290,7 @@ class VistaStoryTemplateWidget extends StatelessWidget {
                 style: const TextStyle(
                   fontWeight: FontWeight.w800,
                   fontSize: 30,
-                  color: Color(0xFF0F0F0F),
+                  color: AppColors.darkBackground,
                   height: 1.1,
                 ),
                 overflow: TextOverflow.ellipsis,
@@ -409,7 +410,7 @@ class VistaStoryTemplateWidget extends StatelessWidget {
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
-                  colors: [Color(0xFF1A1A1A), Color(0xFF3A3A3A)],
+                  colors: [AppColors.darkSurface, AppColors.darkSurfaceVariant],
                 ),
               ),
               child: const Icon(
@@ -728,7 +729,7 @@ class VistaStoryBackgroundPainter extends CustomPainter {
       canvas,
       size,
       center: Offset(size.width * 0.82, size.height * 0.72),
-      color: const Color(0xFF8B5CF6).withValues(alpha: 0.05),
+      color: AppColors.secondary.withValues(alpha: 0.05),
       radiusFactor: 0.32,
     );
 

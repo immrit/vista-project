@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:Vista/core/theme/app_theme.dart';
 
 /// تم‌های قابل انتخاب برای قالب اشتراک‌گذاری استوری
 enum VistaStoryShareTheme {
@@ -17,14 +18,14 @@ extension VistaStoryShareThemeX on VistaStoryShareTheme {
   List<Color> get previewGradient => switch (this) {
         VistaStoryShareTheme.dark => const [
             Color(0xFF050505),
-            Color(0xFF1A1A1A),
+            AppColors.darkSurface,
           ],
         VistaStoryShareTheme.light => const [
             Color(0xFFF7F2EC),
             Color(0xFFE4DDD6),
           ],
         VistaStoryShareTheme.vista => const [
-            Color(0xFFFFFFFF),
+            Colors.white,
             Color(0xFFF0F0F0),
           ],
       };

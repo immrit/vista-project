@@ -4,6 +4,7 @@
 //
 
 import 'package:flutter/material.dart';
+import 'package:Vista/core/theme/app_theme.dart';
 
 /// نتیجه دیالوگ حذف
 class DeleteMessageResult {
@@ -61,7 +62,7 @@ class _DeleteMessageDialogState extends State<DeleteMessageDialog> {
         widget.messageCount == 1 ? 'این پیام' : '${widget.messageCount} پیام';
 
     return AlertDialog(
-      backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+      backgroundColor: isDark ? AppColors.darkSurface : Colors.white,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
       ),

@@ -40,10 +40,31 @@ class LiquidGlassInputShell extends StatelessWidget {
             child: Container(
               decoration: BoxDecoration(
                 color: background.withValues(alpha: 0.95),
-                border: Border.all(
-                  color: borderColor.withValues(alpha: 0.35),
-                  width: 0.5,
-                ),
+                // Dark mode: directional border — brighter top edge gives depth,
+                // faint sides/bottom avoid the harsh white outline.
+                border: isDark
+                    ? Border(
+                        top: BorderSide(
+                          color: Colors.white.withValues(alpha: 0.14),
+                          width: 0.5,
+                        ),
+                        left: BorderSide(
+                          color: Colors.white.withValues(alpha: 0.07),
+                          width: 0.5,
+                        ),
+                        right: BorderSide(
+                          color: Colors.white.withValues(alpha: 0.07),
+                          width: 0.5,
+                        ),
+                        bottom: BorderSide(
+                          color: Colors.white.withValues(alpha: 0.04),
+                          width: 0.5,
+                        ),
+                      )
+                    : Border.all(
+                        color: borderColor.withValues(alpha: 0.35),
+                        width: 0.5,
+                      ),
               ),
             ),
           ),

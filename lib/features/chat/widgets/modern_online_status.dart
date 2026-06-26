@@ -17,12 +17,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../../services/user_presence_service.dart';
 import '../../../provider/presence_provider.dart';
+import 'package:Vista/core/theme/app_theme.dart';
 
 /// رنگ‌های وضعیت
 class OnlineStatusColors {
-  static const Color online = Color(0xFF4CAF50); // سبز ویستا
-  static const Color typing = Color(0xFF2196F3); // آبی
-  static const Color recording = Color(0xFFE91E63); // صورتی
+  static const Color online = AppColors.success; // سبز ویستا
+  static const Color typing = AppColors.info; // آبی
+  static const Color recording = AppColors.accent; // صورتی
   static const Color offline = Color(0xFF9E9E9E); // خاکستری
   static const Color away = Color(0xFFFFC107); // زرد
 }

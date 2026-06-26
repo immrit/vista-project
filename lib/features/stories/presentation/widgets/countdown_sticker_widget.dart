@@ -115,7 +115,7 @@ class _CountdownStickerWidgetState extends State<CountdownStickerWidget> {
             style: const TextStyle(
               color: Colors.black,
               fontWeight: FontWeight.bold,
-              fontFamily: 'Vazir',
+              fontFamily: 'Vazirmatn',
             ),
           ),
           const SizedBox(height: 8),
@@ -145,7 +145,7 @@ class _CountdownStickerWidgetState extends State<CountdownStickerWidget> {
                 style: const TextStyle(
                   color: Colors.white,
                   fontWeight: FontWeight.bold,
-                  fontFamily: 'Vazir',
+                  fontFamily: 'Vazirmatn',
                 ),
               ),
               const SizedBox(height: 8),
@@ -184,7 +184,7 @@ class _CountdownStickerWidgetState extends State<CountdownStickerWidget> {
             style: const TextStyle(
                 color: Colors.white,
                 fontWeight: FontWeight.bold,
-                fontFamily: 'Vazir',
+                fontFamily: 'Vazirmatn',
                 fontSize: 16),
           ),
           const SizedBox(height: 10),
@@ -244,7 +244,7 @@ class _CountdownStickerWidgetState extends State<CountdownStickerWidget> {
           style: TextStyle(
             color: textColor.withValues(alpha: 0.7),
             fontSize: 9,
-            fontFamily: 'Vazir',
+            fontFamily: 'Vazirmatn',
           ),
         ),
       ],

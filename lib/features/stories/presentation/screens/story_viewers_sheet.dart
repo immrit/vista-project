@@ -12,6 +12,7 @@ import '../../domain/repositories/i_story_repository.dart';
 import '../providers/story_providers.dart';
 import '../../../../utils/user_friendly_error_utils.dart';
 import '../../../../widgets/verification_badge_icon.dart';
+import 'package:Vista/core/theme/app_theme.dart';
 
 const String _defaultAvatarAsset = 'lib/utils/images/default-avatar.jpg';
 
@@ -36,7 +37,7 @@ class StoryViewersSheet extends ConsumerWidget {
     final pollElements = _extractPollElements(story);
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     final textColor = isDarkMode ? Colors.white : Colors.black;
-    final backgroundColor = isDarkMode ? const Color(0xFF1E1E1E) : Colors.white;
+    final backgroundColor = isDarkMode ? AppColors.darkSurface : Colors.white;
 
     return DefaultTabController(
       length: 3,
@@ -75,7 +76,7 @@ class StoryViewersSheet extends ConsumerWidget {
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
                           color: textColor,
-                          fontFamily: 'Vazir',
+                          fontFamily: 'Vazirmatn',
                         ),
                       ),
                       const Spacer(),
@@ -91,7 +92,7 @@ class StoryViewersSheet extends ConsumerWidget {
                   labelColor: textColor,
                   unselectedLabelColor: textColor.withValues(alpha: 0.6),
                   labelStyle: const TextStyle(
-                    fontFamily: 'Vazir',
+                    fontFamily: 'Vazirmatn',
                     fontWeight: FontWeight.bold,
                     fontSize: 13,
                   ),
@@ -207,7 +208,7 @@ class StoryViewersSheet extends ConsumerWidget {
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
                             color: textColor,
-                            fontFamily: 'Vazir',
+                            fontFamily: 'Vazirmatn',
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -229,7 +230,7 @@ class StoryViewersSheet extends ConsumerWidget {
                     style: TextStyle(
                       color: textColor.withValues(alpha: 0.6),
                       fontSize: 12,
-                      fontFamily: 'Vazir',
+                      fontFamily: 'Vazirmatn',
                     ),
                   ),
                   trailing: view.reaction != null
@@ -273,7 +274,7 @@ class StoryViewersSheet extends ConsumerWidget {
             child: const ListTile(
               title: Text(
                 'نظرسنجی قدیمی (بدون elementId)',
-                style: TextStyle(color: Colors.white70, fontFamily: 'Vazir'),
+                style: TextStyle(color: Colors.white70, fontFamily: 'Vazirmatn'),
               ),
             ),
           );
@@ -296,7 +297,7 @@ class StoryViewersSheet extends ConsumerWidget {
               padding: const EdgeInsets.all(12),
               child: Text(
                 'خطا در دریافت نتایج نظرسنجی',
-                style: TextStyle(color: textColor, fontFamily: 'Vazir'),
+                style: TextStyle(color: textColor, fontFamily: 'Vazirmatn'),
               ),
             ),
           ),
@@ -313,7 +314,7 @@ class StoryViewersSheet extends ConsumerWidget {
                       color: textColor,
                       fontWeight: FontWeight.bold,
                       fontSize: 15,
-                      fontFamily: 'Vazir',
+                      fontFamily: 'Vazirmatn',
                     ),
                   ),
                   const SizedBox(height: 6),
@@ -322,7 +323,7 @@ class StoryViewersSheet extends ConsumerWidget {
                     style: TextStyle(
                       color: textColor.withValues(alpha: 0.65),
                       fontSize: 12,
-                      fontFamily: 'Vazir',
+                      fontFamily: 'Vazirmatn',
                     ),
                   ),
                   const SizedBox(height: 10),
@@ -340,7 +341,7 @@ class StoryViewersSheet extends ConsumerWidget {
                                   option.text,
                                   style: TextStyle(
                                     color: textColor,
-                                    fontFamily: 'Vazir',
+                                    fontFamily: 'Vazirmatn',
                                   ),
                                 ),
                               ),
@@ -419,7 +420,7 @@ class StoryViewersSheet extends ConsumerWidget {
                   style: TextStyle(
                     color: textColor,
                     fontWeight: FontWeight.bold,
-                    fontFamily: 'Vazir',
+                    fontFamily: 'Vazirmatn',
                   ),
                 ),
                 subtitle: Column(
@@ -429,7 +430,7 @@ class StoryViewersSheet extends ConsumerWidget {
                     const SizedBox(height: 4),
                     Text(
                       answer.answer,
-                      style: TextStyle(color: textColor, fontFamily: 'Vazir'),
+                      style: TextStyle(color: textColor, fontFamily: 'Vazirmatn'),
                     ),
                     const SizedBox(height: 4),
                     Text(
@@ -437,7 +438,7 @@ class StoryViewersSheet extends ConsumerWidget {
                       style: TextStyle(
                         color: textColor.withValues(alpha: 0.65),
                         fontSize: 11,
-                        fontFamily: 'Vazir',
+                        fontFamily: 'Vazirmatn',
                       ),
                     ),
                   ],
@@ -547,7 +548,7 @@ class StoryViewersSheet extends ConsumerWidget {
           const SizedBox(height: 12),
           Text(
             'خطا در بارگذاری',
-            style: TextStyle(color: textColor, fontFamily: 'Vazir'),
+            style: TextStyle(color: textColor, fontFamily: 'Vazirmatn'),
           ),
           TextButton(
             onPressed: onRetry,
@@ -574,7 +575,7 @@ class StoryViewersSheet extends ConsumerWidget {
             style: TextStyle(
               fontSize: 14,
               color: textColor.withValues(alpha: 0.75),
-              fontFamily: 'Vazir',
+              fontFamily: 'Vazirmatn',
             ),
             textAlign: TextAlign.center,
           ),

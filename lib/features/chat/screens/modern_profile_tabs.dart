@@ -164,7 +164,7 @@ extension ModernProfileTabsExt on _VistaChatProfileScreenState {
 
   Widget _buildSharedPostGridTile(_SharedPostGridItemData post, bool isDark) {
     return Material(
-      color: isDark ? const Color(0xFF2A3646) : Colors.white,
+      color: isDark ? AppColors.darkSurfaceVariant : Colors.white,
       borderRadius: BorderRadius.circular(14),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -278,7 +278,7 @@ extension ModernProfileTabsExt on _VistaChatProfileScreenState {
   Widget _buildSharedPostGridPreview(
       _SharedPostGridItemData post, bool isDark) {
     final fallbackColor =
-        isDark ? const Color(0xFF334155) : Colors.blueGrey[50]!;
+        isDark ? AppColors.darkSurfaceVariant : Colors.blueGrey[50]!;
     final iconColor = isDark ? Colors.white70 : const Color(0xFF546E7A);
 
     if (post.kind == _SharedPostKind.image ||
@@ -330,7 +330,7 @@ extension ModernProfileTabsExt on _VistaChatProfileScreenState {
           ]
         : <Color>[
             const Color(0xFFFB7185),
-            const Color(0xFFF59E0B),
+            AppColors.warning,
           ];
 
     return Container(

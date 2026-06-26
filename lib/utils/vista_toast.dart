@@ -154,7 +154,7 @@ class _VistaToastWidgetState extends State<_VistaToastWidget>
                           color: widget.textColor,
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
-                          fontFamily: 'Vazir',
+                          fontFamily: 'Vazirmatn',
                         ),
                       ),
                     ),

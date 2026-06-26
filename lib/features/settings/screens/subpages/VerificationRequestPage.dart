@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../profile/data/profile_repository.dart';
+import 'package:Vista/core/theme/app_theme.dart';
 
 class VerificationRequestPage extends ConsumerStatefulWidget {
   const VerificationRequestPage({super.key});
@@ -62,7 +63,7 @@ class _VerificationRequestPageState
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: isDark ? Colors.black : const Color(0xFFF5F5F5),
+      backgroundColor: isDark ? Colors.black : AppColors.lightSurfaceVariant,
       appBar: AppBar(
         title: const Text('درخواست تیک آبی'),
         centerTitle: true,
@@ -80,7 +81,7 @@ class _VerificationRequestPageState
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: isDark ? const Color(0xFF1C1C1E) : Colors.white,
+                  color: isDark ? AppColors.darkSurfaceVariant : Colors.white,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Column(
@@ -88,7 +89,7 @@ class _VerificationRequestPageState
                     const Icon(
                       Icons.verified,
                       size: 64,
-                      color: Color(0xFF8774E1),
+                      color: AppColors.primaryDark,
                     ),
                     const SizedBox(height: 16),
                     Text(
@@ -113,7 +114,7 @@ class _VerificationRequestPageState
                     color: isDark ? Colors.grey[400] : Colors.grey[600],
                   ),
                   filled: true,
-                  fillColor: isDark ? const Color(0xFF1C1C1E) : Colors.white,
+                  fillColor: isDark ? AppColors.darkSurfaceVariant : Colors.white,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                     borderSide: BorderSide.none,
@@ -136,7 +137,7 @@ class _VerificationRequestPageState
                     color: isDark ? Colors.grey[400] : Colors.grey[600],
                   ),
                   filled: true,
-                  fillColor: isDark ? const Color(0xFF1C1C1E) : Colors.white,
+                  fillColor: isDark ? AppColors.darkSurfaceVariant : Colors.white,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                     borderSide: BorderSide.none,
@@ -160,7 +161,7 @@ class _VerificationRequestPageState
                     color: isDark ? Colors.grey[400] : Colors.grey[600],
                   ),
                   filled: true,
-                  fillColor: isDark ? const Color(0xFF1C1C1E) : Colors.white,
+                  fillColor: isDark ? AppColors.darkSurfaceVariant : Colors.white,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                     borderSide: BorderSide.none,
@@ -171,7 +172,7 @@ class _VerificationRequestPageState
               ElevatedButton(
                 onPressed: _isLoading ? null : _submit,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF8774E1),
+                  backgroundColor: AppColors.primaryDark,
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(

@@ -70,7 +70,7 @@ class PollStickerWidget extends StatelessWidget {
               fontSize: 20,
               fontWeight: FontWeight.bold,
               color: Colors.black,
-              fontFamily: 'Vazir',
+              fontFamily: 'Vazirmatn',
             ),
             textAlign: TextAlign.center,
           ),
@@ -109,7 +109,7 @@ class PollStickerWidget extends StatelessWidget {
               fontSize: 20,
               fontWeight: FontWeight.bold,
               color: Colors.white,
-              fontFamily: 'Vazir',
+              fontFamily: 'Vazirmatn',
             ),
             textAlign: TextAlign.center,
           ),
@@ -140,7 +140,7 @@ class PollStickerWidget extends StatelessWidget {
               fontSize: 18,
               fontWeight: FontWeight.w900,
               color: Colors.black87,
-              fontFamily: 'Vazir',
+              fontFamily: 'Vazirmatn',
             ),
             textAlign: TextAlign.center,
           ),
@@ -150,12 +150,12 @@ class PollStickerWidget extends StatelessWidget {
               Expanded(
                   child: Center(
                       child: Text(option1,
-                          style: const TextStyle(fontFamily: 'Vazir')))),
+                          style: const TextStyle(fontFamily: 'Vazirmatn')))),
               Container(width: 1, height: 20, color: Colors.grey),
               Expanded(
                   child: Center(
                       child: Text(option2,
-                          style: const TextStyle(fontFamily: 'Vazir')))),
+                          style: const TextStyle(fontFamily: 'Vazirmatn')))),
             ],
           )
         ],
@@ -177,7 +177,7 @@ class PollStickerWidget extends StatelessWidget {
           color: textColor,
           fontSize: 16,
           fontWeight: FontWeight.w500,
-          fontFamily: 'Vazir',
+          fontFamily: 'Vazirmatn',
         ),
         textAlign: TextAlign.center,
       ),

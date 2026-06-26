@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../domain/entities/story_editor_models.dart';
+import 'package:Vista/core/theme/app_theme.dart';
 
 /// Premium Questions Input Sheet (Social-style Q&A)
 class QuestionsInputSheet extends StatefulWidget {
@@ -54,7 +55,7 @@ class _QuestionsInputSheetState extends State<QuestionsInputSheet> {
                   color: Colors.white,
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
-                  fontFamily: 'Vazir',
+                  fontFamily: 'Vazirmatn',
                 ),
               ),
               const Spacer(),
@@ -93,7 +94,7 @@ class _QuestionsInputSheetState extends State<QuestionsInputSheet> {
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(
-                      colors: [Color(0xFFE91E63), Color(0xFF9C27B0)],
+                      colors: [AppColors.accent, AppColors.secondary],
                     ),
                     borderRadius: BorderRadius.circular(8),
                   ),
@@ -164,7 +165,7 @@ class _QuestionsInputSheetState extends State<QuestionsInputSheet> {
                 color: Colors.black87,
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
-                fontFamily: 'Vazir',
+                fontFamily: 'Vazirmatn',
               ),
               textAlign: TextAlign.center,
             ),
@@ -181,7 +182,7 @@ class _QuestionsInputSheetState extends State<QuestionsInputSheet> {
                 style: TextStyle(
                   color: Colors.black54,
                   fontSize: 14,
-                  fontFamily: 'Vazir',
+                  fontFamily: 'Vazirmatn',
                 ),
               ),
             ),
@@ -195,14 +196,14 @@ class _QuestionsInputSheetState extends State<QuestionsInputSheet> {
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-          colors: [Color(0xFFE91E63), Color(0xFF9C27B0)],
+          colors: [AppColors.accent, AppColors.secondary],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFFE91E63).withValues(alpha: 0.4),
+            color: AppColors.accent.withValues(alpha: 0.4),
             blurRadius: 20,
             offset: const Offset(0, 8),
           ),
@@ -216,7 +217,7 @@ class _QuestionsInputSheetState extends State<QuestionsInputSheet> {
               color: Colors.white,
               fontSize: 18,
               fontWeight: FontWeight.bold,
-              fontFamily: 'Vazir',
+              fontFamily: 'Vazirmatn',
             ),
             textAlign: TextAlign.center,
           ),
@@ -234,7 +235,7 @@ class _QuestionsInputSheetState extends State<QuestionsInputSheet> {
               style: TextStyle(
                 color: Colors.white.withValues(alpha: 0.6),
                 fontSize: 14,
-                fontFamily: 'Vazir',
+                fontFamily: 'Vazirmatn',
               ),
             ),
           ),
@@ -258,7 +259,7 @@ class _QuestionsInputSheetState extends State<QuestionsInputSheet> {
           style: const TextStyle(
             color: Colors.white,
             fontSize: 12,
-            fontFamily: 'Vazir',
+            fontFamily: 'Vazirmatn',
           ),
         ),
       ),

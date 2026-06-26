@@ -25,6 +25,7 @@ import '../widgets/post_moderation_banner.dart';
 import '../widgets/standard_edit_post_dialog.dart';
 import 'package:Vista/features/posts/navigation/content_routes.dart';
 import 'package:Vista/features/search/screens/searchPage.dart';
+import 'package:Vista/core/theme/app_theme.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SCREEN
@@ -679,7 +680,7 @@ class _SavedPostItem extends ConsumerWidget {
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           elevation: 8,
-          color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+          color: isDark ? AppColors.darkSurface : Colors.white,
           icon: Container(
             padding: const EdgeInsets.all(6),
             decoration: BoxDecoration(

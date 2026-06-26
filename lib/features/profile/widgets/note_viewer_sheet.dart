@@ -6,6 +6,7 @@ import '../../../../model/ProfileModel.dart';
 import '../../../../utils/const.dart';
 import '../data/models/profile_note_model.dart';
 import 'note_input_sheet.dart';
+import 'package:Vista/core/theme/app_theme.dart';
 
 /// باتم‌شیت نمایش متن کامل وضعیت
 class NoteViewerSheet extends ConsumerWidget {
@@ -42,7 +43,7 @@ class NoteViewerSheet extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final backgroundColor = isDark ? const Color(0xFF1C1C1E) : Colors.white;
+    final backgroundColor = isDark ? AppColors.darkSurfaceVariant : Colors.white;
     final textColor = isDark ? Colors.white : Colors.black;
     final subtitleColor = isDark ? Colors.grey[400] : Colors.grey[600];
     final noteTextDirection = _resolveTextDirection(context, note.content);

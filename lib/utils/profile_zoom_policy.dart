@@ -4,6 +4,7 @@ import 'package:photo_view/photo_view.dart';
 
 import 'avatar_asset_utils.dart';
 import '../provider/settings_providers.dart';
+import 'package:Vista/core/theme/app_theme.dart';
 
 /// Central policy for whether a viewer may enlarge another user's profile photo.
 class ProfileZoomPolicy {
@@ -65,7 +66,7 @@ class ProfileZoomPolicy {
     showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: isDark ? const Color(0xFF1A1A1A) : Colors.white,
+        backgroundColor: isDark ? AppColors.darkSurface : Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         icon: Icon(
           Icons.lock_outline,

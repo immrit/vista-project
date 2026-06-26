@@ -10,6 +10,7 @@ import '../../../model/ProfileModel.dart';
 import '../../../services/toast_service.dart';
 import '../../../utils/directional_navigation.dart';
 import '../services/upload_policy_service.dart';
+import 'package:Vista/core/theme/app_theme.dart';
 
 enum DocumentType {
   pdf('PDF', '📄'),
@@ -143,7 +144,7 @@ class _DocumentUploadSheetState extends State<DocumentUploadSheet>
         position: _slideAnimation,
         child: Container(
           decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF1A1A1A) : _lightSheetBackground,
+            color: isDark ? AppColors.darkSurface : _lightSheetBackground,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
           ),
           child: SafeArea(
@@ -240,7 +241,7 @@ class _DocumentUploadSheetState extends State<DocumentUploadSheet>
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF2A2A2A) : _lightSurface,
+          color: isDark ? AppColors.darkSurface : _lightSurface,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: theme.dividerColor.withValues(alpha: 0.35)),
         ),
@@ -307,7 +308,7 @@ class _DocumentUploadSheetState extends State<DocumentUploadSheet>
         decoration: InputDecoration(
           hintText: 'کپشن فایل (اختیاری)...',
           filled: true,
-          fillColor: isDark ? const Color(0xFF2A2A2A) : _lightSurface,
+          fillColor: isDark ? AppColors.darkSurface : _lightSurface,
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
             borderSide: BorderSide.none,

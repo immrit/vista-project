@@ -547,7 +547,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
   void _showOptionsMenu(BuildContext context, bool isDark) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: isDark ? const Color(0xFF1C1C1E) : Colors.white,
+      backgroundColor: isDark ? AppColors.darkSurfaceVariant : Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
@@ -1170,7 +1170,7 @@ class _MemberOrderBadge extends StatelessWidget {
                 : [const Color(0xFFFFF3CD), const Color(0xFFFFE082)],
           ),
           border: isDark ? const Color(0xFFB8860B) : const Color(0xFFD4A017),
-          text: isDark ? const Color(0xFFFFD700) : const Color(0xFF8B6914),
+          text: isDark ? AppColors.warning : const Color(0xFF8B6914),
         );
       case _BadgeTier.early:
         return _BadgeColors(
@@ -1196,8 +1196,8 @@ class _MemberOrderBadge extends StatelessWidget {
         return _BadgeColors(
           gradient: LinearGradient(
             colors: isDark
-                ? [const Color(0xFF1A1A1A), const Color(0xFF252525)]
-                : [const Color(0xFFF5F5F5), const Color(0xFFEEEEEE)],
+                ? [AppColors.darkSurface, const Color(0xFF252525)]
+                : [AppColors.lightSurfaceVariant, const Color(0xFFEEEEEE)],
           ),
           border: isDark ? const Color(0xFF404040) : const Color(0xFFCCCCCC),
           text: isDark ? const Color(0xFF999999) : const Color(0xFF666666),
@@ -1721,9 +1721,9 @@ class _ProfilePageShimmer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final baseColor = isDark ? const Color(0xFF2A2A2A) : Colors.grey.shade300;
+    final baseColor = isDark ? AppColors.darkSurface : Colors.grey.shade300;
     final highlightColor =
-        isDark ? const Color(0xFF3A3A3A) : Colors.grey.shade100;
+        isDark ? AppColors.darkSurfaceVariant : Colors.grey.shade100;
 
     return Shimmer.fromColors(
       baseColor: baseColor,
@@ -1816,9 +1816,9 @@ class _PostsTabShimmer extends StatelessWidget {
     final dark = useInheritedTheme
         ? Theme.of(context).brightness == Brightness.dark
         : isDark;
-    final baseColor = dark ? const Color(0xFF2A2A2A) : Colors.grey.shade300;
+    final baseColor = dark ? AppColors.darkSurface : Colors.grey.shade300;
     final highlightColor =
-        dark ? const Color(0xFF3A3A3A) : Colors.grey.shade100;
+        dark ? AppColors.darkSurfaceVariant : Colors.grey.shade100;
 
     final rows = List.generate(4, (_) => const SizedBox.shrink());
     final child = scrollable
@@ -1890,9 +1890,9 @@ class _ReelsTabShimmer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final baseColor = isDark ? const Color(0xFF2A2A2A) : Colors.grey.shade300;
+    final baseColor = isDark ? AppColors.darkSurface : Colors.grey.shade300;
     final highlightColor =
-        isDark ? const Color(0xFF3A3A3A) : Colors.grey.shade100;
+        isDark ? AppColors.darkSurfaceVariant : Colors.grey.shade100;
 
     return Shimmer.fromColors(
       baseColor: baseColor,
@@ -1924,9 +1924,9 @@ class _MusicTabShimmer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final baseColor = isDark ? const Color(0xFF2A2A2A) : Colors.grey.shade300;
+    final baseColor = isDark ? AppColors.darkSurface : Colors.grey.shade300;
     final highlightColor =
-        isDark ? const Color(0xFF3A3A3A) : Colors.grey.shade100;
+        isDark ? AppColors.darkSurfaceVariant : Colors.grey.shade100;
 
     return Shimmer.fromColors(
       baseColor: baseColor,
@@ -1963,9 +1963,9 @@ class _MediaShimmer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final baseColor = isDark ? const Color(0xFF2A2A2A) : Colors.grey.shade300;
+    final baseColor = isDark ? AppColors.darkSurface : Colors.grey.shade300;
     final highlightColor =
-        isDark ? const Color(0xFF3A3A3A) : Colors.grey.shade100;
+        isDark ? AppColors.darkSurfaceVariant : Colors.grey.shade100;
 
     return Shimmer.fromColors(
       baseColor: baseColor,
@@ -2050,7 +2050,7 @@ class _PostsGridViewState extends ConsumerState<_PostsGridView> {
         separatorBuilder: (context, index) => Divider(
           height: 1,
           color:
-              widget.isDark ? const Color(0xFF303D4F) : const Color(0xFFE4E6E9),
+              widget.isDark ? AppColors.darkBorder : AppColors.lightBorder,
         ),
         itemBuilder: (context, index) {
           if (index == displayPosts.length) {
@@ -2442,7 +2442,7 @@ class _PostListItem extends ConsumerWidget {
             borderRadius: BorderRadius.circular(16),
           ),
           elevation: 8,
-          color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+          color: isDark ? AppColors.darkSurface : Colors.white,
           icon: Padding(
             padding: const EdgeInsets.all(4),
             child: Icon(
@@ -2771,7 +2771,7 @@ class _MusicListView extends StatelessWidget {
       itemCount: posts.length,
       separatorBuilder: (_, __) => Divider(
         height: 1,
-        color: isDark ? const Color(0xFF303D4F) : const Color(0xFFE4E6E9),
+        color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
       ),
       itemBuilder: (context, index) {
         final post = posts[index];

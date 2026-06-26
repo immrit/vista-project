@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:math' as math;
+import 'package:Vista/core/theme/app_theme.dart';
 
 class VistaAboutSlideshow extends StatefulWidget {
   const VistaAboutSlideshow({super.key});
@@ -29,9 +30,9 @@ class _VistaAboutSlideshowState extends State<VistaAboutSlideshow>
       subtitle: 'پلتفرم اجتماعی پیشرفته و امن',
       description: 'چت، اشتراک‌گذاری، استوری، موزیک',
       icon: Icons.rocket_launch,
-      color: const Color(0xFF2196F3),
+      color: AppColors.info,
       gradient: const LinearGradient(
-        colors: [Color(0xFF2196F3), Color(0xFF21CBF3)],
+        colors: [AppColors.info, Color(0xFF21CBF3)],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
       ),
@@ -47,9 +48,9 @@ class _VistaAboutSlideshowState extends State<VistaAboutSlideshow>
       subtitle: 'رمزگذاری End-to-End',
       description: 'حفاظت کامل از اطلاعات شما',
       icon: Icons.security,
-      color: const Color(0xFF4CAF50),
+      color: AppColors.success,
       gradient: const LinearGradient(
-        colors: [Color(0xFF4CAF50), Color(0xFF8BC34A)],
+        colors: [AppColors.success, Color(0xFF8BC34A)],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
       ),
@@ -65,9 +66,9 @@ class _VistaAboutSlideshowState extends State<VistaAboutSlideshow>
       subtitle: 'زیرساخت ابری پیشرفته',
       description: '۹۹.۹٪ زمان کارکرد تضمین شده',
       icon: Icons.cloud,
-      color: const Color(0xFF9C27B0),
+      color: AppColors.secondary,
       gradient: const LinearGradient(
-        colors: [Color(0xFF9C27B0), Color(0xFFE91E63)],
+        colors: [AppColors.secondary, AppColors.accent],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
       ),
@@ -83,9 +84,9 @@ class _VistaAboutSlideshowState extends State<VistaAboutSlideshow>
       subtitle: 'بهینه‌سازی شده برای سرعت',
       description: 'کاهش ۸۵٪ مصرف حافظه',
       icon: Icons.speed,
-      color: const Color(0xFFFF9800),
+      color: AppColors.warning,
       gradient: const LinearGradient(
-        colors: [Color(0xFFFF9800), Color(0xFFFFC107)],
+        colors: [AppColors.warning, Color(0xFFFFC107)],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
       ),
@@ -119,9 +120,9 @@ class _VistaAboutSlideshowState extends State<VistaAboutSlideshow>
       subtitle: 'تایید شده توسط کاربران',
       description: '۱۰۰,۰۰۰+ کاربر فعال',
       icon: Icons.emoji_events,
-      color: const Color(0xFFE91E63),
+      color: AppColors.accent,
       gradient: const LinearGradient(
-        colors: [Color(0xFFE91E63), Color(0xFFF06292)],
+        colors: [AppColors.accent, Color(0xFFF06292)],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
       ),
@@ -233,8 +234,8 @@ class _VistaAboutSlideshowState extends State<VistaAboutSlideshow>
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: isDark
-                ? [const Color(0xFF0D1117), const Color(0xFF161B22)]
-                : [const Color(0xFFF8FAFC), const Color(0xFFE2E8F0)],
+                ? [AppColors.darkBackground, AppColors.darkSurface]
+                : [AppColors.lightBackground, AppColors.lightBorder],
           ),
         ),
         child: SafeArea(

@@ -18,6 +18,7 @@ import 'package:Vista/l10n/generated/app_localizations.dart';
 import 'package:Vista/utils/premium_subscription_utils.dart';
 import '../../../provider/locale_provider.dart';
 import '../../../utils/directional_navigation.dart';
+import 'package:Vista/core/theme/app_theme.dart';
 
 class Settings extends ConsumerWidget {
   const Settings({super.key});
@@ -200,11 +201,11 @@ class Settings extends ConsumerWidget {
               gradient: LinearGradient(
                 colors: isPremium
                     ? [
-                        const Color(0xFF8774E1).withValues(alpha: 0.35),
+                        AppColors.primaryDark.withValues(alpha: 0.35),
                         const Color(0xFF6C5CE7).withValues(alpha: 0.2),
                       ]
                     : [
-                        const Color(0xFF8774E1),
+                        AppColors.primaryDark,
                         const Color(0xFF6C5CE7),
                       ],
                 begin: Alignment.topRight,
@@ -294,7 +295,7 @@ class Settings extends ConsumerWidget {
       margin: const EdgeInsets.symmetric(horizontal: 16),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1C1C1E) : Colors.white,
+        color: isDark ? AppColors.darkSurfaceVariant : Colors.white,
         borderRadius: BorderRadius.circular(14),
       ),
       child: Row(
@@ -360,7 +361,7 @@ class Settings extends ConsumerWidget {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1C1C1E) : Colors.white,
+        color: isDark ? AppColors.darkSurfaceVariant : Colors.white,
         borderRadius: BorderRadius.circular(14),
       ),
       child: Column(
@@ -412,7 +413,7 @@ class Settings extends ConsumerWidget {
   void _showLanguageSelector(BuildContext context, WidgetRef ref, bool isDark) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: isDark ? const Color(0xFF1C1C1E) : Colors.white,
+      backgroundColor: isDark ? AppColors.darkSurfaceVariant : Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),

@@ -8,6 +8,7 @@ import 'package:Vista/core/app_config.dart';
 import 'package:Vista/services/device_id_service.dart';
 import 'package:Vista/utils/const.dart';
 import 'package:Vista/features/auth/providers/auth_controller.dart';
+import 'package:Vista/services/refresh_interceptor.dart';
 
 /// SHA-256 fingerprints (hex, no colons, lowercase) of the backend TLS certificate.
 ///
@@ -81,6 +82,8 @@ Dio createPinnedDioClient({
       );
     }
   }
+
+  dio.interceptors.add(RefreshTokenInterceptor(dio));
 
   // Interceptor for God Mode (Maintenance and Ban)
   dio.interceptors.add(InterceptorsWrapper(

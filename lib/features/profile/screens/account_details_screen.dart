@@ -10,6 +10,7 @@ import '../../../widgets/verification_badge_icon.dart';
 import 'package:shamsi_date/shamsi_date.dart';
 
 import 'package:url_launcher/url_launcher.dart';
+import 'package:Vista/core/theme/app_theme.dart';
 
 class AccountDetailsScreen extends StatefulWidget {
   final ProfileModel profile;
@@ -89,7 +90,7 @@ class _ProfileHeaderCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cardBg = isDark ? const Color(0xFF1C1C1E) : Colors.white;
+    final cardBg = isDark ? AppColors.darkSurfaceVariant : Colors.white;
     final textColor = isDark ? Colors.white : Colors.black;
     final subColor = isDark ? Colors.grey[400]! : Colors.grey[600]!;
 
@@ -166,7 +167,7 @@ class _AccountTypeCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cardBg = isDark ? const Color(0xFF1C1C1E) : Colors.white;
+    final cardBg = isDark ? AppColors.darkSurfaceVariant : Colors.white;
     final resolvedType = resolveVerificationBadgeType(
       isVerified: profile.isVerified,
       verificationType: profile.verificationType,
@@ -291,7 +292,7 @@ class _MembershipCard extends StatelessWidget {
 
     if (items.isEmpty) return const SizedBox.shrink();
 
-    final cardBg = isDark ? const Color(0xFF1C1C1E) : Colors.white;
+    final cardBg = isDark ? AppColors.darkSurfaceVariant : Colors.white;
 
     return Container(
       decoration: BoxDecoration(
@@ -334,7 +335,7 @@ class _MembershipCard extends StatelessWidget {
 
   Color _tierColor(int order, bool isDark) {
     if (order <= 100) {
-      return isDark ? const Color(0xFFFFD700) : const Color(0xFF8B6914);
+      return isDark ? AppColors.warning : const Color(0xFF8B6914);
     }
     if (order <= 1000) {
       return isDark ? const Color(0xFF82BBFF) : const Color(0xFF1A5FBB);
@@ -503,7 +504,7 @@ class _AdditionalAccountDetailsCard extends StatelessWidget {
       ),
     ]);
 
-    final cardBg = isDark ? const Color(0xFF1C1C1E) : Colors.white;
+    final cardBg = isDark ? AppColors.darkSurfaceVariant : Colors.white;
 
     return Container(
       decoration: BoxDecoration(
@@ -598,7 +599,7 @@ class _StatsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cardBg = isDark ? const Color(0xFF1C1C1E) : Colors.white;
+    final cardBg = isDark ? AppColors.darkSurfaceVariant : Colors.white;
     final textColor = isDark ? Colors.white : Colors.black;
     final subColor = isDark ? Colors.grey[400]! : Colors.grey[600]!;
     final dividerColor = isDark ? Colors.grey[800]! : Colors.grey[200]!;
@@ -697,7 +698,7 @@ class _BioCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cardBg = isDark ? const Color(0xFF1C1C1E) : Colors.white;
+    final cardBg = isDark ? AppColors.darkSurfaceVariant : Colors.white;
     final textColor = isDark ? Colors.white : Colors.black;
     final firstChar =
         profile.bio!.trim().isNotEmpty ? profile.bio!.trim()[0] : '';
@@ -926,7 +927,7 @@ class _AccountTypeInfo {
           description:
               'این کاربر اشتراک پریمیوم ویستا را دارد و از امکانات ویژه‌ای نظیر آمار پیشرفته، محتوای انحصاری و دسترسی اولیه به ویژگی‌های جدید بهره‌مند می‌شود.',
           icon: Icons.star_rounded,
-          accentColor: Color(0xFFFFD700),
+          accentColor: AppColors.warning,
         );
 
       case ResolvedVerificationBadgeType.blackTick:

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../provider/provider.dart';
+import 'package:Vista/core/theme/app_theme.dart';
 
 Future<bool> showOtpDialog(
     BuildContext context, WidgetRef ref, String phoneNumber) async {
@@ -43,7 +44,7 @@ Future<bool> showOtpDialog(
                 title: Column(
                   children: [
                     const Icon(Icons.sms_outlined,
-                        size: 48, color: Color(0xFF4A80F0)),
+                        size: 48, color: AppColors.primary),
                     const SizedBox(height: 16),
                     Text(
                       'تأیید شماره تلفن',
@@ -73,7 +74,7 @@ Future<bool> showOtpDialog(
                         border: Border.all(
                           color: error != null
                               ? Colors.red
-                              : const Color(0xFF4A80F0).withValues(alpha: 0.3),
+                              : AppColors.primary.withValues(alpha: 0.3),
                           width: 2,
                         ),
                       ),
@@ -107,7 +108,7 @@ Future<bool> showOtpDialog(
                       Text(
                         'Dev OTP: $debugCode',
                         style: const TextStyle(
-                          color: Color(0xFF4A80F0),
+                          color: AppColors.primary,
                           fontWeight: FontWeight.w600,
                           fontSize: 12,
                         ),
@@ -151,7 +152,7 @@ Future<bool> showOtpDialog(
                           }
                         },
                         child: const Text('ارسال مجدد کد',
-                            style: TextStyle(color: Color(0xFF4A80F0))),
+                            style: TextStyle(color: AppColors.primary)),
                       ),
                   ],
                 ),
@@ -199,7 +200,7 @@ Future<bool> showOtpDialog(
                             }
                           },
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF4A80F0),
+                      backgroundColor: AppColors.primary,
                       foregroundColor: Colors.white,
                       shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12)),

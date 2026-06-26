@@ -76,7 +76,7 @@ class MentionStickerWidget extends StatelessWidget {
           color: Colors.white,
           fontWeight: FontWeight.bold,
           fontSize: 20,
-          fontFamily: 'Vazir',
+          fontFamily: 'Vazirmatn',
         ),
       ),
     );
@@ -105,7 +105,7 @@ class MentionStickerWidget extends StatelessWidget {
               : const Color(0xFFE1306C), // Blue for tags, Pink for mention
           fontWeight: FontWeight.bold,
           fontSize: 20,
-          fontFamily: 'Vazir',
+          fontFamily: 'Vazirmatn',
         ),
       ),
     );
@@ -125,7 +125,7 @@ class MentionStickerWidget extends StatelessWidget {
           color: Colors.white,
           fontWeight: FontWeight.w600,
           fontSize: 20,
-          fontFamily: 'Vazir',
+          fontFamily: 'Vazirmatn',
         ),
       ),
     );

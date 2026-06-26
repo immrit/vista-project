@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../utils/directional_navigation.dart';
+import 'package:Vista/core/theme/app_theme.dart';
 
 /// باتم‌شیت انتخاب نوع محتوا (استوری یا وضعیت)
 class ContentTypePickerSheet extends StatelessWidget {
@@ -35,7 +36,7 @@ class ContentTypePickerSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final backgroundColor = isDark ? const Color(0xFF1C1C1E) : Colors.white;
+    final backgroundColor = isDark ? AppColors.darkSurfaceVariant : Colors.white;
     final textColor = isDark ? Colors.white : Colors.black;
     final subtitleColor = isDark ? Colors.grey[400] : Colors.grey[600];
 

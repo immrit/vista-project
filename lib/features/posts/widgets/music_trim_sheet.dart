@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:Vista/core/theme/app_theme.dart';
 
 // ─── Public result ────────────────────────────────────────────────────────────
 
@@ -267,7 +268,7 @@ class _MusicTrimSheetState extends State<_MusicTrimSheet>
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 56),
                 child: CircularProgressIndicator(
-                  color: Color(0xFF8E5CF7),
+                  color: AppColors.secondary,
                   strokeWidth: 2,
                 ),
               )
@@ -319,7 +320,7 @@ class _MusicTrimSheetState extends State<_MusicTrimSheet>
               decoration: const BoxDecoration(
                 shape: BoxShape.circle,
                 gradient: LinearGradient(
-                  colors: [Color(0xFF8E5CF7), Color(0xFFDD2A7B)],
+                  colors: [AppColors.secondary, AppColors.accent],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
@@ -398,7 +399,7 @@ class _MusicTrimSheetState extends State<_MusicTrimSheet>
                     bracketStartFrac: _startFrac,
                     bracketEndFrac: endFrac,
                     selectedColor:
-                        const Color(0xFF8E5CF7).withValues(alpha: 0.80),
+                        AppColors.secondary.withValues(alpha: 0.80),
                     dimColor: Colors.white.withValues(alpha: 0.12),
                   ),
                 ),
@@ -412,7 +413,7 @@ class _MusicTrimSheetState extends State<_MusicTrimSheet>
                   child: DecoratedBox(
                     decoration: BoxDecoration(
                       border: Border.all(
-                        color: const Color(0xFF8E5CF7).withValues(alpha: 0.75),
+                        color: AppColors.secondary.withValues(alpha: 0.75),
                         width: 2,
                       ),
                       borderRadius: BorderRadius.circular(5),
@@ -477,7 +478,7 @@ class _MusicTrimSheetState extends State<_MusicTrimSheet>
           Text(
             _fmt(_trimStart),
             style: const TextStyle(
-              color: Color(0xFF8E5CF7),
+              color: AppColors.secondary,
               fontSize: 13,
               fontWeight: FontWeight.w600,
             ),
@@ -492,7 +493,7 @@ class _MusicTrimSheetState extends State<_MusicTrimSheet>
           Text(
             _fmt(_trimEnd),
             style: const TextStyle(
-              color: Color(0xFF8E5CF7),
+              color: AppColors.secondary,
               fontSize: 13,
               fontWeight: FontWeight.w600,
             ),
@@ -515,14 +516,14 @@ class _MusicTrimSheetState extends State<_MusicTrimSheet>
             height: 52,
             decoration: BoxDecoration(
               gradient: const LinearGradient(
-                colors: [Color(0xFF8E5CF7), Color(0xFFDD2A7B)],
+                colors: [AppColors.secondary, AppColors.accent],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
               shape: BoxShape.circle,
               boxShadow: [
                 BoxShadow(
-                  color: const Color(0xFF8E5CF7).withValues(alpha: 0.38),
+                  color: AppColors.secondary.withValues(alpha: 0.38),
                   blurRadius: 16,
                   offset: const Offset(0, 5),
                 ),
@@ -592,7 +593,7 @@ class _MusicTrimSheetState extends State<_MusicTrimSheet>
                   icon: Icons.library_music_rounded,
                   label: 'حباب موزیک',
                   selected: !_backgroundMode,
-                  color: const Color(0xFF8E5CF7),
+                  color: AppColors.secondary,
                   onTap: () => setState(() => _backgroundMode = false),
                 ),
               ),
@@ -602,7 +603,7 @@ class _MusicTrimSheetState extends State<_MusicTrimSheet>
                   icon: Icons.image_rounded,
                   label: 'پس‌زمینه',
                   selected: _backgroundMode,
-                  color: const Color(0xFFDD2A7B),
+                  color: AppColors.accent,
                   onTap: () => setState(() => _backgroundMode = true),
                 ),
               ),
@@ -622,14 +623,14 @@ class _MusicTrimSheetState extends State<_MusicTrimSheet>
         child: DecoratedBox(
           decoration: BoxDecoration(
             gradient: const LinearGradient(
-              colors: [Color(0xFF8E5CF7), Color(0xFFDD2A7B)],
+              colors: [AppColors.secondary, AppColors.accent],
               begin: Alignment.centerLeft,
               end: Alignment.centerRight,
             ),
             borderRadius: BorderRadius.circular(16),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFF8E5CF7).withValues(alpha: 0.30),
+                color: AppColors.secondary.withValues(alpha: 0.30),
                 blurRadius: 14,
                 offset: const Offset(0, 4),
               ),

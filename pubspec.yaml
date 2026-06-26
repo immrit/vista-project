@@ -181,9 +181,6 @@ flutter:
           weight: 800
         - asset: lib/utils/fonts/VazirmatnBlack.ttf
           weight: 900
-    - family: Vazir
-      fonts:
-        - asset: lib/utils/fonts/Vazir.ttf
     - family: Bauhaus
       fonts:
         - asset: lib/utils/fonts/BauhausBold.ttf

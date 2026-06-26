@@ -19,6 +19,7 @@ import '../../../utils/compat_extensions.dart';
 import '../../emoji/domain/emoji_render_policy.dart';
 import '../../emoji/widgets/modern_emoji_text.dart';
 import '../models/message_reaction.dart' as reaction_models;
+import 'package:Vista/core/theme/app_theme.dart';
 
 /// صفحه اطلاعات پیام
 class MessageInfoScreen extends StatelessWidget {
@@ -39,7 +40,7 @@ class MessageInfoScreen extends StatelessWidget {
     final isDark = theme.brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF0F0F0F) : Colors.grey.shade50,
+      backgroundColor: isDark ? AppColors.darkBackground : Colors.grey.shade50,
       appBar: AppBar(
         title: const Text('اطلاعات پیام'),
         elevation: 0,
@@ -70,7 +71,7 @@ class MessageInfoScreen extends StatelessWidget {
       margin: const EdgeInsets.all(16),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1A1A1A) : Colors.white,
+        color: isDark ? AppColors.darkSurface : Colors.white,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
@@ -132,7 +133,7 @@ class MessageInfoScreen extends StatelessWidget {
               style: TextStyle(
                 fontSize: 15,
                 color: theme.textTheme.bodyLarge?.color,
-                fontFamily: 'Vazir',
+                fontFamily: 'Vazirmatn',
                 fontFamilyFallback: const [
                   'Apple Color Emoji',
                   'Segoe UI Emoji',
@@ -151,7 +152,7 @@ class MessageInfoScreen extends StatelessWidget {
       margin: const EdgeInsets.symmetric(horizontal: 16),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1A1A1A) : Colors.white,
+        color: isDark ? AppColors.darkSurface : Colors.white,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
@@ -303,7 +304,7 @@ class MessageInfoScreen extends StatelessWidget {
       margin: const EdgeInsets.symmetric(horizontal: 16),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1A1A1A) : Colors.white,
+        color: isDark ? AppColors.darkSurface : Colors.white,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(

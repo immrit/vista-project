@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'dart:math' as math;
 import '../../../services/onboarding_service.dart';
+import 'package:Vista/core/theme/app_theme.dart';
 
 class Onboarding extends StatefulWidget {
   const Onboarding({super.key});
@@ -48,7 +49,7 @@ class _OnboardingState extends State<Onboarding> with TickerProviderStateMixin {
       subtitle: 'هر آنچه می‌خواهید به اشتراک بگذارید',
       description:
           'تصاویر، ویدیوها، موزیک و متن را با دوستان خود به اشتراک بگذارید',
-      primaryColor: const Color(0xFF4CAF50),
+      primaryColor: AppColors.success,
       secondaryColor: const Color(0xFF8BC34A),
       features: [
         'آپلود تصاویر و ویدیو',
@@ -62,8 +63,8 @@ class _OnboardingState extends State<Onboarding> with TickerProviderStateMixin {
       title: 'استوری و موزیک',
       subtitle: 'محتوای زنده و موزیک',
       description: 'استوری‌های 24 ساعته و پخش‌کننده موزیک پیشرفته',
-      primaryColor: const Color(0xFF9C27B0),
-      secondaryColor: const Color(0xFFE91E63),
+      primaryColor: AppColors.secondary,
+      secondaryColor: AppColors.accent,
       features: [
         'استوری‌های تعاملی',
         'پخش‌کننده موزیک',
@@ -77,7 +78,7 @@ class _OnboardingState extends State<Onboarding> with TickerProviderStateMixin {
       subtitle: 'حفاظت کامل از اطلاعات شما',
       description: 'حساب‌های خصوصی، رمزگذاری پیشرفته و کنترل حریم خصوصی',
       primaryColor: const Color(0xFFFF5722),
-      secondaryColor: const Color(0xFFFF9800),
+      secondaryColor: AppColors.warning,
       features: [
         'حساب‌های خصوصی',
         'رمزگذاری End-to-End',
@@ -91,7 +92,7 @@ class _OnboardingState extends State<Onboarding> with TickerProviderStateMixin {
       subtitle: 'سرعت و کیفیت در اولویت',
       description: 'کش هوشمند، همگام‌سازی لحظه‌ای و عملکرد بهینه',
       primaryColor: const Color(0xFF3F51B5),
-      secondaryColor: const Color(0xFF2196F3),
+      secondaryColor: AppColors.info,
       features: [
         'کش آفلاین',
         'همگام‌سازی هوشمند',
@@ -105,7 +106,7 @@ class _OnboardingState extends State<Onboarding> with TickerProviderStateMixin {
       subtitle: 'به جامعه ویستا بپیوندید',
       description:
           'همین حالا ثبت نام کنید و از تمام قابلیت‌های شبکه اجتماعی ویستا لذت ببرید',
-      primaryColor: const Color(0xFFFF9800),
+      primaryColor: AppColors.warning,
       secondaryColor: const Color(0xFFFFC107),
       features: [
         'ثبت نام رایگان',

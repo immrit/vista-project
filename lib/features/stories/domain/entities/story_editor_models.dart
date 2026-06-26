@@ -144,7 +144,7 @@ class TextStoryItem extends StoryItem {
     this.color = Colors.white,
     this.backgroundColor,
     this.fontSize = 24.0,
-    this.fontFamily = 'Vazir',
+    this.fontFamily = 'Vazirmatn',
     this.textAlign = TextAlign.center,
     this.styleIndex = 0,
     this.animationType = TextAnimationType.none, // Default
@@ -219,7 +219,7 @@ class TextStoryItem extends StoryItem {
           ? Color(json['background_color'] as int)
           : null,
       fontSize: (json['font_size'] as num?)?.toDouble() ?? 24.0,
-      fontFamily: json['font_family'] as String? ?? 'Vazir',
+      fontFamily: json['font_family'] as String? ?? 'Vazirmatn',
       textAlign: TextAlign.values[json['text_align'] as int? ?? 2],
       styleIndex: json['style_index'] as int? ?? 0,
       animationType: json['animation_type'] != null
@@ -458,7 +458,7 @@ class StoryElement {
     this.scale = 1,
     required this.color,
     required this.fontSize,
-    this.fontFamily = 'Vazir',
+    this.fontFamily = 'Vazirmatn',
     this.textAlign = TextAlign.center,
     this.interactionType = StoryInteractionType.none,
     this.interactionData,
@@ -526,7 +526,7 @@ class StoryElement {
       scale: _asDouble(json['scale']) ?? 1.0,
       color: Color(_asInt(json['color']) ?? 0xFFFFFFFF),
       fontSize: _asDouble(json['font_size']) ?? 20.0,
-      fontFamily: json['font_family'] as String? ?? 'Vazir',
+      fontFamily: json['font_family'] as String? ?? 'Vazirmatn',
       textAlign: _parseTextAlign(json['text_align']),
       interactionType: StoryInteractionType.values.firstWhere(
         (e) => e.name == interactionTypeRaw,

@@ -11,6 +11,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:ui';
+import 'package:Vista/core/theme/app_theme.dart';
 
 /// لیست گسترده‌ای از ری‌اکشن‌ها مشابه ویستا
 const List<String> kDefaultReactions = [
@@ -269,10 +270,10 @@ class ModernReactionDisplay extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
               color: hasMyReaction
-                  ? (isDark ? const Color(0xFF3A3A3A) : const Color(0xFFE8F5E9))
+                  ? (isDark ? AppColors.darkSurfaceVariant : const Color(0xFFE8F5E9))
                   : (isDark
-                      ? const Color(0xFF2A2A2A)
-                      : const Color(0xFFF5F5F5)),
+                      ? AppColors.darkSurface
+                      : AppColors.lightSurfaceVariant),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
                 color: hasMyReaction

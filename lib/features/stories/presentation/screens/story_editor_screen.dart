@@ -19,6 +19,7 @@ import '../../../../model/UserModel.dart';
 import '../../../../utils/premium_features_helper.dart';
 import '../../../../utils/user_friendly_error_utils.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:Vista/core/theme/app_theme.dart';
 
 /// ویرایشگر استوری - نسخه بازنویسی شده بدون باگ هلیکوپتری
 class StoryEditorScreen extends ConsumerStatefulWidget {
@@ -60,7 +61,7 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
   Color _textColor = Colors.white;
   Color? _textBgColor;
   double _fontSize = 28;
-  final String _fontFamily = 'Vazir';
+  final String _fontFamily = 'Vazirmatn';
   final TextAlign _textAlign = TextAlign.center;
   int _textStyleIndex = 0;
   TextAnimationType _textAnimationType = TextAnimationType.none;
@@ -305,11 +306,11 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
                 RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             title: const Text(
               'تغییرات ذخیره نشده',
-              style: TextStyle(color: Colors.white, fontFamily: 'Vazir'),
+              style: TextStyle(color: Colors.white, fontFamily: 'Vazirmatn'),
             ),
             content: const Text(
               'آیا از انصراف مطمئن هستید؟ تغییرات شما از بین خواهد رفت.',
-              style: TextStyle(color: Colors.grey, fontFamily: 'Vazir'),
+              style: TextStyle(color: Colors.grey, fontFamily: 'Vazirmatn'),
             ),
             actions: [
               TextButton(
@@ -828,7 +829,7 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
               : Icons.timer_outlined,
           isActive: _storyDuration == StoryDuration.hours48,
           customColor: _storyDuration == StoryDuration.hours48
-              ? const Color(0xFFFFD700)
+              ? AppColors.warning
               : null,
           onTap: _toggleStoryDuration,
           label: _storyDuration == StoryDuration.hours48 ? '48h' : '24h',
@@ -938,7 +939,7 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
                     style: TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
-                      fontFamily: 'Vazir',
+                      fontFamily: 'Vazirmatn',
                     ),
                   ),
                 ],
@@ -965,7 +966,7 @@ class _StoryEditorScreenState extends ConsumerState<StoryEditorScreen> {
                     style: TextStyle(
                       color: Colors.black,
                       fontWeight: FontWeight.bold,
-                      fontFamily: 'Vazir',
+                      fontFamily: 'Vazirmatn',
                     ),
                   ),
                   SizedBox(width: 8),

@@ -23,6 +23,7 @@ import '../widgets/social_text_editing_controller.dart';
 import '../widgets/audio_equalizer_bars.dart';
 import '../widgets/music_trim_sheet.dart';
 import '../../profile/data/profile_repository.dart';
+import 'package:Vista/core/theme/app_theme.dart';
 
 class AddPublicPostScreen extends ConsumerStatefulWidget {
   /// فایل‌های از پیش انتخاب‌شده (از share intent)
@@ -757,7 +758,7 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
     final primaryColor = isDarkMode ? Colors.white : Colors.black;
     final backgroundColor = Theme.of(context).scaffoldBackgroundColor;
     final cardColor =
-        isDarkMode ? const Color(0xFF1E1E1E) : const Color(0xFFF5F5F5);
+        isDarkMode ? AppColors.darkSurface : AppColors.lightSurfaceVariant;
     final textColor = isDarkMode ? Colors.white : Colors.black;
     final secondaryTextColor = isDarkMode ? Colors.white70 : Colors.black54;
 
@@ -1200,7 +1201,7 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
       decoration: const BoxDecoration(
         shape: BoxShape.circle,
         gradient: LinearGradient(
-          colors: [Color(0xFFF58529), Color(0xFFDD2A7B)],
+          colors: [Color(0xFFF58529), AppColors.accent],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -1649,7 +1650,7 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
                   onTap: () => _pickImage(source: ImageSource.camera),
                   primaryColor: primaryColor,
                   isDarkMode: isDarkMode,
-                  tileColor: const Color(0xFF8E5CF7),
+                  tileColor: AppColors.secondary,
                 ),
                 const SizedBox(width: 16),
                 // دکمه افزودن ویدیو
@@ -1723,8 +1724,8 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
   /// Compact music pill (no photo). Tap → open trim sheet.
   Widget _buildMusicPreview(
       bool isDarkMode, Color primaryColor, Color textColor) {
-    const accent = Color(0xFF8E5CF7);
-    const accentEnd = Color(0xFFDD2A7B);
+    const accent = AppColors.secondary;
+    const accentEnd = AppColors.accent;
     final hasTrim = _musicTrimEnd > Duration.zero;
 
     return GestureDetector(
@@ -1820,7 +1821,7 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
         right: 16,
       ),
       decoration: BoxDecoration(
-        color: isDarkMode ? const Color(0xFF1A1A1A) : Colors.white,
+        color: isDarkMode ? AppColors.darkSurface : Colors.white,
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.05),

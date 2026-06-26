@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../domain/entities/story_editor_models.dart';
 import 'glass_layer.dart';
+import 'package:Vista/core/theme/app_theme.dart';
 
 class LinkStickerWidget extends StatelessWidget {
   final StoryElement element;
@@ -13,13 +14,13 @@ class LinkStickerWidget extends StatelessWidget {
   });
 
   static const List<Color> _colors = [
-    Color(0xFF2196F3), // Blue
-    Color(0xFFE91E63), // Pink
-    Color(0xFF4CAF50), // Green
-    Color(0xFFFF9800), // Orange
-    Color(0xFF9C27B0), // Purple
-    Color(0xFF000000), // Black
-    Color(0xFFFFFFFF), // White
+    AppColors.info, // Blue
+    AppColors.accent, // Pink
+    AppColors.success, // Green
+    AppColors.warning, // Orange
+    AppColors.secondary, // Purple
+    Colors.black, // Black
+    Colors.white, // White
   ];
 
   @override
@@ -98,7 +99,7 @@ class LinkStickerWidget extends StatelessWidget {
                     color: Colors.white,
                     fontWeight: FontWeight.bold,
                     fontSize: 14,
-                    fontFamily: 'Vazir',
+                    fontFamily: 'Vazirmatn',
                     height: 1.1,
                   ),
                   maxLines: 1,
@@ -150,7 +151,7 @@ class LinkStickerWidget extends StatelessWidget {
                 color: Colors.white,
                 fontWeight: FontWeight.w600,
                 fontSize: 15,
-                fontFamily: 'Vazir',
+                fontFamily: 'Vazirmatn',
               ),
               overflow: TextOverflow.ellipsis,
             ),
@@ -188,7 +189,7 @@ class LinkStickerWidget extends StatelessWidget {
                 color: color,
                 fontSize: 16,
                 fontWeight: FontWeight.bold,
-                fontFamily: 'Vazir',
+                fontFamily: 'Vazirmatn',
               ),
               overflow: TextOverflow.ellipsis,
             ),

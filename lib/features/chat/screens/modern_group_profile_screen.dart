@@ -17,6 +17,7 @@ import '../models/group_user_item.dart';
 import '../providers/chat_providers.dart';
 import '../services/chat_attachment_service.dart';
 import '../services/group_service.dart';
+import 'package:Vista/core/theme/app_theme.dart';
 
 class ModernGroupProfileScreen extends ConsumerStatefulWidget {
   final String conversationId;
@@ -40,11 +41,11 @@ class _ModernGroupProfileScreenState
 
   late final TabController _tabController;
 
-  static const _darkBg = Color(0xFF17212B);
-  static const _darkCard = Color(0xFF232E3C);
-  static const _darkDivider = Color(0xFF303D4F);
-  static const _lightBg = Color(0xFFFFFFFF);
-  static const _lightDivider = Color(0xFFE4E6E9);
+  static const _darkBg = AppColors.darkBackground;
+  static const _darkCard = AppColors.darkSurface;
+  static const _darkDivider = AppColors.darkBorder;
+  static const _lightBg = Colors.white;
+  static const _lightDivider = AppColors.lightBorder;
 
   Color get _primaryColor => Theme.of(context).primaryColor;
 
@@ -523,7 +524,7 @@ class _ModernGroupProfileScreenState
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
                 colors: [
-                  isDark ? const Color(0xFF2A4157) : const Color(0xFF6C9BCF),
+                  isDark ? AppColors.darkSurfaceVariant : AppColors.primaryLight,
                   isDark ? _darkBg : _lightBg,
                 ],
               ),

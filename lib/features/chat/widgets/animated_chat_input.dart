@@ -505,10 +505,16 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
                     : [
                         BoxShadow(
                           color: Colors.black
-                              .withValues(alpha: isDark ? 0.2 : 0.08),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
+                              .withValues(alpha: isDark ? 0.45 : 0.08),
+                          blurRadius: isDark ? 16 : 8,
+                          offset: const Offset(0, 4),
                         ),
+                        if (isDark)
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.25),
+                            blurRadius: 4,
+                            offset: const Offset(0, 1),
+                          ),
                       ],
               ),
               child: ClipRRect(
@@ -795,7 +801,7 @@ class _AnimatedChatInputState extends State<AnimatedChatInput>
       style: TextStyle(
         color: theme.textColor,
         fontSize: 15,
-        fontFamily: 'Vazir',
+        fontFamily: 'Vazirmatn',
         fontFamilyFallback: const [
           'Apple Color Emoji',
           'Segoe UI Emoji',

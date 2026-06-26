@@ -17,7 +17,7 @@ extension ModernProfileHeaderExt on _VistaChatProfileScreenState {
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
                 colors: [
-                  isDark ? const Color(0xFF2A4157) : const Color(0xFF6C9BCF),
+                  isDark ? AppColors.darkSurfaceVariant : AppColors.primaryLight,
                   isDark ? _darkBg : _lightBg,
                 ],
               ),
@@ -204,7 +204,7 @@ extension ModernProfileHeaderExt on _VistaChatProfileScreenState {
             width: 8,
             height: 8,
             decoration: const BoxDecoration(
-              color: Color(0xFF4ADE80),
+              color: AppColors.onlineDark,
               shape: BoxShape.circle,
             ),
           ),
@@ -213,7 +213,7 @@ extension ModernProfileHeaderExt on _VistaChatProfileScreenState {
             'آنلاین',
             style: TextStyle(
               fontSize: 14,
-              color: Color(0xFF4ADE80),
+              color: AppColors.onlineDark,
               fontWeight: FontWeight.w500,
             ),
           ),

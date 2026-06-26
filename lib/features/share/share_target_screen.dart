@@ -8,6 +8,7 @@ import '../chat/screens/new_message_screen.dart';
 import '../posts/screens/AddPost.dart';
 import '../stories/presentation/screens/story_editor_screen.dart';
 import '../stories/core/story_enums.dart';
+import 'package:Vista/core/theme/app_theme.dart';
 
 /// Bottom Sheet که بعد از انتخاب ویستا در Share Sheet نمایش داده می‌شود
 /// کاربر انتخاب می‌کند: پیام / پست / استوری
@@ -59,9 +60,9 @@ class _ShareTargetSheetState extends ConsumerState<ShareTargetSheet>
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bgColor = isDark ? const Color(0xFF1C1C1E) : Colors.white;
-    final surfaceColor = isDark ? const Color(0xFF2C2C2E) : const Color(0xFFF2F2F7);
-    final textColor = isDark ? Colors.white : const Color(0xFF1C1C1E);
+    final bgColor = isDark ? AppColors.darkSurfaceVariant : Colors.white;
+    final surfaceColor = isDark ? AppColors.darkBorder : const Color(0xFFF2F2F7);
+    final textColor = isDark ? Colors.white : AppColors.darkSurfaceVariant;
     final subtitleColor = isDark ? const Color(0xFF8E8E93) : const Color(0xFF6D6D72);
 
     return ScaleTransition(
@@ -107,7 +108,7 @@ class _ShareTargetSheetState extends ConsumerState<ShareTargetSheet>
                     height: 44,
                     decoration: BoxDecoration(
                       gradient: const LinearGradient(
-                        colors: [Color(0xFF6C63FF), Color(0xFF3B82F6)],
+                        colors: [AppColors.primary, AppColors.info],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                       ),
@@ -166,7 +167,7 @@ class _ShareTargetSheetState extends ConsumerState<ShareTargetSheet>
               context: context,
               icon: Icons.send_rounded,
               gradient: const LinearGradient(
-                colors: [Color(0xFF3B82F6), Color(0xFF6C63FF)],
+                colors: [AppColors.info, AppColors.primary],
               ),
               title: 'ارسال پیام',
               subtitle: 'برای یک نفر یا گروه بفرست',
@@ -181,7 +182,7 @@ class _ShareTargetSheetState extends ConsumerState<ShareTargetSheet>
                 context: context,
                 icon: Icons.grid_on_rounded,
                 gradient: const LinearGradient(
-                  colors: [Color(0xFFEC4899), Color(0xFFF97316)],
+                  colors: [AppColors.accent, Color(0xFFF97316)],
                 ),
                 title: 'ایجاد پست',
                 subtitle: 'در صفحه پروفایلت منتشر کن',
@@ -196,7 +197,7 @@ class _ShareTargetSheetState extends ConsumerState<ShareTargetSheet>
                 context: context,
                 icon: Icons.auto_awesome_rounded,
                 gradient: const LinearGradient(
-                  colors: [Color(0xFFA855F7), Color(0xFFEC4899)],
+                  colors: [Color(0xFFA855F7), AppColors.accent],
                 ),
                 title: 'ایجاد استوری',
                 subtitle: '۲۴ ساعت برای همه نمایش داده می‌شود',
@@ -267,7 +268,7 @@ class _ShareTargetSheetState extends ConsumerState<ShareTargetSheet>
                     child: const Icon(
                       Icons.videocam_rounded,
                       size: 48,
-                      color: Color(0xFF6C63FF),
+                      color: AppColors.primary,
                     ),
                   ),
           ),

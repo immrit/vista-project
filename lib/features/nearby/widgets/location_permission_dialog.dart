@@ -23,7 +23,7 @@ class LocationPermissionDialog {
     final result = await showGeneralDialog<LocationPermissionChoice>(
       context: context,
       barrierDismissible: false,
-      barrierColor: Colors.black.withOpacity(0.65),
+      barrierColor: Colors.black.withValues(alpha: 0.65),
       transitionDuration: const Duration(milliseconds: 380),
       transitionBuilder: (ctx, anim, _, child) {
         final curved =
@@ -47,7 +47,7 @@ class LocationPermissionDialog {
       context: context,
       barrierDismissible: true,
       barrierLabel: 'close',
-      barrierColor: Colors.black.withOpacity(0.65),
+      barrierColor: Colors.black.withValues(alpha: 0.65),
       transitionDuration: const Duration(milliseconds: 380),
       transitionBuilder: (ctx, anim, _, child) {
         final curved =
@@ -107,19 +107,19 @@ class _LocationRequestSheet extends StatelessWidget {
                   borderRadius: BorderRadius.circular(28),
                   border: Border.all(
                     color: isDark
-                        ? AppColors.darkBorder.withOpacity(0.5)
-                        : Colors.white.withOpacity(0.8),
+                        ? AppColors.darkBorder.withValues(alpha: 0.5)
+                        : Colors.white.withValues(alpha: 0.8),
                     width: 1.2,
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: AppColors.primary.withOpacity(0.12),
+                      color: AppColors.primary.withValues(alpha: 0.12),
                       blurRadius: 40,
                       spreadRadius: 4,
                       offset: const Offset(0, 8),
                     ),
                     BoxShadow(
-                      color: Colors.black.withOpacity(isDark ? 0.4 : 0.08),
+                      color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.08),
                       blurRadius: 24,
                       offset: const Offset(0, 4),
                     ),
@@ -267,19 +267,19 @@ class _LocationSettingsSheet extends StatelessWidget {
                   borderRadius: BorderRadius.circular(28),
                   border: Border.all(
                     color: isDark
-                        ? AppColors.darkBorder.withOpacity(0.5)
-                        : Colors.white.withOpacity(0.8),
+                        ? AppColors.darkBorder.withValues(alpha: 0.5)
+                        : Colors.white.withValues(alpha: 0.8),
                     width: 1.2,
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: AppColors.warning.withOpacity(0.15),
+                      color: AppColors.warning.withValues(alpha: 0.15),
                       blurRadius: 40,
                       spreadRadius: 4,
                       offset: const Offset(0, 8),
                     ),
                     BoxShadow(
-                      color: Colors.black.withOpacity(isDark ? 0.4 : 0.08),
+                      color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.08),
                       blurRadius: 24,
                       offset: const Offset(0, 4),
                     ),
@@ -408,7 +408,7 @@ class _GlowIconState extends State<_GlowIcon>
               shape: BoxShape.circle,
               gradient: RadialGradient(
                 colors: [
-                  AppColors.primary.withOpacity(0.22 * _pulse.value),
+                  AppColors.primary.withValues(alpha: 0.22 * _pulse.value),
                   Colors.transparent,
                 ],
               ),
@@ -419,14 +419,10 @@ class _GlowIconState extends State<_GlowIcon>
             height: 68,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              gradient: const LinearGradient(
-                colors: [AppColors.primaryStart, AppColors.primaryEnd],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
+              gradient: AppColors.primaryGradient,
               boxShadow: [
                 BoxShadow(
-                  color: AppColors.primary.withOpacity(0.45 * _pulse.value),
+                  color: AppColors.primary.withValues(alpha: 0.45 * _pulse.value),
                   blurRadius: 20,
                   spreadRadius: 2,
                 ),
@@ -462,7 +458,7 @@ class _SettingsIcon extends StatelessWidget {
         ),
         boxShadow: [
           BoxShadow(
-            color: AppColors.warning.withOpacity(0.4),
+            color: AppColors.warning.withValues(alpha: 0.4),
             blurRadius: 20,
             spreadRadius: 2,
           ),
@@ -490,7 +486,7 @@ class _FeatureList extends StatelessWidget {
     ];
 
     final surface = isDark
-        ? AppColors.darkSurfaceVariant.withOpacity(0.6)
+        ? AppColors.darkSurfaceVariant.withValues(alpha: 0.6)
         : AppColors.lightSurfaceVariant;
 
     return Container(
@@ -499,8 +495,8 @@ class _FeatureList extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: isDark
-              ? AppColors.darkBorder.withOpacity(0.4)
-              : AppColors.lightBorder.withOpacity(0.6),
+              ? AppColors.darkBorder.withValues(alpha: 0.4)
+              : AppColors.lightBorder.withValues(alpha: 0.6),
         ),
       ),
       child: Column(
@@ -518,7 +514,7 @@ class _FeatureList extends StatelessWidget {
                       width: 34,
                       height: 34,
                       decoration: BoxDecoration(
-                        color: color.withOpacity(0.12),
+                        color: color.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Icon(icon, color: color, size: 18),
@@ -547,7 +543,7 @@ class _FeatureList extends StatelessWidget {
                   thickness: 0.5,
                   indent: 62,
                   color: isDark
-                      ? AppColors.darkBorder.withOpacity(0.4)
+                      ? AppColors.darkBorder.withValues(alpha: 0.4)
                       : AppColors.lightBorder,
                 ),
             ],
@@ -571,7 +567,7 @@ class _StepsList extends StatelessWidget {
     ];
 
     final surface = isDark
-        ? AppColors.darkSurfaceVariant.withOpacity(0.6)
+        ? AppColors.darkSurfaceVariant.withValues(alpha: 0.6)
         : AppColors.lightSurfaceVariant;
 
     return Container(
@@ -582,8 +578,8 @@ class _StepsList extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: isDark
-              ? AppColors.darkBorder.withOpacity(0.4)
-              : AppColors.lightBorder.withOpacity(0.6),
+              ? AppColors.darkBorder.withValues(alpha: 0.4)
+              : AppColors.lightBorder.withValues(alpha: 0.6),
         ),
       ),
       child: Column(
@@ -653,15 +649,11 @@ class _GradientButton extends StatelessWidget {
         height: 52,
         width: double.infinity,
         decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [AppColors.primaryStart, AppColors.primaryEnd],
-            begin: Alignment.centerLeft,
-            end: Alignment.centerRight,
-          ),
+          gradient: AppColors.primaryGradient,
           borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
-              color: AppColors.primary.withOpacity(0.4),
+              color: AppColors.primary.withValues(alpha: 0.4),
               blurRadius: 16,
               offset: const Offset(0, 6),
             ),
@@ -704,7 +696,7 @@ class _WarningButton extends StatelessWidget {
           borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
-              color: AppColors.warning.withOpacity(0.4),
+              color: AppColors.warning.withValues(alpha: 0.4),
               blurRadius: 16,
               offset: const Offset(0, 6),
             ),

@@ -8,6 +8,7 @@ import 'package:Vista/model/session_model.dart';
 import 'package:Vista/provider/session_provider.dart';
 import 'package:Vista/services/session_manager_service_v2.dart';
 import 'package:Vista/services/sensitive_action_guard.dart';
+import 'package:Vista/core/theme/app_theme.dart';
 
 /// صفحه نشست‌های فعال - طراحی مدرن Security Hub
 class ActiveSessionsScreen extends ConsumerStatefulWidget {
@@ -48,7 +49,7 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen>
     return Directionality(
       textDirection: ui.TextDirection.rtl,
       child: Scaffold(
-        backgroundColor: isDark ? Colors.black : const Color(0xFFF5F5F5),
+        backgroundColor: isDark ? Colors.black : AppColors.lightSurfaceVariant,
         appBar: AppBar(
           title: const Text(
             'امنیت و نشست‌ها',
@@ -133,7 +134,7 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen>
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1C1C1E) : Colors.white,
+        color: isDark ? AppColors.darkSurfaceVariant : Colors.white,
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
@@ -256,7 +257,7 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen>
   ) {
     return Container(
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1C1C1E) : Colors.white,
+        color: isDark ? AppColors.darkSurfaceVariant : Colors.white,
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
@@ -558,7 +559,7 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen>
   ) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: isDark ? const Color(0xFF1C1C1E) : Colors.white,
+      backgroundColor: isDark ? AppColors.darkSurfaceVariant : Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -579,7 +580,7 @@ class _ActiveSessionsScreenState extends ConsumerState<ActiveSessionsScreen>
     required bool isDark,
   }) {
     return AlertDialog(
-      backgroundColor: isDark ? const Color(0xFF1C1C1E) : Colors.white,
+      backgroundColor: isDark ? AppColors.darkSurfaceVariant : Colors.white,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       title: Text(
         title,

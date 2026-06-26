@@ -108,7 +108,7 @@ class _StoryPrivacySettingsScreenState
       appBar: AppBar(
         title: const Text(
           'دوستان نزدیک',
-          style: TextStyle(fontFamily: 'Vazir'),
+          style: TextStyle(fontFamily: 'Vazirmatn'),
         ),
         backgroundColor: Colors.black,
         actions: [
@@ -177,7 +177,7 @@ class _StoryPrivacySettingsScreenState
                                 color: Colors.white,
                                 fontSize: 16,
                                 fontWeight: FontWeight.bold,
-                                fontFamily: 'Vazir',
+                                fontFamily: 'Vazirmatn',
                               ),
                             ),
                           ),
@@ -231,7 +231,7 @@ class _StoryPrivacySettingsScreenState
                                 color: Colors.white,
                                 fontSize: 16,
                                 fontWeight: FontWeight.bold,
-                                fontFamily: 'Vazir',
+                                fontFamily: 'Vazirmatn',
                               ),
                             ),
                           ),
@@ -244,7 +244,7 @@ class _StoryPrivacySettingsScreenState
                                   color: isSelected
                                       ? Colors.white
                                       : Colors.grey[400],
-                                  fontFamily: 'Vazir',
+                                  fontFamily: 'Vazirmatn',
                                 ),
                               ),
                               value: perm,
