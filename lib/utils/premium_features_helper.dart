@@ -59,7 +59,7 @@ class PremiumFeaturesHelper {
                   Container(
                     height: 120,
                     decoration: BoxDecoration(
-                      color: AppColors.primaryDark.withValues(alpha: 0.2),
+                      color: AppColors.warning.withValues(alpha: 0.18),
                       borderRadius:
                           const BorderRadius.vertical(top: Radius.circular(24)),
                     ),
@@ -71,20 +71,20 @@ class PremiumFeaturesHelper {
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       gradient: const LinearGradient(
-                        colors: [Color(0xFFB66DFF), AppColors.primaryDark],
+                        colors: [AppColors.warning, Color(0xFFFDB931)],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: AppColors.primaryDark.withValues(alpha: 0.4),
+                          color: AppColors.warning.withValues(alpha: 0.4),
                           blurRadius: 15,
                           spreadRadius: 2,
                         ),
                       ],
                     ),
                     child: const Icon(
-                      Icons.star_rounded,
+                      Icons.verified_rounded,
                       size: 40,
                       color: Colors.white,
                     ),
@@ -106,7 +106,7 @@ class PremiumFeaturesHelper {
                 child: Column(
                   children: [
                     const Text(
-                      'الماس ویستا',
+                      'ویستا پریمیوم',
                       style: TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.bold,
@@ -116,7 +116,7 @@ class PremiumFeaturesHelper {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'با دریافت الماس ویستا، به قابلیت‌های ویژه‌ای مثل $feature و تیک طلایی دسترسی پیدا کنید.',
+                      'برای استفاده از $feature به ویستا پریمیوم نیاز دارید. با خرید پریمیوم، تیک طلایی و امکانات ویژه برایتان فعال می‌شود.',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 14,
@@ -150,8 +150,8 @@ class PremiumFeaturesHelper {
                           Navigator.pushNamed(context, '/premium');
                         },
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.primaryDark,
-                          foregroundColor: Colors.white,
+                          backgroundColor: AppColors.warning,
+                          foregroundColor: Colors.black87,
                           padding: const EdgeInsets.symmetric(vertical: 16),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(16),
@@ -159,7 +159,7 @@ class PremiumFeaturesHelper {
                           elevation: 0,
                         ),
                         child: const Text(
-                          'مشاهده ویستا پریمیوم',
+                          'مشاهده پلن‌ها و خرید',
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
@@ -184,10 +184,10 @@ class PremiumFeaturesHelper {
         Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: AppColors.primaryDark.withValues(alpha: 0.1),
+            color: AppColors.warning.withValues(alpha: 0.12),
             shape: BoxShape.circle,
           ),
-          child: Icon(icon, color: AppColors.primaryDark, size: 20),
+          child: Icon(icon, color: AppColors.warning, size: 20),
         ),
         const SizedBox(width: 12),
         Text(

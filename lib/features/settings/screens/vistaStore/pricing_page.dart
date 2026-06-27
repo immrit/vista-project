@@ -257,6 +257,8 @@ class _PricingPageState extends ConsumerState<PricingPage>
             shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20),
                 side: const BorderSide(color: _goldStart, width: 1.5)),
+            icon: const Icon(Icons.verified_rounded,
+                color: _goldStart, size: 52),
             title: const Text('تبریک!',
                 textAlign: TextAlign.center,
                 style:
@@ -303,6 +305,19 @@ class _PricingPageState extends ConsumerState<PricingPage>
     final savingsPercent = yearlyBaseline > 0
         ? ((yearlySavings / yearlyBaseline) * 100).round()
         : 0;
+
+    // به‌صرفه‌ترین پلن = کمترین قیمت معادل ماهانه (بین پلن‌های چندماهه).
+    var bestValueIndex = -1;
+    var bestPerMonth = double.infinity;
+    for (var i = 0; i < _plans.length; i++) {
+      final months = (_plans[i]['durationDays'] as int) / 30.0;
+      if (months <= 1.0) continue;
+      final perMonth = (_plans[i]['amount'] as int) / months;
+      if (perMonth < bestPerMonth) {
+        bestPerMonth = perMonth;
+        bestValueIndex = i;
+      }
+    }
 
     final statusBarColor = Colors.transparent;
     final systemOverlayStyle = SystemUiOverlayStyle(
@@ -581,6 +596,9 @@ class _PricingPageState extends ConsumerState<PricingPage>
                             final plan = _plans[index];
                             final isSelected = _selectedPlanIndex == index;
                             final amount = plan['amount'] as int;
+                            final badgeText = index == bestValueIndex
+                                ? 'به‌صرفه‌ترین'
+                                : plan['badge'] as String?;
                             return Expanded(
                               child: GestureDetector(
                                 onTap: busy
@@ -616,7 +634,7 @@ class _PricingPageState extends ConsumerState<PricingPage>
                                   ),
                                   child: Column(
                                     children: [
-                                      if (plan['badge'] != null)
+                                      if (badgeText != null)
                                         Container(
                                           padding: const EdgeInsets.symmetric(
                                               horizontal: 8, vertical: 3),
@@ -629,7 +647,7 @@ class _PricingPageState extends ConsumerState<PricingPage>
                                                 BorderRadius.circular(8),
                                           ),
                                           child: Text(
-                                            plan['badge'] as String,
+                                            badgeText,
                                             style: const TextStyle(
                                               color: Colors.black87,
                                               fontSize: 10,
@@ -804,6 +822,12 @@ class _ActivePremiumBanner extends StatelessWidget {
     final remaining = PremiumSubscriptionUtils.remainingLabel(profile);
     final expiry = PremiumSubscriptionUtils.formatExpiryDate(profile);
     final days = PremiumSubscriptionUtils.daysRemaining(profile);
+    final planLabel = switch (profile?['subscription_plan']?.toString() ?? '') {
+      'monthly' => 'ماهانه',
+      'three_monthly' => 'سه‌ماهه',
+      'yearly' => 'سالانه',
+      _ => '',
+    };
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -840,6 +864,26 @@ class _ActivePremiumBanner extends StatelessWidget {
               ),
             ],
           ),
+          if (planLabel.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: AppColors.warning.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                    color: AppColors.warning.withValues(alpha: 0.3)),
+              ),
+              child: Text(
+                'پلن فعلی: $planLabel',
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.warning,
+                ),
+              ),
+            ),
+          ],
           if (days != null && days > 0) ...[
             const SizedBox(height: 16),
             ClipRRect(
