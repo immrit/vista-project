@@ -145,6 +145,7 @@ class _PricingPageState extends ConsumerState<PricingPage>
     );
 
     _initBazaar();
+    _loadPlans();
   }
 
   @override
@@ -161,6 +162,32 @@ class _PricingPageState extends ConsumerState<PricingPage>
         _isLoading = false;
       });
     }
+  }
+
+  /// قیمت‌ها از پنل مدیریت می‌آیند؛ در صورت خطا، مقادیر پیش‌فرض محلی می‌مانند.
+  Future<void> _loadPlans() async {
+    final remote = await _paymentService.fetchSubscriptionPlans();
+    if (!mounted || remote.isEmpty) return;
+    setState(() {
+      for (final row in remote) {
+        final planType = row['plan_type']?.toString();
+        final price = row['price_toman'];
+        if (planType == null || price is! num || price <= 0) continue;
+        final idx = _plans.indexWhere((p) => p['id'] == planType);
+        if (idx != -1) {
+          _plans[idx]['amount'] = price.toInt();
+        }
+      }
+    });
+  }
+
+  int _amountForPlanId(String id) {
+    final plan = _plans.firstWhere(
+      (p) => p['id'] == id,
+      orElse: () => const <String, dynamic>{},
+    );
+    final amount = plan['amount'];
+    return amount is int ? amount : 0;
   }
 
   String _formatToman(int amount) {
@@ -269,9 +296,13 @@ class _PricingPageState extends ConsumerState<PricingPage>
         ? PremiumSubscriptionUtils.extendHintForPlan(
             selectedPlan['title'] as String)
         : null;
-    final yearlySavings = (_monthlyAmount * 12) - _yearlyAmount;
-    final savingsPercent =
-        ((yearlySavings / (_monthlyAmount * 12)) * 100).round();
+    final monthlyAmount = _amountForPlanId('monthly');
+    final yearlyAmount = _amountForPlanId('yearly');
+    final yearlyBaseline = monthlyAmount * 12;
+    final yearlySavings = yearlyBaseline - yearlyAmount;
+    final savingsPercent = yearlyBaseline > 0
+        ? ((yearlySavings / yearlyBaseline) * 100).round()
+        : 0;
 
     final statusBarColor = Colors.transparent;
     final systemOverlayStyle = SystemUiOverlayStyle(

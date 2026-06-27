@@ -33,6 +33,42 @@ class PaymentService {
     }
   }
 
+  /// Fetches admin-set subscription prices from the backend so the paywall
+  /// shows whatever prices/plans are configured in the management panel
+  /// (never hardcoded). Returns [] on any failure; caller falls back to
+  /// its local defaults.
+  Future<List<Map<String, dynamic>>> fetchSubscriptionPlans() async {
+    try {
+      final accessToken = await TokenStorage.getAccessToken();
+      if (accessToken == null || accessToken.isEmpty) return [];
+
+      final dio = Dio(BaseOptions(
+        baseUrl: '$_backendUrl/v1',
+        connectTimeout: const Duration(seconds: 15),
+        receiveTimeout: const Duration(seconds: 15),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $accessToken',
+          'X-Device-ID': DeviceIdService.id,
+        },
+      ));
+
+      final response = await dio.get('/payment/subscription-plans');
+      final data = response.data;
+      final plans = data is Map ? data['plans'] : null;
+      if (plans is List) {
+        return plans
+            .whereType<Map>()
+            .map((e) => e.cast<String, dynamic>())
+            .toList();
+      }
+      return [];
+    } catch (e) {
+      logWarning('fetch subscription plans failed', error: e);
+      return [];
+    }
+  }
+
   Future<Map<String, dynamic>> purchaseSubscription(String productId) async {
     print("🛒 [Flutter] Requesting purchase: $productId");
 
