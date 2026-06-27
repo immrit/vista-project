@@ -650,24 +650,41 @@ class SessionManagerServiceV2 {
   // ═══════════════════════════════════════════════════════════
 
   Future<void> _saveSession() async {
-    if (_currentSessionId == null) return;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_sessionIdStorageKey, _currentSessionId!);
-    if (_sessionToken != null) {
-      await prefs.setString(_sessionTokenStorageKey, _sessionToken!);
-    }
+    final id = _currentSessionId;
+    final token = _sessionToken;
+    if (id == null || id.isEmpty || token == null || token.isEmpty) return;
+    await TokenStorage.saveSessionData(id, token);
   }
 
   Future<void> _loadSavedSession() async {
-    final prefs = await SharedPreferences.getInstance();
-    _currentSessionId = prefs.getString(_sessionIdStorageKey);
-    _sessionToken = prefs.getString(_sessionTokenStorageKey);
+    final id = await TokenStorage.getSessionId();
+    final token = await TokenStorage.getSessionToken();
+    _currentSessionId = (id?.isNotEmpty == true) ? id : null;
+    _sessionToken = (token?.isNotEmpty == true) ? token : null;
+
+    // Migrate from legacy SharedPreferences storage (one-time).
+    if (_currentSessionId == null) {
+      final prefs = await SharedPreferences.getInstance();
+      final legacyId = prefs.getString(_sessionIdStorageKey);
+      final legacyToken = prefs.getString(_sessionTokenStorageKey);
+      if (legacyId != null && legacyId.isNotEmpty && legacyToken != null && legacyToken.isNotEmpty) {
+        _currentSessionId = legacyId;
+        _sessionToken = legacyToken;
+        await TokenStorage.saveSessionData(legacyId, legacyToken);
+        await prefs.remove(_sessionIdStorageKey);
+        await prefs.remove(_sessionTokenStorageKey);
+        logInfo('📂 Migrated session from SharedPreferences to SecureStorage');
+      }
+    }
+
     if (_currentSessionId != null) {
-      logInfo('📂 Loaded session from prefs: $_currentSessionId');
+      logInfo('📂 Loaded session from secure storage: $_currentSessionId');
     }
   }
 
   Future<void> _clearSavedSession() async {
+    await TokenStorage.clearSessionData();
+    // Also clear legacy SharedPreferences keys in case migration didn't run.
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_sessionIdStorageKey);
     await prefs.remove(_sessionTokenStorageKey);
@@ -1037,28 +1054,31 @@ class SessionManagerServiceV2 {
   }
 
   /// IP-based geolocation — city level — بدون نیاز به مجوز
+  /// Uses ipapi.co (HTTPS) as primary; falls back to ip-api.com fields if needed.
   Future<_DeviceLocationSnapshot?> _getIpLocationSnapshot() async {
     try {
       final response = await http
           .get(
-            Uri.parse(
-                'http://ip-api.com/json/?fields=city,regionName,country,lat,lon,status'),
+            Uri.parse('https://ipapi.co/json/'),
+            headers: {'Accept': 'application/json'},
           )
           .timeout(const Duration(seconds: 8));
 
       if (response.statusCode != 200) return null;
       final data = jsonDecode(response.body) as Map<String, dynamic>;
-      if (data['status'] != 'success') return null;
+
+      // ipapi.co returns {"error": true} when rate-limited
+      if (data['error'] == true) return null;
 
       final city = (data['city'] as String?)?.trim() ?? '';
       if (city.isEmpty) return null;
 
       return _DeviceLocationSnapshot(
         city: city,
-        country: (data['country'] as String?)?.trim(),
-        region: (data['regionName'] as String?)?.trim(),
-        latitude: (data['lat'] as num?)?.toDouble(),
-        longitude: (data['lon'] as num?)?.toDouble(),
+        country: (data['country_name'] as String?)?.trim(),
+        region: (data['region'] as String?)?.trim(),
+        latitude: (data['latitude'] as num?)?.toDouble(),
+        longitude: (data['longitude'] as num?)?.toDouble(),
         capturedAt: DateTime.now(),
         source: 'ip_geolocation',
       );

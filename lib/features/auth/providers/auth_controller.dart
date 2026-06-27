@@ -159,8 +159,32 @@ class TokenStorage {
       _storage.delete(key: _expiresAtKey),
       _storage.delete(key: _hasPasswordKey),
       _storage.delete(key: _passwordRequiredKey),
+      _storage.delete(key: _sessionIdKey),
+      _storage.delete(key: _sessionTokenKey),
     ]);
     CurrentUserService.clearCache();
+  }
+
+  // ── Session ID / Token (secure; replaces SharedPreferences storage) ──
+  static const _sessionIdKey = 'vista_session_id';
+  static const _sessionTokenKey = 'vista_session_token';
+
+  static Future<void> saveSessionData(String sessionId, String sessionToken) async {
+    await Future.wait([
+      _storage.write(key: _sessionIdKey, value: sessionId),
+      _storage.write(key: _sessionTokenKey, value: sessionToken),
+    ]);
+  }
+
+  static Future<String?> getSessionId() => _storage.read(key: _sessionIdKey);
+
+  static Future<String?> getSessionToken() => _storage.read(key: _sessionTokenKey);
+
+  static Future<void> clearSessionData() async {
+    await Future.wait([
+      _storage.delete(key: _sessionIdKey),
+      _storage.delete(key: _sessionTokenKey),
+    ]);
   }
 
   static DateTime? _accessTokenExpiresAt(String token) {

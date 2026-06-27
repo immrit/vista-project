@@ -714,9 +714,13 @@ class _SessionDetailsSheet extends StatelessWidget {
             // Info Items
             _buildInfoItem('آخرین فعالیت',
                 timeago.format(session.lastActivity, locale: 'fa'), isDark),
+            if (session.ipAddress != null && session.ipAddress!.isNotEmpty)
+              _buildInfoItem('آدرس IP', session.ipAddress!, isDark),
             if (_sessionLocationText(session) != null)
               _buildInfoItem('مکان نشست', _sessionLocationText(session)!, isDark),
             _buildInfoItem('سیستم‌عامل', session.platform ?? 'نامشخص', isDark),
+            if (session.appVersion != null && session.appVersion!.isNotEmpty)
+              _buildInfoItem('نسخه اپ', session.appVersion!, isDark),
 
             const SizedBox(height: 24),
 
