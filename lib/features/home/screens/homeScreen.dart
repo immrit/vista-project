@@ -473,7 +473,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 unreadCount: unreadCount,
                 theme: theme,
               ),
-              const UpdateBanner(),
+              // UpdateBanner disabled for store build; re-enable for direct/Telegram builds
+              // const UpdateBanner(),
             ],
           ),
         ),

@@ -65,7 +65,7 @@ dependencies:
   local_auth: ^3.0.1
   photo_manager: ^3.0.0
   open_filex: ^4.7.0
-  intl: ^0.19.0
+  intl: ^0.20.0
   just_audio: ^0.9.46
   just_audio_background: ^0.0.1-beta.15
   just_audio_platform_interface: ^4.5.0
@@ -111,7 +111,7 @@ dependencies:
   screen_protector: ^1.5.1
   video_editor: ^3.0.0
 dependency_overrides:
-  intl: ^0.19.0
+  intl: ^0.20.0
 
 flutter_launcher_icons:
   android: true

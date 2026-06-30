@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../model/publicPostModel.dart';
+import '../../../services/current_user_service.dart';
 
 class PostModerationBanner extends StatelessWidget {
   final PublicPostModel post;
@@ -7,6 +8,10 @@ class PostModerationBanner extends StatelessWidget {
   const PostModerationBanner({super.key, required this.post});
 
   bool get _isModerated => post.editedByVista;
+
+  bool get _isOwner =>
+      CurrentUserService.cachedUserId != null &&
+      CurrentUserService.cachedUserId == post.userId;
 
   @override
   Widget build(BuildContext context) {
@@ -64,30 +69,32 @@ class PostModerationBanner extends StatelessWidget {
                     ),
                   ),
                 ],
-                const SizedBox(height: 6),
-                Align(
-                  alignment: AlignmentDirectional.centerEnd,
-                  child: TextButton.icon(
-                    onPressed: () => Navigator.of(context).pushNamed(
-                      '/appeal',
-                      arguments: {'postId': post.id, 'type': 'edit'},
-                    ),
-                    style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 2),
-                      minimumSize: const Size(0, 32),
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      foregroundColor:
-                          isDark ? Colors.amber[200] : Colors.amber[900],
-                    ),
-                    icon: const Icon(Icons.gavel_rounded, size: 16),
-                    label: const Text(
-                      'ثبت اعتراض',
-                      style:
-                          TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700),
+                if (_isOwner) ...[
+                  const SizedBox(height: 6),
+                  Align(
+                    alignment: AlignmentDirectional.centerEnd,
+                    child: TextButton.icon(
+                      onPressed: () => Navigator.of(context).pushNamed(
+                        '/appeal',
+                        arguments: {'postId': post.id, 'type': 'edit'},
+                      ),
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 2),
+                        minimumSize: const Size(0, 32),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        foregroundColor:
+                            isDark ? Colors.amber[200] : Colors.amber[900],
+                      ),
+                      icon: const Icon(Icons.gavel_rounded, size: 16),
+                      label: const Text(
+                        'ثبت اعتراض',
+                        style: TextStyle(
+                            fontSize: 12.5, fontWeight: FontWeight.w700),
+                      ),
                     ),
                   ),
-                ),
+                ],
               ],
             ),
           ),
