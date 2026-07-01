@@ -608,7 +608,8 @@ class SessionManagerServiceV2 {
       }
 
       final repo = AuthRepository();
-      final response = await repo.refreshToken(refreshToken);
+      final response =
+          await RefreshCoordinator.instance.refresh(refreshToken, repo);
 
       await TokenStorage.saveTokens(AuthSessionResponse(
         accessToken: response.session.accessToken,
@@ -628,8 +629,14 @@ class SessionManagerServiceV2 {
       logInfo('🔴 Token refresh auth error: $e');
       return RefreshResult.authError;
     } catch (e) {
-      logInfo('⚠️ Token refresh failed: $e');
-      return RefreshResult.authError;
+      // Anything else (e.g. a local secure-storage write failure AFTER the
+      // server already handed back valid fresh tokens) has nothing to do
+      // with whether the refresh token itself is valid. Only an explicit
+      // UnauthorizedAuthException means "the server confirmed this token is
+      // dead" — everything else must fail open so a local/transient hiccup
+      // can never force a real logout.
+      logInfo('⚠️ Token refresh failed (treated as transient): $e');
+      return RefreshResult.networkError;
     }
   }
 

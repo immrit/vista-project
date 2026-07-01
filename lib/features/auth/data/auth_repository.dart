@@ -139,6 +139,53 @@ class AuthResponse {
   }
 }
 
+// ══════════════════════════════════════════════════════════════
+// RefreshCoordinator — process-wide single-flight guard around
+// /auth/refresh. The app has more than one trigger that can decide a token
+// needs refreshing (the session health-check timer and the 401 response
+// interceptor). If both fire close together they would otherwise each send
+// the same refresh token to the server; the server can only honor one of
+// them and was historically treating the loser as a replayed/stolen token,
+// which logged the user out everywhere. Routing every refresh attempt
+// through this coordinator means the second caller just awaits the first
+// call's result instead of firing its own competing request.
+// ══════════════════════════════════════════════════════════════
+class RefreshCoordinator {
+  /// Shared process-wide instance — what app code should use.
+  static final RefreshCoordinator instance = RefreshCoordinator();
+
+  Future<AuthResponse>? _inFlight;
+
+  Future<AuthResponse> refresh(String refreshToken, AuthRepository repo) {
+    return coalesce(() => repo.refreshToken(refreshToken));
+  }
+
+  /// Single-flight: if a call is already running, every other caller gets
+  /// the SAME future instead of starting a new one. Exposed separately
+  /// (rather than inlined into [refresh]) so the coalescing behavior is
+  /// unit-testable without a real network call.
+  @visibleForTesting
+  Future<AuthResponse> coalesce(Future<AuthResponse> Function() call) {
+    final running = _inFlight;
+    if (running != null) return running;
+
+    final future = call();
+    _inFlight = future;
+    void clearIfCurrent() {
+      if (identical(_inFlight, future)) _inFlight = null;
+    }
+
+    // .then(onValue, onError:) — not .whenComplete() — because the derived
+    // future it returns is discarded (only used for the cleanup side
+    // effect). whenComplete()'s derived future re-throws the original error,
+    // which would surface as a separate "unhandled" error alongside the one
+    // `future` itself already reports to its real listeners; handling the
+    // error here (without rethrowing) keeps the derived future clean.
+    future.then((_) => clearIfCurrent(), onError: (_) => clearIfCurrent());
+    return future;
+  }
+}
+
 class VerifyOtpResponse {
   final bool is2faRequired;
   final String? twoFactorToken;
@@ -371,6 +418,19 @@ class AuthRepository {
   }
 
   // ─── تمدید توکن با Refresh Token ───
+  //
+  // Contract: this method throws ONLY UnauthorizedAuthException (the server
+  // gave an explicit, unambiguous "this refresh token is dead" answer — the
+  // one case that should ever force a logout) or NetworkAuthException
+  // (everything else — timeouts, 5xx, unexpected status codes, malformed
+  // response bodies, parse errors). Callers rely on this being exhaustive:
+  // fail-open (keep the session alive, retry later) is the default; fail-
+  // closed (wipe tokens) only happens for a confirmed-dead token. Before this
+  // was tightened, any error type this function didn't explicitly recognize
+  // (a 400/404/502 from a proxy during deploy, a non-JSON error page, a JSON
+  // decode failure) fell through as a bare String/generic exception, which
+  // callers misclassified as "token invalid" and force-logged-out the user
+  // for what was actually a transient blip.
   Future<AuthResponse> refreshToken(String refreshToken) async {
     try {
       final response = await _dio.post('/refresh', data: {
@@ -379,23 +439,22 @@ class AuthRepository {
 
       return AuthResponse.fromJson(response.data as Map<String, dynamic>);
     } on DioException catch (e) {
-      if (e.type == DioExceptionType.connectionTimeout ||
-          e.type == DioExceptionType.receiveTimeout ||
-          e.type == DioExceptionType.connectionError ||
-          e.type == DioExceptionType.unknown) {
-        throw NetworkAuthException('اتصال به سرور برقرار نشد.');
-      }
+      // The ONLY terminal case: the server explicitly rejected this refresh
+      // token (missing/invalid/expired/user gone/account banned — see
+      // internal/auth/service.go RefreshToken). Everything else below is
+      // treated as transient on purpose.
       if (e.response?.statusCode == 401 || e.response?.statusCode == 403) {
         throw UnauthorizedAuthException('نشست نامعتبر است.');
       }
-      if (e.response?.statusCode == 429 ||
-          (e.response?.statusCode != null && e.response!.statusCode! >= 500)) {
-        throw NetworkAuthException('سرور موقتاً در دسترس نیست.');
-      }
-      throw _handleDioError(e, 'تمدید نشست');
+      throw NetworkAuthException(
+          'تمدید نشست موقتاً ناموفق بود: ${_handleDioError(e, 'تمدید نشست')}');
     } catch (e) {
+      // Anything that isn't even a DioException (JSON decode failure from a
+      // malformed/non-JSON body, a null/type error, etc.) is by definition
+      // not a "the server told us the token is dead" signal — never let it
+      // fall through to a force-logout classification upstream.
       logError('Refresh Token Error', error: e);
-      rethrow;
+      throw NetworkAuthException('تمدید نشست به دلیل خطای غیرمنتظره ناموفق بود.');
     }
   }
 

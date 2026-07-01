@@ -40,24 +40,6 @@ class TokenStorage {
     ]);
   }
 
-  static Future<void> saveTokensFromMap(Map<String, dynamic> data) async {
-    final accessToken = data['access_token'] as String?;
-    final refreshToken = data['refresh_token'] as String?;
-    if (accessToken == null || refreshToken == null) return;
-
-    final expiresAt = _accessTokenExpiresAt(accessToken) ??
-        DateTime.now().add(const Duration(minutes: 15));
-
-    await Future.wait([
-      _storage.write(key: _accessTokenKey, value: accessToken),
-      _storage.write(key: _refreshTokenKey, value: refreshToken),
-      _storage.write(
-        key: _expiresAtKey,
-        value: expiresAt.toUtc().toIso8601String(),
-      ),
-    ]);
-  }
-
   static Future<void> saveUserId(String userId) async {
     await _storage.write(key: _userIdKey, value: userId);
     CurrentUserService.setCachedUserId(userId);
