@@ -1,7 +1,6 @@
 
 plugins {
     id "com.android.application"
-    id "org.jetbrains.kotlin.android"
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id "dev.flutter.flutter-gradle-plugin"
     id "com.google.gms.google-services"
@@ -26,7 +25,7 @@ android {
     }
 
     kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_1_8
+        jvmTarget = "1.8"
     }
 
     defaultConfig {
@@ -94,7 +93,6 @@ dependencies {
     implementation 'com.google.android.play:core-ktx:1.8.1'
     // 🔴 این خط را حتما اضافه کنید تا نسخه جدید و بدون باگ بازار استفاده شود
     implementation "com.github.cafebazaar.Poolakey:poolakey:2.2.0"
-    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
     
     // Adtrace SDK
     implementation 'io.adtrace:android-sdk:2.6.0'

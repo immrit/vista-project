@@ -320,8 +320,11 @@ class AuthRepository {
   AuthRepository() {
     _dio = Dio(BaseOptions(
       baseUrl: '$_backendUrl/v1/auth',
-      connectTimeout: const Duration(seconds: 15),
-      receiveTimeout: const Duration(seconds: 15),
+      connectTimeout: const Duration(seconds: 20),
+      // Long enough that a slow (not dead) network still receives a /refresh
+      // response the server already produced. A premature client timeout here
+      // used to strand the client on its now-rotated token → later forced logout.
+      receiveTimeout: const Duration(seconds: 30),
       headers: {
         'Content-Type': 'application/json',
         'X-Device-ID': DeviceIdService.id,

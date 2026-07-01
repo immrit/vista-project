@@ -461,8 +461,8 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
               ],
             ),
             content: const Text(
-              'نشست شما توسط یک دستگاه دیگر خاتمه یافت. '
-              'اگر شما نبودید، این می‌تواند نشانه نفوذ به حساب شما باشد.',
+              'نشست شما بسته شد و برای ادامه باید دوباره وارد شوید. '
+              'اگر این کار توسط شما انجام نشده، می‌تواند نشانه دسترسی غیرمجاز به حساب شما باشد.',
               style: TextStyle(
                 color: Color(0xFFAAAAAA),
                 fontFamily: 'Vazirmatn',
