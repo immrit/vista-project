@@ -474,9 +474,15 @@ class SessionManagerServiceV2 {
                 return false;
               }
               logInfo('♻️ Session record idle-expired — re-registering');
-              await _clearSavedSession();
-              _currentSessionId = null;
-              _sessionToken = null;
+              // Deliberately NOT nulling _currentSessionId/_sessionToken here:
+              // registerSession() below (via _markSessionPendingAndRecover)
+              // mints a fresh pair and overwrites both the in-memory fields
+              // and storage once it completes — but that can take 10-20s
+              // (GPS/IP location lookup). Nulling them in the meantime leaves
+              // every other caller of ensureSessionRegistered()/isSessionActive
+              // seeing "no session" and throwing/misbehaving for that whole
+              // window, for a purely cosmetic table-row that doesn't gate any
+              // actual API auth. Same pattern already used for 'not_found'.
               _markSessionPendingAndRecover();
               return true;
             } else {

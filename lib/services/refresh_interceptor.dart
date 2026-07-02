@@ -13,27 +13,6 @@ class RefreshTokenInterceptor extends Interceptor {
   @override
   void onError(DioException err, ErrorInterceptorHandler handler) async {
     if (err.response?.statusCode == 401) {
-      // If another flow (health check, another request's interceptor) already
-      // rotated the tokens, the stored access token is newer than the one this
-      // request failed with — just retry with it instead of burning another
-      // refresh (each refresh rotates the refresh token; pointless rotations
-      // widen the replay-race window).
-      final failedAuth = err.requestOptions.headers['Authorization']?.toString();
-      final storedToken = await TokenStorage.getAccessToken();
-      if (storedToken != null &&
-          storedToken.isNotEmpty &&
-          failedAuth != 'Bearer $storedToken' &&
-          await TokenStorage.hasValidSession()) {
-        try {
-          err.requestOptions.headers['Authorization'] = 'Bearer $storedToken';
-          final retryResponse = await _retry(err.requestOptions);
-          return handler.resolve(retryResponse);
-        } catch (_) {
-          // Retry with the newer token failed too — fall through to a full
-          // refresh below.
-        }
-      }
-
       final refreshToken = await TokenStorage.getRefreshToken();
       if (refreshToken == null || refreshToken.isEmpty) {
         // No refresh token, means user needs to log in

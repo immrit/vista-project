@@ -185,7 +185,21 @@ class RefreshCoordinator {
       // assume the stored refresh token is the rotated one. Persisting after
       // resolution leaves a window where a new caller reads the old token
       // and replays it.
-      if (persist != null) await persist(response);
+      //
+      // A persist failure (e.g. a transient secure-storage hiccup) must NOT
+      // make this refresh look like it failed: the server already rotated
+      // the token — rejecting `response` here would strand the caller on its
+      // now-dead pre-rotation token with no valid one to retry with, for a
+      // purely local write error. The in-memory response is still good for
+      // this caller's immediate retry; the next refresh call will simply try
+      // persisting again.
+      if (persist != null) {
+        try {
+          await persist(response);
+        } catch (e) {
+          // Swallow — see rationale above.
+        }
+      }
       _lastSuccess = response;
       _lastSuccessAt = DateTime.now();
       return response;
