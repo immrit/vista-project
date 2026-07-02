@@ -111,6 +111,7 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
 
   @override
   void dispose() {
+    _dragOffsetY.dispose();
     _progressController.dispose();
     _videoController?.dispose();
     _musicPreviewStopTimer?.cancel();
@@ -142,14 +143,13 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
 
     _currentUserId = await CurrentUserService.instance.resolveUserId();
 
-    // Track view and resolve reply state concurrently.
+    // PERF: never gate media start on network. trackView is fire-and-forget
+    // analytics; reply state applies itself via setState when it returns.
     final repository = ref.read(storyRepositoryProvider);
     final storyId = _currentStory.id;
 
-    await Future.wait([
-      repository.trackView(storyId),
-      _loadReplyState(),
-    ]);
+    unawaited(repository.trackView(storyId));
+    unawaited(_loadReplyState());
 
     // Preload the next 10 stories in the background
     StoryPreloader.preloadNextStories(
@@ -190,9 +190,12 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
     }
 
     final repository = ref.read(storyRepositoryProvider);
-    final accessResult = await repository.getStoryReplyAccess(_currentStory.id);
+    final requestedStoryId = _currentStory.id;
+    final accessResult =
+        await repository.getStoryReplyAccess(requestedStoryId);
 
-    if (!mounted) return;
+    // User may have advanced to another story while the request was in flight.
+    if (!mounted || _currentStory.id != requestedStoryId) return;
     accessResult.fold(
       (_) {
         final canReply = _currentStory.viewerCanReply;
@@ -398,13 +401,15 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
     });
   }
 
-  double _dragOffsetY = 0.0;
+  // PERF: drag offset lives in a ValueNotifier so pointer moves only rebuild
+  // the transform wrapper below — never the media/sticker subtree.
+  final ValueNotifier<double> _dragOffsetY = ValueNotifier<double>(0.0);
 
   @override
   Widget build(BuildContext context) {
-    // Calculate scale based on drag offset (max scale down to 0.8)
-    final double scale =
-        1.0 - (_dragOffsetY.abs() / MediaQuery.of(context).size.height * 0.3);
+    final screenHeight = MediaQuery.of(context).size.height;
+    final topPadding = MediaQuery.of(context).padding.top;
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -417,97 +422,108 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
         onLongPressStart: _onLongPressStart,
         onLongPressEnd: _onLongPressEnd,
         onVerticalDragUpdate: (details) {
-          setState(() {
-            _dragOffsetY += details.delta.dy;
-          });
+          _dragOffsetY.value += details.delta.dy;
         },
         onVerticalDragEnd: (details) {
           // If dragged down significantly or flicked down
-          if (_dragOffsetY > 100 || (details.primaryVelocity ?? 0) > 500) {
+          if (_dragOffsetY.value > 100 ||
+              (details.primaryVelocity ?? 0) > 500) {
             Navigator.of(context).pop();
           } else if (_isOwnStory && (details.primaryVelocity ?? 0) < -500) {
             // Flick up for own story -> Show Viewers
             _showViewers();
-            setState(() => _dragOffsetY = 0);
+            _dragOffsetY.value = 0;
           } else {
             // Snap back
-            setState(() => _dragOffsetY = 0);
+            _dragOffsetY.value = 0;
           }
         },
-        child: AnimatedContainer(
-          duration: _dragOffsetY == 0
-              ? const Duration(milliseconds: 200)
-              : Duration.zero,
-          transform: Matrix4.translationValues(0, _dragOffsetY, 0)
-            ..scale(scale),
-          transformAlignment: Alignment.center,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(_dragOffsetY == 0 ? 0 : 20),
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(_dragOffsetY == 0 ? 0 : 20),
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                // محتوای استوری
-                _buildAnimatedStoryContent(),
+        child: ValueListenableBuilder<double>(
+          valueListenable: _dragOffsetY,
+          // Heavy subtree built once per state change, reused across drag frames.
+          child: _buildAnimatedStoryContent(),
+          builder: (context, dragOffsetY, storyContent) {
+            // Calculate scale based on drag offset (max scale down to 0.8)
+            final double scale =
+                1.0 - (dragOffsetY.abs() / screenHeight * 0.3);
+            final atRest = dragOffsetY == 0;
 
-                // نوار پیشرفت
-                if (_dragOffsetY == 0 && !_isLongPressing) // Hide UI when dragging or long pressing
-                  Positioned(
-                    top: MediaQuery.of(context).padding.top + 8,
-                    left: 8,
-                    right: 8,
-                    child: StoryProgressBar(
-                      storiesCount: _currentUser.stories.length,
-                      currentIndex: _currentStoryIndex,
-                      controller: _progressController,
-                    ),
-                  ),
+            return AnimatedContainer(
+              duration: atRest
+                  ? const Duration(milliseconds: 200)
+                  : Duration.zero,
+              transform: Matrix4.translationValues(0, dragOffsetY, 0)
+                ..scale(scale),
+              transformAlignment: Alignment.center,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(atRest ? 0 : 20),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(atRest ? 0 : 20),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    // محتوای استوری
+                    storyContent!,
 
-                // هدر
-                if (_dragOffsetY == 0 && !_isLongPressing) // Hide UI when dragging or long pressing
-                  Positioned(
-                    top: MediaQuery.of(context).padding.top + 24,
-                    left: 0,
-                    right: 0,
-                    child: StoryHeader(
-                      user: _currentUser,
-                      story: _currentStory,
-                      onClose: () => Navigator.of(context).pop(),
-                      onOptions: () => _showOptions(),
-                    ),
-                  ),
+                    // نوار پیشرفت
+                    if (atRest && !_isLongPressing) // Hide UI when dragging or long pressing
+                      Positioned(
+                        top: topPadding + 8,
+                        left: 8,
+                        right: 8,
+                        child: StoryProgressBar(
+                          storiesCount: _currentUser.stories.length,
+                          currentIndex: _currentStoryIndex,
+                          controller: _progressController,
+                        ),
+                      ),
 
-                // اکشن‌ها (پایین صفحه)
-                if (_dragOffsetY == 0 && !_isLongPressing) // Hide UI when dragging or long pressing
-                  Positioned(
-                    bottom: MediaQuery.of(context).padding.bottom + 20,
-                    left: 16,
-                    right: 16,
-                    child: StoryActions(
-                      story: _currentStory,
-                      isOwnStory: _isOwnStory,
-                      storyOwnerUsername: _currentUser.username,
-                      replyPermission: _replyPermission,
-                      canReply: _canReplyToStory && !_isReplySending,
-                      isReplySending: _isReplySending,
-                      onReply: (message) => _replyToStory(message),
-                      onReact: (reaction) => _reactToStory(reaction),
-                      onViewers: _isOwnStory ? _showViewers : null,
-                    ),
-                  ),
+                    // هدر
+                    if (atRest && !_isLongPressing) // Hide UI when dragging or long pressing
+                      Positioned(
+                        top: topPadding + 24,
+                        left: 0,
+                        right: 0,
+                        child: StoryHeader(
+                          user: _currentUser,
+                          story: _currentStory,
+                          onClose: () => Navigator.of(context).pop(),
+                          onOptions: () => _showOptions(),
+                        ),
+                      ),
 
-                // لودینگ
-                if (_isLoading)
-                  const Center(
-                    child: CircularProgressIndicator(
-                      color: Colors.white,
-                    ),
-                  ),
-              ],
-            ),
-          ),
+                    // اکشن‌ها (پایین صفحه)
+                    if (atRest && !_isLongPressing) // Hide UI when dragging or long pressing
+                      Positioned(
+                        bottom: bottomPadding + 20,
+                        left: 16,
+                        right: 16,
+                        child: StoryActions(
+                          story: _currentStory,
+                          isOwnStory: _isOwnStory,
+                          storyOwnerUsername: _currentUser.username,
+                          replyPermission: _replyPermission,
+                          canReply: _canReplyToStory && !_isReplySending,
+                          isReplySending: _isReplySending,
+                          onReply: (message) => _replyToStory(message),
+                          onReact: (reaction) => _reactToStory(reaction),
+                          onViewers: _isOwnStory ? _showViewers : null,
+                        ),
+                      ),
+
+                    // لودینگ
+                    if (_isLoading)
+                      const Center(
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            );
+          },
         ),
       ),
     );
