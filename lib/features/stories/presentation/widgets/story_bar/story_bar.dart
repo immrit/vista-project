@@ -43,6 +43,19 @@ class _StoryBarState extends ConsumerState<StoryBar>
     }
   }
 
+  // PERF: memoized sort result — recompute only on a new provider emission,
+  // not on every StoryBar rebuild (upload ticks, parent rebuilds).
+  List<StoryUser>? _sortInput;
+  List<StoryUser>? _sortOutput;
+
+  List<StoryUser> _sortedStories(List<StoryUser> users) {
+    if (!identical(_sortInput, users)) {
+      _sortInput = users;
+      _sortOutput = _sortStories(users);
+    }
+    return _sortOutput!;
+  }
+
   @override
   Widget build(BuildContext context) {
     final storiesAsync = ref.watch(activeStoriesProvider);
@@ -52,7 +65,7 @@ class _StoryBarState extends ConsumerState<StoryBar>
       child: storiesAsync.when(
         loading: () => _buildLoadingState(),
         error: (error, _) => _buildErrorState(context, error.toString(), ref),
-        data: (users) => _buildStoryList(context, _sortStories(users), ref),
+        data: (users) => _buildStoryList(context, _sortedStories(users), ref),
       ),
     );
   }
@@ -230,6 +243,9 @@ class _AnimatedStoryRingState extends ConsumerState<_AnimatedStoryRing>
     _animController = AnimationController(
       duration: const Duration(milliseconds: 500),
       vsync: this,
+      // 0 = unseen (brand gradient), 1 = seen (grey). Start at current state
+      // so already-seen rings render grey without animating on first build.
+      value: _wasUnseen ? 0.0 : 1.0,
     );
     _spinController = AnimationController(
       duration: const Duration(seconds: 1),
@@ -327,16 +343,22 @@ class _AnimatedStoryRingState extends ConsumerState<_AnimatedStoryRing>
 
   Widget _buildAnimatedRing(bool isDarkMode, bool hasUnseenStories) {
     // ✅ گرادیانت برای دیده‌نشده (رنگ‌های جذاب)، خاکستری برای دیده‌شده
-    final gradientColors = hasUnseenStories
-        ? const [
-            AppColors.primary, // Indigo (برند Vista)
-            AppColors.secondary, // Violet
-            AppColors.accent, // Pink
-          ]
-        : [
-            isDarkMode ? const Color(0xFF424242) : const Color(0xFFE0E0E0),
-            isDarkMode ? const Color(0xFF303030) : const Color(0xFFBDBDBD),
-          ];
+    // Ring fades smoothly from brand gradient to grey after viewing
+    // (t = 0 unseen → 1 seen, driven by _colorAnimation).
+    final t = _colorAnimation.value;
+    const unseenColors = [
+      AppColors.primary, // Indigo (برند Vista)
+      AppColors.secondary, // Violet
+      AppColors.accent, // Pink
+    ];
+    final seenColors = isDarkMode
+        ? const [Color(0xFF424242), Color(0xFF383838), Color(0xFF303030)]
+        : const [Color(0xFFE0E0E0), Color(0xFFCFCFCF), Color(0xFFBDBDBD)];
+    final gradientColors = [
+      for (var i = 0; i < unseenColors.length; i++)
+        Color.lerp(unseenColors[i], seenColors[i], t)!,
+    ];
+    final shadowOpacity = 0.3 * (1 - t);
 
     if (_isLoadingStory) {
       return SizedBox(
@@ -379,11 +401,11 @@ class _AnimatedStoryRingState extends ConsumerState<_AnimatedStoryRing>
           begin: Alignment.topRight,
           end: Alignment.bottomLeft,
         ),
-        boxShadow: hasUnseenStories
+        boxShadow: shadowOpacity > 0.01
             ? [
                 BoxShadow(
                   color: AppColors.secondary
-                      .withValues(alpha: 0.3), // Vista violet shadow
+                      .withValues(alpha: shadowOpacity), // Vista violet shadow
                   blurRadius: 8,
                   spreadRadius: 0,
                 ),
@@ -438,11 +460,15 @@ class _AnimatedStoryRingState extends ConsumerState<_AnimatedStoryRing>
   }
 
   Widget _buildAvatar() {
+    // Decode at ring size, not the original upload resolution.
+    final cacheSize =
+        (74 * MediaQuery.devicePixelRatioOf(context)).round();
+    final ImageProvider provider =
+        (widget.user.avatarUrl == null || widget.user.avatarUrl!.isEmpty)
+            ? const AssetImage(_defaultAvatarAsset)
+            : CachedNetworkImageProvider(widget.user.avatarUrl!);
     return CircleAvatar(
-      backgroundImage:
-          (widget.user.avatarUrl == null || widget.user.avatarUrl!.isEmpty)
-              ? const AssetImage(_defaultAvatarAsset) as ImageProvider
-              : CachedNetworkImageProvider(widget.user.avatarUrl!),
+      backgroundImage: ResizeImage(provider, width: cacheSize),
     );
   }
 }
