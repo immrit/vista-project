@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:Vista/utils/env_config.dart';
 
 import '../../../services/http_client_factory.dart';
@@ -45,7 +46,20 @@ class ProfileRepository {
     return Options(headers: {'Authorization': 'Bearer $freshToken'});
   }
 
+  /// Always fetches the **signed-in user's own** profile (`/me/profile`) —
+  /// [userId] is only used as a fallback id when normalizing the response,
+  /// it does not select whose profile is fetched. Callers that want another
+  /// user's profile must use [fetchProfileById] instead, which is the one
+  /// keyed correctly per user id (used by the account details screen).
   Future<Map<String, dynamic>?> fetchProfile(String userId) async {
+    if (kDebugMode) {
+      final selfId = await TokenStorage.getUserId();
+      if (selfId != null && selfId.isNotEmpty && selfId != userId) {
+        logInfo(
+            '⚠️ fetchProfile($userId) called but it always returns /me/profile '
+            '(signed-in user is $selfId) — use fetchProfileById($userId) instead.');
+      }
+    }
     final now = DateTime.now().millisecondsSinceEpoch;
     if (now < _selfRateLimitedUntilMs) {
       throw 'خطا در دریافت اطلاعات پروفایل';

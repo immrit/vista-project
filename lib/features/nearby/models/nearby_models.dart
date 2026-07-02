@@ -124,6 +124,7 @@ class NearbyMatch {
   final String fullName;
   final String avatarUrl;
   final bool isVerified;
+  final String verificationType;
   final String matchedAt;
 
   const NearbyMatch({
@@ -133,6 +134,7 @@ class NearbyMatch {
     required this.fullName,
     required this.avatarUrl,
     required this.isVerified,
+    required this.verificationType,
     required this.matchedAt,
   });
 
@@ -143,6 +145,7 @@ class NearbyMatch {
         fullName: j['full_name'] as String? ?? '',
         avatarUrl: j['avatar_url'] as String? ?? '',
         isVerified: j['is_verified'] as bool? ?? false,
+        verificationType: j['verification_type'] as String? ?? '',
         matchedAt: j['matched_at'] as String? ?? '',
       );
 }
@@ -212,6 +215,7 @@ class NearbyReceivedLike {
   final String fullName;
   final String avatarUrl;
   final bool isVerified;
+  final String verificationType;
   final String action; // like | superlike
 
   const NearbyReceivedLike({
@@ -220,6 +224,7 @@ class NearbyReceivedLike {
     required this.fullName,
     required this.avatarUrl,
     required this.isVerified,
+    required this.verificationType,
     required this.action,
   });
 
@@ -230,6 +235,7 @@ class NearbyReceivedLike {
         fullName: j['full_name'] as String? ?? '',
         avatarUrl: j['avatar_url'] as String? ?? '',
         isVerified: j['is_verified'] as bool? ?? false,
+        verificationType: j['verification_type'] as String? ?? '',
         action: j['action'] as String? ?? 'like',
       );
 }

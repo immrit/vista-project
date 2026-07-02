@@ -44,6 +44,9 @@ ResolvedVerificationBadgeType resolveVerificationBadgeType({
   if (!isVerified) return ResolvedVerificationBadgeType.none;
 
   final parsedType = parseVerificationBadgeType(verificationType);
+  if (parsedType == ResolvedVerificationBadgeType.none) {
+    return ResolvedVerificationBadgeType.blueTick;
+  }
   return parsedType;
 }
 

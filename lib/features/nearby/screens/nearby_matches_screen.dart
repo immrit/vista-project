@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:Vista/core/theme/app_theme.dart';
 import '../models/nearby_models.dart';
 import '../providers/nearby_provider.dart';
+import '../../../widgets/verification_badge_icon.dart';
 
 /// Standalone matches page (kept for direct navigation / deep links).
 class NearbyMatchesScreen extends StatelessWidget {
@@ -142,17 +143,27 @@ class NearbyMatchesBody extends ConsumerWidget {
                 Row(
                   children: [
                     Flexible(
-                      child: Text(m.fullName,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                              fontSize: 16, fontWeight: FontWeight.w700)),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Flexible(
+                            child: Text(m.fullName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                    fontSize: 16, fontWeight: FontWeight.w700)),
+                          ),
+                          if (m.isVerified) ...[
+                            const SizedBox(width: 4),
+                            VerificationBadgeIcon(
+                              isVerified: m.isVerified,
+                              verificationType: m.verificationType,
+                              size: 16,
+                            ),
+                          ],
+                        ],
+                      ),
                     ),
-                    if (m.isVerified) ...[
-                      const SizedBox(width: 4),
-                      const Icon(Icons.verified_rounded,
-                          color: AppColors.info, size: 16),
-                    ],
                   ],
                 ),
                 if (m.username.isNotEmpty)

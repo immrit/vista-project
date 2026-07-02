@@ -161,7 +161,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
           : RefreshIndicator(
               onRefresh: _refreshProfile,
               color: isDark ? Colors.white : Colors.black,
+              // NestedScrollView + TabBarView nests several Scrollables, so
+              // scroll notifications reach RefreshIndicator with depth > 0.
+              // The default predicate only accepts depth == 0, which is why
+              // pulling down inside a tab never triggered the refresh.
+              notificationPredicate: (_) => true,
               child: NestedScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
                 headerSliverBuilder: (context, innerBoxIsScrolled) {
                   return [
                     SliverToBoxAdapter(

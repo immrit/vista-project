@@ -5,11 +5,17 @@ import 'package:dio/dio.dart';
 class GeocoderResult {
   final String cityName;
   final String provinceName;
+  final String countryName;
   final String source;
+  final double? latitude;
+  final double? longitude;
   const GeocoderResult({
     required this.cityName,
     required this.provinceName,
+    this.countryName = '',
     this.source = 'gps',
+    this.latitude,
+    this.longitude,
   });
 
   bool get hasCity => cityName.isNotEmpty;
@@ -76,6 +82,12 @@ class GeocoderService {
     return viaGps;
   }
 
+  /// City + province from the caller's public IP alone — for when no GPS
+  /// coordinate is available at all (e.g. location permission not granted).
+  /// Coarser than [lookup]; a whole carrier's CGNAT block can resolve to one
+  /// city, so treat this as an approximation, not the user's exact city.
+  static Future<GeocoderResult?> lookupByIp() => _ipLookup();
+
   static Future<GeocoderResult?> _nominatimLookup(double lat, double lng) async {
     try {
       final resp = await _nominatim.get('/reverse', queryParameters: {
@@ -105,11 +117,15 @@ class GeocoderService {
         'province',
         'region',
       ]);
+      final country = _firstNonEmpty(address, const ['country']);
 
       return GeocoderResult(
         cityName: city,
         provinceName: province,
+        countryName: country,
         source: 'gps',
+        latitude: lat,
+        longitude: lng,
       );
     } catch (_) {
       return null;
@@ -128,12 +144,16 @@ class GeocoderService {
       final city = (data['city'] as String?)?.trim() ?? '';
       // ipwho.is returns the province in `region` (e.g. "Tehran Province").
       final province = (data['region'] as String?)?.trim() ?? '';
+      final country = (data['country'] as String?)?.trim() ?? '';
       if (city.isEmpty && province.isEmpty) return null;
 
       return GeocoderResult(
         cityName: city,
         provinceName: province,
+        countryName: country,
         source: 'ip',
+        latitude: (data['latitude'] as num?)?.toDouble(),
+        longitude: (data['longitude'] as num?)?.toDouble(),
       );
     } catch (_) {
       return null;

@@ -7,6 +7,7 @@ import '../data/nearby_repository.dart';
 import '../models/nearby_models.dart';
 import '../providers/nearby_provider.dart';
 import 'nearby_matches_screen.dart';
+import '../../../widgets/verification_badge_icon.dart';
 
 /// Combined "likes + matches" screen (F3): tab 0 = people who liked you, tab 1 =
 /// your matches. [initialTab] lets a deep link open straight to either tab.
@@ -253,17 +254,27 @@ class _ReceivedLikesTab extends ConsumerWidget {
                 Row(
                   children: [
                     Flexible(
-                      child: Text(u.fullName,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                              fontSize: 16, fontWeight: FontWeight.w700)),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Flexible(
+                            child: Text(u.fullName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                    fontSize: 16, fontWeight: FontWeight.w700)),
+                          ),
+                          if (u.isVerified) ...[
+                            const SizedBox(width: 4),
+                            VerificationBadgeIcon(
+                              isVerified: u.isVerified,
+                              verificationType: u.verificationType,
+                              size: 16,
+                            ),
+                          ],
+                        ],
+                      ),
                     ),
-                    if (u.isVerified) ...[
-                      const SizedBox(width: 4),
-                      const Icon(Icons.verified_rounded,
-                          color: AppColors.info, size: 16),
-                    ],
                   ],
                 ),
                 Text(isSuper ? 'سوپرلایکت کرده ⭐' : 'لایکت کرده',

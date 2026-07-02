@@ -2,6 +2,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import 'package:Vista/core/theme/app_theme.dart';
+import '../../../widgets/verification_badge_icon.dart';
 import '../models/nearby_models.dart';
 
 /// A single Tinder-style profile card: full-bleed avatar, gradient scrim,
@@ -127,28 +128,38 @@ class NearbyCard extends StatelessWidget {
                 Row(
                   children: [
                     Flexible(
-                      child: Text(
-                        title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 26,
-                          fontWeight: FontWeight.w800,
-                          shadows: [
-                            Shadow(color: Colors.black54, blurRadius: 8)
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 26,
+                                fontWeight: FontWeight.w800,
+                                shadows: [
+                                  Shadow(color: Colors.black54, blurRadius: 8)
+                                ],
+                              ),
+                            ),
+                          ),
+                          if (c.isVerified) ...[
+                            const SizedBox(width: 4),
+                            VerificationBadgeIcon(
+                              isVerified: c.isVerified,
+                              verificationType: c.verificationType,
+                              size: 20,
+                            ),
                           ],
-                        ),
+                        ],
                       ),
                     ),
                     if (c.gender.isNotEmpty) ...[
                       const SizedBox(width: 6),
                       _genderBadge(c.gender),
-                    ],
-                    if (c.isVerified) ...[
-                      const SizedBox(width: 4),
-                      const Icon(Icons.verified_rounded,
-                          color: AppColors.info, size: 20),
                     ],
                   ],
                 ),

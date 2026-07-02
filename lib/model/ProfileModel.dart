@@ -22,6 +22,7 @@ class ProfileModel extends Equatable {
   final String? bio;
   final String? websiteUrl;
   final String? location;
+  final String locationSource; // 'manual' (user-typed) or 'auto' (GPS/IP sync)
   final int followersCount;
   final int followingCount;
   final DateTime? createdAt;
@@ -61,6 +62,7 @@ class ProfileModel extends Equatable {
     this.bio,
     this.websiteUrl,
     this.location,
+    this.locationSource = 'manual',
     this.followersCount = 0,
     this.followingCount = 0,
     this.createdAt,
@@ -145,6 +147,7 @@ class ProfileModel extends Equatable {
       bio: map['bio']?.toString(),
       websiteUrl: map['website_url']?.toString(),
       location: map['location']?.toString(),
+      locationSource: map['location_source']?.toString() ?? 'manual',
       followersCount: map['followers_count'] ?? map['follower_count'] ?? 0,
       followingCount: map['following_count'] ?? map['following_count'] ?? 0,
       createdAt: map['created_at'] != null
@@ -215,6 +218,7 @@ class ProfileModel extends Equatable {
       'bio': bio,
       'website_url': websiteUrl,
       'location': location,
+      'location_source': locationSource,
       'followers_count': followersCount,
       'following_count': followingCount,
       'created_at': createdAt?.toIso8601String(),
@@ -258,6 +262,7 @@ class ProfileModel extends Equatable {
     String? bio,
     String? websiteUrl,
     String? location,
+    String? locationSource,
     int? followersCount,
     int? followingCount,
     DateTime? createdAt,
@@ -296,6 +301,7 @@ class ProfileModel extends Equatable {
       bio: bio ?? this.bio,
       websiteUrl: websiteUrl ?? this.websiteUrl,
       location: location ?? this.location,
+      locationSource: locationSource ?? this.locationSource,
       followersCount: followersCount ?? this.followersCount,
       followingCount: followingCount ?? this.followingCount,
       createdAt: createdAt ?? this.createdAt,
@@ -338,6 +344,7 @@ class ProfileModel extends Equatable {
         bio,
         websiteUrl,
         location,
+        locationSource,
         followersCount,
         followingCount,
         createdAt,

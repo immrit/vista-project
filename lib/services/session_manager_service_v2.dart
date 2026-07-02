@@ -4,7 +4,6 @@ import 'dart:io';
 
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
-import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:Vista/utils/env_config.dart';
 import 'package:http/http.dart' as http;
@@ -14,6 +13,7 @@ import 'package:uuid/uuid.dart';
 import '../features/auth/data/auth_repository.dart';
 import '../features/auth/providers/auth_controller.dart';
 import '../features/auth/domain/auth_exceptions.dart';
+import '../features/nearby/services/geocoder_service.dart';
 import '../model/session_model.dart';
 import '../security/logging_utility.dart';
 import '../services/current_user_service.dart';
@@ -1030,6 +1030,12 @@ class SessionManagerServiceV2 {
     return null;
   }
 
+  /// Cache/sync-marker keys are scoped to the signed-in user so that
+  /// switching accounts on the same device never leaks one user's detected
+  /// city into another user's profile.
+  Future<String> _locationScope() async =>
+      (await _getAuthenticatedUserId())?.trim() ?? 'anonymous';
+
   Future<_DeviceLocationSnapshot?> _getDeviceLocationSnapshot({
     bool forceRefresh = false,
   }) async {
@@ -1041,7 +1047,12 @@ class SessionManagerServiceV2 {
       }
     }
 
-    // ── تلاش اول: GPS دستگاه ────────────────────────────────────────────
+    GeocoderResult? result;
+    double? gpsLat;
+    double? gpsLng;
+
+    // ── تلاش اول: GPS دستگاه، از طریق GeocoderService (همون منبعی که
+    // فیچر Nearby استفاده می‌کنه — نام‌های فارسی، بدون پیاده‌سازی موازی) ──
     try {
       final serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (serviceEnabled) {
@@ -1055,124 +1066,85 @@ class SessionManagerServiceV2 {
               timeLimit: Duration(seconds: 12),
             ),
           );
-
-          final placemarks = await placemarkFromCoordinates(
-            position.latitude,
-            position.longitude,
-          );
-          final place = placemarks.isNotEmpty ? placemarks.first : null;
-
-          // locality → subAdministrativeArea → administrativeArea
-          final city = (place?.locality?.trim().isNotEmpty ?? false)
-              ? place!.locality!.trim()
-              : (place?.subAdministrativeArea?.trim().isNotEmpty ?? false)
-                  ? place!.subAdministrativeArea!.trim()
-                  : (place?.administrativeArea?.trim().isNotEmpty ?? false)
-                      ? place!.administrativeArea!.trim()
-                      : '';
-
-          if (city.isNotEmpty) {
-            final snap = _DeviceLocationSnapshot(
-              city: city,
-              country: place?.country?.trim(),
-              region: place?.administrativeArea?.trim(),
-              latitude: position.latitude,
-              longitude: position.longitude,
-              capturedAt: DateTime.now(),
-              source: 'device_gps',
-            );
-            await _cacheLocationSnapshot(snap);
-            return snap;
-          }
+          gpsLat = position.latitude;
+          gpsLng = position.longitude;
+          result = await GeocoderService.lookup(gpsLat, gpsLng);
         }
       }
     } catch (e) {
       logInfo('⚠️ GPS location failed, will try IP fallback: $e');
     }
 
-    // ── تلاش دوم: IP Geolocation ──────────────────────────────────────
-    try {
-      final ipSnap = await _getIpLocationSnapshot();
-      if (ipSnap != null) {
-        await _cacheLocationSnapshot(ipSnap);
-        return ipSnap;
+    // ── تلاش دوم: IP Geolocation — وقتی GPS نبود یا شهر نداد. این یک
+    // تخمین درشت‌دونه است (اپراتورهای موبایل با CGNAT ممکنه چند هزار کاربر
+    // رو به یک شهر resolve کنن)، نه معادل دقیق GPS. ──────────────────────
+    if (result == null || !result.hasCity) {
+      try {
+        result = await GeocoderService.lookupByIp();
+      } catch (e) {
+        logInfo('⚠️ IP location failed: $e');
       }
-    } catch (e) {
-      logInfo('⚠️ IP location failed: $e');
+    }
+
+    if (result != null && result.hasCity) {
+      final snap = _DeviceLocationSnapshot(
+        city: result.cityName,
+        country: result.countryName.isNotEmpty ? result.countryName : null,
+        region: result.provinceName.isNotEmpty ? result.provinceName : null,
+        latitude: result.latitude ?? gpsLat,
+        longitude: result.longitude ?? gpsLng,
+        capturedAt: DateTime.now(),
+        source: result.source == 'ip' ? 'ip_geolocation' : 'device_gps',
+      );
+      await _cacheLocationSnapshot(snap);
+      return snap;
     }
 
     // ── آخرین fallback: cache قدیمی ──────────────────────────────────
     return cached;
   }
 
-  /// IP-based geolocation — city level — بدون نیاز به مجوز
-  /// Uses ipapi.co (HTTPS) as primary; falls back to ip-api.com fields if needed.
-  Future<_DeviceLocationSnapshot?> _getIpLocationSnapshot() async {
-    try {
-      final response = await http
-          .get(
-            Uri.parse('https://ipapi.co/json/'),
-            headers: {'Accept': 'application/json'},
-          )
-          .timeout(const Duration(seconds: 8));
-
-      if (response.statusCode != 200) return null;
-      final data = jsonDecode(response.body) as Map<String, dynamic>;
-
-      // ipapi.co returns {"error": true} when rate-limited
-      if (data['error'] == true) return null;
-
-      final city = (data['city'] as String?)?.trim() ?? '';
-      if (city.isEmpty) return null;
-
-      return _DeviceLocationSnapshot(
-        city: city,
-        country: (data['country_name'] as String?)?.trim(),
-        region: (data['region'] as String?)?.trim(),
-        latitude: (data['latitude'] as num?)?.toDouble(),
-        longitude: (data['longitude'] as num?)?.toDouble(),
-        capturedAt: DateTime.now(),
-        source: 'ip_geolocation',
-      );
-    } catch (_) {
-      return null;
-    }
-  }
-
   Future<_DeviceLocationSnapshot?> _readCachedLocationSnapshot() async {
     final prefs = await SharedPreferences.getInstance();
-    final atMs = prefs.getInt(_locationCacheAtStorageKey);
-    final city = prefs.getString(_locationCacheCityStorageKey)?.trim() ?? '';
+    final scope = await _locationScope();
+    final atMs = prefs.getInt('$_locationCacheAtStorageKey.$scope');
+    final city =
+        prefs.getString('$_locationCacheCityStorageKey.$scope')?.trim() ?? '';
     if (atMs == null || city.isEmpty) return null;
 
     return _DeviceLocationSnapshot(
       city: city,
-      country: prefs.getString(_locationCacheCountryStorageKey),
-      region: prefs.getString(_locationCacheRegionStorageKey),
-      latitude: prefs.getDouble(_locationCacheLatStorageKey),
-      longitude: prefs.getDouble(_locationCacheLngStorageKey),
+      country: prefs.getString('$_locationCacheCountryStorageKey.$scope'),
+      region: prefs.getString('$_locationCacheRegionStorageKey.$scope'),
+      latitude: prefs.getDouble('$_locationCacheLatStorageKey.$scope'),
+      longitude: prefs.getDouble('$_locationCacheLngStorageKey.$scope'),
       capturedAt: DateTime.fromMillisecondsSinceEpoch(atMs),
     );
   }
 
   Future<void> _cacheLocationSnapshot(_DeviceLocationSnapshot snapshot) async {
     final prefs = await SharedPreferences.getInstance();
+    final scope = await _locationScope();
     await prefs.setInt(
-      _locationCacheAtStorageKey,
+      '$_locationCacheAtStorageKey.$scope',
       snapshot.capturedAt.millisecondsSinceEpoch,
     );
-    await prefs.setString(_locationCacheCityStorageKey, snapshot.city);
+    await prefs.setString('$_locationCacheCityStorageKey.$scope', snapshot.city);
     if (snapshot.country != null && snapshot.country!.trim().isNotEmpty) {
-      await prefs.setString(_locationCacheCountryStorageKey, snapshot.country!);
+      await prefs.setString(
+          '$_locationCacheCountryStorageKey.$scope', snapshot.country!);
     }
     if (snapshot.region != null && snapshot.region!.trim().isNotEmpty) {
-      await prefs.setString(_locationCacheRegionStorageKey, snapshot.region!);
+      await prefs.setString(
+          '$_locationCacheRegionStorageKey.$scope', snapshot.region!);
     }
     if (snapshot.latitude != null) {
-      await prefs.setDouble(_locationCacheLatStorageKey, snapshot.latitude!);
+      await prefs.setDouble(
+          '$_locationCacheLatStorageKey.$scope', snapshot.latitude!);
     }
     if (snapshot.longitude != null) {
-      await prefs.setDouble(_locationCacheLngStorageKey, snapshot.longitude!);
+      await prefs.setDouble(
+          '$_locationCacheLngStorageKey.$scope', snapshot.longitude!);
     }
   }
 
@@ -1184,9 +1156,11 @@ class SessionManagerServiceV2 {
     if (city.isEmpty) return;
 
     final prefs = await SharedPreferences.getInstance();
-    final lastSyncMs = prefs.getInt(_lastProfileLocationSyncAtStorageKey);
-    final lastSyncedCity =
-        prefs.getString(_lastProfileLocationSyncCityStorageKey)?.trim();
+    final scope = await _locationScope();
+    final syncAtKey = '$_lastProfileLocationSyncAtStorageKey.$scope';
+    final syncCityKey = '$_lastProfileLocationSyncCityStorageKey.$scope';
+    final lastSyncMs = prefs.getInt(syncAtKey);
+    final lastSyncedCity = prefs.getString(syncCityKey)?.trim();
     final now = DateTime.now();
     final isStale = lastSyncMs == null ||
         now.difference(DateTime.fromMillisecondsSinceEpoch(lastSyncMs)) >=
@@ -1199,17 +1173,17 @@ class SessionManagerServiceV2 {
       return;
     }
 
+    // location_source: 'auto' — سرور خودش تضمین می‌کنه اگه کاربر قبلاً
+    // دستی location رو ست کرده ('manual')، این مقدار رونویسی نشه. اینجا
+    // نیازی به چک‌کردن پیشاپیش پروفایل فعلی نیست، سرور مرجع تصمیمه.
     try {
       await _backendRequest(
         method: 'POST',
         path: '/v1/me/profile/update',
-        body: {'location': city},
+        body: {'location': city, 'location_source': 'auto'},
       );
-      await prefs.setInt(
-        _lastProfileLocationSyncAtStorageKey,
-        now.millisecondsSinceEpoch,
-      );
-      await prefs.setString(_lastProfileLocationSyncCityStorageKey, city);
+      await prefs.setInt(syncAtKey, now.millisecondsSinceEpoch);
+      await prefs.setString(syncCityKey, city);
     } catch (e) {
       logInfo('⚠️ Profile location sync failed (non-critical): $e');
     }
