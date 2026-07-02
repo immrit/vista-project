@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import 'package:Vista/core/theme/app_theme.dart';
@@ -56,12 +57,15 @@ class NearbyCard extends StatelessWidget {
         children: [
           // ── Avatar / fallback
           if (c.avatarUrl.isNotEmpty)
-            Image.network(
-              c.avatarUrl,
+            CachedNetworkImage(
+              imageUrl: c.avatarUrl,
               fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => _fallback(c),
-              loadingBuilder: (ctx, child, progress) =>
-                  progress == null ? child : _fallback(c),
+              // Decode at card size, not original upload resolution.
+              memCacheWidth: (MediaQuery.sizeOf(context).width *
+                      MediaQuery.devicePixelRatioOf(context))
+                  .round(),
+              errorWidget: (_, __, ___) => _fallback(c),
+              placeholder: (_, __) => _fallback(c),
             )
           else
             _fallback(c),

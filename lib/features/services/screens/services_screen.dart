@@ -1,5 +1,6 @@
 // ignore_for_file: deprecated_member_use
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -344,10 +345,13 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
           children: [
             // Background image
             if (banner.imageUrl.isNotEmpty)
-              Image.network(
-                banner.imageUrl,
+              CachedNetworkImage(
+                imageUrl: banner.imageUrl,
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                memCacheWidth: (MediaQuery.sizeOf(context).width *
+                        MediaQuery.devicePixelRatioOf(context))
+                    .round(),
+                errorWidget: (_, __, ___) => const SizedBox.shrink(),
               ),
             // gradient overlay
             Container(

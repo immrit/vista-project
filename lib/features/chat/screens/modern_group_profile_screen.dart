@@ -1,5 +1,6 @@
 import 'dart:ui';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -1697,10 +1698,15 @@ class _MediaThumb extends StatelessWidget {
           fit: StackFit.expand,
           children: [
             if (isImage)
-              Image.network(
-                url,
+              CachedNetworkImage(
+                imageUrl: url,
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => const Icon(Icons.broken_image),
+                // Grid thumb (~1/3 screen) — never decode the full attachment.
+                memCacheWidth: (MediaQuery.sizeOf(context).width /
+                        3 *
+                        MediaQuery.devicePixelRatioOf(context))
+                    .round(),
+                errorWidget: (_, __, ___) => const Icon(Icons.broken_image),
               )
             else
               const Center(

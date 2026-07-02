@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import '../../domain/entities/story_editor_models.dart';
 
@@ -40,14 +41,14 @@ class GifStickerWidget extends StatelessWidget {
             : null,
       ),
       clipBehavior: Clip.antiAlias,
-      // Use gifUrl directly for animated GIF; Image.network supports animation.
-      child: Image.network(
-        gifUrl,
+      // CachedNetworkImage animates GIFs and disk-caches the bytes, so the
+      // sticker doesn't re-download on every story view.
+      child: CachedNetworkImage(
+        imageUrl: gifUrl,
         width: width,
         height: height,
         fit: BoxFit.cover,
-        gaplessPlayback: true,
-        errorBuilder: (context, error, stack) => _buildFallback(width, height),
+        errorWidget: (context, error, stack) => _buildFallback(width, height),
       ),
     );
   }
