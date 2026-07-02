@@ -1,6 +1,7 @@
 // lib/features/chat/widgets/improved_animated_message_bubble.dart
 
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../../../security/e2ee_service.dart' as import_e2ee;
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
@@ -882,18 +883,17 @@ class _ImprovedAnimatedMessageBubbleState
       child: Stack(
         alignment: Alignment.center,
         children: [
-          Image.network(
-            imageUrl,
+          CachedNetworkImage(
+            imageUrl: imageUrl,
             width: 48,
             height: 48,
-            cacheWidth: (48 * MediaQuery.devicePixelRatioOf(context)).round(),
-            cacheHeight: (48 * MediaQuery.devicePixelRatioOf(context)).round(),
+            memCacheWidth:
+                (48 * MediaQuery.devicePixelRatioOf(context)).round(),
+            memCacheHeight:
+                (48 * MediaQuery.devicePixelRatioOf(context)).round(),
             fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => placeholder,
-            loadingBuilder: (context, child, progress) {
-              if (progress == null) return child;
-              return placeholder;
-            },
+            errorWidget: (_, __, ___) => placeholder,
+            placeholder: (_, __) => placeholder,
           ),
           if (hasVideo)
             Container(
