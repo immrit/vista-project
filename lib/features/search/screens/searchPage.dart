@@ -946,7 +946,11 @@ class _UserTile extends StatelessWidget {
         radius: 23,
         backgroundColor: theme.colorScheme.surfaceContainerHighest,
         backgroundImage: avatarUrl != null && avatarUrl.isNotEmpty
-            ? CachedNetworkImageProvider(avatarUrl)
+            // Decode at avatar size (46px circle), not full upload resolution.
+            ? ResizeImage(
+                CachedNetworkImageProvider(avatarUrl),
+                width: (46 * MediaQuery.devicePixelRatioOf(context)).round(),
+              )
             : null,
         child: avatarUrl == null || avatarUrl.isEmpty
             ? Icon(Icons.person_rounded,

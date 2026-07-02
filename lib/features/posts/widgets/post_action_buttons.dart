@@ -152,7 +152,7 @@ class PostCommentButton extends StatelessWidget {
               width: iconSize,
               height: iconSize,
               color: baseColor,
-              filterQuality: FilterQuality.high,
+              filterQuality: FilterQuality.medium,
             ),
             if (showCount) ...[
               SizedBox(width: gap),
