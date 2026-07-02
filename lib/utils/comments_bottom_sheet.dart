@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../model/CommentModel.dart';
 import 'package:Vista/features/posts/navigation/content_routes.dart';
 import 'package:Vista/features/auth/providers/auth_controller.dart';
+import 'package:Vista/features/profile/providers/user_profile_provider.dart';
 import 'package:Vista/widgets/verification_badge_icon.dart';
 import '../widgets/comment_input_field.dart';
 
@@ -368,7 +369,6 @@ class _CommentItemState extends ConsumerState<CommentItem>
   // Add this controller
   final TextEditingController _editController = TextEditingController();
   bool _isEditing = false;
-  final bool _isSavingEdit = false;
 
   List<CommentModel> _getFlattenedReplies(CommentModel root) {
     final List<CommentModel> flat = [];
@@ -703,11 +703,17 @@ class _CommentItemState extends ConsumerState<CommentItem>
                         },
                         child: CircleAvatar(
                           radius: widget.isReply ? 16 : 20,
-                          backgroundImage: widget.comment.avatarUrl.isEmpty
-                              ? const AssetImage(
-                                  'lib/utils/images/default-avatar.jpg')
-                              : CachedNetworkImageProvider(
-                                  widget.comment.avatarUrl) as ImageProvider,
+                          // Decode at avatar size, not full upload resolution.
+                          backgroundImage: ResizeImage(
+                            widget.comment.avatarUrl.isEmpty
+                                ? const AssetImage(
+                                    'lib/utils/images/default-avatar.jpg')
+                                : CachedNetworkImageProvider(
+                                    widget.comment.avatarUrl) as ImageProvider,
+                            width:
+                                (40 * MediaQuery.devicePixelRatioOf(context))
+                                    .round(),
+                          ),
                           backgroundColor:
                               theme.colorScheme.surfaceContainerHighest,
                         ),
@@ -842,7 +848,7 @@ class _CommentItemState extends ConsumerState<CommentItem>
                                         parentCommentId:
                                             widget.comment.parentCommentId,
                                       );
-                                      if (!success && mounted) {
+                                      if (!success && context.mounted) {
                                         final error = ref
                                             .read(
                                                 commentsProvider(widget.postId))
@@ -865,8 +871,15 @@ class _CommentItemState extends ConsumerState<CommentItem>
                                         VerificationType.blueTick
                                       ].contains(
                                           widget.comment.verificationType);
+                                  final currentUser = ref.read(activeUserProvider);
+                                  final currentUserProfile = ref.read(currentUserProfileProvider).value;
+                                  final currentUserId = currentUser?.id ?? currentUserProfile?.id;
+                                  final isPostOwner = currentUserId != null && currentUserId == widget.comment.postOwnerId;
+                                  final hasAdminBlueTick = currentUserProfile?.role == 'admin' && currentUserProfile?.hasBlueBadge == true;
+                                  final canDelete = isOwner || isPostOwner || hasAdminBlueTick;
+
                                   return [
-                                    if (isOwner) ...[
+                                    if (isOwner)
                                       PopupMenuItem(
                                         value: 'edit',
                                         child: Row(
@@ -891,6 +904,7 @@ class _CommentItemState extends ConsumerState<CommentItem>
                                           ],
                                         ),
                                       ),
+                                    if (canDelete)
                                       const PopupMenuItem(
                                         value: 'delete',
                                         child: Row(
@@ -904,7 +918,7 @@ class _CommentItemState extends ConsumerState<CommentItem>
                                           ],
                                         ),
                                       ),
-                                    ] else ...[
+                                    if (!isOwner)
                                       const PopupMenuItem(
                                         value: 'report',
                                         child: Row(
@@ -915,7 +929,6 @@ class _CommentItemState extends ConsumerState<CommentItem>
                                           ],
                                         ),
                                       ),
-                                    ],
                                   ];
                                 },
                               ),

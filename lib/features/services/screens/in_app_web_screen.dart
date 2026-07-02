@@ -136,49 +136,70 @@ class _InAppWebScreenState extends State<InAppWebScreen> {
         statusBarBrightness:
             statusIconBrightness == Brightness.light ? Brightness.dark : Brightness.light,
       ),
-      child: Scaffold(
-        backgroundColor: widget.backgroundColor ??
-            widget.appBarColor ??
-            (isDark ? AppColors.darkBackground : AppColors.lightBackground),
-        appBar: AppBar(
-          backgroundColor: barBg,
-          surfaceTintColor: Colors.transparent,
-          elevation: 0,
-          iconTheme: IconThemeData(color: fgColor),
-          leading: IconButton(
-            icon: Icon(
-              widget.useBackButton
-                  ? Icons.arrow_back_ios_new_rounded
-                  : Icons.close_rounded,
-              color: fgColor,
+      child: PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, _) async {
+          if (didPop) return;
+          if (await _controller.canGoBack()) {
+            _controller.goBack();
+          } else {
+            if (context.mounted) {
+              Navigator.pop(context);
+            }
+          }
+        },
+        child: Scaffold(
+          backgroundColor: widget.backgroundColor ??
+              widget.appBarColor ??
+              (isDark ? AppColors.darkBackground : AppColors.lightBackground),
+          appBar: AppBar(
+            backgroundColor: barBg,
+            surfaceTintColor: Colors.transparent,
+            elevation: 0,
+            iconTheme: IconThemeData(color: fgColor),
+            leading: IconButton(
+              icon: Icon(
+                widget.useBackButton
+                    ? Icons.arrow_back_ios_new_rounded
+                    : Icons.close_rounded,
+                color: fgColor,
+              ),
+              onPressed: () async {
+                if (await _controller.canGoBack()) {
+                  _controller.goBack();
+                } else {
+                  if (context.mounted) {
+                    Navigator.pop(context);
+                  }
+                }
+              },
             ),
-            onPressed: () => Navigator.pop(context),
+            title: widget.title.isNotEmpty
+                ? Text(
+                    widget.title,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: fgColor,
+                    ),
+                  )
+                : null,
+            bottom: _isLoading
+                ? PreferredSize(
+                    preferredSize: const Size.fromHeight(3),
+                    child: LinearProgressIndicator(
+                      value: _loadingProgress / 100,
+                      backgroundColor: Colors.transparent,
+                      color: widget.appBarColor != null
+                          ? Colors.white38
+                          : AppColors.primary,
+                      minHeight: 3,
+                    ),
+                  )
+                : null,
           ),
-          title: widget.title.isNotEmpty
-              ? Text(
-                  widget.title,
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: fgColor,
-                  ),
-                )
-              : null,
-          bottom: _isLoading
-              ? PreferredSize(
-                  preferredSize: const Size.fromHeight(3),
-                  child: LinearProgressIndicator(
-                    value: _loadingProgress / 100,
-                    backgroundColor: Colors.transparent,
-                    color: widget.appBarColor != null
-                        ? Colors.white38
-                        : AppColors.primary,
-                    minHeight: 3,
-                  ),
-                )
-              : null,
+          body: WebViewWidget(controller: _controller),
         ),
-        body: WebViewWidget(controller: _controller),
       ),
     );
   }

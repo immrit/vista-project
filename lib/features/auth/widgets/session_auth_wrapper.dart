@@ -62,6 +62,7 @@ class _SessionAuthWrapperState extends ConsumerState<SessionAuthWrapper> {
     // اگر توکن معتبر محلی وجود داشته باشد، کاربر را وارد می‌کنیم.
     // این مانع logout ناخواسته در صورت مشکل شبکه یا session validation می‌شود.
     final hasTokenSession = await TokenStorage.hasValidSession();
+    bool tokenIsFresh = hasTokenSession;
     if (!hasTokenSession) {
       // توکن منقضی شده — سعی می‌کنیم با refresh token تجدید کنیم
       final hasRefresh = await TokenStorage.hasRefreshToken();
@@ -71,6 +72,9 @@ class _SessionAuthWrapperState extends ConsumerState<SessionAuthWrapper> {
         if (refreshed == RefreshResult.authError) {
           _setNotAuthenticated();
           return;
+        }
+        if (refreshed == RefreshResult.success) {
+          tokenIsFresh = true;
         }
         // If refreshed == RefreshResult.networkError, we STILL allow entry (offline mode)
       } else {
@@ -83,29 +87,38 @@ class _SessionAuthWrapperState extends ConsumerState<SessionAuthWrapper> {
     // این مرحله اختیاری است — اگر شکست بخورد، کاربر همچنان لاگین در نظر گرفته می‌شود
     bool requiresProfileSetup = false;
     bool requiresPasswordSetup = false;
-    try {
-      final accessToken = await TokenStorage.getAccessToken();
-      if (accessToken != null && accessToken.isNotEmpty) {
-        final user = await AuthRepository().me(accessToken).timeout(
-              const Duration(seconds: 8),
-              onTimeout: () => throw Exception('timeout'),
-            );
-        if (!mounted) return;
-        await TokenStorage.saveUserAuthState(user);
-        ref.read(authControllerProvider.notifier).acceptAuthenticatedUser(user);
-        requiresProfileSetup = !user.profileCompleted;
-        requiresPasswordSetup = user.passwordRequired;
+    
+    if (tokenIsFresh) {
+      try {
+        final accessToken = await TokenStorage.getAccessToken();
+        if (accessToken != null && accessToken.isNotEmpty) {
+          final user = await AuthRepository().me(accessToken).timeout(
+                const Duration(seconds: 8),
+                onTimeout: () => throw Exception('timeout'),
+              );
+          if (!mounted) return;
+          await TokenStorage.saveUserAuthState(user);
+          ref.read(authControllerProvider.notifier).acceptAuthenticatedUser(user);
+          requiresProfileSetup = !user.profileCompleted;
+          requiresPasswordSetup = user.passwordRequired;
+        }
+      } catch (e) {
+        debugPrint('⚠️ /me failed (non-fatal): $e — treating token as valid');
+        final err = e.toString();
+        if (err.contains('401') || err.contains('unauthorized')) {
+          // Token expired exactly now (clock skew). Try refresh!
+          final refreshed = await SessionManagerServiceV2.instance.performSessionRefreshPublic();
+          if (refreshed == RefreshResult.authError) {
+            _setNotAuthenticated();
+            return;
+          }
+        }
+        tokenIsFresh = false; // Fall back to offline flow since /me failed
       }
-    } catch (e) {
-      debugPrint('⚠️ /me failed (non-fatal): $e — treating token as valid');
-      // فقط در صورت خطای 401 (توکن نامعتبر) لاگ اوت می‌کنیم
-      // سایر خطاها (شبکه، timeout) کاربر را لاگ‌اوت نمی‌کنند
-      final err = e.toString();
-      if (err.contains('401') || err.contains('unauthorized')) {
-        _setNotAuthenticated();
-        return;
-      }
-      // در غیر این صورت: ادامه با توکن محلی
+    }
+
+    if (!tokenIsFresh) {
+      // در غیر این صورت (یا عدم اینترنت): ادامه با توکن محلی
       final userId = await TokenStorage.getUserId();
       final passwordRequired = await TokenStorage.getPasswordRequired();
       if (userId != null && userId.isNotEmpty) {

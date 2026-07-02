@@ -88,7 +88,9 @@ class SessionManagerServiceV2 {
   static const String _lastProfileLocationSyncCityStorageKey =
       'session_manager_v2.profile_location_sync_city';
   static const Duration _locationRefreshInterval = Duration(hours: 24);
-  static const Duration _backendTimeout = Duration(seconds: 10);
+  // Generous enough that a slow (not dead) network still completes
+  // register/validate/touch — 10s used to fail these on weak connections.
+  static const Duration _backendTimeout = Duration(seconds: 25);
 
   // ─── Callbacks ───────────────────────────────────────────────
   Function()? onSessionTerminated;
@@ -203,7 +205,12 @@ class SessionManagerServiceV2 {
   Future<void> onAppResumed() async {
     final wasPaused = _isInBackground;
     _isInBackground = false;
-    if (!wasPaused || _currentSessionId == null) return;
+    if (!wasPaused) return;
+
+    // Refresh the token even when no session record exists yet (init race,
+    // idle-expired record) — otherwise the first requests after resume fire
+    // with an expired token and 401 in a burst.
+    if (!await _hasAnyAuthSession()) return;
 
     logInfo('▶️ App resumed — checking token...');
     final hasValid = await TokenStorage.hasValidSession();
@@ -211,10 +218,15 @@ class SessionManagerServiceV2 {
       logInfo('🔄 Token expiring soon, refreshing...');
       await _refreshSessionWithRetry();
     }
-    _startActivityTracking();
-    _startHealthCheck();
-    _setupRealtimeListener();
-    _updateActivity();
+
+    if (_currentSessionId != null) {
+      _startActivityTracking();
+      _startHealthCheck();
+      _setupRealtimeListener();
+      _updateActivity();
+    } else {
+      _markSessionPendingAndRecover();
+    }
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -443,10 +455,30 @@ class SessionManagerServiceV2 {
           } else {
             final reason = result['reason'];
             logInfo('⚠️ Session validation failed: reason=$reason');
-            if (reason == 'inactive' || reason == 'token_mismatch') {
+            if (reason == 'token_mismatch') {
               _verificationState = SessionVerificationState.invalid;
               await _handleSessionTermination();
               return false;
+            } else if (reason == 'inactive') {
+              // The session RECORD idled out server-side (user away ~1h),
+              // which says nothing about the auth tokens. Use the refresh
+              // token as the discriminator: if the server still honors it,
+              // this was just an idle-expired record — register a fresh one
+              // and keep the user logged in. Only an explicit auth rejection
+              // (which a real remote termination also produces, since it
+              // revokes the refresh token) ends the session.
+              final refreshed = await _refreshSessionWithRetry();
+              if (refreshed == RefreshResult.authError) {
+                _verificationState = SessionVerificationState.invalid;
+                await _handleSessionTermination();
+                return false;
+              }
+              logInfo('♻️ Session record idle-expired — re-registering');
+              await _clearSavedSession();
+              _currentSessionId = null;
+              _sessionToken = null;
+              _markSessionPendingAndRecover();
+              return true;
             } else {
               // 'not_found' or other recoverable reasons
               _markSessionPendingAndRecover();
@@ -608,15 +640,14 @@ class SessionManagerServiceV2 {
       }
 
       final repo = AuthRepository();
-      final response =
-          await RefreshCoordinator.instance.refresh(refreshToken, repo);
-
-      await TokenStorage.saveTokens(AuthSessionResponse(
-        accessToken: response.session.accessToken,
-        refreshToken: response.session.refreshToken,
-        expiresAt: response.session.expiresAt,
-        tokenType: response.session.tokenType,
-      ));
+      // Tokens are persisted inside the coordinator, before its future
+      // resolves, so no concurrent caller can ever read the pre-rotation
+      // refresh token and replay it.
+      final response = await RefreshCoordinator.instance.refresh(
+        refreshToken,
+        repo,
+        persist: (r) => TokenStorage.saveTokens(r.session),
+      );
       await TokenStorage.saveUserAuthState(response.user);
 
       CurrentUserService.setCachedUserId(response.user.id);
@@ -751,6 +782,14 @@ class SessionManagerServiceV2 {
   /// خروج دستی توسط کاربر
   Future<void> userLogout() async {
     await _handleSessionTermination(notifyRemoteTermination: false);
+  }
+
+  /// Called by RefreshTokenInterceptor when the server explicitly confirmed
+  /// the refresh token is dead (or none exists). Runs the full termination
+  /// flow so the user gets the "session ended" dialog + navigation instead
+  /// of a silently broken half-logged-in state.
+  Future<void> forceLogoutFromAuthFailure() async {
+    await _handleSessionTermination();
   }
 
   // ═══════════════════════════════════════════════════════════

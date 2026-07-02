@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../providers/post_upload_provider.dart';
-import 'package:Vista/core/theme/app_theme.dart';
 
 /// اوورلی نمایش پیشرفت آپلود پست - مشابه اینستاگرام/X
 ///
@@ -183,8 +182,7 @@ class _UploadCard extends StatelessWidget {
             ),
 
             // نوار پیشرفت خطی
-            if (isUploading)
-              _AnimatedProgressBar(progress: task.progress),
+            if (isUploading) _AnimatedProgressBar(progress: task.progress),
           ],
         ),
       ),
@@ -249,8 +247,9 @@ class _CircularUploadIndicator extends StatelessWidget {
           CircularProgressIndicator(
             value: progress,
             strokeWidth: 3,
-            backgroundColor:
-                isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.08),
+            backgroundColor: isDark
+                ? Colors.white.withValues(alpha: 0.1)
+                : Colors.black.withValues(alpha: 0.08),
             valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
           ),
           Text(
@@ -276,9 +275,11 @@ class _StatusIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Icon(icon, size: 28, color: color)
-        .animate()
-        .scale(begin: const Offset(0.5, 0.5), end: const Offset(1, 1), duration: 300.ms, curve: Curves.elasticOut);
+    return Icon(icon, size: 28, color: color).animate().scale(
+        begin: const Offset(0.5, 0.5),
+        end: const Offset(1, 1),
+        duration: 300.ms,
+        curve: Curves.elasticOut);
   }
 }
 

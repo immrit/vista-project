@@ -134,6 +134,7 @@ class TokenStorage {
   }
 
   static Future<void> clearAll() async {
+    RefreshCoordinator.instance.reset();
     await Future.wait([
       _storage.delete(key: _accessTokenKey),
       _storage.delete(key: _refreshTokenKey),

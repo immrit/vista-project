@@ -17,7 +17,9 @@ class TypingService {
       EnvConfig.apiBaseUrl;
 
   static const Duration _typingTimeout = Duration(seconds: 8);
-  static const Duration _typingSyncThrottle = Duration(seconds: 1);
+  // سرور فقط ۱ رویداد تایپ در هر ۳ ثانیه می‌پذیرد (بقیه drop می‌شوند ولی
+  // همچنان از سهمیه ۱۰۰ درخواست/دقیقه کاربر کم می‌کنند) — پس همان‌جا throttle کن.
+  static const Duration _typingSyncThrottle = Duration(seconds: 3);
 
   // P3: shared pinned client (cert pinning + god-mode interceptors).
   late final Dio _dio = createApiV1Dio(baseUrl: _backendUrl);

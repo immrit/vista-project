@@ -155,9 +155,48 @@ class RefreshCoordinator {
   static final RefreshCoordinator instance = RefreshCoordinator();
 
   Future<AuthResponse>? _inFlight;
+  AuthResponse? _lastSuccess;
+  DateTime? _lastSuccessAt;
 
-  Future<AuthResponse> refresh(String refreshToken, AuthRepository repo) {
-    return coalesce(() => repo.refreshToken(refreshToken));
+  /// A refresh that completed this recently is reused instead of hitting the
+  /// server again. Sequential (non-concurrent) 401 bursts otherwise each fire
+  /// their own refresh with whatever refresh token they read *before* the
+  /// previous rotation was persisted — the server sees a replayed token and
+  /// kills the whole session family. Well under the access-token lifetime,
+  /// so a reused response is always still valid.
+  static const Duration _reuseWindow = Duration(seconds: 15);
+
+  Future<AuthResponse> refresh(
+    String refreshToken,
+    AuthRepository repo, {
+    Future<void> Function(AuthResponse response)? persist,
+  }) {
+    final last = _lastSuccess;
+    final lastAt = _lastSuccessAt;
+    if (last != null &&
+        lastAt != null &&
+        DateTime.now().difference(lastAt) < _reuseWindow) {
+      // Already persisted by the call that produced it.
+      return Future.value(last);
+    }
+    return coalesce(() async {
+      final response = await repo.refreshToken(refreshToken);
+      // Persist BEFORE resolving: once callers see this future complete they
+      // assume the stored refresh token is the rotated one. Persisting after
+      // resolution leaves a window where a new caller reads the old token
+      // and replays it.
+      if (persist != null) await persist(response);
+      _lastSuccess = response;
+      _lastSuccessAt = DateTime.now();
+      return response;
+    });
+  }
+
+  /// Forget the cached result — must be called on logout/token wipe so a
+  /// stale response can never leak into a later login.
+  void reset() {
+    _lastSuccess = null;
+    _lastSuccessAt = null;
   }
 
   /// Single-flight: if a call is already running, every other caller gets

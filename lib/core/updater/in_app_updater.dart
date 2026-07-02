@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
@@ -34,7 +33,7 @@ class InAppUpdater {
     try {
       final packageInfo = await PackageInfo.fromPlatform();
       final currentVersionCode = int.tryParse(packageInfo.buildNumber) ?? 1;
-      
+
       final response = await _dio.get(
         '$backendUrl/api/v1/system/check-update',
         queryParameters: {
@@ -61,7 +60,8 @@ class InAppUpdater {
     return UpdateInfo(updateAvailable: false);
   }
 
-  Future<String?> downloadApk(String url, Function(double) onProgress, {String? expectedSha256}) async {
+  Future<String?> downloadApk(String url, Function(double) onProgress,
+      {String? expectedSha256}) async {
     try {
       final dir = await getTemporaryDirectory();
       final savePath = '${dir.path}/vista_update.apk';

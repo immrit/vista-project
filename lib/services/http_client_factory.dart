@@ -83,6 +83,24 @@ Dio createPinnedDioClient({
     }
   }
 
+  // Re-resolve the Bearer token per request. createAuthedPinnedDio bakes the
+  // access token into base headers at construction; after a refresh rotates
+  // it, a long-lived client would keep sending the stale token and every
+  // request would 401 on arrival. Only headers that already carry a Bearer
+  // token are touched, so unauthenticated/special-token requests are safe.
+  dio.interceptors.add(InterceptorsWrapper(
+    onRequest: (options, handler) async {
+      final existing = options.headers['Authorization'];
+      if (existing is String && existing.startsWith('Bearer ')) {
+        final token = await TokenStorage.getAccessToken();
+        if (token != null && token.isNotEmpty) {
+          options.headers['Authorization'] = 'Bearer $token';
+        }
+      }
+      handler.next(options);
+    },
+  ));
+
   dio.interceptors.add(RefreshTokenInterceptor(dio));
 
   // Interceptor for God Mode (Maintenance and Ban)

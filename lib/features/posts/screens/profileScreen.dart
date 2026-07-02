@@ -2043,6 +2043,7 @@ class _PostsGridViewState extends ConsumerState<_PostsGridView> {
         return false;
       },
       child: ListView.separated(
+        physics: const AlwaysScrollableScrollPhysics(),
         padding: EdgeInsets.only(
           bottom: MediaQuery.of(context).viewPadding.bottom + 110,
         ),
@@ -2767,6 +2768,7 @@ class _MusicListView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListView.separated(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.symmetric(vertical: 6),
       itemCount: posts.length,
       separatorBuilder: (_, __) => Divider(
@@ -2851,6 +2853,7 @@ class _ReelsGridView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GridView.builder(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.all(1),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 3,

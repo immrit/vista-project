@@ -17,7 +17,6 @@ import 'package:uuid/uuid.dart';
 
 import '../../../model/conversation_model.dart';
 import '../../../model/message_model.dart';
-import '../../../../security/logging_utility.dart';
 import '../../../DB/isar_database_manager.dart';
 import '../../../DB/entities/deletion_task_entity.dart';
 import '../../auth/providers/auth_controller.dart';
@@ -45,6 +44,8 @@ class ChatRepositoryImpl implements ChatRepository {
   // â”€â”€ throttle maps (Ø¨Ø±Ø§ÛŒ Ø¬Ù„ÙˆÚ¯ÛŒØ±ÛŒ Ø§Ø² sync Ø¨ÛŒØ´ Ø§Ø² Ø­Ø¯) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   final Map<String, Timer?> _msgSyncTimers = {};
   final Map<String, bool> _msgSyncInFlight = {};
+  // آخرین پیام دریافتی‌ای که برایش /read فرستادیم — جلوی POST تکراری در هر sync
+  final Map<String, String> _lastAckedIncomingMsgId = {};
   Timer? _convSyncTimer;
   bool _convSyncInFlight = false;
   int _convRateLimitedUntilMs = 0;
@@ -389,7 +390,12 @@ class ChatRepositoryImpl implements ChatRepository {
             final readerId = data?['user_id']?.toString() ?? '';
             final readAtRaw = data?['read_at']?.toString() ?? '';
             final readAt = DateTime.tryParse(readAtRaw);
-            if (readerId.isNotEmpty && readerId != uid && readAt != null) {
+            // رسید خواندن خودِ ما (echo از سرور) هیچ دیتای جدیدی نداره.
+            // sync کردن روی اون دوباره markMessagesAsSeen → receipt جدید →
+            // حلقه بی‌نهایت GET/POST می‌ساخت که سهمیه rate limit کاربر را
+            // می‌خورد و ارسال پیام‌های بعدی 429 می‌گرفت.
+            if (readerId == uid) return;
+            if (readerId.isNotEmpty && readAt != null) {
               unawaited(
                 _local.markOwnMessagesReadUpTo(conversationId, readAt),
               );
@@ -1149,8 +1155,26 @@ class ChatRepositoryImpl implements ChatRepository {
         await _local.reconcileMessages(conversationId, msgs);
 
         // mark seen Ø§Ú¯Ù‡ Ø§ÛŒÙ† conversation ÙØ¹Ø§Ù„Ù‡
+        // فقط وقتی پیام دریافتیِ جدیدی از طرف مقابل آمده باشد /read بفرست.
+        // POST /read در هر sync باعث می‌شد read_receipt از SSE برگردد، sync
+        // بعدی را فعال کند و بین دو کلاینتِ باز حلقه بی‌پایان درخواست بسازد
+        // که سهمیه rate limit کاربر را می‌خورد (429 روی ارسال پیام بعدی).
         if (conversationId == _activeConversationId) {
-          unawaited(markMessagesAsSeen(conversationId));
+          String? newestIncomingId;
+          DateTime? newestIncomingAt;
+          for (final m in msgs) {
+            if (m.senderId == uid) continue;
+            if (newestIncomingAt == null ||
+                m.createdAt.isAfter(newestIncomingAt)) {
+              newestIncomingAt = m.createdAt;
+              newestIncomingId = m.id;
+            }
+          }
+          if (newestIncomingId != null &&
+              _lastAckedIncomingMsgId[conversationId] != newestIncomingId) {
+            _lastAckedIncomingMsgId[conversationId] = newestIncomingId;
+            unawaited(markMessagesAsSeen(conversationId));
+          }
         }
       } on DioException catch (e) {
         logWarning(

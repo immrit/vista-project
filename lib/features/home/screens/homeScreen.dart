@@ -27,7 +27,6 @@ import 'package:Vista/utils/glassmorphism.dart';
 import 'package:Vista/core/theme/app_theme.dart';
 import 'package:Vista/l10n/generated/app_localizations.dart';
 import 'package:Vista/features/posts/widgets/upload_progress_overlay.dart';
-import 'package:Vista/core/updater/update_banner.dart';
 
 // ✅ Provider تعداد مکالمه‌های خوانده‌نشده
 final unreadConversationsCountProvider = Provider<int>((ref) {
@@ -610,7 +609,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               isSelected ? activeIcon : inactiveIcon,
               width: 26,
               height: 26,
-              filterQuality: FilterQuality.high,
+              filterQuality: FilterQuality.medium,
               gaplessPlayback: true,
               errorBuilder: (context, error, stackTrace) {
                 // Fallback به آیکون پیش‌فرض اگر تصویر بارگذاری نشد
@@ -671,7 +670,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               isSelected ? activeIcon : inactiveIcon,
               width: 26,
               height: 26,
-              filterQuality: FilterQuality.high,
+              filterQuality: FilterQuality.medium,
               gaplessPlayback: true,
               errorBuilder: (context, error, stackTrace) {
                 return Icon(
