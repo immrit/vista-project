@@ -839,16 +839,16 @@ class AuthRepository {
     final status = e.response?.statusCode;
     final data = e.response?.data;
 
-    // خطاهای بک‌اند Go — با فرمت {"code":"...", "message":"..."}
-    if (data is Map) {
-      final serverMessage = data['message'] as String?;
-      if (serverMessage != null && serverMessage.isNotEmpty) {
-        return serverMessage;
-      }
-      final errorField = data['error'] as String?;
-      if (errorField != null && errorField.isNotEmpty) {
-        return errorField;
-      }
+    // خطاهای بک‌اند Go — سه شکل envelope دارد:
+    //   ۱) auth.Error سرویس:   {"code":"...", "message":"پیام فارسی"}
+    //   ۲) خطای handler:        {"error":{"code":"error","message":"invalid JSON payload"}}
+    //   ۳) گیت فیچر (flat):     {"error":"feature_disabled", ...}
+    // پیام‌های فارسی مستقیم نمایش داده می‌شوند؛ کدهای انگلیسی/فنی به پیام
+    // فارسیِ مبتنی بر status در ادامه fallback می‌شوند.
+    final serverMessage = _extractServerMessage(data);
+    if (serverMessage != null &&
+        RegExp(r'[؀-ۿ]').hasMatch(serverMessage)) {
+      return serverMessage;
     }
 
     // خطاهای HTTP استاندارد
@@ -886,6 +886,27 @@ class AuthRepository {
       error: e,
     );
     return 'خطا در $context. لطفاً دوباره تلاش کنید';
+  }
+
+  /// Safely pulls a human-readable message out of any backend error body
+  /// without ever casting a Map to String (the old code TypeError'd on the
+  /// nested handler envelope).
+  String? _extractServerMessage(dynamic data) {
+    if (data is! Map) return null;
+    final topMessage = data['message'];
+    if (topMessage is String && topMessage.isNotEmpty) return topMessage;
+    final err = data['error'];
+    if (err is Map) {
+      final nestedMessage = err['message'];
+      if (nestedMessage is String && nestedMessage.isNotEmpty) {
+        return nestedMessage;
+      }
+      final nestedCode = err['code'];
+      if (nestedCode is String && nestedCode.isNotEmpty) return nestedCode;
+      return null;
+    }
+    if (err is String && err.isNotEmpty) return err;
+    return null;
   }
 
   dynamic _redactSensitiveData(dynamic data) {
