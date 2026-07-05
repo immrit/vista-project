@@ -5,6 +5,11 @@ import 'package:Vista/services/system_status_service.dart';
 class MaintenanceScreen extends StatefulWidget {
   const MaintenanceScreen({super.key});
 
+  /// True while a MaintenanceScreen is mounted. Used by the global error
+  /// interceptor and the periodic system-status refresh so they don't keep
+  /// re-pushing '/maintenance' on top of itself (visible flash/rebuild).
+  static bool isActive = false;
+
   @override
   State<MaintenanceScreen> createState() => _MaintenanceScreenState();
 }
@@ -15,6 +20,7 @@ class _MaintenanceScreenState extends State<MaintenanceScreen> {
   @override
   void initState() {
     super.initState();
+    MaintenanceScreen.isActive = true;
     _startPolling();
   }
 
@@ -31,6 +37,7 @@ class _MaintenanceScreenState extends State<MaintenanceScreen> {
 
   @override
   void dispose() {
+    MaintenanceScreen.isActive = false;
     _timer?.cancel();
     super.dispose();
   }

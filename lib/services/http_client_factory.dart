@@ -8,6 +8,7 @@ import 'package:Vista/core/app_config.dart';
 import 'package:Vista/services/device_id_service.dart';
 import 'package:Vista/utils/const.dart';
 import 'package:Vista/features/auth/providers/auth_controller.dart';
+import 'package:Vista/screens/maintenance_screen.dart';
 import 'package:Vista/services/refresh_interceptor.dart';
 
 /// SHA-256 fingerprints (hex, no colons, lowercase) of the backend TLS certificate.
@@ -106,39 +107,49 @@ Dio createPinnedDioClient({
   // Interceptor for God Mode (Maintenance and Ban)
   dio.interceptors.add(InterceptorsWrapper(
     onError: (DioException e, handler) {
-      if (e.response?.statusCode == 503) {
-        // Maintenance Mode
-        final context = navigatorKey.currentContext;
-        if (context != null) {
-          Navigator.of(context)
-              .pushNamedAndRemoveUntil('/maintenance', (route) => false);
+      final statusCode = e.response?.statusCode;
+      final data = e.response?.data;
+      // The backend uses two error envelope shapes:
+      //   nested (httpapi): {"error": {"code": "error", "message": "banned"}}
+      //   flat (feature gate): {"error": "feature_disabled", "feature": "chat"}
+      // apiErrorCode() normalizes both to a single comparable code string.
+      final code = apiErrorCode(data);
+
+      if (statusCode == 503) {
+        // Only the control plane's real maintenance mode carries
+        // `maintenance_mode`; other 503s (auth/session service unavailable,
+        // proxy hiccups) must propagate as normal errors instead of
+        // hijacking the whole navigation stack.
+        if (code == 'maintenance_mode' && !MaintenanceScreen.isActive) {
+          final context = navigatorKey.currentContext;
+          if (context != null) {
+            Navigator.of(context)
+                .pushNamedAndRemoveUntil('/maintenance', (route) => false);
+          }
         }
-      } else if (e.response?.statusCode == 403 && e.response?.data != null) {
-        final data = e.response!.data;
-        if (data is Map &&
-            (data['error'] == 'banned' ||
-                data['error'] == 'account_banned' ||
-                data['error'] == 'account_suspended')) {
+      } else if (statusCode == 403 && data != null) {
+        if (code == 'banned' ||
+            code == 'account_banned' ||
+            code == 'account_suspended') {
           // Banned or Suspended
           TokenStorage.clearAll();
           final context = navigatorKey.currentContext;
           if (context != null) {
             Navigator.of(context)
                 .pushNamedAndRemoveUntil('/banned', (route) => false);
-            if (data['error'] == 'banned' ||
-                data['error'] == 'account_banned') {
-              VistaToast.error(
-                context: context,
-                message: 'حساب شما به دلیل تخلف مسدود شده است.',
-              );
-            } else {
+            if (code == 'account_suspended') {
               VistaToast.error(
                 context: context,
                 message: 'شما اجازه دسترسی به ویستا را ندارید (حساب معلق)',
               );
+            } else {
+              VistaToast.error(
+                context: context,
+                message: 'حساب شما به دلیل تخلف مسدود شده است.',
+              );
             }
           }
-        } else if (data is Map && data['error'] == 'account_muted') {
+        } else if (code == 'account_muted') {
           final context = navigatorKey.currentContext;
           if (context != null) {
             VistaToast.error(
@@ -147,10 +158,11 @@ Dio createPinnedDioClient({
                   'شما به دلیل تخلف محدود شده‌اید و مجاز به ارسال محتوا نیستید.',
             );
           }
-        } else if (data is Map && data['error'] == 'feature_disabled') {
+        } else if (code == 'feature_disabled') {
           final context = navigatorKey.currentContext;
           if (context != null) {
-            final feature = '${data['feature'] ?? ''}'.trim();
+            final feature =
+                data is Map ? '${data['feature'] ?? ''}'.trim() : '';
             final message = _featureDisabledMessage(feature);
             VistaToast.info(
               context: context,
@@ -158,7 +170,7 @@ Dio createPinnedDioClient({
             );
           }
         }
-      } else if (e.response?.statusCode == 429) {
+      } else if (statusCode == 429) {
         final context = navigatorKey.currentContext;
         if (context != null) {
           VistaToast.info(
@@ -210,6 +222,25 @@ Future<Dio?> createAuthedPinnedDio({String apiPath = '/v1'}) async {
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/// Extracts a comparable error code from a backend error body, handling both
+/// envelope shapes the Go backend produces:
+///   nested: {"error": {"code": "error", "message": "banned"}}
+///   flat:   {"error": "feature_disabled", "feature": "chat", ...}
+/// Returns '' when the body has no recognizable error field.
+String apiErrorCode(dynamic data) {
+  if (data is! Map) return '';
+  final err = data['error'];
+  if (err is Map) {
+    final message = err['message'];
+    if (message is String && message.isNotEmpty) return message;
+    final code = err['code'];
+    if (code is String && code.isNotEmpty) return code;
+    return '';
+  }
+  if (err is String) return err;
+  return '';
+}
 
 bool get kIsWebPlatform {
   try {

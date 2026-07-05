@@ -391,7 +391,9 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
               status.fcmResyncEpoch),
         );
       }
-      if (status?.maintenance == true) {
+      // Don't re-push while the maintenance screen is already showing —
+      // it polls on its own and pops itself when maintenance ends.
+      if (status?.maintenance == true && !MaintenanceScreen.isActive) {
         final context = navigatorKey.currentContext;
         if (context != null && context.mounted) {
           Navigator.of(context)
