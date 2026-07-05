@@ -34,10 +34,9 @@ class _ChangePasswordWidgetState extends ConsumerState<ChangePasswordWidget> {
 
   @override
   Widget build(BuildContext context) {
-    ref.watch(changePasswordProvider((
-      oldPassword: _oldPasswordController.text,
-      newPassword: _newPasswordController.text,
-    )));
+    // Note: do NOT ref.watch(changePasswordProvider) here — that would fire a
+    // change-password request with empty fields on every build. It's invoked
+    // only from the submit button via ref.read(...).future below.
     final activeUser = ref.watch(activeUserProvider);
     final prefill = activeUser?.phoneNumber ??
         activeUser?.email ??

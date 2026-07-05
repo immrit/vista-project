@@ -641,6 +641,31 @@ class AuthRepository {
     }
   }
 
+  /// Changes the signed-in user's password. The backend verifies the current
+  /// password, applies its own password policy, and revokes all other
+  /// sessions on success.
+  Future<void> changePassword({
+    required String accessToken,
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    try {
+      await _dio.post(
+        '/change-password',
+        data: {
+          'current_password': currentPassword,
+          'new_password': newPassword,
+        },
+        options: Options(headers: {'Authorization': 'Bearer $accessToken'}),
+      );
+    } on DioException catch (e) {
+      throw _handleDioError(e, 'تغییر رمز عبور');
+    } catch (e) {
+      logError('Change Password Error', error: e);
+      rethrow;
+    }
+  }
+
   Future<SendEmailVerificationResponse> sendEmailVerification({
     required String accessToken,
     required String email,

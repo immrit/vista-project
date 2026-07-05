@@ -585,6 +585,13 @@ final userAuthStateProvider = StreamProvider<DummyUserModel?>((ref) async* {
 // P4: one-shot action provider — autoDispose so it never lingers after the call.
 final changePasswordProvider = FutureProvider.autoDispose
     .family<void, ({String oldPassword, String newPassword})>((ref, args) async {
-  // TODO: Implement change password with the Go backend API
-  throw UnimplementedError('Change password is not implemented yet.');
+  final accessToken = await TokenStorage.getAccessToken();
+  if (accessToken == null || accessToken.isEmpty) {
+    throw 'کاربر وارد نشده است';
+  }
+  await AuthRepository().changePassword(
+    accessToken: accessToken,
+    currentPassword: args.oldPassword,
+    newPassword: args.newPassword,
+  );
 });
