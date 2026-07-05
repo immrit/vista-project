@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../features/auth/providers/auth_controller.dart';
+import '../../../../features/profile/data/profile_repository.dart';
+import '../../../../features/profile/providers/profile_controller.dart';
 import '../../../../model/messagePrivacyModel.dart';
 import '../../../../provider/settings_providers.dart';
 import '../../../../services/advanced_security_service.dart';
@@ -71,11 +73,7 @@ class _PrivacySecurityPageState extends ConsumerState<PrivacySecurityPage> {
                   icon: Icons.lock_outline,
                   title: 'حساب خصوصی',
                   value: settings['is_private'] as bool? ?? false,
-                  onChanged: (value) => _updateSetting(
-                    userId,
-                    'is_private',
-                    value,
-                  ),
+                  onChanged: (value) => _updateIsPrivate(userId, value),
                 ),
                 VistaSettingsChoice<String>(
                   icon: Icons.access_time_outlined,
@@ -222,6 +220,30 @@ class _PrivacySecurityPageState extends ConsumerState<PrivacySecurityPage> {
     await ref
         .read(mergedPrivacySettingsProvider(userId).notifier)
         .updateSetting(key, value);
+  }
+
+  /// «حساب خصوصی» باید روی ستون `profiles.is_private` بنشیند — همان جایی که
+  /// سرور برای گیت‌کردن پست‌ها/فالو استفاده می‌کند. نوشتنش فقط در blob
+  /// تنظیمات، حساب را در UI «خصوصی» و در سرور عمومی می‌گذاشت (نشت حریم
+  /// خصوصی). blob هم برای سازگاری UI به‌روز می‌شود.
+  Future<void> _updateIsPrivate(String? userId, bool value) async {
+    if (userId == null) return;
+    final notifier = ref.read(mergedPrivacySettingsProvider(userId).notifier);
+    await notifier.updateSetting('is_private', value);
+    try {
+      await ProfileRepository().updateProfile(userId, {'is_private': value});
+      ref.invalidate(profileProvider);
+    } catch (e) {
+      // سرور ثبت نکرد — toggle را برگردان تا UI دروغ نگوید.
+      await notifier.updateSetting('is_private', !value);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('تغییر حالت حساب خصوصی ثبت نشد. دوباره تلاش کنید'),
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _toggleBiometric(bool value) async {
