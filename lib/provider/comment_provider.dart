@@ -164,6 +164,11 @@ class CommentsNotifier extends StateNotifier<CommentsState> {
   final String _postId;
   static const int _pageSize = 20;
 
+  /// All comments fetched so far, flat, across every loaded page. The tree
+  /// shown in [state] is rebuilt from this after each page so replies whose
+  /// parent arrived in an earlier page still nest correctly.
+  List<CommentModel> _flatLoaded = const [];
+
   CommentsNotifier(this._repository, this._postId)
       : super(const CommentsState()) {
     loadComments();
@@ -355,6 +360,7 @@ class CommentsNotifier extends StateNotifier<CommentsState> {
     if (state.isLoadingMore && !refresh) return;
 
     if (refresh) {
+      _flatLoaded = const [];
       state = state.copyWith(
         isRefreshing: true,
         error: null,
@@ -371,34 +377,30 @@ class CommentsNotifier extends StateNotifier<CommentsState> {
     }
 
     try {
-      // دریافت همه کامنت‌ها (flat)
-      final allComments = await _repository.getCommentsWithReplies(
+      final page = refresh ? 0 : state.currentPage;
+      // صفحه‌بندی واقعی — has_more از پاسخ بک‌اند می‌آید، نه هاردکد.
+      final result = await _repository.getCommentsWithPagination(
         postId: _postId,
-        page: refresh ? 0 : state.currentPage,
+        page: page,
         limit: _pageSize,
       );
 
-      // ساختاردهی درختی
-      final tree = buildCommentTree(allComments);
+      // انباشت flat بین صفحات: درخت هر بار از کل کامنت‌های لودشده ساخته
+      // می‌شود تا ریپلای‌هایی که والدشان در صفحه‌ی قبلی آمده گم نشوند.
+      final knownIds = _flatLoaded.map((c) => c.id).toSet();
+      _flatLoaded = [
+        ..._flatLoaded,
+        ...result.comments.where((c) => !knownIds.contains(c.id)),
+      ];
 
-      if (refresh) {
-        state = state.copyWith(
-          comments: tree,
-          isLoading: false,
-          isRefreshing: false,
-          hasMore: false, // چون همه کامنت‌ها را گرفتیم
-          currentPage: 1,
-        );
-      } else {
-        // اگر صفحه‌بندی داری، باید به درستی اضافه کنی
-        state = state.copyWith(
-          comments: [...state.comments, ...tree],
-          isLoading: false,
-          isLoadingMore: false,
-          hasMore: false,
-          currentPage: state.currentPage + 1,
-        );
-      }
+      state = state.copyWith(
+        comments: buildCommentTree(_flatLoaded),
+        isLoading: false,
+        isRefreshing: false,
+        isLoadingMore: false,
+        hasMore: result.hasMore,
+        currentPage: page + 1,
+      );
     } catch (e) {
       state = state.copyWith(
         isLoading: false,
@@ -440,6 +442,11 @@ class CommentsNotifier extends StateNotifier<CommentsState> {
             parent.replies.add(commentMap[comment.id]!);
             processedReplies.add(comment.id);
           }
+        } else {
+          // والدش هنوز لود نشده (در صفحه‌ی بعدی است) — به‌جای حذف بی‌صدا،
+          // به‌عنوان root نمایش بده؛ با لود شدن والد، rebuild بعدی درست
+          // زیر والدش می‌نشاندش.
+          rootComments.add(commentMap[comment.id]!);
         }
       }
     }
@@ -534,6 +541,10 @@ class CommentsNotifier extends StateNotifier<CommentsState> {
       final realComments =
           _replaceCommentInTree(state.comments, tempId, newComment);
 
+      // Keep the flat page-accumulator in sync so the next tree rebuild
+      // (pagination) doesn't drop the freshly added comment.
+      _flatLoaded = [newComment, ..._flatLoaded];
+
       state = state.copyWith(
         comments: realComments,
         isAddingComment: false,
@@ -561,6 +572,9 @@ class CommentsNotifier extends StateNotifier<CommentsState> {
 
     try {
       await _repository.deleteComment(commentId);
+      _flatLoaded = _flatLoaded
+          .where((c) => c.id != commentId && c.parentCommentId != commentId)
+          .toList(growable: false);
       state = state.copyWith(isDeletingComment: false);
       return true;
     } catch (e) {
@@ -603,24 +617,16 @@ class CommentsNotifier extends StateNotifier<CommentsState> {
         return false;
       }
 
-      // بررسی دسترسی ویرایش بر اساس اطلاعات پروفایل نویسنده کامنت (که در CommentModel موجود است)
-      final hasEditAccess = commentToUpdate.isVerified ||
-          commentToUpdate.verificationType == VerificationType.blackTick ||
-          commentToUpdate.verificationType == VerificationType.goldTick ||
-          commentToUpdate.verificationType == VerificationType.blueTick;
-
-      if (!hasEditAccess) {
-        state = state.copyWith(
-          isUpdatingComment: false,
-          error: 'برای ویرایش کامنت، حساب شما باید تایید شده باشد.',
-        );
-        return false;
-      }
-
+      // مالکیت بالاتر چک شد؛ بک‌اند PATCH را برای صاحب کامنت آزاد گذاشته،
+      // پس گیت اضافی «فقط اکانت تیک‌دار» حذف شد (با سیاست سرور هم‌راستا).
       final updatedComment = await _repository.updateComment(
         commentId: commentId,
         content: newContent.trim(),
       );
+
+      _flatLoaded = _flatLoaded
+          .map((c) => c.id == commentId ? updatedComment : c)
+          .toList(growable: false);
 
       if (parentCommentId == null) {
         // ویرایش کامنت اصلی
