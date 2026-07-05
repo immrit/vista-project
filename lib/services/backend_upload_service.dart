@@ -1,8 +1,7 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
-import 'package:dio/io.dart';
-import 'package:flutter/foundation.dart';
 import 'package:Vista/utils/env_config.dart';
 
 import '../security/logging_utility.dart';
@@ -83,22 +82,15 @@ class BackendUploadService {
     logInfo('UPLOAD URL: $uploadUrl');
     logInfo('UPLOAD HEADERS: $headers');
 
+    // Plain Dio with default OS certificate validation. This is the object
+    // storage host (not the pinned API host); the previous
+    // badCertificateCallback => true accepted ANY TLS cert for user media
+    // PUTs, opening the upload path to MITM.
     final dio = Dio(BaseOptions(
       connectTimeout: const Duration(seconds: 20),
       sendTimeout: const Duration(minutes: 30),
       receiveTimeout: const Duration(minutes: 2),
     ));
-
-    if (!kIsWeb) {
-      dio.httpClientAdapter = IOHttpClientAdapter(
-        createHttpClient: () {
-          final client = HttpClient();
-          client.badCertificateCallback =
-              (X509Certificate cert, String host, int port) => true;
-          return client;
-        },
-      );
-    }
 
     await dio.put(
       uploadUrl,

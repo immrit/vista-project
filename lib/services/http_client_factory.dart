@@ -14,9 +14,11 @@ import 'package:Vista/services/refresh_interceptor.dart';
 /// SHA-256 fingerprints (hex, no colons, lowercase) of the backend TLS certificate.
 ///
 /// HOW TO UPDATE:
-///   openssl s_client -connect api.vista.app:443 </dev/null 2>/dev/null \
+/// ```
+///   openssl s_client -connect api.coffevista.ir:443 < /dev/null 2>/dev/null \
 ///     | openssl x509 -fingerprint -sha256 -noout \
 ///     | sed 's/://g' | tr 'A-F' 'a-f' | cut -d= -f2
+/// ```
 ///
 /// Add the NEW fingerprint first, then remove the old one after rollover.
 const List<String> _pinnedFingerprints = [
