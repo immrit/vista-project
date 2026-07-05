@@ -45,6 +45,7 @@ import '../../chat/providers/chat_providers.dart';
 import 'package:Vista/utils/comments_bottom_sheet.dart';
 import 'package:flutter/services.dart';
 import 'package:Vista/utils/premium_features_helper.dart';
+import 'package:Vista/utils/widgets.dart' show ReportDialog;
 import '../../../utils/user_friendly_error_utils.dart';
 import 'package:Vista/features/posts/widgets/standard_edit_post_dialog.dart';
 import 'package:Vista/features/posts/widgets/profile_lazy_tab_gate.dart';
@@ -2601,7 +2602,12 @@ class _PostListItem extends ConsumerWidget {
           },
           onSelected: (value) async {
             if (value == 'report') {
-              _showReportDialog(context, ref);
+              // Real report flow (reason picker + POST /posts/report) — the
+              // old local dialog only showed a fake success snackbar.
+              showDialog(
+                context: context,
+                builder: (_) => ReportDialog(post: post),
+              );
             } else if (value == 'copy') {
               await Clipboard.setData(ClipboardData(text: post.content));
               ScaffoldMessenger.of(context).showSnackBar(
@@ -2698,32 +2704,6 @@ class _PostListItem extends ConsumerWidget {
           size: 20, color: isDark ? Colors.grey[500] : Colors.grey[400]),
       error: (_, __) => Icon(Icons.more_horiz,
           size: 20, color: isDark ? Colors.grey[500] : Colors.grey[400]),
-    );
-  }
-
-  void _showReportDialog(BuildContext context, WidgetRef ref) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('گزارش پست'),
-        content:
-            const Text('آیا مطمئن هستید که می‌خواهید این پست را گزارش دهید؟'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('انصراف'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('گزارش شما ثبت شد')),
-              );
-            },
-            child: const Text('گزارش', style: TextStyle(color: Colors.red)),
-          ),
-        ],
-      ),
     );
   }
 
