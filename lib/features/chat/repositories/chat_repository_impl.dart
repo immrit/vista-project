@@ -255,61 +255,23 @@ class ChatRepositoryImpl implements ChatRepository {
     String conversationId, {
     required bool accept,
   }) async {
+    // The backend has exactly two routes for this:
+    //   POST /chat/conversations/{id}/accept
+    //   POST /chat/conversations/{id}/reject
+    // The old guess-list fired up to 4 extra 404s per accept and reject
+    // NEVER worked (it guessed `decline`, the backend only knows `reject`).
     final uid = await _userId();
-    final opts = await _authOptions();
-    if (uid == null || opts == null) {
+    if (uid == null) {
       return ChatResult.failure('کاربر وارد نشده است');
     }
 
-    final endpointAttempts = <({String path, bool withBody})>[
-      (
-        path: '/chat/conversations/$conversationId/message-request/respond',
-        withBody: true
-      ),
-      (
-        path: '/chat/conversations/$conversationId/request/respond',
-        withBody: true
-      ),
-      (
-        path: '/chat/conversations/$conversationId/requests/respond',
-        withBody: true
-      ),
-      (
-        path:
-            '/chat/conversations/$conversationId/${accept ? 'accept-request' : 'decline-request'}',
-        withBody: false
-      ),
-      (
-        path:
-            '/chat/conversations/$conversationId/${accept ? 'accept' : 'decline'}',
-        withBody: false
-      ),
-    ];
-
-    DioException? lastDioError;
-    for (final attempt in endpointAttempts) {
-      try {
-        await _dio.post(
-          attempt.path,
-          data: attempt.withBody ? {'accept': accept} : null,
-          options: opts,
-        );
-        await _syncConversations(uid);
-        return ChatResult.success(null);
-      } on DioException catch (e) {
-        lastDioError = e;
-        final status = e.response?.statusCode;
-        if (status == 404 || status == 405) {
-          continue;
-        }
-        return ChatResult.failure(_dioError(e));
-      }
+    final result = accept
+        ? await acceptMessageRequest(conversationId)
+        : await rejectMessageRequest(conversationId);
+    if (result.isSuccess) {
+      await _syncConversations(uid);
     }
-
-    if (lastDioError != null) {
-      return ChatResult.failure(_dioError(lastDioError));
-    }
-    return ChatResult.failure('پاسخ به درخواست پیام انجام نشد');
+    return result;
   }
 
   @override
