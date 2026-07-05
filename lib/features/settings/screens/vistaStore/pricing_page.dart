@@ -235,6 +235,25 @@ class _PricingPageState extends ConsumerState<PricingPage>
       selectedPlan['productId'] as String,
     );
 
+    if (!mounted) return;
+
+    // Zibal opens the gateway in the browser and returns immediately with
+    // pending_web_flow=true — the payment is NOT settled yet. Do NOT show the
+    // success dialog or activate premium here; the deep-link callback
+    // (cafevista.ir/payment/callback) runs zibal/verify and only then does
+    // the profile flip to premium. Showing "congrats" now was a bug: a user
+    // could cancel in the browser and still be told they were premium.
+    if (result['pending_web_flow'] == true) {
+      setState(() => _isPurchasing = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(result['message']?.toString() ??
+              'در حال تکمیل پرداخت در مرورگر...'),
+        ),
+      );
+      return;
+    }
+
     if (result['success'] == true) {
       final userId = await CurrentUserService.instance.resolveUserId();
       if (userId != null) {
@@ -246,36 +265,7 @@ class _PricingPageState extends ConsumerState<PricingPage>
     if (mounted) {
       setState(() => _isPurchasing = false);
       if (result['success'] == true) {
-        final daysAdded = result['days_added'];
-        final daysText = daysAdded is num && daysAdded > 0
-            ? '\n${daysAdded.round()} روز به اشتراک شما اضافه شد.'
-            : '';
-        await showDialog<void>(
-          context: context,
-          builder: (_) => AlertDialog(
-            backgroundColor: _darkBg,
-            shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-                side: const BorderSide(color: _goldStart, width: 1.5)),
-            icon: const Icon(Icons.verified_rounded,
-                color: _goldStart, size: 52),
-            title: const Text('تبریک!',
-                textAlign: TextAlign.center,
-                style:
-                    TextStyle(color: _goldStart, fontWeight: FontWeight.bold)),
-            content: Text(
-              'اشتراک ویستا پریمیوم با موفقیت به‌روزرسانی شد.$daysText\nتیک طلایی و امکانات ویژه فعال است.',
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.white70),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('باشه', style: TextStyle(color: _goldStart)),
-              ),
-            ],
-          ),
-        );
+        await _showPurchaseSuccessDialog(result['days_added']);
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -285,6 +275,36 @@ class _PricingPageState extends ConsumerState<PricingPage>
         );
       }
     }
+  }
+
+  Future<void> _showPurchaseSuccessDialog(dynamic daysAdded) async {
+    final daysText = daysAdded is num && daysAdded > 0
+        ? '\n${daysAdded.round()} روز به اشتراک شما اضافه شد.'
+        : '';
+    await showDialog<void>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: _darkBg,
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+            side: const BorderSide(color: _goldStart, width: 1.5)),
+        icon: const Icon(Icons.verified_rounded, color: _goldStart, size: 52),
+        title: const Text('تبریک!',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: _goldStart, fontWeight: FontWeight.bold)),
+        content: Text(
+          'اشتراک ویستا پریمیوم با موفقیت به‌روزرسانی شد.$daysText\nتیک طلایی و امکانات ویژه فعال است.',
+          textAlign: TextAlign.center,
+          style: const TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('باشه', style: TextStyle(color: _goldStart)),
+          ),
+        ],
+      ),
+    );
   }
 
   @override

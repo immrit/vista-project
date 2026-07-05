@@ -157,6 +157,65 @@ class PaymentService {
     }
   }
 
+  /// Confirms a Zibal payment after the user returns from the gateway.
+  /// The backend re-queries Zibal with the track_id and only then grants the
+  /// subscription, so a cancelled/abandoned payment never activates premium.
+  Future<Map<String, dynamic>> verifyZibalPurchase(String trackId) async {
+    final parsedTrackId = int.tryParse(trackId.trim());
+    if (parsedTrackId == null || parsedTrackId <= 0) {
+      return {'success': false, 'message': 'شناسه تراکنش نامعتبر است.'};
+    }
+    try {
+      final accessToken = await TokenStorage.getAccessToken();
+      if (accessToken == null || accessToken.isEmpty) {
+        return {'success': false, 'message': 'توکن احراز هویت یافت نشد.'};
+      }
+
+      final dio = Dio(BaseOptions(
+        baseUrl: '$_backendUrl/v1',
+        connectTimeout: const Duration(seconds: 15),
+        receiveTimeout: const Duration(seconds: 20),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $accessToken',
+          'X-Device-ID': DeviceIdService.id,
+        },
+      ));
+
+      final response = await dio.post(
+        '/payment/zibal/verify',
+        data: {'track_id': parsedTrackId},
+      );
+
+      final data = (response.data as Map).cast<String, dynamic>();
+      if (data['success'] == true) {
+        return {
+          'success': true,
+          'message': data['message']?.toString() ?? 'اشتراک ویژه فعال شد! 🎉',
+          'expires_at': data['expires_at'],
+          'days_added': data['days_added'],
+          'plan': data['plan'],
+        };
+      }
+      return {
+        'success': false,
+        'message': data['message']?.toString() ?? 'تایید پرداخت ناموفق بود.',
+      };
+    } on DioException catch (e) {
+      logWarning('Zibal verify request failed', error: e);
+      final msg = (e.response?.data is Map)
+          ? (e.response!.data['message'] ?? 'در تایید پرداخت خطا رخ داد.')
+          : 'در تایید پرداخت خطا رخ داد. لطفا دوباره تلاش کنید.';
+      return {'success': false, 'message': msg};
+    } catch (e) {
+      logWarning('Zibal verify unexpected error', error: e);
+      return {
+        'success': false,
+        'message': 'در تایید پرداخت خطا رخ داد. لطفا دوباره تلاش کنید.'
+      };
+    }
+  }
+
   Future<Map<String, dynamic>> _processBazaarPurchase(String productId) async {
     try {
       final userId = await CurrentUserService.instance.resolveUserId();

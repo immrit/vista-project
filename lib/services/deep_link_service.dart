@@ -5,6 +5,9 @@ import 'package:app_links/app_links.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../features/chat/services/group_service.dart';
 import '../features/nearby/screens/nearby_likes_screen.dart';
+import '../DB/profile_cache_service.dart';
+import 'current_user_service.dart';
+import 'payment_service.dart';
 
 // Provider Ø¨Ø±Ø§ÛŒ Ù…Ø¯ÛŒØ±ÛŒØª ÙˆØ¶Ø¹ÛŒØª deep link
 final deepLinkProvider =
@@ -130,7 +133,16 @@ class DeepLinkService {
 
     if (scheme == 'https' && isVistaWebHost) {
       // Ù¾Ø±Ø¯Ø§Ø²Ø´ Ù…Ø³ÛŒØ±Ù‡Ø§ÛŒ Ù…Ø®ØªÙ„Ù
-      if (path.startsWith('/post/') && pathSegments.length >= 2) {
+      if (path.startsWith('/payment/callback')) {
+        // Return path from the Zibal gateway. Settle the payment server-side
+        // (zibal/verify) — premium is only granted after this succeeds.
+        final trackId = uri.queryParameters['trackId'] ??
+            uri.queryParameters['track_id'] ??
+            uri.queryParameters['trackID'] ??
+            '';
+        logInfo('Handling Zibal payment callback');
+        Future.microtask(() => _handlePaymentCallback(trackId, navigatorKey));
+      } else if (path.startsWith('/post/') && pathSegments.length >= 2) {
         final postId = pathSegments[1];
         logInfo('Navigating to post: $postId');
         _navigateToPost(postId, navigatorKey);
@@ -180,6 +192,46 @@ class DeepLinkService {
   // Navigation Ù…Ø´ØªØ±Ú© Ø¨Ø±Ø§ÛŒ ÙÛŒØ¯
   void _navigateToFeed(GlobalKey<NavigatorState> navigatorKey) {
     navigatorKey.currentState?.pushNamed('/feed');
+  }
+
+  Future<void> _handlePaymentCallback(
+      String trackId, GlobalKey<NavigatorState> navigatorKey) async {
+    final messenger = _messengerFor(navigatorKey);
+    if (trackId.trim().isEmpty) {
+      messenger?.showSnackBar(const SnackBar(
+        content: Text('اطلاعات پرداخت ناقص است. اگر مبلغ کسر شد با پشتیبانی تماس بگیرید.'),
+      ));
+      return;
+    }
+
+    messenger?.showSnackBar(const SnackBar(
+      content: Text('در حال بررسی وضعیت پرداخت...'),
+    ));
+
+    final result = await PaymentService().verifyZibalPurchase(trackId);
+    if (result['success'] == true) {
+      // Force a fresh profile fetch so premium status/badge update everywhere.
+      final userId = await CurrentUserService.instance.resolveUserId();
+      if (userId != null) {
+        await ProfileCacheService().refreshCacheInBackground(userId);
+      }
+      messenger?.showSnackBar(SnackBar(
+        content: Text(result['message']?.toString() ?? 'پرداخت با موفقیت تأیید شد 🎉'),
+        backgroundColor: Colors.green.shade700,
+      ));
+    } else {
+      messenger?.showSnackBar(SnackBar(
+        content: Text(result['message']?.toString() ?? 'پرداخت تأیید نشد.'),
+        backgroundColor: Colors.red.shade700,
+      ));
+    }
+  }
+
+  ScaffoldMessengerState? _messengerFor(
+      GlobalKey<NavigatorState> navigatorKey) {
+    final context = navigatorKey.currentContext;
+    if (context == null) return null;
+    return ScaffoldMessenger.maybeOf(context);
   }
 
   Future<void> _handleGroupInvite(
