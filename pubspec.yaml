@@ -2,7 +2,7 @@ name: Vista
 description: "vista."
 publish_to: 'none'
 
-version: 2.6.0+4047
+version: 2.6.1+4048
 
 environment:
   sdk: ^3.5.4
@@ -110,6 +110,7 @@ dependencies:
   mobile_scanner: ^7.1.4
   screen_protector: ^1.5.1
   video_editor: ^3.0.0
+  ffmpeg_kit_flutter_new: ^4.3.2
 dependency_overrides:
   intl: ^0.20.0
 

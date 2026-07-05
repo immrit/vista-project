@@ -5,9 +5,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_theme.dart';
 import '../providers/post_upload_provider.dart';
 
-/// اوورلی نمایش پیشرفت آپلود پست - مشابه اینستاگرام/X
+/// نمایش پیشرفت آپلود پست به‌عنوان بالاترین آیتم فید - مشابی اینستاگرام/X.
 ///
-/// این ویجت باید داخل یک Positioned در یک Stack قرار بگیرد.
+/// این ویجت به‌عنوان اولین آیتم ListView فید رندر می‌شود (نه یک بنر شناور
+/// روی کل اپ)، تا کاربر درصد پیشرفت را دقیقاً بالای پست‌ها ببیند و در صورت
+/// خطا بتواند «تلاش مجدد» بزند. وقتی هیچ آپلودی در جریان نیست چیزی رندر نمی‌کند.
 class UploadProgressOverlay extends ConsumerWidget {
   const UploadProgressOverlay({super.key});
 
@@ -17,7 +19,7 @@ class UploadProgressOverlay extends ConsumerWidget {
     if (tasks.isEmpty) return const SizedBox.shrink();
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: tasks
@@ -27,6 +29,8 @@ class UploadProgressOverlay extends ConsumerWidget {
                 task: task,
                 onDismiss: () =>
                     ref.read(postUploadProvider.notifier).dismissTask(task.id),
+                onRetry: () =>
+                    ref.read(postUploadProvider.notifier).retryUpload(task.id),
               ),
             )
             .toList(),
@@ -38,8 +42,14 @@ class UploadProgressOverlay extends ConsumerWidget {
 class _UploadCard extends StatelessWidget {
   final UploadTask task;
   final VoidCallback onDismiss;
+  final VoidCallback onRetry;
 
-  const _UploadCard({super.key, required this.task, required this.onDismiss});
+  const _UploadCard({
+    super.key,
+    required this.task,
+    required this.onDismiss,
+    required this.onRetry,
+  });
 
   IconData get _kindIcon {
     switch (task.kind) {
@@ -169,7 +179,9 @@ class _UploadCard extends StatelessWidget {
                       icon: Icons.check_circle_rounded,
                       color: Colors.green,
                     )
-                  else if (isFailed)
+                  else if (isFailed) ...[
+                    _RetryButton(onTap: onRetry),
+                    const SizedBox(width: 6),
                     GestureDetector(
                       onTap: onDismiss,
                       child: const _StatusIcon(
@@ -177,6 +189,7 @@ class _UploadCard extends StatelessWidget {
                         color: Colors.red,
                       ),
                     ),
+                  ],
                 ],
               ),
             ),
@@ -261,6 +274,43 @@ class _CircularUploadIndicator extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// دکمه «تلاش مجدد» برای آپلود ناموفق
+class _RetryButton extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _RetryButton({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.primary.withValues(alpha: 0.12),
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.refresh_rounded, size: 14, color: AppColors.primary),
+              SizedBox(width: 4),
+              Text(
+                'تلاش مجدد',
+                style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.primary,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

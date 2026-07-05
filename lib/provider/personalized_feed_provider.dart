@@ -109,6 +109,20 @@ class PersonalizedFeedNotifier
     await _loadInitial();
   }
 
+  /// Locally inserts a just-created post at the top of the feed.
+  ///
+  /// The `/explore` backend query explicitly excludes the viewer's own posts
+  /// (it's a recommendation feed), so a freshly published post would never
+  /// show up here on its own — this is the client-side workaround so authors
+  /// immediately see their own post like they would on Instagram/Twitter.
+  void prependOwnPost(PublicPostModel post) {
+    final current = state;
+    if (current is! AsyncData<List<PublicPostModel>>) return;
+    final posts = current.value;
+    if (posts.any((p) => p.id == post.id)) return;
+    state = AsyncValue.data([post, ...posts]);
+  }
+
   Future<void> loadMorePosts() async {
     // Don't auto-hammer the backend after a tail failure; wait for explicit
     // retry via [retryLoadMore].

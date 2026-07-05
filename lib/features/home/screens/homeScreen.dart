@@ -26,7 +26,6 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:Vista/utils/glassmorphism.dart';
 import 'package:Vista/core/theme/app_theme.dart';
 import 'package:Vista/l10n/generated/app_localizations.dart';
-import 'package:Vista/features/posts/widgets/upload_progress_overlay.dart';
 
 // ✅ Provider تعداد مکالمه‌های خوانده‌نشده
 final unreadConversationsCountProvider = Provider<int>((ref) {
@@ -442,25 +441,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         child: Scaffold(
           extendBody: true,
           backgroundColor: theme.scaffoldBackgroundColor,
-          body: Stack(
+          body: IndexedStack(
+            index: _selectedIndex,
             children: [
-              IndexedStack(
-                index: _selectedIndex,
-                children: [
-                  ..._persistentTabs,
-                  ProfileScreen(
-                    key: ValueKey('$_currentUserId:$_currentUsername'),
-                    userId: _currentUserId,
-                    username: _currentUsername,
-                  ),
-                ],
-              ),
-              // نوار پیشرفت آپلود - مشابه اینستاگرام/X
-              Positioned(
-                top: MediaQuery.of(context).padding.top + 8,
-                left: 0,
-                right: 0,
-                child: const UploadProgressOverlay(),
+              ..._persistentTabs,
+              ProfileScreen(
+                key: ValueKey('$_currentUserId:$_currentUsername'),
+                userId: _currentUserId,
+                username: _currentUsername,
               ),
             ],
           ),

@@ -29,6 +29,7 @@ import 'package:Vista/utils/comments_bottom_sheet.dart';
 import 'package:Vista/services/system_ui_bar_service.dart';
 import '../../../utils/user_friendly_error_utils.dart';
 import '../widgets/post_action_buttons.dart';
+import '../widgets/upload_progress_overlay.dart';
 import '../widgets/post_moderation_banner.dart';
 import '../widgets/post_feed_video.dart';
 import '../services/reels_viewer_launcher.dart';
@@ -292,19 +293,26 @@ class _ForYouTab extends ConsumerWidget {
           return _RefreshableFeedState(
             onRefresh: () =>
                 ref.read(personalizedFeedProvider.notifier).refreshPosts(),
-            child: _FeedEmptyState(
-              title: AppLocalizations.of(context)?.noPostsReady ??
-                  'هنوز پستی برای شما آماده نشده',
-              subtitle: AppLocalizations.of(context)?.followToPersonalize ??
-                  'با دنبال‌کردن کاربران جدید، فید شما سریع‌تر شخصی‌سازی می‌شود.',
-              actionLabel:
-                  AppLocalizations.of(context)?.searchUsers ?? 'جستجوی کاربران',
-              onAction: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const SearchPage()),
-                );
-              },
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const UploadProgressOverlay(),
+                _FeedEmptyState(
+                  title: AppLocalizations.of(context)?.noPostsReady ??
+                      'هنوز پستی برای شما آماده نشده',
+                  subtitle:
+                      AppLocalizations.of(context)?.followToPersonalize ??
+                          'با دنبال‌کردن کاربران جدید، فید شما سریع‌تر شخصی‌سازی می‌شود.',
+                  actionLabel: AppLocalizations.of(context)?.searchUsers ??
+                      'جستجوی کاربران',
+                  onAction: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const SearchPage()),
+                    );
+                  },
+                ),
+              ],
             ),
           );
         }
@@ -326,9 +334,15 @@ class _ForYouTab extends ConsumerWidget {
             child: ListView.builder(
               scrollCacheExtent: ScrollCacheExtent.pixels(1000),
               padding: _feedListPadding(context),
-              itemCount: posts.length + (notifier.hasMorePosts() ? 1 : 0),
+              // +1 for the pinned upload-progress card at index 0.
+              itemCount:
+                  1 + posts.length + (notifier.hasMorePosts() ? 1 : 0),
               itemBuilder: (context, index) {
-                if (index == posts.length) {
+                if (index == 0) {
+                  return const UploadProgressOverlay();
+                }
+                final postIndex = index - 1;
+                if (postIndex == posts.length) {
                   // P2: a failed *page* fetch keeps the loaded feed and shows
                   // an inline retry row here, never a full-screen error.
                   if (notifier.loadMoreError != null) {
@@ -345,7 +359,7 @@ class _ForYouTab extends ConsumerWidget {
                   );
                 }
 
-                final post = posts[index];
+                final post = posts[postIndex];
                 // P1: isolate each row's painting so one row repaint doesn't
                 // invalidate the whole list layer during scroll.
                 return RepaintBoundary(
@@ -413,15 +427,22 @@ class _FollowingTab extends ConsumerWidget {
           return _RefreshableFeedState(
             onRefresh: () =>
                 ref.read(fetchFollowingPostsProvider.notifier).refreshPosts(),
-            child: _FeedEmptyState(
-              title: AppLocalizations.of(context)?.noFollowingPosts ??
-                  'پستی از دنبال‌شده‌ها پیدا نشد',
-              subtitle: AppLocalizations.of(context)?.followMorePeople ??
-                  'افراد بیشتری را دنبال کنید یا کمی بعد دوباره بررسی کنید.',
-              actionLabel:
-                  AppLocalizations.of(context)?.refreshFeed ?? 'تازه‌سازی فید',
-              onAction: () =>
-                  ref.read(fetchFollowingPostsProvider.notifier).refreshPosts(),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const UploadProgressOverlay(),
+                _FeedEmptyState(
+                  title: AppLocalizations.of(context)?.noFollowingPosts ??
+                      'پستی از دنبال‌شده‌ها پیدا نشد',
+                  subtitle: AppLocalizations.of(context)?.followMorePeople ??
+                      'افراد بیشتری را دنبال کنید یا کمی بعد دوباره بررسی کنید.',
+                  actionLabel: AppLocalizations.of(context)?.refreshFeed ??
+                      'تازه‌سازی فید',
+                  onAction: () => ref
+                      .read(fetchFollowingPostsProvider.notifier)
+                      .refreshPosts(),
+                ),
+              ],
             ),
           );
         }
@@ -443,9 +464,15 @@ class _FollowingTab extends ConsumerWidget {
             child: ListView.builder(
               scrollCacheExtent: ScrollCacheExtent.pixels(1000),
               padding: _feedListPadding(context),
-              itemCount: posts.length + (notifier.hasMorePosts() ? 1 : 0),
+              // +1 for the pinned upload-progress card at index 0.
+              itemCount:
+                  1 + posts.length + (notifier.hasMorePosts() ? 1 : 0),
               itemBuilder: (context, index) {
-                if (index == posts.length) {
+                if (index == 0) {
+                  return const UploadProgressOverlay();
+                }
+                final postIndex = index - 1;
+                if (postIndex == posts.length) {
                   // P2: a failed *page* fetch keeps the loaded feed and shows
                   // an inline retry row here, never a full-screen error.
                   if (notifier.loadMoreError != null) {
@@ -462,7 +489,7 @@ class _FollowingTab extends ConsumerWidget {
                   );
                 }
 
-                final post = posts[index];
+                final post = posts[postIndex];
                 // P1: isolate each row's painting so one row repaint doesn't
                 // invalidate the whole list layer during scroll.
                 return RepaintBoundary(

@@ -148,6 +148,19 @@ class FollowingPostsNotifier
 
   Future<void> refresh() => _loadInitialPosts();
 
+  /// Locally inserts a just-created post at the top of the following feed.
+  ///
+  /// The following feed is scoped to authors the viewer follows, which never
+  /// includes the viewer themself, so a freshly published post would never
+  /// appear here without this client-side workaround.
+  void prependOwnPost(PublicPostModel post) {
+    final current = state;
+    if (current is! AsyncData<List<PublicPostModel>>) return;
+    final posts = current.value;
+    if (posts.any((p) => p.id == post.id)) return;
+    state = AsyncValue.data([post, ...posts]);
+  }
+
   Future<void> loadMorePosts() {
     // Don't auto-hammer the backend after a tail failure; wait for retry.
     if (_loadMoreError != null) return Future.value();

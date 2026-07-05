@@ -1,20 +1,10 @@
 import 'package:Vista/security/logging_utility.dart';
-// lib/features/chat/repositories/chat_repository_impl.dart
-//
-// âœ… Ù¾ÛŒØ§Ø¯Ù‡â€ŒØ³Ø§Ø²ÛŒ Ú©Ø§Ù…Ù„ Ø¨Ø§ Go backend
-// Go backend implementation with no external realtime dependency.
-// âœ… SSE Ø¨Ø±Ø§ÛŒ real-time (Ø§Ø² SseManager singleton)
-// âœ… Isar Ø¨Ø±Ø§ÛŒ local cache / offline-first
-//
-
 import 'dart:async';
 import 'package:isar/isar.dart';
 import 'dart:convert';
-
 import 'package:dio/dio.dart';
 import '../../../../utils/env_config.dart';
 import 'package:uuid/uuid.dart';
-
 import '../../../model/conversation_model.dart';
 import '../../../model/message_model.dart';
 import '../../../DB/isar_database_manager.dart';
