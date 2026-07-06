@@ -66,12 +66,31 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   String _currentUserId = '';
   String _currentUsername = 'کاربر';
 
-  late final List<Widget> _persistentTabs = const [
-    ExploreFeedScreen(),
-    SearchPage(),
-    ServicesScreen(),
-    ChatConversationsScreen(),
-  ];
+  // Tabs are built lazily: a tab only enters the IndexedStack after its
+  // first visit, then stays alive (state preserved). Building all five at
+  // startup ran ExploreFeed + Search + Services + Chat + Profile (providers,
+  // network calls, controllers) before the user's first frame. The unread
+  // badge is unaffected — it reads a provider, not the chat tab's widget.
+  final Set<int> _builtTabs = {0};
+
+  Widget _tabAt(int index) {
+    switch (index) {
+      case 0:
+        return const ExploreFeedScreen();
+      case 1:
+        return const SearchPage();
+      case 2:
+        return const ServicesScreen();
+      case 3:
+        return const ChatConversationsScreen();
+      default:
+        return ProfileScreen(
+          key: ValueKey('$_currentUserId:$_currentUsername'),
+          userId: _currentUserId,
+          username: _currentUsername,
+        );
+    }
+  }
 
   @override
   void initState() {
@@ -444,14 +463,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           backgroundColor: theme.scaffoldBackgroundColor,
           body: IndexedStack(
             index: _selectedIndex,
-            children: [
-              ..._persistentTabs,
-              ProfileScreen(
-                key: ValueKey('$_currentUserId:$_currentUsername'),
-                userId: _currentUserId,
-                username: _currentUsername,
-              ),
-            ],
+            children: List.generate(5, (i) {
+              if (i == _selectedIndex) _builtTabs.add(i);
+              return _builtTabs.contains(i)
+                  ? _tabAt(i)
+                  : const SizedBox.shrink();
+            }),
           ),
           bottomNavigationBar: Column(
             mainAxisSize: MainAxisSize.min,
