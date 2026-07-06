@@ -422,19 +422,15 @@ class _EditProfileState extends ConsumerState<EditProfile> {
       final data = await ref.read(profileProvider.future);
       final String currentPhone =
           normalizePhone09((data?['phone_number'] ?? '').toString()) ?? '';
-      final bool phoneChanged = normalizedPhone != currentPhone;
-
-      if (phoneChanged) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content:
-                Text('برای تغییر شماره موبایل، فعلاً با همان شماره وارد شوید'),
-          ),
-        );
-        setState(() => _isLoading = false);
-        return;
-      }
+      // Changing the phone number needs a separate verify flow that isn't
+      // built yet. Previously this aborted the ENTIRE save, so a user who
+      // edited their bio while the phone field differed couldn't save
+      // anything. Now we keep the current phone, save everything else, and
+      // just tell the user the number wasn't changed.
+      final bool phoneChangeSkipped =
+          currentPhone.isNotEmpty && normalizedPhone != currentPhone;
+      final String phoneToSave =
+          phoneChangeSkipped ? currentPhone : normalizedPhone;
 
       // به‌روزرسانی پروفایل
       final updates = sanitizeProfilePayload({
@@ -449,7 +445,7 @@ class _EditProfileState extends ConsumerState<EditProfile> {
         'show_birth_date': _showBirthDate,
         'show_gender': _showGender,
         'show_marital_status': _showMaritalStatus,
-        'phone_number': normalizedPhone,
+        'phone_number': phoneToSave,
         'website_url': websiteController.text.trim(),
       });
 
@@ -466,6 +462,12 @@ class _EditProfileState extends ConsumerState<EditProfile> {
       String successMessage = 'پروفایل با موفقیت به‌روزرسانی شد';
       if (emailVerificationMessage != null) {
         successMessage += '. $emailVerificationMessage';
+      }
+      if (phoneChangeSkipped) {
+        // Reflect the unchanged number back into the field.
+        _phoneController.text = currentPhone;
+        successMessage +=
+            '. شماره موبایل تغییر نکرد (تغییر شماره فعلاً در دسترس نیست)';
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
