@@ -57,6 +57,10 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
   bool _isLoading = true;
   bool _showingViewers = false;
   bool _isLongPressing = false;
+  bool _videoError = false;
+  // Set while delete/report keep their own confirm dialog open, so the
+  // options-sheet close callback doesn't auto-resume playback under it.
+  bool _suspendAutoResume = false;
   StoryReplyPermission _replyPermission = StoryReplyPermission.everyone;
   bool _canReplyToStory = true;
   final Map<String, StoryPollResult> _pollResultsCache = {};
@@ -135,9 +139,33 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
     }
   }
 
+  /// Stops the progress timer AND the video together — every sheet/dialog
+  /// must use this instead of stopping only the timer, otherwise video
+  /// stories keep playing (audio included) behind the sheet and drift out
+  /// of sync with the progress bar.
+  void _pausePlayback() {
+    _progressController.stop();
+    _videoController?.pause();
+  }
+
+  /// Resumes both unless the user has explicitly paused or the viewers
+  /// sheet is showing.
+  void _resumePlaybackIfIdle() {
+    if (_isPaused || _showingViewers || !mounted) return;
+    _progressController.forward();
+    _videoController?.play();
+  }
+
   Future<void> _initializeStory() async {
     await _stopMusicPreview();
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _videoError = false;
+      // A pause belongs to the story it was made on; a story change always
+      // starts playing. Leaving this true made sheet-close callbacks skip
+      // their resume and froze the new story until an extra tap.
+      _isPaused = false;
+    });
 
     _progressController.reset();
 
@@ -174,7 +202,11 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
 
     if (mounted) {
       setState(() => _isLoading = false);
-      _progressController.forward();
+      // On a failed video load, hold the timer: auto-advancing over a black
+      // screen hides the failure. The error UI offers retry/skip instead.
+      if (!_videoError) {
+        _progressController.forward();
+      }
     }
   }
 
@@ -255,6 +287,9 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
       controller.setLooping(false);
     } catch (e) {
       debugPrint('Error initializing video: $e');
+      if (mounted && _videoController == controller) {
+        setState(() => _videoError = true);
+      }
     }
   }
 
@@ -600,6 +635,35 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
   }
 
   Widget _buildMediaBackground() {
+    if (_currentStory.media.isVideo && _videoError) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.wifi_off_rounded, color: Colors.white54, size: 48),
+            const SizedBox(height: 12),
+            const Text(
+              'ویدیو لود نشد',
+              style: TextStyle(color: Colors.white70, fontFamily: 'Vazirmatn'),
+            ),
+            const SizedBox(height: 16),
+            OutlinedButton.icon(
+              onPressed: _initializeStory,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.white,
+                side: const BorderSide(color: Colors.white38),
+              ),
+              icon: const Icon(Icons.refresh),
+              label: const Text(
+                'تلاش مجدد',
+                style: TextStyle(fontFamily: 'Vazirmatn'),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     if (_currentStory.media.isVideo && _videoController != null) {
       return Center(
         child: AspectRatio(
@@ -829,7 +893,7 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
             .toList(growable: false)
         : _extractPollOptions(data);
 
-    _progressController.stop();
+    _pausePlayback();
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -895,13 +959,13 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
         );
       },
     ).then((_) {
-      if (!_isPaused) _progressController.forward();
+      _resumePlaybackIfIdle();
     });
   }
 
   void _showPollResultsBottomSheet(
       StoryElement element, StoryPollResult result) {
-    _progressController.stop();
+    _pausePlayback();
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -945,7 +1009,7 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
         ),
       ),
     ).then((_) {
-      if (!_isPaused) _progressController.forward();
+      _resumePlaybackIfIdle();
     });
   }
 
@@ -1080,7 +1144,7 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
     final answerController = TextEditingController();
     bool isSubmitting = false;
 
-    _progressController.stop();
+    _pausePlayback();
 
     showModalBottomSheet(
       context: context,
@@ -1168,9 +1232,7 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
       ),
     ).whenComplete(() {
       answerController.dispose();
-      if (!_isPaused) {
-        _progressController.forward();
-      }
+      _resumePlaybackIfIdle();
     });
   }
 
@@ -1389,7 +1451,7 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
   }
 
   void _showOptions() {
-    _progressController.stop();
+    _pausePlayback();
 
     showModalBottomSheet(
       context: context,
@@ -1444,13 +1506,20 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
         ),
       ),
     ).then((_) {
-      if (!_isPaused) {
-        _progressController.forward();
+      // Delete/report open a follow-up dialog and manage the resume
+      // themselves — resuming here would let the story advance underneath
+      // that dialog and change _currentStory before the action runs.
+      if (!_suspendAutoResume) {
+        _resumePlaybackIfIdle();
       }
     });
   }
 
   Future<void> _deleteStory() async {
+    // Pin the story id NOW — if playback advanced while any dialog was up,
+    // reading _currentStory later would delete the WRONG story.
+    final storyId = _currentStory.id;
+    _suspendAutoResume = true;
     Navigator.pop(context);
 
     final confirmed = await showDialog<bool>(
@@ -1471,26 +1540,35 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
         ],
       ),
     );
+    _suspendAutoResume = false;
+    if (!mounted) return;
 
-    if (confirmed == true) {
-      final repository = ref.read(storyRepositoryProvider);
-      final result = await repository.deleteStory(_currentStory.id);
+    if (confirmed != true) {
+      _resumePlaybackIfIdle();
+      return;
+    }
 
-      if (!mounted) return;
-      if (result.isSuccess) {
-        ref.invalidate(activeStoriesProvider);
-        Navigator.of(context).pop();
-        UserFriendlyErrorUtils.showSuccessSnackBar(context, 'استوری حذف شد');
-      } else {
-        UserFriendlyErrorUtils.showErrorSnackBar(
-          context,
-          result.error ?? 'خطا در حذف استوری',
-        );
-      }
+    final repository = ref.read(storyRepositoryProvider);
+    final result = await repository.deleteStory(storyId);
+
+    if (!mounted) return;
+    if (result.isSuccess) {
+      ref.invalidate(activeStoriesProvider);
+      Navigator.of(context).pop();
+      UserFriendlyErrorUtils.showSuccessSnackBar(context, 'استوری حذف شد');
+    } else {
+      _resumePlaybackIfIdle();
+      UserFriendlyErrorUtils.showErrorSnackBar(
+        context,
+        result.error ?? 'خطا در حذف استوری',
+      );
     }
   }
 
   Future<void> _reportStory() async {
+    // Pin the story id NOW — same wrong-target hazard as _deleteStory.
+    final storyId = _currentStory.id;
+    _suspendAutoResume = true;
     Navigator.pop(context);
 
     final reasons = [
@@ -1516,21 +1594,26 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
         ),
       ),
     );
+    _suspendAutoResume = false;
+    if (!mounted) return;
 
-    if (selectedReason != null) {
-      final repository = ref.read(storyRepositoryProvider);
-      final result =
-          await repository.reportStory(_currentStory.id, selectedReason);
+    if (selectedReason == null) {
+      _resumePlaybackIfIdle();
+      return;
+    }
 
-      if (!mounted) return;
-      if (result.isSuccess) {
-        UserFriendlyErrorUtils.showSuccessSnackBar(context, 'گزارش شما ثبت شد');
-      } else {
-        UserFriendlyErrorUtils.showErrorSnackBar(
-          context,
-          result.error ?? 'خطا در ثبت گزارش',
-        );
-      }
+    final repository = ref.read(storyRepositoryProvider);
+    final result = await repository.reportStory(storyId, selectedReason);
+
+    if (!mounted) return;
+    _resumePlaybackIfIdle();
+    if (result.isSuccess) {
+      UserFriendlyErrorUtils.showSuccessSnackBar(context, 'گزارش شما ثبت شد');
+    } else {
+      UserFriendlyErrorUtils.showErrorSnackBar(
+        context,
+        result.error ?? 'خطا در ثبت گزارش',
+      );
     }
   }
 
