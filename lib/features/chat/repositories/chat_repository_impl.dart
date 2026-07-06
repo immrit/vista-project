@@ -22,6 +22,15 @@ import '../services/message_tombstone_service.dart';
 import 'chat_repository.dart';
 import '../../../../security/e2ee_service.dart';
 
+/// Thrown when a message meant to be end-to-end encrypted cannot be encrypted.
+/// Callers must fail the send rather than downgrade to plaintext.
+class E2EEEncryptionException implements Exception {
+  final String detail;
+  const E2EEEncryptionException(this.detail);
+  @override
+  String toString() => 'رمزنگاری پیام ناموفق بود';
+}
+
 class ChatRepositoryImpl implements ChatRepository {
   final ChatLocalDataSourceIsar _local;
   final UserModerationService _moderation = UserModerationService();
@@ -444,14 +453,29 @@ class ChatRepositoryImpl implements ChatRepository {
     );
     await _local.saveMessage(optimistic);
 
+    // Encrypt BEFORE sending. For an E2EE conversation (recipient public key
+    // present) a crypto failure must abort — never silently send plaintext.
+    final String encryptedContent;
+    try {
+      encryptedContent = await _encryptContent(
+          payload.content, payload.recipientPublicKey);
+    } on E2EEEncryptionException catch (e) {
+      final failed = optimistic.copyWith(
+        isPending: false,
+        isFailed: true,
+        errorMessage: 'رمزنگاری پیام ناموفق بود',
+      );
+      await _local.saveMessage(failed);
+      return ChatResult.failure(e.toString());
+    }
+
     // â”€â”€ Ø§Ø±Ø³Ø§Ù„ Ø¨Ù‡ Go backend â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     try {
       final res = await _dio.post(
         '/chat/conversations/${payload.conversationId}/messages',
         data: {
           'id': messageId,
-          'content': await _encryptContent(
-              payload.content, payload.recipientPublicKey),
+          'content': encryptedContent,
           'message_type': payload.attachmentType ?? 'text',
           if (payload.attachmentUrl != null) 'media_url': payload.attachmentUrl,
           if (payload.attachmentFileName != null)
@@ -494,14 +518,18 @@ class ChatRepositoryImpl implements ChatRepository {
 
   Future<String> _encryptContent(
       String rawContent, String? recipientPublicKey) async {
+    // No key = a normal (non-E2EE) conversation; plaintext is expected.
     if (recipientPublicKey == null || recipientPublicKey.isEmpty) {
       return rawContent;
     }
     try {
       return await E2EEService().encryptMessage(rawContent, recipientPublicKey);
     } catch (e) {
+      // The caller explicitly provided a recipient key, so this message was
+      // meant to be end-to-end encrypted. Silently sending plaintext would be
+      // an invisible security downgrade — fail the send instead.
       logWarning('E2EE Encryption failed: $e');
-      return rawContent;
+      throw E2EEEncryptionException(e.toString());
     }
   }
 
