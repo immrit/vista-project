@@ -50,6 +50,10 @@ class ChatRepositoryImpl implements ChatRepository {
   int _convRateLimitedUntilMs = 0;
 
   static const int _msgPageSize = 50;
+  // Conversations are clustered server-side by a random id, not recency, so a
+  // small limit would drop arbitrary (possibly active) chats. Fetch a high
+  // ceiling that covers essentially every user until recency pagination lands.
+  static const int _convPageSize = 300;
 
   static String get _base => EnvConfig.apiBaseUrl;
 
@@ -1073,7 +1077,7 @@ class ChatRepositoryImpl implements ChatRepository {
       try {
         final res = await _dio.get(
           '/chat/conversations',
-          queryParameters: {'limit': _msgPageSize},
+          queryParameters: {'limit': _convPageSize},
           options: opts,
         );
         final convs = _asList(_asMap(res.data)['conversations'])
