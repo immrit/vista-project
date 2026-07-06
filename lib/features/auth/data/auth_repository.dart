@@ -383,13 +383,11 @@ class AuthRepository {
         'X-Device-ID': DeviceIdService.id,
       },
     ));
-    _dio.interceptors.add(LogInterceptor(
-      request: true,
-      requestHeader: true,
-      responseHeader: false,
-      responseBody: false,
-      error: true,
-    ));
+    // SECURITY: the previous LogInterceptor(requestHeader: true) had no
+    // kDebugMode guard and its logPrint defaulted to print(), so the
+    // Authorization: Bearer <token> header of every auth call leaked into
+    // logcat in RELEASE builds. Removed — the redacted, debug-only logger
+    // below is the only network logging that should ever run.
 
     // لاگ شبکه فقط در debug و بدون داده حساس
     if (kDebugMode) {
