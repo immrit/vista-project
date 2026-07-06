@@ -180,13 +180,11 @@ class _PrivacySecurityPageState extends ConsumerState<PrivacySecurityPage> {
                       ? null
                       : (value) => _toggleBiometric(value),
                 ),
-                VistaSettingsSwitch(
-                  icon: Icons.vpn_key_outlined,
-                  title: 'تایید دومرحله‌ای',
-                  value: settings['two_factor_enabled'] as bool? ?? false,
-                  onChanged: (value) =>
-                      _updateSetting(userId, 'two_factor_enabled', value),
-                ),
+                // NOTE: the "two-factor" toggle was removed. It only wrote a
+                // bool into the privacy blob; real 2FA needs the
+                // /auth/2fa/setup password-enrolment flow (Set2FAPassword),
+                // otherwise enabling it either locks the user out or does
+                // nothing. Re-add wired to that flow when 2FA UI ships.
                 VistaSettingsSwitch(
                   icon: Icons.lock_clock_outlined,
                   title: 'قفل خودکار',
