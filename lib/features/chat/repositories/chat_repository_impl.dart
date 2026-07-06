@@ -153,8 +153,6 @@ class ChatRepositoryImpl implements ChatRepository {
 
     // â”€â”€ SSE events (Ø¨Ø±Ø§ÛŒ ØªØºÛŒÛŒØ±Ø§Øª remote)
     StreamSubscription? sseSub;
-    final controller = StreamController<List<ConversationModel>>.broadcast();
-
     sseSub = SseManager.instance.events.listen((event) async {
       final type = event['type'] as String?;
 
@@ -176,19 +174,27 @@ class ChatRepositoryImpl implements ChatRepository {
       }
     });
 
-    yield* isarStream.transform(
-      StreamTransformer.fromHandlers(
-        handleDone: (_) {
-          sseSub?.cancel();
-          controller.close();
-        },
-        handleError: (e, st, sink) {
-          sseSub?.cancel();
-          sink.addError(e, st);
-        },
-        handleData: (data, sink) => sink.add(data),
-      ),
-    );
+    try {
+      yield* isarStream.transform(
+        StreamTransformer.fromHandlers(
+          handleDone: (sink) {
+            sseSub?.cancel();
+            sink.close();
+          },
+          handleError: (e, st, sink) {
+            sseSub?.cancel();
+            sink.addError(e, st);
+          },
+          handleData: (data, sink) => sink.add(data),
+        ),
+      );
+    } finally {
+      // The Isar stream never completes, so handleDone never fires; without
+      // this, every open/close of the chat-list left a live SSE listener
+      // running _syncConversations forever (multiplying syncs + traffic).
+      // Mirrors the fix already in watchMessages.
+      await sseSub.cancel();
+    }
   }
 
   @override
