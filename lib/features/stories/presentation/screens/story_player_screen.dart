@@ -1663,7 +1663,14 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
     _videoController?.pause();
 
     final repository = ref.read(storyRepositoryProvider);
-    final result = await repository.replyToStory(_currentStory.id, trimmed);
+    // dm_mirrored tells the backend NOT to also raise a story_reply
+    // notification — this reply is delivered as a DM below, which has its own
+    // push, so without this the owner got two notifications for one reply.
+    final result = await repository.replyToStory(
+      _currentStory.id,
+      trimmed,
+      replyMeta: const {'dm_mirrored': true},
+    );
 
     if (!mounted) return;
     if (!result.isSuccess) {
