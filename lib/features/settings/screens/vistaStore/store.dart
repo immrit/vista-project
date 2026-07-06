@@ -63,13 +63,28 @@ class _VerificationBadgeStoreState
               child: const Text('انصراف'),
             ),
             ElevatedButton(
-              onPressed: () {
+              onPressed: () async {
+                final messenger = ScaffoldMessenger.of(context);
                 Navigator.of(context).pop();
-                launchUrl(Uri.parse(url));
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('انتقال به درگاه پرداخت'),
-                    backgroundColor: Colors.green,
+                // Was fire-and-forget with no mode/guard and showed "success"
+                // even when nothing opened. Now launch externally and only
+                // confirm if the browser/app actually opened.
+                final uri = Uri.parse(url);
+                var launched = false;
+                try {
+                  launched = await launchUrl(
+                    uri,
+                    mode: LaunchMode.externalApplication,
+                  );
+                } catch (_) {
+                  launched = false;
+                }
+                messenger.showSnackBar(
+                  SnackBar(
+                    content: Text(launched
+                        ? 'انتقال به درگاه پرداخت'
+                        : 'باز کردن درگاه پرداخت ممکن نشد'),
+                    backgroundColor: launched ? Colors.green : Colors.red,
                   ),
                 );
               },
