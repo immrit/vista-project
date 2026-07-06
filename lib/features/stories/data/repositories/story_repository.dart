@@ -119,6 +119,11 @@ class StoryRepository implements IStoryRepository {
         options: await _authOptions(),
       );
       return StoryResult.success(_storyFromGo(_asMap(response.data)));
+    } on DioException catch (e, st) {
+      logError('Failed to create story', error: e, stackTrace: st);
+      // Surface the backend's Persian message (e.g. the premium-only 48h
+      // rejection) instead of a generic error after a full media upload.
+      return StoryResult.failure(_dioErrorMessage(e) ?? 'خطا در ایجاد استوری');
     } catch (e, st) {
       logError('Failed to create story', error: e, stackTrace: st);
       return StoryResult.failure('خطا در ایجاد استوری');

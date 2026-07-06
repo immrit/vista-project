@@ -15,6 +15,9 @@ import 'story_editor_screen.dart';
 import 'story_privacy_settings_screen.dart';
 import '../../../../utils/user_friendly_error_utils.dart';
 import 'package:Vista/core/theme/app_theme.dart';
+import 'package:Vista/features/profile/providers/profile_controller.dart';
+import 'package:Vista/model/UserModel.dart';
+import 'package:Vista/utils/premium_features_helper.dart';
 
 /// صفحه ایجاد استوری - مشابه ویستا
 class StoryCreationScreen extends ConsumerStatefulWidget {
@@ -402,15 +405,38 @@ class _StoryCreationScreenState extends ConsumerState<StoryCreationScreen>
                         ),
                         style: const TextStyle(color: Colors.white),
                         items: StoryDuration.values.map((duration) {
+                          final needsPremium =
+                              duration == StoryDuration.hours48 &&
+                                  !_canPostLongDurationStory();
                           return DropdownMenuItem(
                             value: duration,
-                            child: Text(_storyDurationLabel(duration)),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(_storyDurationLabel(duration)),
+                                if (needsPremium) ...[
+                                  const SizedBox(width: 6),
+                                  const Icon(Icons.workspace_premium,
+                                      size: 16, color: Colors.amber),
+                                ],
+                              ],
+                            ),
                           );
                         }).toList(),
                         onChanged: (value) {
-                          if (value != null) {
-                            setModalState(() => selectedDuration = value);
+                          if (value == null) return;
+                          // Gate here, before compressing/uploading the whole
+                          // video — the backend rejects hours48 for
+                          // non-premium with a 403 only AFTER upload.
+                          if (value == StoryDuration.hours48 &&
+                              !_canPostLongDurationStory()) {
+                            PremiumFeaturesHelper.showPremiumPromptDialog(
+                              context,
+                              feature: 'استوری ۴۸ ساعته',
+                            );
+                            return;
                           }
+                          setModalState(() => selectedDuration = value);
                         },
                       ),
                       const SizedBox(height: 12),
@@ -428,7 +454,12 @@ class _StoryCreationScreenState extends ConsumerState<StoryCreationScreen>
                           ),
                         ),
                         style: const TextStyle(color: Colors.white),
-                        items: StoryPrivacyType.values.map((privacy) {
+                        // «سفارشی» حذف شد: این فلو انتخاب‌گر کاربر ندارد و
+                        // custom با لیست خالی یعنی استوری برای هیچ‌کس
+                        // نمایش داده نمی‌شود.
+                        items: StoryPrivacyType.values
+                            .where((p) => p != StoryPrivacyType.custom)
+                            .map((privacy) {
                           return DropdownMenuItem(
                             value: privacy,
                             child: Text(_storyPrivacyLabel(privacy)),
@@ -493,6 +524,14 @@ class _StoryCreationScreenState extends ConsumerState<StoryCreationScreen>
         UserFriendlyErrorUtils.showErrorSnackBar(context, e);
       }
     }
+  }
+
+  bool _canPostLongDurationStory() {
+    final profileData = ref.read(profileProvider).valueOrNull;
+    if (profileData == null) return false;
+    return PremiumFeaturesHelper.canPostLongDurationStory(
+      UserModel.fromMap(profileData),
+    );
   }
 
   String _storyDurationLabel(StoryDuration duration) {
