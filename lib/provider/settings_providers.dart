@@ -276,19 +276,11 @@ class NotificationSettingsNotifier
 
   Future<void> updateSettings(Map<String, dynamic> settings) async {
     try {
+      // updateNotificationSettings already POSTs to the dedicated
+      // /me/notification-settings endpoint. The old code ALSO wrote the same
+      // blob into /me/privacy (notification_settings key) — a redundant,
+      // wrong-destination write the backend's notification logic never reads.
       await _settingsCache.updateNotificationSettings(userId, settings);
-
-      // به‌روزرسانی در سرور (اگر اتصال وجود دارد)
-      try {
-        await PrivacySettingsRepository().updateSettings(
-          userId,
-          {'notification_settings': settings},
-        );
-      } catch (e) {
-        logInfo('⚠️ Failed to sync notification settings to server: $e');
-        // در صورت خطا، تنظیمات در کش باقی می‌ماند
-      }
-
       state = AsyncValue.data(settings);
     } catch (e) {
       state = AsyncValue.error(e, StackTrace.current);
