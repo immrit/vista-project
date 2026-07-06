@@ -36,6 +36,18 @@ class RefreshTokenInterceptor extends Interceptor {
         err.requestOptions.headers['Authorization'] =
             'Bearer ${response.session.accessToken}';
 
+        // A FormData body is single-use — Dio finalizes it on the first send,
+        // so replaying the same instance throws "already finalized". Rather
+        // than fail the upload, surface a retriable error so the caller can
+        // rebuild fresh FormData and resend (its token is now valid).
+        if (err.requestOptions.data is FormData) {
+          return handler.next(DioException(
+            requestOptions: err.requestOptions,
+            error: 'token_refreshed_retry_upload',
+            type: DioExceptionType.cancel,
+          ));
+        }
+
         // Retry the original failed request
         final retryResponse = await _retry(err.requestOptions);
 
@@ -64,15 +76,11 @@ class RefreshTokenInterceptor extends Interceptor {
   }
 
   Future<Response<dynamic>> _retry(RequestOptions requestOptions) {
-    return dio.request(
-      requestOptions.path,
-      options: Options(
-        method: requestOptions.method,
-        headers: requestOptions.headers,
-      ),
-      data: requestOptions.data,
-      queryParameters: requestOptions.queryParameters,
-    );
+    // fetch(requestOptions) preserves EVERYTHING (responseType, contentType,
+    // sendTimeout, extra, ...). The old Options(method, headers) copy dropped
+    // those, so e.g. a JSON-expecting call could come back mistyped after a
+    // mid-request token refresh.
+    return dio.fetch<dynamic>(requestOptions);
   }
 
   Future<void> _forceLogout() async {
