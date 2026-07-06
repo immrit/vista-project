@@ -102,6 +102,12 @@ class SearchNotifier extends StateNotifier<SearchState> {
   final SearchService _searchService;
   final int _userLimit = 20;
 
+  /// Monotonic token: each search() bumps it, and responses only apply if
+  /// they still own the latest token. Without this, a slow response for an
+  /// older query overwrote the results of a newer one (type "عل" → "علی";
+  /// the late "عل" payload replaced the "علی" results on screen).
+  int _searchRequestId = 0;
+
   SearchNotifier(this.ref)
       : _searchService = SearchService(),
         super(const SearchState());
@@ -117,6 +123,7 @@ class SearchNotifier extends StateNotifier<SearchState> {
       return;
     }
 
+    final requestId = ++_searchRequestId;
     final isHashtagQuery = normalizedQuery.startsWith('#');
     state = state.copyWith(
       isLoading: true,
@@ -133,6 +140,7 @@ class SearchNotifier extends StateNotifier<SearchState> {
     try {
       if (isHashtagQuery) {
         final posts = await _searchService.searchHashtag(normalizedQuery);
+        if (requestId != _searchRequestId) return; // stale response
         state = state.copyWith(
           hashtagResults: posts,
           isLoading: false,
@@ -159,6 +167,7 @@ class SearchNotifier extends StateNotifier<SearchState> {
           }
         }
 
+        if (requestId != _searchRequestId) return; // stale response
         state = state.copyWith(
           userResults: users,
           hashtagResults: hashtags,
@@ -171,6 +180,7 @@ class SearchNotifier extends StateNotifier<SearchState> {
         );
       }
     } catch (e) {
+      if (requestId != _searchRequestId) return; // stale response
       state = state.copyWith(
         error: UserFriendlyErrorUtils.getUserFriendlyMessage(e),
         isLoading: false,
@@ -188,10 +198,18 @@ class SearchNotifier extends StateNotifier<SearchState> {
       return;
     }
 
+    final requestId = _searchRequestId;
+    final queryAtRequest = state.currentQuery;
     state = state.copyWith(isLoadingMoreUsers: true, clearError: true);
     try {
       final newUsers =
-          await _fetchUsersPage(state.currentQuery, state.userOffset);
+          await _fetchUsersPage(queryAtRequest, state.userOffset);
+      // A newer search replaced the results while this page was in flight —
+      // appending would mix result sets from two different queries.
+      if (requestId != _searchRequestId ||
+          state.currentQuery != queryAtRequest) {
+        return;
+      }
       final allUsers = [...state.userResults, ...newUsers];
 
       state = state.copyWith(
@@ -201,6 +219,7 @@ class SearchNotifier extends StateNotifier<SearchState> {
         hasMoreUsers: newUsers.length >= _userLimit,
       );
     } catch (e) {
+      if (requestId != _searchRequestId) return;
       state = state.copyWith(
         isLoadingMoreUsers: false,
         error: UserFriendlyErrorUtils.getUserFriendlyMessage(e),
@@ -237,6 +256,7 @@ class SearchNotifier extends StateNotifier<SearchState> {
   }
 
   void clearAll() {
+    _searchRequestId++; // invalidate any in-flight responses
     state = state.copyWith(
       hashtagResults: [],
       userResults: [],
