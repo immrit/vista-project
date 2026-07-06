@@ -131,8 +131,10 @@ class _PasswordResetSmsScreenState extends State<PasswordResetSmsScreen>
     }
 
     final code = _codeController.text.trim();
-    if (code.isEmpty || code.length < 4) {
-      _showErrorSnackBar('لطفاً کد را وارد کنید');
+    // کد پیامکی سرور همیشه ۵ رقمی است (issuePhoneOTP) — گیت <4 اجازه می‌داد
+    // کد ۴ رقمی ارسال شود که همیشه رد می‌شد.
+    if (code.length != 5) {
+      _showErrorSnackBar('کد تایید ۵ رقمی را کامل وارد کنید');
       return;
     }
 

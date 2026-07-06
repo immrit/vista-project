@@ -289,7 +289,11 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
       return;
     }
 
-    if (otp.length < 4) return;
+    // کد ورود سرور ۵ رقمی است؛ ارسال کد کوتاه‌تر همیشه شکست می‌خورد.
+    if (otp.length != 5) {
+      _showSnack('کد تایید ۵ رقمی را کامل وارد کنید');
+      return;
+    }
 
     setState(() {
       _isLoading = true;
