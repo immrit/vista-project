@@ -119,12 +119,64 @@ class BackendUploadService {
     if (!await file.exists()) {
       throw 'فایل انتخاب شده پیدا نشد';
     }
-    final bytes = await file.readAsBytes();
-    return uploadBytes(
-      bytes: bytes,
+    if (objectKey.trim().isEmpty) {
+      throw 'مسیر فایل نامعتبر است';
+    }
+
+    final length = await file.length();
+    if (length <= 0) {
+      throw 'فایل انتخاب شده خالی است';
+    }
+
+    await SystemStatusService.instance.ensureFeatureEnabled(
+      SystemFeature.uploads,
+      forceRefresh: true,
+    );
+
+    final presign = await _presign(
       objectKey: objectKey,
       contentType: contentType,
-      onProgress: onProgress,
+      fileSize: length,
+    );
+    final uploadUrl = presign['url']?.toString() ?? '';
+    if (uploadUrl.isEmpty) {
+      throw 'لینک آپلود از سرور دریافت نشد';
+    }
+
+    final headers = _readHeaders(presign['headers']);
+    headers['Content-Type'] = contentType;
+    // Content-Length is required because we stream the body instead of
+    // handing Dio a fully-materialized byte list.
+    headers[Headers.contentLengthHeader] = '$length';
+
+    final dio = Dio(BaseOptions(
+      connectTimeout: const Duration(seconds: 20),
+      sendTimeout: const Duration(minutes: 30),
+      receiveTimeout: const Duration(minutes: 2),
+    ));
+
+    // Stream the file from disk so a large video isn't loaded entirely into
+    // RAM (the old readAsBytes could OOM on big uploads). openRead yields
+    // chunks straight from the filesystem.
+    var sent = 0;
+    final stream = file.openRead().map((chunk) {
+      sent += chunk.length;
+      if (onProgress != null) {
+        onProgress((sent / length).clamp(0.0, 1.0).toDouble());
+      }
+      return chunk;
+    });
+
+    await dio.put(
+      uploadUrl,
+      data: stream,
+      options: Options(headers: headers),
+    );
+
+    return BackendUploadResult(
+      url: presign['object_url']?.toString() ?? uploadUrl.split('?').first,
+      objectKey: presign['object_key']?.toString() ?? objectKey,
+      bucket: presign['bucket']?.toString() ?? _bucketName,
     );
   }
 
