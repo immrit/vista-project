@@ -49,6 +49,8 @@ class _VistaQRScannerState extends ConsumerState<VistaQRScanner>
     super.dispose();
   }
 
+  DateTime? _lastInvalidToastAt;
+
   void _onDetect(BarcodeCapture capture) async {
     if (_isProcessing || _isLoading) return;
 
@@ -246,7 +248,14 @@ class _VistaQRScannerState extends ConsumerState<VistaQRScanner>
       return;
     }
 
-    // فرمت نامعتبر
+    // فرمت نامعتبر — onDetect تا وقتی دوربین همان کد را می‌بیند هر فریم
+    // صدا زده می‌شود؛ بدون cooldown ده‌ها snackbar روی هم اسپم می‌شد.
+    final now = DateTime.now();
+    if (_lastInvalidToastAt != null &&
+        now.difference(_lastInvalidToastAt!) < const Duration(seconds: 3)) {
+      return;
+    }
+    _lastInvalidToastAt = now;
     HapticFeedback.lightImpact();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -312,13 +321,17 @@ class _VistaQRScannerState extends ConsumerState<VistaQRScanner>
             },
           ),
 
-          // Overlay
-          CustomPaint(
-            painter: _ScannerOverlayPainter(
-              borderColor: isDark ? Colors.white : Colors.white,
-              scanLinePosition: _animation.value,
+          // Overlay — بدون AnimatedBuilder خط اسکن هیچ‌وقت repaint نمی‌شد
+          // (انیمیشن می‌دوید ولی build دوباره اجرا نمی‌شد).
+          AnimatedBuilder(
+            animation: _animation,
+            builder: (context, _) => CustomPaint(
+              painter: _ScannerOverlayPainter(
+                borderColor: isDark ? Colors.white : Colors.white,
+                scanLinePosition: _animation.value,
+              ),
+              child: const SizedBox.expand(),
             ),
-            child: const SizedBox.expand(),
           ),
 
           // لودینگ اورلی

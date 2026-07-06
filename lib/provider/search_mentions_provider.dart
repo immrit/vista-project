@@ -228,23 +228,14 @@ class SearchNotifier extends StateNotifier<SearchState> {
   }
 
   Future<List<ProfileModel>> _fetchUsersPage(String query, int offset) async {
-    final users = await ProfileRepository().searchProfiles(
+    // ترتیب relevance سرور را دست‌نخورده نگه می‌داریم. مرتب‌سازی per-page بر
+    // اساس تیک، ترتیب صفحات را می‌شکست: تیک‌دارِ صفحه‌ی ۲ زیر عادی‌های
+    // صفحه‌ی ۱ می‌نشست و لیست موقع load-more می‌پرید.
+    return ProfileRepository().searchProfiles(
       query: query,
       limit: _userLimit,
       offset: offset,
     );
-
-    users.sort((a, b) {
-      int getScore(ProfileModel profile) {
-        if (profile.hasBlueBadge) return 3;
-        if (profile.hasGoldBadge || profile.hasBlackBadge) return 2;
-        return 1;
-      }
-
-      return getScore(b).compareTo(getScore(a));
-    });
-
-    return users;
   }
 
   bool _canSearchAsTag(String query) {

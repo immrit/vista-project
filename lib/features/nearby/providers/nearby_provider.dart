@@ -96,34 +96,9 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
     }
   }
 
-  /// Removes the top card locally (after a swipe is committed).
-  void popTop() {
-    if (state.cards.isEmpty) return;
-    final rest = state.cards.sublist(1);
-    state = state.copyWith(cards: rest);
-    // Prefetch more when the deck runs low.
-    if (rest.length <= 5 && !_fetching) {
-      load();
-    }
-  }
-
-  /// Puts a card back on top of the deck — used to rewind a swipe whose action
-  /// the server rejected (e.g. daily-like limit reached).
-  void reinsertTop(NearbyCandidate card) {
-    state = state.copyWith(cards: [card, ...state.cards]);
-  }
-
-  /// Manual rewind: ask the server to undo the last swipe toward [card], then
-  /// put it back on top. Returns false if the server rejected the undo.
-  Future<bool> undo(NearbyCandidate card) async {
-    try {
-      await _repo.undoLike(card.userId);
-      reinsertTop(card);
-      return true;
-    } catch (_) {
-      return false;
-    }
-  }
+  // NOTE: the old swipe-deck rewind API (popTop/reinsertTop/undo + the
+  // /undo endpoint) was removed — the UI moved to a browse model and nothing
+  // called it. Re-add deliberately if a Tinder-style rewind button ships.
 
   Future<NearbyActResult> act(String targetId, String action) async {
     try {

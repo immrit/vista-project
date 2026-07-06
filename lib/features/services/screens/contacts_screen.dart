@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:geolocator/geolocator.dart';
 
 import 'package:Vista/core/theme/app_theme.dart';
 import 'package:Vista/widgets/skeleton_loading.dart';
@@ -85,7 +86,9 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
               ),
             ),
           ),
-          error: (_, __) => _contactsError(isDark),
+          error: (e, _) => e == ContactsNotifier.permissionDenied
+              ? _permissionDenied(isDark)
+              : _contactsError(isDark),
           data: (users) => users.isEmpty
               ? _noContacts(isDark)
               : ListView.builder(
@@ -137,6 +140,56 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
               ),
             )
           : null,
+    );
+  }
+
+  Widget _permissionDenied(bool isDark) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            color: isDark ? AppColors.darkSurfaceVariant : Colors.white,
+            border: Border.all(
+                color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.contact_page_outlined,
+                  size: 40,
+                  color: isDark
+                      ? AppColors.darkTextTertiary
+                      : AppColors.lightTextSecondary),
+              const SizedBox(height: 10),
+              Text(
+                'برای پیدا کردن دوستانت، دسترسی به مخاطبین لازم است',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                    fontSize: 13,
+                    color: isDark
+                        ? AppColors.darkTextSecondary
+                        : AppColors.lightTextSecondary),
+              ),
+              const SizedBox(height: 16),
+              FilledButton.icon(
+                onPressed: () =>
+                    ref.read(contactsProvider.notifier).load(),
+                icon: const Icon(Icons.lock_open_rounded, size: 18),
+                label: const Text('اجازه دسترسی'),
+              ),
+              TextButton(
+                // اگر «Don't ask again» خورده باشد، درخواست مجدد بی‌صدا رد
+                // می‌شود — تنها راه، تنظیمات اپ است.
+                onPressed: () => Geolocator.openAppSettings(),
+                child: const Text('باز کردن تنظیمات برنامه'),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 

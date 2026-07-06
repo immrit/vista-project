@@ -25,6 +25,11 @@ class ContactsNotifier
 
   ContactsNotifier(this._repo) : super(const AsyncValue.loading());
 
+  /// Sentinel so the UI can tell "permission denied" apart from a genuinely
+  /// empty result — previously denial rendered as «مخاطبی در ویستا نیست»,
+  /// which is a lie and gives the user no way to fix it.
+  static const String permissionDenied = 'contacts_permission_denied';
+
   Future<void> load() async {
     if (_isLoaded && state is AsyncData) return;
 
@@ -32,7 +37,7 @@ class ContactsNotifier
     try {
       final granted = await FlutterContacts.requestPermission(readonly: true);
       if (!granted) {
-        state = const AsyncValue.data([]);
+        state = AsyncValue.error(permissionDenied, StackTrace.current);
         return;
       }
 

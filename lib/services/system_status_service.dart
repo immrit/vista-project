@@ -230,9 +230,11 @@ class SystemStatusService {
       baseUrl: EnvConfig.apiBaseUrl,
       enablePinning: false,
     );
+    // مسیر واقعی بک‌اند /api/v1/... است؛ آن را اول بگذار تا هر پول ۲۰ثانیه‌ای
+    // یک 404 اضافه به /v1/... نزند.
     final paths = <String>[
-      '/v1/system/status',
       '/api/v1/system/status',
+      '/v1/system/status',
       '/system/status',
     ];
 

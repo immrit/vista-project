@@ -170,16 +170,6 @@ class NearbyRepository {
     }
   }
 
-  /// Rewinds the last swipe toward [targetId] (removes like/pass + any match).
-  Future<void> undoLike(String targetId) async {
-    try {
-      await _dio.post('/undo',
-          data: {'target_id': targetId}, options: await _authOptions());
-    } on DioException catch (e) {
-      throw NearbyException(_codeOf(e));
-    }
-  }
-
   /// Returns users who liked the viewer (and the pending count).
   Future<NearbyReceivedLikes> likesReceived({int limit = 50}) async {
     try {
