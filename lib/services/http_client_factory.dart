@@ -3,32 +3,24 @@ import 'package:Vista/utils/vista_toast.dart';
 import 'package:dio/dio.dart';
 import 'package:dio/io.dart';
 import 'package:flutter/material.dart';
-import 'package:crypto/crypto.dart' as crypto;
 import 'package:Vista/core/app_config.dart';
 import 'package:Vista/services/device_id_service.dart';
 import 'package:Vista/utils/const.dart';
 import 'package:Vista/features/auth/providers/auth_controller.dart';
 import 'package:Vista/screens/maintenance_screen.dart';
 import 'package:Vista/services/refresh_interceptor.dart';
+import 'package:Vista/services/tls_pinning_store.dart';
 
-/// SHA-256 fingerprints (hex, no colons, lowercase) of the backend TLS certificate.
-///
-/// HOW TO UPDATE:
+/// TLS certificate pinning is NOT hardcoded here. It is managed from the admin
+/// panel and delivered to the app through /api/v1/system/status
+/// ([TlsPinningStore]). To turn it on, set the SHA-256 fingerprint + mode in
+/// the panel — no app rebuild needed. Extract the fingerprint with:
 /// ```
 ///   openssl s_client -connect api.coffevista.ir:443 < /dev/null 2>/dev/null \
 ///     | openssl x509 -fingerprint -sha256 -noout \
 ///     | sed 's/://g' | tr 'A-F' 'a-f' | cut -d= -f2
 /// ```
-///
-/// Add the NEW fingerprint first, then remove the old one after rollover.
-const List<String> _pinnedFingerprints = [
-  // TODO: Replace with your server's actual SHA-256 fingerprint before release.
-  // Example (self-signed / placeholder):
-  'aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899',
-];
-
-const String _placeholderFingerprint =
-    'aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899';
+/// Keep the current + next cert fingerprint during a rotation window.
 
 /// Creates a [Dio] instance with certificate pinning configured.
 ///
@@ -37,6 +29,10 @@ const String _placeholderFingerprint =
 Dio createPinnedDioClient({
   String? baseUrl,
   Map<String, dynamic>? headers,
+  // Set false ONLY for the system-status fetch: it delivers the pin set, so
+  // it must stay on OS trust or a bad pin could block the very call that
+  // would fix it (and cause a silent, unrecoverable outage).
+  bool enablePinning = true,
 }) {
   final dio = Dio(
     BaseOptions(
@@ -51,39 +47,25 @@ Dio createPinnedDioClient({
   );
 
   // Only pin on mobile; on web/desktop the OS trust store is used.
-  if (!kIsWebPlatform) {
-    final shouldEnforcePinning = _hasValidPinnedFingerprints();
-    if (shouldEnforcePinning) {
-      dio.httpClientAdapter = IOHttpClientAdapter(
-        createHttpClient: () {
-          final client = HttpClient();
-          client.badCertificateCallback =
-              (X509Certificate cert, String host, int port) {
-            return false; // reject bad certs by default
-          };
-          return client;
-        },
-        validateCertificate: (cert, host, port) {
-          // Plain HTTP connections have no certificate — always allow.
-          if (cert == null) return true;
-
-          final digest = _sha256Hex(cert.der);
-          if (_pinnedFingerprints.contains(digest)) {
-            return true;
-          }
-
-          if (_isLocalHost(host)) return true;
-
-          return false;
-        },
-      );
-    } else {
-      // No valid pins configured yet: rely on OS trust store, otherwise all
-      // HTTPS calls behind this factory would fail with bad certificate.
-      dio.httpClientAdapter = IOHttpClientAdapter(
-        createHttpClient: () => HttpClient(),
-      );
-    }
+  if (!kIsWebPlatform && enablePinning) {
+    dio.httpClientAdapter = IOHttpClientAdapter(
+      createHttpClient: () {
+        final client = HttpClient();
+        // OS chain validation is the floor: a cert the OS rejects is always
+        // rejected here, regardless of pinning mode.
+        client.badCertificateCallback =
+            (X509Certificate cert, String host, int port) => false;
+        return client;
+      },
+      // Runs only after a successful OS handshake. The admin-managed pin set
+      // (delivered via /system/status) decides whether to additionally
+      // enforce/monitor. off/monitor never block; enforce blocks a mismatch.
+      validateCertificate: (cert, host, port) {
+        if (cert == null) return true; // plain HTTP — nothing to pin
+        if (_isLocalHost(host)) return true;
+        return TlsPinningStore.instance.allowCertificate(cert.der, host);
+      },
+    );
   }
 
   // Re-resolve the Bearer token per request. createAuthedPinnedDio bakes the
@@ -258,18 +240,6 @@ bool _isLocalHost(String host) =>
     host == '10.0.2.2' || // Android emulator
     host == '10.0.3.2'; // Genymotion
 
-bool _hasValidPinnedFingerprints() {
-  if (_pinnedFingerprints.isEmpty) return false;
-  for (final fingerprint in _pinnedFingerprints) {
-    final normalized = fingerprint.trim().toLowerCase();
-    if (normalized.length != 64) continue;
-    if (!RegExp(r'^[0-9a-f]{64}$').hasMatch(normalized)) continue;
-    if (normalized == _placeholderFingerprint) continue;
-    return true;
-  }
-  return false;
-}
-
 String _featureDisabledMessage(String feature) {
   switch (feature) {
     case 'chat':
@@ -291,10 +261,6 @@ String _featureDisabledMessage(String feature) {
     default:
       return 'این قابلیت موقتاً از اتاق کنترل غیرفعال شده است.';
   }
-}
-
-String _sha256Hex(List<int> data) {
-  return crypto.sha256.convert(data).toString();
 }
 
 // ignore: avoid_annotating_with_dynamic

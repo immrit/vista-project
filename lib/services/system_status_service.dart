@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:Vista/utils/env_config.dart';
 import 'package:Vista/services/http_client_factory.dart';
+import 'package:Vista/services/tls_pinning_store.dart';
 
 enum SystemFeature {
   login('login'),
@@ -71,6 +72,7 @@ class SystemStatus {
   final int schemaVersion;
   final DateTime? generatedAt;
   final int fcmResyncEpoch;
+  final TlsPinningConfig? tlsPinning;
 
   const SystemStatus({
     required this.maintenance,
@@ -79,6 +81,7 @@ class SystemStatus {
     this.schemaVersion = 1,
     this.generatedAt,
     this.fcmResyncEpoch = 0,
+    this.tlsPinning,
   });
 
   factory SystemStatus.fromJson(Map<String, dynamic> json) {
@@ -146,6 +149,9 @@ class SystemStatus {
       schemaVersion: _readInt(root['schema_version']) ?? 1,
       generatedAt: DateTime.tryParse('${root['generated_at'] ?? ''}'),
       fcmResyncEpoch: _readInt(root['fcm_resync_epoch']) ?? 0,
+      tlsPinning: _asMap(root['tls_pinning']).isNotEmpty
+          ? TlsPinningConfig.fromJson(_asMap(root['tls_pinning']))
+          : null,
     );
   }
 }
@@ -218,7 +224,12 @@ class SystemStatusService {
   }
 
   Future<SystemStatus?> _fetchStatus() async {
-    final dio = createPinnedDioClient(baseUrl: EnvConfig.apiBaseUrl);
+    // enablePinning:false — this call carries the pin set itself, so it must
+    // stay on OS trust; pinning it would risk a self-inflicted lockout.
+    final dio = createPinnedDioClient(
+      baseUrl: EnvConfig.apiBaseUrl,
+      enablePinning: false,
+    );
     final paths = <String>[
       '/v1/system/status',
       '/api/v1/system/status',
@@ -232,6 +243,11 @@ class SystemStatusService {
           _cachedStatus = SystemStatus.fromJson(
             (response.data as Map).cast<String, dynamic>(),
           );
+          // Feed the admin-managed pin set to the store the HTTP layer reads.
+          final pinning = _cachedStatus?.tlsPinning;
+          if (pinning != null) {
+            TlsPinningStore.instance.update(pinning);
+          }
           _lastFetchAt = DateTime.now();
           return _cachedStatus;
         }
