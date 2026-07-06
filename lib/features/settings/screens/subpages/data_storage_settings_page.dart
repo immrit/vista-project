@@ -2,6 +2,7 @@
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import '../../../../services/video_autoplay_service.dart';
+import '../../../../services/media_upload_prefs.dart';
 import '../../widgets/vista_settings_widgets.dart';
 import 'package:Vista/core/theme/app_theme.dart';
 
@@ -15,12 +16,6 @@ class DataStorageSettingsPage extends StatefulWidget {
 }
 
 class _DataStorageSettingsPageState extends State<DataStorageSettingsPage> {
-  // تنظیمات دانلود خودکار
-  bool _mobileDataPhotos = true;
-  bool _mobileDataVideos = false;
-  bool _wifiPhotos = true;
-  bool _wifiVideos = true;
-
   // کیفیت آپلود
   String _uploadQuality = 'high'; // high, standard, data_saver
 
@@ -32,10 +27,6 @@ class _DataStorageSettingsPageState extends State<DataStorageSettingsPage> {
   bool _isClearing = false;
 
   // کلیدهای SharedPreferences
-  static const String _keyMobilePhotos = 'data_mobile_photos';
-  static const String _keyMobileVideos = 'data_mobile_videos';
-  static const String _keyWifiPhotos = 'data_wifi_photos';
-  static const String _keyWifiVideos = 'data_wifi_videos';
   static const String _keyUploadQuality = 'data_upload_quality';
 
   @override
@@ -47,19 +38,10 @@ class _DataStorageSettingsPageState extends State<DataStorageSettingsPage> {
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
-      _mobileDataPhotos = prefs.getBool(_keyMobilePhotos) ?? true;
-      _mobileDataVideos = prefs.getBool(_keyMobileVideos) ?? false;
-      _wifiPhotos = prefs.getBool(_keyWifiPhotos) ?? true;
-      _wifiVideos = prefs.getBool(_keyWifiVideos) ?? true;
       _uploadQuality = prefs.getString(_keyUploadQuality) ?? 'high';
       _videoAutoPlay = prefs.getBool('video_auto_play') ?? false;
       _videoDataSaver = prefs.getBool('video_data_saver') ?? false;
     });
-  }
-
-  Future<void> _saveBoolSetting(String key, bool value) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(key, value);
   }
 
   Future<void> _saveStringSetting(String key, String value) async {
@@ -98,60 +80,6 @@ class _DataStorageSettingsPageState extends State<DataStorageSettingsPage> {
         child: ListView(
           padding: const EdgeInsets.symmetric(vertical: 16),
           children: [
-            // بخش دانلود خودکار - داده موبایل
-            const VistaSettingsSection(title: 'دانلود خودکار - داده موبایل'),
-            VistaSettingsGroup(
-              children: [
-                VistaSettingsSwitch(
-                  icon: Icons.photo_outlined,
-                  title: 'تصاویر',
-                  subtitle: 'دانلود خودکار تصاویر با داده موبایل',
-                  value: _mobileDataPhotos,
-                  onChanged: (value) {
-                    setState(() => _mobileDataPhotos = value);
-                    _saveBoolSetting(_keyMobilePhotos, value);
-                  },
-                ),
-                VistaSettingsSwitch(
-                  icon: Icons.videocam_outlined,
-                  title: 'ویدیوها',
-                  subtitle: 'دانلود خودکار ویدیوها با داده موبایل',
-                  value: _mobileDataVideos,
-                  onChanged: (value) {
-                    setState(() => _mobileDataVideos = value);
-                    _saveBoolSetting(_keyMobileVideos, value);
-                  },
-                ),
-              ],
-            ),
-
-            // بخش دانلود خودکار - وای‌فای
-            const VistaSettingsSection(title: 'دانلود خودکار - وای‌فای'),
-            VistaSettingsGroup(
-              children: [
-                VistaSettingsSwitch(
-                  icon: Icons.photo_outlined,
-                  title: 'تصاویر',
-                  subtitle: 'دانلود خودکار تصاویر با وای‌فای',
-                  value: _wifiPhotos,
-                  onChanged: (value) {
-                    setState(() => _wifiPhotos = value);
-                    _saveBoolSetting(_keyWifiPhotos, value);
-                  },
-                ),
-                VistaSettingsSwitch(
-                  icon: Icons.videocam_outlined,
-                  title: 'ویدیوها',
-                  subtitle: 'دانلود خودکار ویدیوها با وای‌فای',
-                  value: _wifiVideos,
-                  onChanged: (value) {
-                    setState(() => _wifiVideos = value);
-                    _saveBoolSetting(_keyWifiVideos, value);
-                  },
-                ),
-              ],
-            ),
-
             // بخش پخش ویدیو در فید
             const VistaSettingsSection(title: 'پخش ویدیو در فید'),
             VistaSettingsGroup(
@@ -307,6 +235,8 @@ class _DataStorageSettingsPageState extends State<DataStorageSettingsPage> {
       onTap: () {
         setState(() => _uploadQuality = value);
         _saveStringSetting(_keyUploadQuality, value);
+        // Update the in-memory cache the upload path reads immediately.
+        MediaUploadPrefs.updateCache(value);
         Navigator.pop(context);
       },
     );

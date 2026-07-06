@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:Vista/services/media_upload_prefs.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:dotted_border/dotted_border.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -199,12 +200,15 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
 
   Future<void> _pickImage({ImageSource source = ImageSource.gallery}) async {
     try {
+      // Honor the user's Data & Storage → upload quality choice.
+      await MediaUploadPrefs.ensureLoaded();
+      final maxDim = MediaUploadPrefs.maxImageDimension.toDouble();
       final ImagePicker picker = ImagePicker();
       final XFile? image = await picker.pickImage(
         source: source,
-        maxWidth: 1800,
-        maxHeight: 1800,
-        imageQuality: 85,
+        maxWidth: maxDim,
+        maxHeight: maxDim,
+        imageQuality: MediaUploadPrefs.imageQuality,
       );
 
       if (image != null) {
