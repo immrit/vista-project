@@ -33,6 +33,10 @@ Dio createPinnedDioClient({
   // it must stay on OS trust or a bad pin could block the very call that
   // would fix it (and cause a silent, unrecoverable outage).
   bool enablePinning = true,
+  // Set false for the auth client: /auth/refresh, /auth/login etc. must not
+  // carry the RefreshTokenInterceptor, or a 401 from /refresh would recurse
+  // into another refresh. Auth does its own error handling.
+  bool enableTokenRefresh = true,
 }) {
   final dio = Dio(
     BaseOptions(
@@ -86,7 +90,9 @@ Dio createPinnedDioClient({
     },
   ));
 
-  dio.interceptors.add(RefreshTokenInterceptor(dio));
+  if (enableTokenRefresh) {
+    dio.interceptors.add(RefreshTokenInterceptor(dio));
+  }
 
   // Interceptor for God Mode (Maintenance and Ban)
   dio.interceptors.add(InterceptorsWrapper(

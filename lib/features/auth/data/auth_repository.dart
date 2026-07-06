@@ -2,7 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:Vista/utils/env_config.dart';
 import '../../../security/logging_utility.dart';
-import '../../../services/device_id_service.dart';
+import '../../../services/http_client_factory.dart';
 import '../../../services/system_status_service.dart';
 import '../domain/auth_exceptions.dart';
 
@@ -371,18 +371,16 @@ class AuthRepository {
   late final Dio _dio;
 
   AuthRepository() {
-    _dio = Dio(BaseOptions(
+    // Route the most sensitive traffic (login/register/OTP/refresh) through
+    // the shared pinned factory so it honors the admin-managed TLS pinning
+    // like every other client. enableTokenRefresh:false — auth must NOT carry
+    // the RefreshTokenInterceptor, or a 401 from /auth/refresh would recurse
+    // into another refresh. Auth handles its own errors via _handleDioError.
+    _dio = createPinnedDioClient(
       baseUrl: '$_backendUrl/v1/auth',
-      connectTimeout: const Duration(seconds: 20),
-      // Long enough that a slow (not dead) network still receives a /refresh
-      // response the server already produced. A premature client timeout here
-      // used to strand the client on its now-rotated token → later forced logout.
-      receiveTimeout: const Duration(seconds: 30),
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Device-ID': DeviceIdService.id,
-      },
-    ));
+      headers: {'Content-Type': 'application/json'},
+      enableTokenRefresh: false,
+    );
     // SECURITY: the previous LogInterceptor(requestHeader: true) had no
     // kDebugMode guard and its logPrint defaulted to print(), so the
     // Authorization: Bearer <token> header of every auth call leaked into
