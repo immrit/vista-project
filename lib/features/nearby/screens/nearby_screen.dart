@@ -1,4 +1,6 @@
 // ignore_for_file: deprecated_member_use
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -134,24 +136,57 @@ class _NearbyScreenState extends ConsumerState<NearbyScreen>
         return;
       }
 
-      final pos = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-      );
+      // Indoors/weak GPS a high-accuracy fix can hang for minutes — cap the
+      // wait and fall back to the last known position. City-level matching
+      // doesn't need "high" accuracy anyway.
+      Position? pos;
+      try {
+        pos = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.medium,
+          timeLimit: const Duration(seconds: 8),
+        );
+      } on TimeoutException {
+        pos = await Geolocator.getLastKnownPosition();
+      }
+      if (pos == null) {
+        if (!mounted) return;
+        setState(() {
+          _locating = false;
+          _locationError = 'failed';
+        });
+        return;
+      }
 
-      // Reverse-geocode in parallel with nothing (it's the first async op here).
-      // Non-blocking: if Nominatim is unreachable we still update with lat/lng.
-      final geo =
-          await GeocoderService.lookup(pos.latitude, pos.longitude);
-
+      // Send coordinates right away so the deck can load; enrich with the
+      // city/province name in the background once (if) Nominatim answers —
+      // the public geocoder is rate-limited and must not block bootstrap.
       await ref.read(nearbyRepositoryProvider).updateLocation(
             pos.latitude,
             pos.longitude,
-            cityName: geo?.cityName,
-            provinceName: geo?.provinceName,
           );
       if (!mounted) return;
       setState(() => _locating = false);
       ref.read(discoverProvider.notifier).load(reset: true);
+
+      final lat = pos.latitude;
+      final lng = pos.longitude;
+      // Capture the repo now — reading ref inside the closure after this
+      // screen is disposed would throw.
+      final repo = ref.read(nearbyRepositoryProvider);
+      unawaited(() async {
+        try {
+          final geo = await GeocoderService.lookup(lat, lng);
+          if (geo == null) return;
+          await repo.updateLocation(
+            lat,
+            lng,
+            cityName: geo.cityName,
+            provinceName: geo.provinceName,
+          );
+        } catch (_) {
+          // best-effort enrichment only
+        }
+      }());
     } catch (_) {
       if (!mounted) return;
       setState(() {
