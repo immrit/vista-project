@@ -267,6 +267,25 @@ class AuthController extends StateNotifier<AuthState> {
     await PushNotificationService.syncIfNeeded(afterAuth: true);
   }
 
+  /// Post-auth bootstrap that must NEVER undo a successful login. Session
+  /// registration and FCM sync both have their own periodic retries, so a
+  /// transient failure here used to wipe valid tokens (via the caller's catch
+  /// → clearAll) and log the user out despite correct credentials — while the
+  /// server kept an orphaned registered session. Failures are logged only.
+  Future<void> _bootstrapAfterAuth() async {
+    try {
+      await SessionManagerServiceV2.instance
+          .ensureSessionRegistered(force: true);
+    } catch (e) {
+      debugPrint('post-auth session registration failed (non-fatal): $e');
+    }
+    try {
+      await _syncFcmTokenAfterAuth();
+    } catch (e) {
+      debugPrint('post-auth FCM sync failed (non-fatal): $e');
+    }
+  }
+
   // â”€â”€â”€ Ø¨Ø±Ø±Ø³ÛŒ Ù†Ø´Ø³Øª Ø°Ø®ÛŒØ±Ù‡ Ø´Ø¯Ù‡ Ù‡Ù†Ú¯Ø§Ù… Ø´Ø±ÙˆØ¹ Ø§Ù¾Ù„ÛŒÚ©ÛŒØ´Ù† â”€â”€â”€
   Future<void> checkSavedSession() async {
     try {
@@ -319,9 +338,6 @@ class AuthController extends StateNotifier<AuthState> {
       // Ø°Ø®ÛŒØ±Ù‡ ØªÙˆÚ©Ù†â€ŒÙ‡Ø§
       await TokenStorage.saveTokens(response.session);
       await TokenStorage.saveUserAuthState(response.user);
-      await SessionManagerServiceV2.instance
-          .ensureSessionRegistered(force: true);
-      await _syncFcmTokenAfterAuth();
 
       state = state.copyWith(
         isLoading: false,
@@ -329,6 +345,8 @@ class AuthController extends StateNotifier<AuthState> {
         isNewUser: response.isNewUser,
         currentUser: response.user,
       );
+      // Best-effort; must not undo a successful register.
+      await _bootstrapAfterAuth();
       return true;
     } catch (e) {
       await TokenStorage.clearAll();
@@ -352,9 +370,6 @@ class AuthController extends StateNotifier<AuthState> {
       // Ø°Ø®ÛŒØ±Ù‡ ØªÙˆÚ©Ù†â€ŒÙ‡Ø§
       await TokenStorage.saveTokens(response.session);
       await TokenStorage.saveUserAuthState(response.user);
-      await SessionManagerServiceV2.instance
-          .ensureSessionRegistered(force: true);
-      await _syncFcmTokenAfterAuth();
 
       state = state.copyWith(
         isLoading: false,
@@ -362,6 +377,8 @@ class AuthController extends StateNotifier<AuthState> {
         isNewUser: false,
         currentUser: response.user,
       );
+      // Best-effort; must not undo a successful login.
+      await _bootstrapAfterAuth();
       return true;
     } catch (e) {
       await TokenStorage.clearAll();
@@ -425,11 +442,6 @@ class AuthController extends StateNotifier<AuthState> {
 
       await TokenStorage.saveTokens(auth.session);
       await TokenStorage.saveUserAuthState(auth.user);
-      if (!isUpdateMode) {
-        await SessionManagerServiceV2.instance
-            .ensureSessionRegistered(force: true);
-        await _syncFcmTokenAfterAuth();
-      }
 
       if (!isUpdateMode) {
         state = state.copyWith(
@@ -439,6 +451,8 @@ class AuthController extends StateNotifier<AuthState> {
           currentUser: auth.user,
           is2faRequired: false,
         );
+        // Best-effort; must not undo a successful verification.
+        await _bootstrapAfterAuth();
       } else {
         state = state.copyWith(isLoading: false);
       }
@@ -466,9 +480,6 @@ class AuthController extends StateNotifier<AuthState> {
 
       await TokenStorage.saveTokens(response.session);
       await TokenStorage.saveUserAuthState(response.user);
-      await SessionManagerServiceV2.instance
-          .ensureSessionRegistered(force: true);
-      await _syncFcmTokenAfterAuth();
 
       state = state.copyWith(
         isLoading: false,
@@ -477,6 +488,8 @@ class AuthController extends StateNotifier<AuthState> {
         currentUser: response.user,
         is2faRequired: false,
       );
+      // Best-effort; must not undo a successful 2FA verification.
+      await _bootstrapAfterAuth();
       return true;
     } catch (e) {
       await TokenStorage.clearAll();
