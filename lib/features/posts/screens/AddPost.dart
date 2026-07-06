@@ -58,6 +58,22 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
     return 500;
   }
 
+  /// Max upload size in bytes, matching the backend presign limit
+  /// (15MB default, 100MB for premium/badge/staff). Checking client-side
+  /// avoids trimming + uploading a large video only to be rejected with a
+  /// 413 at the very end.
+  int get _maxUploadBytes =>
+      _isPremiumUser ? 100 * 1024 * 1024 : 15 * 1024 * 1024;
+
+  bool _enforceUploadSize(int sizeBytes) {
+    if (sizeBytes <= _maxUploadBytes) return true;
+    final mb = (_maxUploadBytes / (1024 * 1024)).round();
+    _showError(_isPremiumUser
+        ? 'حجم فایل بیش از حد مجاز است (حداکثر $mb مگابایت)'
+        : 'حجم فایل بیش از حد مجاز است (حداکثر $mb مگابایت). با اشتراک ویژه تا ۱۰۰ مگابایت مجاز است.');
+    return false;
+  }
+
   /// Whether the current user has any premium tier (badge or active sub).
   bool get _isPremiumUser {
     final u = ref.read(userProvider);
@@ -530,6 +546,7 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
             _showError('خطا در خواندن فایل ویدیو');
             return;
           }
+          if (!_enforceUploadSize(videoBytes.length)) return;
           final videoName = result.files.single.name;
 
           setState(() {
@@ -586,6 +603,7 @@ class _AddPublicPostScreenState extends ConsumerState<AddPublicPostScreen> {
             if (trimmedPath != null && trimmedPath.isNotEmpty) {
               final File trimmedFile = File(trimmedPath);
               if (await trimmedFile.exists()) {
+                if (!_enforceUploadSize(await trimmedFile.length())) return;
                 setState(() {
                   _selectedVideo = trimmedFile;
                   _selectedVideoName = trimmedFile.path.split('/').last;
