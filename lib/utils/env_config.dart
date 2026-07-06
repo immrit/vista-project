@@ -3,7 +3,12 @@ import 'package:flutter/foundation.dart' show kIsWeb, kReleaseMode;
 
 class EnvConfig {
   // 1. Compile-time overrides via --dart-define.
+  //    API_BASE_URL is canonical; BACKEND_URL is honored as a legacy alias so
+  //    older build scripts keep working (previously the two keys drove two
+  //    separate config paths and could point at different servers).
   static const String _apiDefine = String.fromEnvironment('API_BASE_URL');
+  static const String _legacyBackendDefine =
+      String.fromEnvironment('BACKEND_URL');
   static const String _wsDefine = String.fromEnvironment('WS_BASE_URL');
   static const String _releaseApiFallback =
       String.fromEnvironment('RELEASE_API_BASE_URL', defaultValue: '');
@@ -14,6 +19,9 @@ class EnvConfig {
   static String get apiBaseUrl {
     if (_apiDefine.isNotEmpty) {
       return _apiDefine;
+    }
+    if (_legacyBackendDefine.isNotEmpty) {
+      return _legacyBackendDefine;
     }
 
     if (kReleaseMode) {

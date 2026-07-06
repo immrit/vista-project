@@ -6,10 +6,13 @@
 /// See BUILD.md for full build instructions.
 library;
 
-const String backendUrl = String.fromEnvironment(
-  'BACKEND_URL',
-  defaultValue: 'https://api.coffevista.ir',
-);
+import 'package:Vista/utils/env_config.dart';
+
+/// Canonical backend base URL. Delegates to [EnvConfig.apiBaseUrl] so the
+/// whole app follows ONE source of truth — previously half the code read the
+/// `BACKEND_URL` define and the other half `API_BASE_URL`, so a staging build
+/// could silently send part of its traffic to production.
+String get backendUrl => EnvConfig.apiBaseUrl;
 
 /// Base URL of the Vista web app (Next.js). Used for in-app webview handoffs
 /// such as the game SSO flow.
