@@ -13,6 +13,7 @@ import 'subpages/ThemeSettingsPage.dart';
 import 'subpages/data_storage_settings_page.dart';
 import 'subpages/notification_settings_page.dart';
 import 'subpages/privacy_security_page.dart';
+import 'subpages/VerificationRequestPage.dart';
 import 'vistaStore/pricing_page.dart';
 import 'package:Vista/l10n/generated/app_localizations.dart';
 import 'package:Vista/utils/premium_subscription_utils.dart';
@@ -130,6 +131,16 @@ class Settings extends ConsumerWidget {
               onTap: () => Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => ChangePasswordWidget()),
+              ),
+            ),
+            _SettingsTile(
+              icon: Icons.verified_outlined,
+              title: 'درخواست تیک آبی',
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const VerificationRequestPage(),
+                ),
               ),
             ),
           ],
