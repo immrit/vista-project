@@ -232,10 +232,15 @@ class _OnboardingState extends State<Onboarding> with TickerProviderStateMixin {
   void _navigateToAuth() async {
     // علامت‌گذاری onboarding به عنوان تکمیل شده
     await OnboardingService.markOnboardingCompleted();
+    if (!mounted) return;
     Navigator.pushReplacementNamed(context, '/auth');
   }
 
-  void _skipOnboarding() {
+  void _skipOnboarding() async {
+    // Skip هم یعنی «دیدم، دیگر نشان نده» — بدون mark، در اجرای بعدی دوباره
+    // onboarding می‌آمد.
+    await OnboardingService.markOnboardingCompleted();
+    if (!mounted) return;
     Navigator.pushReplacementNamed(context, '/auth');
   }
 

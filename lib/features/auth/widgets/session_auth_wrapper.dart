@@ -5,7 +5,9 @@ import 'package:Vista/features/auth/data/auth_repository.dart';
 import 'package:Vista/features/auth/screens/mandatory_password_screen.dart';
 import 'package:Vista/features/auth/providers/auth_controller.dart';
 import 'package:Vista/features/home/screens/homeScreen.dart';
+import 'package:Vista/features/onboarding/screens/Onboarding.dart';
 import 'package:Vista/features/profile/screens/profile_setup_wizard_screen.dart';
+import 'package:Vista/services/onboarding_service.dart';
 import 'package:Vista/middleware/session_middleware.dart';
 import 'package:Vista/screens/maintenance_screen.dart';
 import 'package:Vista/services/session_manager_service_v2.dart';
@@ -29,6 +31,7 @@ class _SessionAuthWrapperState extends ConsumerState<SessionAuthWrapper> {
   bool _requiresProfileSetup = false;
   bool _requiresPasswordSetup = false;
   bool _isMaintenance = false;
+  bool _showOnboarding = false;
 
   @override
   void initState() {
@@ -152,10 +155,15 @@ class _SessionAuthWrapperState extends ConsumerState<SessionAuthWrapper> {
     });
   }
 
-  void _setNotAuthenticated() {
+  void _setNotAuthenticated() async {
+    // First launch (or onboarding version bump): show the intro slides once
+    // before the auth wizard. Previously the onboarding screen existed but
+    // nothing ever routed to it.
+    final onboardingDone = await OnboardingService.isOnboardingCompleted();
     if (!mounted) return;
     setState(() {
       _isAuthenticated = false;
+      _showOnboarding = !onboardingDone;
       _isLoading = false;
     });
   }
@@ -198,6 +206,10 @@ class _SessionAuthWrapperState extends ConsumerState<SessionAuthWrapper> {
       return const SessionMiddleware(child: HomeScreen());
     }
 
+    if (_showOnboarding) {
+      // Onboarding marks itself completed and pushes '/auth' when finished.
+      return const Onboarding();
+    }
     return const AuthWizardScreen();
   }
 }
