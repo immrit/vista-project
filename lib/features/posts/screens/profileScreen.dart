@@ -2244,7 +2244,9 @@ class _PostListItem extends ConsumerWidget {
                 ),
               ],
             ),
-            if (hasImage) ...[
+            // Video wins over image — a covered video's image_url is its
+            // poster, not a photo post (same fix as the explore feed).
+            if (hasImage && !hasVideo) ...[
               const SizedBox(height: 10),
               if (post.hasMultipleImages)
                 SizedBox(
@@ -2283,7 +2285,7 @@ class _PostListItem extends ConsumerWidget {
                   ),
                 ),
             ],
-            if (hasVideo && !hasImage) ...[
+            if (hasVideo) ...[
               const SizedBox(height: 10),
               PostFeedVideo(
                 post: post,

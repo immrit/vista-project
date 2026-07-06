@@ -20,6 +20,7 @@ import '../providers/saved_posts_provider.dart';
 import '../widgets/double_tap_like_overlay.dart';
 import '../widgets/hashtag_rich_text.dart';
 import '../widgets/post_image_carousel.dart';
+import '../widgets/post_feed_video.dart';
 import '../widgets/post_action_buttons.dart';
 import '../widgets/post_moderation_banner.dart';
 import '../widgets/standard_edit_post_dialog.dart';
@@ -459,8 +460,18 @@ class _SavedPostItem extends ConsumerWidget {
                         const SizedBox(height: 10),
                       ],
 
+                      // ویدیو — قبل از عکس، چون کاور ویدیو در image_url
+                      // می‌نشیند و بدون این شاخه، پست ویدیویی ذخیره‌شده فقط
+                      // یک عکس ثابت بدون هیچ امکان پخشی بود.
+                      if (post.hasVideo)
+                        PostFeedVideo(
+                          post: post,
+                          maxHeight: 280,
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+
                       // تصویر پست
-                      if (hasImage)
+                      if (hasImage && !post.hasVideo)
                         ClipRRect(
                           borderRadius: BorderRadius.circular(14),
                           child: DoubleTapLikeOverlay(

@@ -1066,7 +1066,11 @@ class _ThreadPostItem extends ConsumerWidget {
           ),
 
           // ── تصویر (هم‌سبک پروفایل) ─────────────────────────────
-          if (hasImage) ...[
+          // Video wins over image: the mobile uploader attaches a thumbnail
+          // as image_url (cover) to EVERY video, so `hasImage` alone routed
+          // all covered videos into this static-image branch — no play icon,
+          // no inline playback. PostFeedVideo uses the cover as its poster.
+          if (hasImage && !hasVideo) ...[
             const SizedBox(height: 10),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -1145,7 +1149,7 @@ class _ThreadPostItem extends ConsumerWidget {
           ],
 
           // ── ویدیو (هم‌سبک پروفایل) ─────────────────────────────
-          if (hasVideo && !hasImage) ...[
+          if (hasVideo) ...[
             const SizedBox(height: 10),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),

@@ -360,8 +360,9 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
                     .toList(growable: false),
               ),
             ],
-            if (post.hasVideo &&
-                (post.imageUrl == null || post.imageUrl!.isEmpty))
+            // Video wins over image — a covered video's image_url is its
+            // poster; routing it to the image branch hid playback entirely.
+            if (post.hasVideo)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 10),
                 child: PostFeedVideo(
