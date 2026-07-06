@@ -320,16 +320,31 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
 
         if (_isRegistering) {
           final password = _passwordController.text;
-          if (password.isNotEmpty) {
-            try {
-              await ref.read(authControllerProvider.notifier).register(
-                    phoneNumber: phone,
-                    password: password,
-                    fullName: '',
-                  );
-            } catch (e) {
-              debugPrint('Error setting password during registration: $e');
-            }
+          // The account exists (OTP verified) but has no password yet. If
+          // setting it fails — network drop, or the backend rejects it by
+          // policy — we must NOT show "welcome" and move on, or the user is
+          // left with a passwordless account and can't log in with a password
+          // later. Send them to the mandatory-password screen to set one.
+          final validation = validatePasswordBalanced(password, phone: phone);
+          if (!validation.isValid) {
+            if (!mounted) return;
+            setState(() => _isLoading = false);
+            Navigator.pushReplacementNamed(context, '/mandatory-password');
+            return;
+          }
+          try {
+            await ref.read(authControllerProvider.notifier).register(
+                  phoneNumber: phone,
+                  password: password,
+                  fullName: '',
+                );
+          } catch (e) {
+            debugPrint('Error setting password during registration: $e');
+            if (!mounted) return;
+            setState(() => _isLoading = false);
+            _showSnack('ثبت رمز عبور ناموفق بود؛ لطفاً رمز خود را دوباره تنظیم کنید');
+            Navigator.pushReplacementNamed(context, '/mandatory-password');
+            return;
           }
           if (!mounted) return;
           _showSnack('خوش آمدید!');
