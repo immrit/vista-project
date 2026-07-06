@@ -345,8 +345,8 @@ class AuthController extends StateNotifier<AuthState> {
         isNewUser: response.isNewUser,
         currentUser: response.user,
       );
-      // Best-effort; must not undo a successful register.
-      await _bootstrapAfterAuth();
+      // Fire-and-forget; must not undo or block a successful register.
+      unawaited(_bootstrapAfterAuth());
       return true;
     } catch (e) {
       await TokenStorage.clearAll();
@@ -377,8 +377,10 @@ class AuthController extends StateNotifier<AuthState> {
         isNewUser: false,
         currentUser: response.user,
       );
-      // Best-effort; must not undo a successful login.
-      await _bootstrapAfterAuth();
+      // Fire-and-forget: session registration (which may take a GPS snapshot)
+      // and FCM sync must never block the UI from proceeding after login. Both
+      // have their own retries.
+      unawaited(_bootstrapAfterAuth());
       return true;
     } catch (e) {
       await TokenStorage.clearAll();
@@ -451,8 +453,8 @@ class AuthController extends StateNotifier<AuthState> {
           currentUser: auth.user,
           is2faRequired: false,
         );
-        // Best-effort; must not undo a successful verification.
-        await _bootstrapAfterAuth();
+        // Fire-and-forget; must not undo or block a successful verification.
+        unawaited(_bootstrapAfterAuth());
       } else {
         state = state.copyWith(isLoading: false);
       }

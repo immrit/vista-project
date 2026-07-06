@@ -6,6 +6,7 @@ import 'package:Vista/features/chat/screens/ChatConversationsScreen.dart'
     show ChatConversationsScreen;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:badges/badges.dart' as badges;
 import 'package:Vista/provider/profile_completion_provider.dart';
@@ -36,18 +37,18 @@ final unreadConversationsCountProvider = Provider<int>((ref) {
 class _NavIcons {
   static const String basePath = 'lib/utils/images/bottomnavigation';
 
-  static const String homeActive = '$basePath/home.png';
-  static const String homeInactive = '$basePath/home-outline.png';
+  static const String homeActive = '$basePath/home.svg';
+  static const String homeInactive = '$basePath/home-outline.svg';
 
-  static const String search = '$basePath/magnifying-glass.png';
+  static const String search = '$basePath/magnifying-glass.svg';
 
-  static const String add = '$basePath/plus.png';
+  static const String grid = '$basePath/grid.svg';
 
-  static const String chatActive = '$basePath/email.png';
-  static const String chatInactive = '$basePath/email-outline.png';
+  static const String chatActive = '$basePath/email.svg';
+  static const String chatInactive = '$basePath/email-outline.svg';
 
-  static const String profileActive = '$basePath/user.png';
-  static const String profileInactive = '$basePath/user-outline.png';
+  static const String profileActive = '$basePath/user.svg';
+  static const String profileInactive = '$basePath/user-outline.svg';
 }
 
 class HomeScreen extends ConsumerStatefulWidget {
@@ -586,29 +587,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
-          child: ColorFiltered(
+          child: SvgPicture.asset(
+            isSelected ? activeIcon : inactiveIcon,
+            width: 30,
+            height: 30,
             colorFilter: ColorFilter.mode(
               isSelected
                   ? AppColors.primary
-                  : (isDark ? Colors.grey[600]! : Colors.grey[400]!),
+                  : (isDark ? Colors.grey[400]! : Colors.grey[600]!),
               BlendMode.srcIn,
-            ),
-            child: Image.asset(
-              isSelected ? activeIcon : inactiveIcon,
-              width: 26,
-              height: 26,
-              filterQuality: FilterQuality.medium,
-              gaplessPlayback: true,
-              errorBuilder: (context, error, stackTrace) {
-                // Fallback به آیکون پیش‌فرض اگر تصویر بارگذاری نشد
-                return Icon(
-                  Icons.home_outlined,
-                  size: 26,
-                  color: isSelected
-                      ? AppColors.primary
-                      : (isDark ? Colors.grey[600] : Colors.grey[400]),
-                );
-              },
             ),
           )
               .animate(target: isSelected ? 1 : 0)
@@ -647,28 +634,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             padding: EdgeInsets.all(5),
           ),
           position: badges.BadgePosition.topEnd(top: -8, end: -8),
-          child: ColorFiltered(
+          child: SvgPicture.asset(
+            isSelected ? activeIcon : inactiveIcon,
+            width: 30,
+            height: 30,
             colorFilter: ColorFilter.mode(
               isSelected
                   ? AppColors.primary // ✅ رنگ برند برای active
-                  : (isDark ? Colors.grey[600]! : Colors.grey[400]!),
+                  : (isDark ? Colors.grey[400]! : Colors.grey[600]!),
               BlendMode.srcIn,
-            ),
-            child: Image.asset(
-              isSelected ? activeIcon : inactiveIcon,
-              width: 26,
-              height: 26,
-              filterQuality: FilterQuality.medium,
-              gaplessPlayback: true,
-              errorBuilder: (context, error, stackTrace) {
-                return Icon(
-                  Icons.chat_bubble_outline_rounded,
-                  size: 26,
-                  color: isSelected
-                      ? AppColors.primary
-                      : (isDark ? Colors.grey[600] : Colors.grey[400]),
-                );
-              },
             ),
           )
               .animate(target: isSelected ? 1 : 0)
@@ -702,12 +676,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 ]
               : null,
         ),
-        child: Icon(
-          Icons.grid_view_rounded,
-          size: 24,
-          color: isSelected
-              ? Colors.white
-              : (isDark ? Colors.grey[400] : Colors.grey[600]),
+        child: SvgPicture.asset(
+          _NavIcons.grid,
+          width: 28,
+          height: 28,
+          colorFilter: ColorFilter.mode(
+            isSelected
+                ? Colors.white
+                : (isDark ? Colors.grey[400]! : Colors.grey[600]!),
+            BlendMode.srcIn,
+          ),
         ),
       )
           .animate(target: isSelected ? 1 : 0)

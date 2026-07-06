@@ -1060,10 +1060,14 @@ class SessionManagerServiceV2 {
         // فقط اگه قبلاً اجازه داده — درخواست در nearby_screen انجام می‌شه
         if (permission == LocationPermission.always ||
             permission == LocationPermission.whileInUse) {
-          final position = await Geolocator.getCurrentPosition(
+          // Session location is coarse (city-level) analytics — no need for a
+          // high-accuracy fix that hangs up to 12s indoors. Prefer the cached
+          // last-known position, and cap a fresh read at 3s.
+          Position? position = await Geolocator.getLastKnownPosition();
+          position ??= await Geolocator.getCurrentPosition(
             locationSettings: const LocationSettings(
-              accuracy: LocationAccuracy.high,
-              timeLimit: Duration(seconds: 12),
+              accuracy: LocationAccuracy.medium,
+              timeLimit: Duration(seconds: 3),
             ),
           );
           gpsLat = position.latitude;
