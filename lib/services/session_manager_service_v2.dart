@@ -13,6 +13,7 @@ import 'package:uuid/uuid.dart';
 import '../features/auth/data/auth_repository.dart';
 import '../features/auth/providers/auth_controller.dart';
 import '../features/auth/domain/auth_exceptions.dart';
+import '../features/chat/services/sse_manager.dart';
 import '../features/nearby/services/geocoder_service.dart';
 import '../model/session_model.dart';
 import '../security/logging_utility.dart';
@@ -686,7 +687,10 @@ class SessionManagerServiceV2 {
   }
 
   void _teardownRealtimeListener() {
-    // Empty
+    // Stop the chat WebSocket on logout/termination. Without this its loop
+    // kept waking every 5s with no session (battery + log spam) until the app
+    // restarted. chat_repository_impl.start()s it again on next login.
+    SseManager.instance.stop();
   }
 
   // ═══════════════════════════════════════════════════════════

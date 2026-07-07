@@ -1,3 +1,5 @@
+import 'package:shamsi_date/shamsi_date.dart';
+
 /// کمک‌تابع‌های اشتراک ویستا پریمیوم (روز باقی‌مانده، تمدید).
 class PremiumSubscriptionUtils {
   static DateTime? parseExpiresAt(Map<String, dynamic>? profile) {
@@ -23,16 +25,21 @@ class PremiumSubscriptionUtils {
     return days < 1 ? 1 : days;
   }
 
+  /// Single source of truth for "does this account have premium privileges",
+  /// aligned with UserModel.hasPremiumPrivileges so the pricing page and the
+  /// feed never disagree:
+  ///   - blue/gold/black verification ticks = permanent privileges (no expiry)
+  ///   - role == 'premium' = subscription, expiry-gated by daysRemaining
   static bool isPremiumActive(Map<String, dynamic>? profile) {
     if (profile == null) return false;
-    final role = profile['role']?.toString();
     final verification = profile['verification_type']?.toString();
-    final hasBadge = role == 'premium' || verification == 'goldTick';
-    if (!hasBadge) return false;
+    const permanentTicks = {'blueTick', 'goldTick', 'blackTick'};
+    if (permanentTicks.contains(verification)) return true;
 
-    final days = daysRemaining(profile);
-    if (days != null && days > 0) return true;
-
+    if (profile['role']?.toString() == 'premium') {
+      final days = daysRemaining(profile);
+      return days != null && days > 0;
+    }
     return false;
   }
 
@@ -53,12 +60,22 @@ class PremiumSubscriptionUtils {
   static String formatExpiryDate(Map<String, dynamic>? profile) {
     final expires = parseExpiresAt(profile);
     if (expires == null) return '';
-    final y = expires.year;
-    final m = expires.month.toString().padLeft(2, '0');
-    final d = expires.day.toString().padLeft(2, '0');
+    // Jalali + Persian digits to match the fully-RTL premium page (was
+    // Gregorian YYYY/MM/DD).
+    final j = Jalali.fromDateTime(expires);
+    final m = j.month.toString().padLeft(2, '0');
+    final d = j.day.toString().padLeft(2, '0');
     final hh = expires.hour.toString().padLeft(2, '0');
     final mm = expires.minute.toString().padLeft(2, '0');
-    return '$y/$m/$d $hh:$mm';
+    return _faDigitsStr('${j.year}/$m/$d $hh:$mm');
+  }
+
+  static String _faDigitsStr(String s) {
+    const map = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
+    return s.split('').map((c) {
+      final i = int.tryParse(c);
+      return i == null ? c : map[i];
+    }).join();
   }
 
   static String _faDigits(int n) {
