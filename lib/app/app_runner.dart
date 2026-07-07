@@ -55,8 +55,6 @@ import 'package:Vista/features/chat/screens/modern_chat_screen.dart';
 import 'package:Vista/features/auth/screens/auth_wizard_screen.dart';
 import 'package:Vista/features/auth/screens/biometric_login_screen.dart';
 import 'package:Vista/features/auth/screens/reset_password_screen.dart';
-import 'package:Vista/features/auth/screens/password_reset_code_screen.dart';
-import 'package:Vista/features/auth/screens/password_reset_sms_screen.dart';
 import 'package:Vista/features/auth/screens/password_recovery_confirm_screen.dart';
 import 'package:Vista/features/auth/screens/password_set_screen.dart';
 import 'package:Vista/features/auth/screens/mandatory_password_screen.dart';
@@ -662,10 +660,6 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
               '/profile-setup': (context) =>
                   const SessionMiddleware(child: ProfileSetupWizardScreen()),
               '/reset-password': (context) => const ResetPasswordScreen(),
-              '/reset-password-code': (context) =>
-                  const PasswordResetCodeScreen(),
-              '/reset-password-sms': (context) =>
-                  const PasswordResetSmsScreen(),
               '/reset-password-confirm': (context) =>
                   const PasswordRecoveryConfirmScreen(),
               '/reset-password-set': (context) => const PasswordSetScreen(),

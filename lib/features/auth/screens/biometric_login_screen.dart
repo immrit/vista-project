@@ -99,8 +99,10 @@ class _BiometricLoginScreenState extends ConsumerState<BiometricLoginScreen>
           _biometricTypeName = _getBiometricTypeName(biometrics);
         });
 
-        // Auto-trigger biometric authentication
+        // Auto-trigger biometric authentication — guard mounted so a fast
+        // exit before the delay fires doesn't setState after dispose.
         Future.delayed(const Duration(milliseconds: 1500), () {
+          if (!mounted) return;
           _authenticateWithBiometric();
         });
       } else {
