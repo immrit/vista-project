@@ -311,7 +311,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
       final sessionManager = SessionManagerServiceV2();
       await sessionManager.initialize();
       await sessionManager.ensureSessionRegistered();
-      await sessionManager.verifyCurrentSession(forceServer: false);
+      await sessionManager.verifyCurrentSession();
       sessionManager.updateLocationAndIP();
       UserPresenceService().initialize();
       if (userId != null && userId.isNotEmpty) {
@@ -344,7 +344,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
     try {
       final hasTokenSession = await TokenStorage.hasValidSession();
       if (!hasTokenSession) return;
-      await sessionManager.verifyCurrentSession(forceServer: false);
+      await sessionManager.verifyCurrentSession();
     } catch (_) {}
   }
 

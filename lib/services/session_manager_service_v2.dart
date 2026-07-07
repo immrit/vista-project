@@ -818,10 +818,20 @@ class SessionManagerServiceV2 {
           _currentSessionId = firstSession['id']?.toString();
           _sessionToken = firstSession['session_token']?.toString();
         }
-        if (_currentSessionId != null) {
+        // The backend intentionally omits session_token in the list response,
+        // so without a token the session isn't actually usable. Marking it
+        // "verified" here made the next validate fail and re-register anyway.
+        // Only claim verified when we truly have a token; otherwise register a
+        // fresh session now.
+        if (_currentSessionId != null &&
+            _sessionToken != null &&
+            _sessionToken!.isNotEmpty) {
           await _saveSession();
           _verificationState = SessionVerificationState.verified;
           logInfo('✅ Found active session from backend: $_currentSessionId');
+        } else {
+          _currentSessionId = null;
+          await registerSession();
         }
       }
     } catch (e) {
@@ -917,7 +927,10 @@ class SessionManagerServiceV2 {
     throw Exception('Session registration failed or was rejected by backend.');
   }
 
-  Future<bool> verifyCurrentSession({bool forceServer = false}) async {
+  // Note: this always does the local quick check. The old `forceServer`
+  // parameter promised a server round-trip it never performed, so it was
+  // removed rather than keep a misleading API.
+  Future<bool> verifyCurrentSession() async {
     return await _quickSessionCheck();
   }
 
