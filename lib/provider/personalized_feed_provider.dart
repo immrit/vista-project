@@ -123,6 +123,27 @@ class PersonalizedFeedNotifier
     state = AsyncValue.data([post, ...posts]);
   }
 
+  /// Drops a single post locally (delete / not-interested) instead of
+  /// ref.refresh() wiping the whole feed and losing scroll position.
+  void removePost(String postId) {
+    final current = state;
+    if (current is! AsyncData<List<PublicPostModel>>) return;
+    state = AsyncValue.data(
+      current.value.where((p) => p.id != postId).toList(growable: false),
+    );
+  }
+
+  /// Replaces one post in place (e.g. engagement-visibility toggle).
+  void updatePost(PublicPostModel post) {
+    final current = state;
+    if (current is! AsyncData<List<PublicPostModel>>) return;
+    state = AsyncValue.data(
+      current.value
+          .map((p) => p.id == post.id ? post : p)
+          .toList(growable: false),
+    );
+  }
+
   Future<void> loadMorePosts() async {
     // Don't auto-hammer the backend after a tail failure; wait for explicit
     // retry via [retryLoadMore].

@@ -25,6 +25,7 @@ import 'package:flutter/services.dart';
 import '../../../services/smart_share_service.dart';
 import '../../../services/current_user_service.dart';
 import 'package:Vista/utils/premium_features_helper.dart';
+import 'package:Vista/utils/time_utils.dart';
 import 'package:Vista/utils/widgets.dart' show ReportDialog;
 import 'package:Vista/utils/comments_bottom_sheet.dart';
 import 'package:Vista/services/system_ui_bar_service.dart';
@@ -1519,8 +1520,11 @@ class _ThreadPostItem extends ConsumerWidget {
                     postId: post.id,
                     eventType: 'not_interested',
                   ));
-              // ignore: unused_result
-              ref.refresh(personalizedFeedProvider);
+              // Drop just this post locally — the old ref.refresh wiped the
+              // whole feed and reset scroll position.
+              ref
+                  .read(personalizedFeedProvider.notifier)
+                  .removePost(post.id);
             } else if (value == 'delete') {
               _showDeleteConfirmation(context, ref, post);
             } else if (value == 'edit') {
@@ -1640,9 +1644,11 @@ class _ThreadPostItem extends ConsumerWidget {
                 await ref
                     .read(postActionsServiceProvider)
                     .deletePost(ref, post.id);
-                // Refresh feeds
-                // ignore: unused_result
-                ref.refresh(personalizedFeedProvider);
+                // Remove the deleted post in place instead of wiping and
+                // refetching the whole personalized feed.
+                ref
+                    .read(personalizedFeedProvider.notifier)
+                    .removePost(post.id);
                 // ignore: unused_result
                 ref.refresh(fetchFollowingPostsProvider);
 
@@ -1665,19 +1671,7 @@ class _ThreadPostItem extends ConsumerWidget {
   }
 
   // Helper methods from ProfileScreen
-  String _getTimeAgo(DateTime dateTime) {
-    final now = DateTime.now();
-    final difference = now.difference(dateTime);
-    if (difference.inDays > 7) {
-      return '${dateTime.month}/${dateTime.day}';
-    } else if (difference.inDays > 0) {
-      return '${difference.inDays}d';
-    } else if (difference.inHours > 0) {
-      return '${difference.inHours}h';
-    } else if (difference.inMinutes > 0) {
-      return '${difference.inMinutes}m';
-    } else {
-      return 'now';
-    }
-  }
+  // Persian relative time + Jalali date via the shared formatter, instead of
+  // the old English/Gregorian "5m / 3h / 12/25" that clashed with the RTL UI.
+  String _getTimeAgo(DateTime dateTime) => TimeUtils.timeAgo(dateTime);
 }
