@@ -185,26 +185,11 @@ class _PrivacySecurityPageState extends ConsumerState<PrivacySecurityPage> {
                 // /auth/2fa/setup password-enrolment flow (Set2FAPassword),
                 // otherwise enabling it either locks the user out or does
                 // nothing. Re-add wired to that flow when 2FA UI ships.
-                VistaSettingsSwitch(
-                  icon: Icons.lock_clock_outlined,
-                  title: 'قفل خودکار',
-                  value: settings['auto_lock_enabled'] as bool? ?? true,
-                  onChanged: (value) =>
-                      _updateSetting(userId, 'auto_lock_enabled', value),
-                ),
-                VistaSettingsChoice<int>(
-                  icon: Icons.timer_outlined,
-                  title: 'زمان قفل',
-                  value: settings['auto_lock_timeout_minutes'] as int? ?? 5,
-                  options: const [
-                    VistaChoiceOption(value: 1, label: '۱ دقیقه'),
-                    VistaChoiceOption(value: 5, label: '۵ دقیقه'),
-                    VistaChoiceOption(value: 15, label: '۱۵ دقیقه'),
-                    VistaChoiceOption(value: 30, label: '۳۰ دقیقه'),
-                  ],
-                  onChanged: (value) => _updateSetting(
-                      userId, 'auto_lock_timeout_minutes', value),
-                ),
+                // NOTE: the "auto-lock" + "lock timeout" controls were removed.
+                // AutoLockService is a passive stub (never locks), so both
+                // toggles only wrote a blob value that nothing enforces.
+                // Re-add when real auto-lock (didChangeAppLifecycleState +
+                // biometric gate) is implemented.
               ],
             ),
           ],

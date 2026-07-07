@@ -2,6 +2,7 @@ import '../../../security/logging_utility.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
@@ -687,14 +688,20 @@ class _EditProfileState extends ConsumerState<EditProfile> {
                                         width: 2,
                                       ),
                                       image: DecorationImage(
+                                        // Cached + error-safe: a bad avatar URL
+                                        // used to leave an empty circle and
+                                        // re-download every rebuild.
                                         image: _imageFile != null
                                             ? FileImage(_imageFile!)
+                                                as ImageProvider
                                             : (avatarUrl != null &&
                                                     avatarUrl.isNotEmpty)
-                                                ? NetworkImage(avatarUrl)
+                                                ? CachedNetworkImageProvider(
+                                                    avatarUrl)
                                                 : const AssetImage(
                                                     'lib/utils/images/default-avatar.jpg'),
                                         fit: BoxFit.cover,
+                                        onError: (_, __) {},
                                       ),
                                     ),
                                   ),

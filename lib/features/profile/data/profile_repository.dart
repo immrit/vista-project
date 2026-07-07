@@ -345,11 +345,22 @@ class ProfileRepository {
   Future<Map<String, dynamic>> updateProfile(
       String userId, Map<String, dynamic> updatedData) async {
     try {
+      // Fields where an empty value is a legitimate "clear this" — for the
+      // rest, an empty string is dropped so a blank field doesn't wipe data.
+      // website_url and marital_status were previously un-clearable because
+      // their empty value got stripped here.
+      const clearableWhenEmpty = {
+        'bio',
+        'email',
+        'avatar_url',
+        'website_url',
+        'marital_status',
+      };
       final sanitizedData = Map<String, dynamic>.from(updatedData);
       sanitizedData.removeWhere((key, value) {
         if (value == null) return true;
         if (value is String && value.trim().isEmpty) {
-          return !['bio', 'email', 'avatar_url'].contains(key);
+          return !clearableWhenEmpty.contains(key);
         }
         return false;
       });
