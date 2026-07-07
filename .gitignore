@@ -70,3 +70,6 @@ app.*.map.json
 .env.production
 .env.development
 .env.local
+
+# Agent skills and memory
+.agents/

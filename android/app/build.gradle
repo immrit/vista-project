@@ -65,9 +65,6 @@ android {
             // BF2: ship only ARM ABIs in release. Drops x86_64 native packaging
             // (ffmpeg/isar .so) → smaller APK + less native merge/strip work.
             // Debug keeps all ABIs for x86_64 emulator coverage.
-            ndk {
-                abiFilters 'arm64-v8a', 'armeabi-v7a'
-            }
         }
         
         // Debug uses the release signing config ONLY when the keystore exists

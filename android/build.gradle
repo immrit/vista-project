@@ -1,5 +1,6 @@
 buildscript {
     ext.kotlin_version = '2.2.20'
+    ext.ffmpegKitPackage = "min-gpl"
     repositories {
         maven { url 'https://maven.aliyun.com/repository/google' }
         maven { url 'https://maven.aliyun.com/repository/public' }
