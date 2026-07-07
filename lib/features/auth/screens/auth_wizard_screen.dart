@@ -536,7 +536,7 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
                 : Alignment.centerLeft,
             child: IconButton(
               icon: Icon(directionalBackIcon(context)),
-              onPressed: () => _pageController.jumpToPage(0),
+              onPressed: () => _nextPage(0),
             ),
           ),
           const SizedBox(height: 28),
@@ -644,11 +644,7 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
                 : Alignment.centerLeft,
             child: IconButton(
               icon: Icon(directionalBackIcon(context)),
-              onPressed: () {
-                // Determine where to go back
-                // Usually back to input slide (0)
-                _pageController.jumpToPage(0);
-              },
+              onPressed: () => _nextPage(0),
             ),
           ),
           const SizedBox(height: 24),
