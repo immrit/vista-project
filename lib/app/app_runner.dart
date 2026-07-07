@@ -79,6 +79,7 @@ import 'package:Vista/features/stories/stories.dart';
 import 'package:Vista/features/share/share_target_screen.dart';
 
 import 'package:Vista/screens/maintenance_screen.dart';
+import 'package:Vista/widgets/invalid_route_screen.dart';
 import 'package:Vista/screens/banned_screen.dart';
 import 'package:Vista/core/theme/app_theme.dart';
 
@@ -238,7 +239,6 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
   StreamSubscription<SharedContent>? _shareSubscription;
   Timer? _sessionCheckTimer;
   Timer? _systemStatusTimer;
-  bool _isLoading = false;
   bool _pushServiceInitialized = false;
 
   final Size viewPort = const Size(428, 926);
@@ -563,14 +563,12 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
   }
 
   void _processDeepLink(Uri uri) {
-    if (_isLoading) return;
-    setState(() => _isLoading = true);
+    // handleDeepLink is synchronous-return/fire-and-forget, so the old
+    // _isLoading guard + double setState never actually gated anything (it
+    // flipped true→false in the same frame). Just dispatch.
     try {
       new_deep_link.DeepLinkService().handleDeepLink(uri, navigatorKey);
-    } catch (_) {
-    } finally {
-      setState(() => _isLoading = false);
-    }
+    } catch (_) {}
   }
 
   @override
@@ -698,7 +696,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
                   return SessionMiddleware(
                       child: PostDetailsPage(postId: postId));
                 }
-                return const Scaffold();
+                return const InvalidRouteScreen();
               },
               '/appeal': (context) {
                 final args = ModalRoute.of(context)?.settings.arguments;
@@ -713,7 +711,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
                     child: AppealScreen(postId: postId, type: type),
                   );
                 }
-                return const Scaffold();
+                return const InvalidRouteScreen();
               },
               '/profile': (context) {
                 final rawArgs = ModalRoute.of(context)?.settings.arguments;
@@ -736,7 +734,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
                     ),
                   );
                 }
-                return const Scaffold();
+                return const InvalidRouteScreen();
               },
               // <-- نام صحیح ویجت خود را اینجا جایگزین کنید
 
@@ -804,7 +802,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
                     );
                   }
                 }
-                return const Scaffold();
+                return const InvalidRouteScreen();
               },
             },
       ),

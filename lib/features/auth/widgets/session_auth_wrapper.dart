@@ -44,14 +44,16 @@ class _SessionAuthWrapperState extends ConsumerState<SessionAuthWrapper> {
     final status = await SystemStatusService.instance.fetchStatus();
     if (status != null && status.maintenance) {
       if (mounted) {
+        // The MaintenanceScreen below carries the full message and polls
+        // itself out, so this toast is just a brief heads-up. A 1-day toast
+        // used to linger on screen after maintenance ended.
         VistaToast.show(
           context: context,
           message: 'سیستم در حال بروزرسانی و تعمیر است...',
           icon: Icons.build_circle_outlined,
           backgroundColor: Colors.amber.shade700,
           textColor: Colors.white,
-          duration: const Duration(
-              days: 1), // stay on screen practically forever until killed
+          duration: const Duration(seconds: 4),
         );
         setState(() {
           _isMaintenance = true;
@@ -115,8 +117,35 @@ class _SessionAuthWrapperState extends ConsumerState<SessionAuthWrapper> {
             _setNotAuthenticated();
             return;
           }
+          if (refreshed == RefreshResult.success) {
+            // Retry /me ONCE with the fresh token, so profile-setup /
+            // password-setup gating isn't skipped by the offline fallback
+            // (which assumes profileCompleted: true).
+            try {
+              final freshToken = await TokenStorage.getAccessToken();
+              if (freshToken != null && freshToken.isNotEmpty) {
+                final user = await AuthRepository().me(freshToken).timeout(
+                      const Duration(seconds: 8),
+                      onTimeout: () => throw Exception('timeout'),
+                    );
+                if (!mounted) return;
+                await TokenStorage.saveUserAuthState(user);
+                ref
+                    .read(authControllerProvider.notifier)
+                    .acceptAuthenticatedUser(user);
+                requiresProfileSetup = !user.profileCompleted;
+                requiresPasswordSetup = user.passwordRequired;
+                tokenIsFresh = true;
+              }
+            } catch (_) {
+              tokenIsFresh = false;
+            }
+          } else {
+            tokenIsFresh = false;
+          }
+        } else {
+          tokenIsFresh = false; // Fall back to offline flow since /me failed
         }
-        tokenIsFresh = false; // Fall back to offline flow since /me failed
       }
     }
 
