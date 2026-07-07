@@ -80,6 +80,12 @@ class StoryUploadService {
           throw Exception('فایل تصویر موجود نیست');
         }
 
+        final imageSizeMb = (await imageData.length()) / (1024 * 1024);
+        if (imageSizeMb > StoryConstants.maxImageSizeMB) {
+          throw Exception(
+              'حجم تصویر بیش از حد مجاز است (حداکثر ${StoryConstants.maxImageSizeMB} مگابایت)');
+        }
+
         final compressedFile = await _compressImageFile(imageData);
         fileBytes = await (compressedFile ?? imageData).readAsBytes();
 
@@ -128,6 +134,22 @@ class StoryUploadService {
 
       if (!await videoData.exists()) {
         throw Exception('فایل ویدیو موجود نیست');
+      }
+
+      // Enforce the declared story limits BEFORE compressing/uploading, so a
+      // huge or too-long clip fails fast with a clear message instead of after
+      // the whole compress+upload cost. (StoryConstants were previously
+      // unenforced.)
+      final videoSizeMb = (await videoData.length()) / (1024 * 1024);
+      if (videoSizeMb > StoryConstants.maxVideoSizeMB) {
+        throw Exception(
+            'حجم ویدیو بیش از حد مجاز است (حداکثر ${StoryConstants.maxVideoSizeMB} مگابایت)');
+      }
+      final probe = await VideoCompress.getMediaInfo(videoData.path);
+      final durationSec = (probe.duration ?? 0) / 1000;
+      if (durationSec > StoryConstants.maxVideoLengthSeconds) {
+        throw Exception(
+            'مدت ویدیو بیش از حد مجاز است (حداکثر ${StoryConstants.maxVideoLengthSeconds} ثانیه)');
       }
 
       final timestamp = DateTime.now().millisecondsSinceEpoch;

@@ -106,12 +106,11 @@ class _StoryPlayerScreenState extends ConsumerState<StoryPlayerScreen>
     _initializeStory();
   }
 
-  @override
-  void deactivate() {
-    // ref is still valid here; using it in dispose() throws StateError.
-    ref.invalidate(activeStoriesProvider);
-    super.deactivate();
-  }
+  // NOTE: no longer invalidate activeStoriesProvider on deactivate. deactivate
+  // fires on ANY push over the player (e.g. "view in chat" from a reply
+  // snackbar), so it refetched the whole story bar constantly. Seen rings are
+  // already tracked optimistically via sessionSeenStoriesProvider, and story
+  // deletion invalidates the provider explicitly.
 
   @override
   void dispose() {
