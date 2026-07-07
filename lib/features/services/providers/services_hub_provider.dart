@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_contacts/flutter_contacts.dart';
+import 'package:Vista/core/security/input_policy.dart';
 import '../data/services_hub_repository.dart';
 import '../models/services_hub_model.dart';
 
@@ -42,14 +43,30 @@ class ContactsNotifier
       }
 
       final contacts = await FlutterContacts.getContacts(withProperties: true);
+      // Normalize to the canonical 09xxxxxxxxx form client-side so the backend
+      // matches formats it doesn't handle itself (0098…, +98…, (0912)…,
+      // spaces/dashes). Non-mobile / unparseable numbers are dropped.
       final phones = <String>{};
       for (final c in contacts) {
         for (final p in c.phones) {
-          phones.add(p.number);
+          final n = normalizePhone09(p.number);
+          if (n != null && n.isNotEmpty) phones.add(n);
         }
       }
+      if (phones.isEmpty) {
+        _isLoaded = true;
+        state = const AsyncValue.data([]);
+        return;
+      }
 
-      final result = await _repo.findContacts(phones.toList());
+      // Send in batches of 200 so a huge address book isn't one giant payload.
+      final phoneList = phones.toList();
+      final result = <ContactVistaUser>[];
+      for (var i = 0; i < phoneList.length; i += 200) {
+        final batch = phoneList.sublist(
+            i, i + 200 > phoneList.length ? phoneList.length : i + 200);
+        result.addAll(await _repo.findContacts(batch));
+      }
       _isLoaded = true;
       state = AsyncValue.data(result);
     } catch (e, st) {
