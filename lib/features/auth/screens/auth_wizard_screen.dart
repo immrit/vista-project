@@ -385,7 +385,21 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
   Widget build(BuildContext context) {
     return Directionality(
       textDirection: TextDirection.rtl,
-      child: Scaffold(
+      child: PopScope(
+        // On password/OTP slides, the Android back button should step back to
+        // the previous slide, not exit the app (auth is the first route).
+        canPop: (_pageController.hasClients
+                ? (_pageController.page?.round() ?? 0)
+                : 0) ==
+            0,
+        onPopInvokedWithResult: (didPop, _) {
+          if (didPop) return;
+          final page = _pageController.hasClients
+              ? (_pageController.page?.round() ?? 0)
+              : 0;
+          if (page > 0) _nextPage(0);
+        },
+        child: Scaffold(
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         resizeToAvoidBottomInset: true,
         body: GestureDetector(
@@ -410,6 +424,7 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
             ],
           ),
         ),
+      ),
       ),
     );
   }

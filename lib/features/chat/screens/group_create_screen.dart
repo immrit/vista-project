@@ -179,9 +179,8 @@ class _GroupCreateScreenState extends ConsumerState<GroupCreateScreen> {
       return 'ابتدا وارد حساب شوید';
     }
     if (msg.contains('create_group_conversation') ||
-        msg.contains('PGRST202') ||
         msg.contains('function') && msg.contains('does not exist')) {
-      return 'توابع گروه روی سوپابیس اعمال نشده‌اند';
+      return 'ساخت گروه در حال حاضر در دسترس نیست';
     }
     if (error is DioException) {
       return 'خطا در ارتباط با سرور';

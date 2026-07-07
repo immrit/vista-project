@@ -172,7 +172,7 @@ class _ReelsScreenState extends ConsumerState<ReelsScreen>
   // کامپوننت نمایش کامنت‌ها - این متد را بر اساس نیاز خود پیاده‌سازی کنید
   Widget commentsList(String postId, ScrollController controller) {
     // این بخش می‌تواند از یک FutureBuilder یا ConsumerWidget استفاده کند
-    // که کامنت‌ها را از سوپابیس می‌خواند
+    // که کامنت‌ها را از بک‌اند می‌خواند
     return Center(
       child: Text('در حال بارگذاری نظرات...'),
     );
