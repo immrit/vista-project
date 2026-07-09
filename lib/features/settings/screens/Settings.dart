@@ -40,12 +40,10 @@ class Settings extends ConsumerWidget {
       ),
       body: SafeArea(
         top: false,
-        child: profileAsync.when(
-          data: (profile) => _buildBody(context, ref, profile, isDark),
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (_, __) =>
-              const Center(child: Text('خطا در بارگذاری تنظیمات')),
-        ),
+        // The settings list must stay usable even when the profile fetch
+        // fails (offline) — only the profile card and premium banner depend
+        // on profile data.
+        child: _buildBody(context, ref, profileAsync, isDark),
       ),
     );
   }
@@ -53,15 +51,19 @@ class Settings extends ConsumerWidget {
   Widget _buildBody(
     BuildContext context,
     WidgetRef ref,
-    Map<String, dynamic>? profile,
+    AsyncValue<Map<String, dynamic>?> profileAsync,
     bool isDark,
   ) {
+    final profile = profileAsync.valueOrNull;
     final isPremium = PremiumSubscriptionUtils.isPremiumActive(profile);
 
     return ListView(
       padding: const EdgeInsets.symmetric(vertical: 14),
       children: [
-        _buildProfileCard(context, profile, isDark),
+        if (profileAsync.hasError && profile == null)
+          _buildProfileErrorCard(context, ref, isDark)
+        else
+          _buildProfileCard(context, profile, isDark),
         const SizedBox(height: 12),
         _buildPremiumEntry(context, isDark, isPremium, profile),
         const SizedBox(height: 12),
@@ -135,7 +137,8 @@ class Settings extends ConsumerWidget {
             ),
             _SettingsTile(
               icon: Icons.verified_outlined,
-              title: 'درخواست تیک آبی',
+              title: AppLocalizations.of(context)?.requestBlueTick ??
+                  'درخواست تیک آبی',
               onTap: () => Navigator.push(
                 context,
                 MaterialPageRoute(
@@ -258,7 +261,7 @@ class Settings extends ConsumerWidget {
                         Text(
                           isPremium
                               ? PremiumSubscriptionUtils.remainingLabel(profile)
-                              : 'تیک طلایی، استوری ۴۸ساعته، فایل ۵۰مگ و بیشتر',
+                              : 'تیک طلایی، استوری ۴۸ساعته، فایل ۱۰۰مگ و بیشتر',
                           style: TextStyle(
                             color: Colors.white.withValues(alpha: 0.9),
                             fontSize: 12,
@@ -289,6 +292,41 @@ class Settings extends ConsumerWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildProfileErrorCard(
+    BuildContext context,
+    WidgetRef ref,
+    bool isDark,
+  ) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.darkSurfaceVariant : Colors.white,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.cloud_off_outlined,
+              color: isDark ? Colors.grey[500] : Colors.grey[600]),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              'بارگذاری پروفایل ناموفق بود',
+              style: TextStyle(
+                fontSize: 14,
+                color: isDark ? Colors.grey[300] : Colors.grey[800],
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: () => ref.invalidate(profileProvider),
+            child: const Text('تلاش مجدد'),
+          ),
+        ],
       ),
     );
   }

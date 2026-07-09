@@ -28,7 +28,6 @@ import 'package:Vista/utils/premium_features_helper.dart';
 import 'package:Vista/utils/time_utils.dart';
 import 'package:Vista/utils/widgets.dart' show ReportDialog;
 import 'package:Vista/utils/comments_bottom_sheet.dart';
-import 'package:Vista/services/system_ui_bar_service.dart';
 import '../../../utils/user_friendly_error_utils.dart';
 import '../widgets/post_action_buttons.dart';
 import '../widgets/upload_progress_overlay.dart';
@@ -127,8 +126,6 @@ class _ExploreFeedScreenState extends ConsumerState<ExploreFeedScreen>
       systemStatusBarContrastEnforced: false,
       systemNavigationBarContrastEnforced: false,
     );
-    SystemChrome.setSystemUIOverlayStyle(overlayStyle);
-    SystemUiBarService.sync(overlayStyle);
 
     return DefaultTabController(
       length: 2,
@@ -302,9 +299,8 @@ class _ForYouTab extends ConsumerWidget {
                 _FeedEmptyState(
                   title: AppLocalizations.of(context)?.noPostsReady ??
                       'هنوز پستی برای شما آماده نشده',
-                  subtitle:
-                      AppLocalizations.of(context)?.followToPersonalize ??
-                          'با دنبال‌کردن کاربران جدید، فید شما سریع‌تر شخصی‌سازی می‌شود.',
+                  subtitle: AppLocalizations.of(context)?.followToPersonalize ??
+                      'با دنبال‌کردن کاربران جدید، فید شما سریع‌تر شخصی‌سازی می‌شود.',
                   actionLabel: AppLocalizations.of(context)?.searchUsers ??
                       'جستجوی کاربران',
                   onAction: () {
@@ -325,6 +321,7 @@ class _ForYouTab extends ConsumerWidget {
               ref.read(personalizedFeedProvider.notifier).refreshPosts(),
           child: NotificationListener<ScrollNotification>(
             onNotification: (scrollInfo) {
+              if (scrollInfo.metrics.axis != Axis.vertical) return false;
               if (scrollInfo.metrics.pixels >=
                   scrollInfo.metrics.maxScrollExtent - 480) {
                 if (notifier.hasMorePosts()) {
@@ -337,8 +334,7 @@ class _ForYouTab extends ConsumerWidget {
               scrollCacheExtent: ScrollCacheExtent.pixels(1000),
               padding: _feedListPadding(context),
               // +1 for the pinned upload-progress card at index 0.
-              itemCount:
-                  1 + posts.length + (notifier.hasMorePosts() ? 1 : 0),
+              itemCount: 1 + posts.length + (notifier.hasMorePosts() ? 1 : 0),
               itemBuilder: (context, index) {
                 if (index == 0) {
                   return const UploadProgressOverlay();
@@ -455,6 +451,7 @@ class _FollowingTab extends ConsumerWidget {
               ref.read(fetchFollowingPostsProvider.notifier).refreshPosts(),
           child: NotificationListener<ScrollNotification>(
             onNotification: (scrollInfo) {
+              if (scrollInfo.metrics.axis != Axis.vertical) return false;
               if (scrollInfo.metrics.pixels >=
                   scrollInfo.metrics.maxScrollExtent - 480) {
                 if (notifier.hasMorePosts()) {
@@ -467,8 +464,7 @@ class _FollowingTab extends ConsumerWidget {
               scrollCacheExtent: ScrollCacheExtent.pixels(1000),
               padding: _feedListPadding(context),
               // +1 for the pinned upload-progress card at index 0.
-              itemCount:
-                  1 + posts.length + (notifier.hasMorePosts() ? 1 : 0),
+              itemCount: 1 + posts.length + (notifier.hasMorePosts() ? 1 : 0),
               itemBuilder: (context, index) {
                 if (index == 0) {
                   return const UploadProgressOverlay();
@@ -1522,9 +1518,7 @@ class _ThreadPostItem extends ConsumerWidget {
                   ));
               // Drop just this post locally — the old ref.refresh wiped the
               // whole feed and reset scroll position.
-              ref
-                  .read(personalizedFeedProvider.notifier)
-                  .removePost(post.id);
+              ref.read(personalizedFeedProvider.notifier).removePost(post.id);
             } else if (value == 'delete') {
               _showDeleteConfirmation(context, ref, post);
             } else if (value == 'edit') {
@@ -1646,9 +1640,7 @@ class _ThreadPostItem extends ConsumerWidget {
                     .deletePost(ref, post.id);
                 // Remove the deleted post in place instead of wiping and
                 // refetching the whole personalized feed.
-                ref
-                    .read(personalizedFeedProvider.notifier)
-                    .removePost(post.id);
+                ref.read(personalizedFeedProvider.notifier).removePost(post.id);
                 // ignore: unused_result
                 ref.refresh(fetchFollowingPostsProvider);
 

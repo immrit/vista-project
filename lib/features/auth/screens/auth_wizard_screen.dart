@@ -108,6 +108,7 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
         _isPhoneInput ? normalizedPhone! : input,
       );
 
+      if (!mounted) return;
       setState(() {
         _isLoading = false;
       });
@@ -141,6 +142,7 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
         }
       }
     } catch (e) {
+      if (!mounted) return;
       setState(() => _isLoading = false);
       _showSnack('خطا در بررسی اطلاعات: $e');
     }
@@ -276,6 +278,7 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
         _showSnack(error);
       }
     } catch (e) {
+      if (!mounted) return;
       setState(() => _isLoading = false);
       _showSnack('خطا: $e');
     }
@@ -397,7 +400,11 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
           final page = _pageController.hasClients
               ? (_pageController.page?.round() ?? 0)
               : 0;
-          if (page > 0) _nextPage(0);
+          if (page == 2 && _isRegistering) {
+            _nextPage(1);
+          } else if (page > 0) {
+            _nextPage(0);
+          }
         },
         child: Scaffold(
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -644,7 +651,7 @@ class _AuthWizardScreenState extends ConsumerState<AuthWizardScreen> {
                 : Alignment.centerLeft,
             child: IconButton(
               icon: Icon(directionalBackIcon(context)),
-              onPressed: () => _nextPage(0),
+              onPressed: () => _isRegistering ? _nextPage(1) : _nextPage(0),
             ),
           ),
           const SizedBox(height: 24),

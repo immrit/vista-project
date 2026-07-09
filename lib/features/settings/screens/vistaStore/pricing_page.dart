@@ -31,6 +31,10 @@ class _PricingPageState extends ConsumerState<PricingPage>
   bool _isBazaarConnected = false;
   bool _isLoading = true;
   bool _isPurchasing = false;
+  // Real prices come from the panel. Until they arrive the local amounts are
+  // placeholders and must never be shown or sold — see _loadPlans.
+  bool _plansLoaded = false;
+  bool _plansLoading = true;
   int _selectedPlanIndex = 1;
 
   late AnimationController _pulseController;
@@ -164,10 +168,21 @@ class _PricingPageState extends ConsumerState<PricingPage>
     }
   }
 
-  /// قیمت‌ها از پنل مدیریت می‌آیند؛ در صورت خطا، مقادیر پیش‌فرض محلی می‌مانند.
+  /// قیمت‌ها از پنل مدیریت می‌آیند. اگر واکشی شکست بخورد، دکمه خرید غیرفعال
+  /// می‌ماند و قیمت پیش‌فرض محلی هرگز به کاربر فروخته نمی‌شود.
   Future<void> _loadPlans() async {
+    if (mounted && !_plansLoading) {
+      setState(() => _plansLoading = true);
+    }
     final remote = await _paymentService.fetchSubscriptionPlans();
-    if (!mounted || remote.isEmpty) return;
+    if (!mounted) return;
+    if (remote.isEmpty) {
+      setState(() {
+        _plansLoaded = false;
+        _plansLoading = false;
+      });
+      return;
+    }
     setState(() {
       for (final row in remote) {
         final planType = row['plan_type']?.toString();
@@ -178,6 +193,8 @@ class _PricingPageState extends ConsumerState<PricingPage>
           _plans[idx]['amount'] = price.toInt();
         }
       }
+      _plansLoaded = true;
+      _plansLoading = false;
     });
   }
 
@@ -202,6 +219,7 @@ class _PricingPageState extends ConsumerState<PricingPage>
   /// قیمت معادل ماهانه برای پلن‌های چندماهه (برای درک ارزش واقعی پلن).
   /// برای پلن ماهانه رشته خالی برمی‌گرداند.
   String _perMonthLabel(Map<String, dynamic> plan) {
+    if (!_plansLoaded) return '';
     final amount = plan['amount'] as int;
     final days = plan['durationDays'] as int;
     final months = days / 30.0;
@@ -211,6 +229,8 @@ class _PricingPageState extends ConsumerState<PricingPage>
   }
 
   Future<void> _onPurchaseTap() async {
+    // Placeholder prices must never be purchasable.
+    if (!_plansLoaded) return;
     if (!_isBazaarConnected) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -349,7 +369,10 @@ class _PricingPageState extends ConsumerState<PricingPage>
     SystemChrome.setSystemUIOverlayStyle(systemOverlayStyle);
     SystemUiBarService.sync(systemOverlayStyle);
 
-    final busy = _isLoading || _isPurchasing;
+    final busy = _isLoading || _isPurchasing || _plansLoading;
+    // Placeholder amounts must never reach the UI — without panel prices the
+    // page shows "—" and the buy button becomes a retry.
+    final priceReady = _plansLoaded;
 
     return Scaffold(
       backgroundColor: isDark ? _darkBg : AppColors.darkSurface,
@@ -540,7 +563,7 @@ class _PricingPageState extends ConsumerState<PricingPage>
                           color: Colors.white.withValues(alpha: 0.5),
                         ),
                       ),
-                      if (!isPremium && savingsPercent > 0) ...[
+                      if (!isPremium && priceReady && savingsPercent > 0) ...[
                         const SizedBox(height: 14),
                         Container(
                           padding: const EdgeInsets.symmetric(
@@ -687,7 +710,7 @@ class _PricingPageState extends ConsumerState<PricingPage>
                                       ),
                                       const SizedBox(height: 6),
                                       Text(
-                                        _formatToman(amount),
+                                        priceReady ? _formatToman(amount) : '—',
                                         style: TextStyle(
                                           fontSize: 13,
                                           fontWeight: FontWeight.w600,
@@ -754,7 +777,7 @@ class _PricingPageState extends ConsumerState<PricingPage>
                           child: Container(
                             decoration: BoxDecoration(
                               gradient: LinearGradient(
-                                colors: busy || !_isBazaarConnected
+                                colors: busy || !priceReady || !_isBazaarConnected
                                     ? [
                                         Colors.grey.shade800,
                                         Colors.grey.shade900
@@ -762,7 +785,7 @@ class _PricingPageState extends ConsumerState<PricingPage>
                                     : [_goldStart, _goldEnd],
                               ),
                               borderRadius: BorderRadius.circular(16),
-                              boxShadow: busy || !_isBazaarConnected
+                              boxShadow: busy || !priceReady || !_isBazaarConnected
                                   ? []
                                   : [
                                       BoxShadow(
@@ -774,9 +797,13 @@ class _PricingPageState extends ConsumerState<PricingPage>
                                     ],
                             ),
                             child: ElevatedButton(
-                              onPressed: (busy || !_isBazaarConnected)
+                              onPressed: busy
                                   ? null
-                                  : _onPurchaseTap,
+                                  : !priceReady
+                                      ? _loadPlans
+                                      : !_isBazaarConnected
+                                          ? null
+                                          : _onPurchaseTap,
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.transparent,
                                 shadowColor: Colors.transparent,
@@ -793,15 +820,19 @@ class _PricingPageState extends ConsumerState<PricingPage>
                                           strokeWidth: 2.5),
                                     )
                                   : Text(
-                                      _isBazaarConnected
-                                          ? (isPremium
-                                              ? 'تمدید ${selectedPlan['title']} — ${_formatToman(selectedPlan['amount'] as int)}'
-                                              : 'خرید ${selectedPlan['title']} — ${_formatToman(selectedPlan['amount'] as int)}')
-                                          : 'کافه‌بازار در دسترس نیست',
+                                      !priceReady
+                                          ? 'قیمت‌ها در دسترس نیست — تلاش مجدد'
+                                          : _isBazaarConnected
+                                              ? (isPremium
+                                                  ? 'تمدید ${selectedPlan['title']} — ${_formatToman(selectedPlan['amount'] as int)}'
+                                                  : 'خرید ${selectedPlan['title']} — ${_formatToman(selectedPlan['amount'] as int)}')
+                                              : 'کافه‌بازار در دسترس نیست',
                                       style: TextStyle(
                                         fontSize: 16,
                                         fontWeight: FontWeight.w900,
-                                        color: busy || !_isBazaarConnected
+                                        color: busy ||
+                                                !priceReady ||
+                                                !_isBazaarConnected
                                             ? Colors.white54
                                             : Colors.black87,
                                       ),

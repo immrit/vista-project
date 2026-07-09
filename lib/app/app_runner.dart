@@ -323,20 +323,6 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _handleUserSignOut() async {
-    try {
-      await CacheRepository().wipeAllData();
-      ref.invalidate(optimizedConversationsProvider);
-    } catch (e) {
-      debugPrint('Error wiping data on sign out: $e');
-    }
-
-    if (mounted && navigatorKey.currentContext != null) {
-      Navigator.of(navigatorKey.currentContext!)
-          .pushNamedAndRemoveUntil('/auth', (route) => false);
-    }
-  }
-
   Future<void> _handlePotentialSessionExpiry() async {
     final sessionManager = SessionManagerServiceV2();
     try {

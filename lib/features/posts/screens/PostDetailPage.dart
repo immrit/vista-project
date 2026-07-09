@@ -1,4 +1,3 @@
-import '../../../security/logging_utility.dart';
 import 'dart:async';
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -12,7 +11,6 @@ import 'package:Vista/utils/widgets.dart';
 import 'package:Vista/features/search/screens/searchPage.dart';
 import 'package:Vista/features/posts/navigation/content_routes.dart';
 import '../widgets/post_image_carousel.dart';
-import '../../../model/CommentModel.dart';
 import '../../../model/UserModel.dart';
 import '../../../provider/provider.dart';
 import '../../../utils/user_friendly_error_utils.dart';
@@ -1181,140 +1179,6 @@ class _PostDetailsPageState extends ConsumerState<PostDetailsPage> {
     }
 
     ref.read(mentionNotifierProvider.notifier).clearMentions();
-  }
-
-  Future<void> _deleteComment(
-    BuildContext context,
-    WidgetRef ref,
-    String commentId,
-    String postId,
-  ) async {
-    try {
-      await ref
-          .read(commentNotifierProvider.notifier)
-          .deleteComment(commentId, postId, ref);
-      ref.read(commentsProvider(postId).notifier).refreshComments();
-
-      if (mounted) {
-        UserFriendlyErrorUtils.showSuccessSnackBar(
-            context, 'کامنت با موفقیت حذف شد');
-      }
-    } catch (e) {
-      if (mounted) {
-        UserFriendlyErrorUtils.showErrorSnackBar(context, e);
-      }
-    }
-  }
-
-  Future<void> _showReportDialog(BuildContext context, WidgetRef ref,
-      CommentModel comment, String currentUserId) async {
-    String selectedReason = '';
-    TextEditingController additionalDetailsController = TextEditingController();
-
-    final confirmed = await showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return StatefulBuilder(
-          builder: (context, setState) {
-            final theme = Theme.of(context);
-            return AlertDialog(
-              title: const Text('گزارش تخلف'),
-              content: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Text('لطفاً دلیل گزارش را انتخاب کنید:'),
-                    ...[
-                      'محتوای نامناسب',
-                      'هرزنگاری',
-                      'توهین آمیز',
-                      'اسپم',
-                      'محتوای تبلیغاتی',
-                      'سایر موارد'
-                    ].map((reason) {
-                      return RadioListTile<String>(
-                        title: Text(reason),
-                        value: reason,
-                        groupValue: selectedReason,
-                        onChanged: (value) {
-                          setState(() {
-                            selectedReason = value!;
-                          });
-                        },
-                      );
-                    }),
-                    if (selectedReason == 'سایر موارد')
-                      TextField(
-                        controller: additionalDetailsController,
-                        decoration: const InputDecoration(
-                          hintText: 'جزئیات بیشتر را وارد کنید',
-                        ),
-                        maxLines: 3,
-                      ),
-                  ],
-                ),
-              ),
-              actions: <Widget>[
-                TextButton(
-                  style: TextButton.styleFrom(
-                    foregroundColor: theme.textTheme.bodyLarge?.color,
-                  ),
-                  child: const Text('لغو'),
-                  onPressed: () {
-                    Navigator.of(context).pop(false);
-                  },
-                ),
-                TextButton(
-                  style: TextButton.styleFrom(
-                    backgroundColor: theme.colorScheme.secondary,
-                    foregroundColor: theme.colorScheme.onSecondary,
-                  ),
-                  child: const Text('گزارش'),
-                  onPressed: () {
-                    if (selectedReason.isEmpty) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('لطفاً دلیل گزارش را انتخاب کنید'),
-                        ),
-                      );
-                      return;
-                    }
-                    Navigator.of(context).pop(true);
-                  },
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-
-    if (confirmed == true) {
-      try {
-        await ref.read(reportCommentServiceProvider).reportComment(
-              commentId: comment.id,
-              reporterId: currentUserId,
-              reason: selectedReason,
-              additionalDetails: selectedReason == 'سایر موارد'
-                  ? additionalDetailsController.text.trim()
-                  : null,
-            );
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('کامنت با موفقیت گزارش شد.'),
-          ),
-        );
-      } catch (e) {
-        logInfo('خطا در گزارش تخلف: $e');
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('خطا در گزارش کامنت.'),
-          ),
-        );
-      }
-    }
   }
 
   Widget _buildImageWithRetry(String imageUrl) {

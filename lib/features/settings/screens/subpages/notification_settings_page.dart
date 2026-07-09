@@ -220,8 +220,23 @@ class NotificationSettingsPage extends ConsumerWidget {
             ],
           ),
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (_, __) =>
-              const Center(child: Text('خطا در بارگذاری اعلان‌ها')),
+          error: (_, __) => Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('خطا در بارگذاری اعلان‌ها'),
+                const SizedBox(height: 12),
+                TextButton.icon(
+                  onPressed: userId == null
+                      ? null
+                      : () =>
+                          ref.invalidate(notificationSettingsProvider(userId)),
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('تلاش مجدد'),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );

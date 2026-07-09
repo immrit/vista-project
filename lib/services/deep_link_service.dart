@@ -5,6 +5,7 @@ import 'package:app_links/app_links.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../features/chat/services/group_service.dart';
 import '../features/nearby/screens/nearby_likes_screen.dart';
+import '../features/profile/providers/profile_controller.dart';
 import '../DB/profile_cache_service.dart';
 import 'current_user_service.dart';
 import 'payment_service.dart';
@@ -215,6 +216,14 @@ class DeepLinkService {
       if (userId != null) {
         await ProfileCacheService().refreshCacheInBackground(userId);
       }
+      // The cache is fresh, but profileProvider already served its one-shot
+      // read — without invalidating it every premium gate (Settings banner,
+      // PricingPage, gold tick) keeps showing non-premium until app restart.
+      final context = navigatorKey.currentContext;
+      if (context != null) {
+        ProviderScope.containerOf(context, listen: false)
+            .invalidate(profileProvider);
+      }
       messenger?.showSnackBar(SnackBar(
         content: Text(result['message']?.toString() ?? 'پرداخت با موفقیت تأیید شد 🎉'),
         backgroundColor: Colors.green.shade700,
@@ -252,6 +261,10 @@ class DeepLinkService {
       );
     } catch (e) {
       logInfo('Group invite error: $e');
+      // Dead-ending silently reads as "the app is broken" — tell the user.
+      _messengerFor(navigatorKey)?.showSnackBar(const SnackBar(
+        content: Text('لینک دعوت نامعتبر یا منقضی شده است'),
+      ));
     }
   }
 

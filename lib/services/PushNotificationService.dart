@@ -23,6 +23,7 @@ import 'session_manager_service_v2.dart';
 import 'current_chat_tracker.dart';
 import 'local_notification_center.dart';
 import '../features/chat/data/datasources/chat_local_datasource_isar.dart';
+import '../features/chat/services/e2e_encryption_service.dart';
 import '../features/auth/providers/auth_controller.dart' show TokenStorage;
 import '../DB/settings_cache_service.dart';
 import 'device_id_service.dart';
@@ -1411,6 +1412,11 @@ class PushNotificationService {
     }
 
     if (rawContent.isEmpty) return fallback;
+    // Secret-chat content arrives as an E2EE envelope the server can't read;
+    // never show the raw ciphertext as the notification body.
+    if (E2EEncryptionService().isEncryptedEnvelope(rawContent)) {
+      return fallback;
+    }
     final filtered = _filterLinksFromText(rawContent);
     return filtered.isEmpty ? fallback : filtered;
   }

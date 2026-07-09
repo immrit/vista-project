@@ -835,10 +835,16 @@ class _VistaChatProfileScreenState extends ConsumerState<VistaChatProfileScreen>
         : notifier.blockUser(widget.otherUserId);
 
     future.then((_) {
+      if (!mounted) return;
+      // The status provider yielded once at build; without invalidating it
+      // the screen keeps offering the opposite action.
+      ref.invalidate(
+          legacy_chat.userBlockStatusProvider(widget.otherUserId));
       _showSnackBar(
         isCurrentlyBlocked ? 'کاربر از مسدودیت خارج شد' : 'کاربر مسدود شد',
       );
     }).catchError((e) {
+      if (!mounted) return;
       _showSnackBar('خطا در تغییر وضعیت', isError: true);
     });
   }

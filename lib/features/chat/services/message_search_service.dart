@@ -212,7 +212,7 @@ class SearchStateNotifier extends StateNotifier<SearchState> {
 }
 
 final searchStateProvider =
-    StateNotifierProvider.family<SearchStateNotifier, SearchState, String>(
+    StateNotifierProvider.autoDispose.family<SearchStateNotifier, SearchState, String>(
         (ref, conversationId) {
   final searchService = ref.watch(messageSearchServiceProvider);
   return SearchStateNotifier(searchService, conversationId);

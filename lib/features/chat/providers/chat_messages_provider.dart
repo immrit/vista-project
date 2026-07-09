@@ -130,11 +130,18 @@ class ChatMessages extends _$ChatMessages {
         continue;
       }
 
+      // Reply previews are encrypted with the same secret (they quote the
+      // plaintext of an earlier E2EE message) — decrypt them alongside the
+      // body so the quoted bubble never shows ciphertext.
+      final decryptedReply =
+          await _decryptField(e2e, m.id, m.replyToContent, sharedSecret);
+
       // Cache hit: same ciphertext → reuse decrypted result
       final cacheKey = '${m.id}:${m.content}';
       final cached = _decryptCache[cacheKey];
       if (cached != null) {
-        decryptedList.add(m.copyWith(content: cached));
+        decryptedList
+            .add(m.copyWith(content: cached, replyToContent: decryptedReply));
         continue;
       }
 
@@ -148,19 +155,42 @@ class ChatMessages extends _$ChatMessages {
             await e2e.decryptMessage(m.content, sharedSecret);
         if (decryptedContent == m.content) {
           // Plaintext (or undecryptable) — don't cache, leave as-is.
-          decryptedList.add(m);
+          decryptedList.add(m.copyWith(replyToContent: decryptedReply));
         } else {
           _decryptCache[cacheKey] = decryptedContent;
-          decryptedList.add(m.copyWith(content: decryptedContent));
+          decryptedList.add(m.copyWith(
+              content: decryptedContent, replyToContent: decryptedReply));
         }
       } on E2EDecryptException {
         // Authenticated v1 envelope failed MAC → tampering or wrong key.
-        decryptedList.add(m.copyWith(content: '⚠️ پیام دستکاری‌شده'));
+        decryptedList.add(m.copyWith(
+            content: '⚠️ پیام دستکاری‌شده', replyToContent: decryptedReply));
       } catch (_) {
-        decryptedList.add(m);
+        decryptedList.add(m.copyWith(replyToContent: decryptedReply));
       }
     }
     return decryptedList;
+  }
+
+  /// Decrypts an optional secondary field (reply preview). Plaintext or
+  /// legacy values come back unchanged; failures degrade to the original.
+  Future<String?> _decryptField(
+    E2EEncryptionService e2e,
+    String messageId,
+    String? value,
+    SecretKey sharedSecret,
+  ) async {
+    if (value == null || value.isEmpty) return value;
+    final cacheKey = '$messageId:reply:$value';
+    final cached = _decryptCache[cacheKey];
+    if (cached != null) return cached;
+    try {
+      final decrypted = await e2e.decryptMessage(value, sharedSecret);
+      if (decrypted != value) _decryptCache[cacheKey] = decrypted;
+      return decrypted;
+    } catch (_) {
+      return value;
+    }
   }
 
   Future<void> loadMore() async {

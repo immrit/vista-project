@@ -84,6 +84,6 @@ class ChatScreenController extends StateNotifier<ChatScreenState> {
   }
 }
 
-final chatScreenControllerProvider = StateNotifierProvider.family<ChatScreenController, ChatScreenState, String>((ref, conversationId) {
+final chatScreenControllerProvider = StateNotifierProvider.autoDispose.family<ChatScreenController, ChatScreenState, String>((ref, conversationId) {
   return ChatScreenController();
 });

@@ -57,6 +57,9 @@ class AppLocalizationsAr extends AppLocalizations {
   String get savedItems => 'العناصر المحفوظة';
 
   @override
+  String get requestBlueTick => 'طلب العلامة الزرقاء';
+
+  @override
   String get changePassword => 'تغيير كلمة المرور';
 
   @override

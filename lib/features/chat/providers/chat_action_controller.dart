@@ -7,6 +7,7 @@ import 'package:Vista/features/chat/services/message_actions_service.dart';
 import 'package:Vista/features/chat/domain/message_payload.dart';
 import 'package:Vista/services/session_manager_service_v2.dart';
 import 'package:Vista/services/notification_sound_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 part 'chat_action_controller.g.dart';
 
@@ -124,10 +125,18 @@ class ChatActionController extends _$ChatActionController {
   }
 
   Future<ActionResult<void>> resendMessage(MessageModel message) async {
+    // A failed secret-chat message must be re-encrypted on retry. The peer
+    // key is stored per conversation; omitting it here would silently resend
+    // the plaintext of an E2EE message.
+    final prefs = await SharedPreferences.getInstance();
+    final recipientPublicKey =
+        prefs.getString('e2e_peer_pub_${message.conversationId}');
+
     return sendMessage(
       conversationId: message.conversationId,
       content: message.content,
       id: message.id,
+      recipientPublicKey: recipientPublicKey,
       attachmentUrl: message.attachmentUrl,
       attachmentType: message.attachmentType,
       attachmentFileName: message.attachmentFileName,

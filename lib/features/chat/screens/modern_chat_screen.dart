@@ -493,17 +493,6 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   }
 
 
-  /// Renders the message list immediately (on the first post-frame), so it is
-  /// already populated as the screen slides in — Telegram-style — instead of
-  /// sliding in blank and filling later. Cached messages are ready instantly,
-  /// and the first (heavier) build happens while the page is still mostly
-  /// off-screen, so its cost is hidden behind the push animation rather than
-  /// shown to the user as a blank gap.
-  /// (Removed in favor of _onRouteAnimationTick)
-  void _revealListWhenTransitionSettles() {
-    // Logic moved to _onRouteAnimationTick
-  }
-
   void _bootstrapInitialReplyContext() {
     final initialContent = widget.args.initialReplyContent?.trim() ?? '';
     if (initialContent.isEmpty) return;
@@ -2074,8 +2063,12 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       }
 
       final scrollOffset = _scrollController.offset;
-      const itemHeight = 70.0;
-      var visibleIndex = (scrollOffset / itemHeight).floor();
+      final maxExtent = _scrollController.position.maxScrollExtent;
+      var visibleIndex = 0;
+      if (maxExtent > 0) {
+        final fraction = scrollOffset / maxExtent;
+        visibleIndex = (fraction * (messages.length - 1)).floor();
+      }
       visibleIndex = visibleIndex.clamp(0, messages.length - 1);
 
       if (visibleIndex >= 0 && visibleIndex < messages.length) {
@@ -2151,23 +2144,6 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
             (message.localFilePath?.trim().isNotEmpty ?? false) ||
             (message.localImagePath?.trim().isNotEmpty ?? false);
     return hasMediaSource && message.isImage;
-  }
-
-  bool _canAppendToAlbum(
-    MessageModel previousMessage,
-    MessageModel candidate,
-    MessageModel anchor,
-  ) {
-    if (!_isAlbumImageMessage(candidate)) return false;
-    if (candidate.senderId != anchor.senderId) return false;
-
-    final diffWithPrevious =
-        previousMessage.createdAt.difference(candidate.createdAt).abs();
-    if (diffWithPrevious > const Duration(seconds: 25)) return false;
-
-    final diffWithAnchor =
-        anchor.createdAt.difference(candidate.createdAt).abs();
-    return diffWithAnchor <= const Duration(seconds: 60);
   }
 
   String _resolveAlbumMediaSource(MessageModel message) {
@@ -2543,7 +2519,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
                           color: theme.backgroundColor,
                           border: Border(
                             top: BorderSide(
-                              color: theme.dividerColor ?? Colors.black12,
+                              color: theme.dividerColor,
                               width: 0.5,
                             ),
                           ),

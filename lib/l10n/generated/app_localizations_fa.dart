@@ -57,6 +57,9 @@ class AppLocalizationsFa extends AppLocalizations {
   String get savedItems => 'ذخیره‌شده‌ها';
 
   @override
+  String get requestBlueTick => 'درخواست تیک آبی';
+
+  @override
   String get changePassword => 'تغییر گذرواژه';
 
   @override

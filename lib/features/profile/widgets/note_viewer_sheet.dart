@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 
 import '../../../../model/ProfileModel.dart';
 import '../../../../utils/const.dart';
+import '../../chat/screens/modern_chat_screen.dart';
 import '../data/models/profile_note_model.dart';
 import 'note_input_sheet.dart';
 import 'package:Vista/core/theme/app_theme.dart';
@@ -152,7 +153,24 @@ class NoteViewerSheet extends ConsumerWidget {
                       child: OutlinedButton.icon(
                         onPressed: () {
                           Navigator.pop(context);
-                          // TODO: Implement reply functionality
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => ModernChatScreen(
+                                args: ChatScreenArgs(
+                                  conversationId: '',
+                                  otherUserId: note.userId,
+                                  otherUserName: userProfile.username,
+                                  otherUserAvatar: userProfile.avatarUrl,
+                                  initialReplyContent: note.content,
+                                  initialReplySenderName:
+                                      userProfile.username,
+                                  initialReplySenderId: note.userId,
+                                  initialReplyFromNote: true,
+                                ),
+                              ),
+                            ),
+                          );
                         },
                         icon: const Icon(Icons.reply_rounded, size: 20),
                         label: const Text('پاسخ دادن'),

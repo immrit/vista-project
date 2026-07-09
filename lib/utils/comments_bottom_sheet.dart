@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../model/CommentModel.dart';
 import 'package:Vista/features/posts/navigation/content_routes.dart';
-import 'package:Vista/features/auth/providers/auth_controller.dart';
 import 'package:Vista/features/profile/providers/user_profile_provider.dart';
 import 'package:Vista/widgets/verification_badge_icon.dart';
 import '../widgets/comment_input_field.dart';
@@ -710,9 +709,8 @@ class _CommentItemState extends ConsumerState<CommentItem>
                                     'lib/utils/images/default-avatar.jpg')
                                 : CachedNetworkImageProvider(
                                     widget.comment.avatarUrl) as ImageProvider,
-                            width:
-                                (40 * MediaQuery.devicePixelRatioOf(context))
-                                    .round(),
+                            width: (40 * MediaQuery.devicePixelRatioOf(context))
+                                .round(),
                           ),
                           backgroundColor:
                               theme.colorScheme.surfaceContainerHighest,
@@ -871,12 +869,23 @@ class _CommentItemState extends ConsumerState<CommentItem>
                                         VerificationType.blueTick
                                       ].contains(
                                           widget.comment.verificationType);
-                                  final currentUser = ref.read(activeUserProvider);
-                                  final currentUserProfile = ref.read(currentUserProfileProvider).value;
-                                  final currentUserId = currentUser?.id ?? currentUserProfile?.id;
-                                  final isPostOwner = currentUserId != null && currentUserId == widget.comment.postOwnerId;
-                                  final hasAdminBlueTick = currentUserProfile?.role == 'admin' && currentUserProfile?.hasBlueBadge == true;
-                                  final canDelete = isOwner || isPostOwner || hasAdminBlueTick;
+                                  final currentUser =
+                                      ref.read(activeUserProvider);
+                                  final currentUserProfile = ref
+                                      .read(currentUserProfileProvider)
+                                      .value;
+                                  final currentUserId =
+                                      currentUser?.id ?? currentUserProfile?.id;
+                                  final isPostOwner = currentUserId != null &&
+                                      currentUserId ==
+                                          widget.comment.postOwnerId;
+                                  final hasAdminBlueTick =
+                                      currentUserProfile?.role == 'admin' &&
+                                          currentUserProfile?.hasBlueBadge ==
+                                              true;
+                                  final canDelete = isOwner ||
+                                      isPostOwner ||
+                                      hasAdminBlueTick;
 
                                   return [
                                     if (isOwner)

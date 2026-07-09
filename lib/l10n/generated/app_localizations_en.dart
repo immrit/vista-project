@@ -57,6 +57,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get savedItems => 'Saved Items';
 
   @override
+  String get requestBlueTick => 'Request Blue Tick';
+
+  @override
   String get changePassword => 'Change Password';
 
   @override

@@ -1,4 +1,7 @@
-﻿import 'package:flutter/material.dart';
+﻿import 'dart:io';
+
+import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import '../../../../services/video_autoplay_service.dart';
@@ -26,6 +29,9 @@ class _DataStorageSettingsPageState extends State<DataStorageSettingsPage> {
   // وضعیت پاکسازی کش
   bool _isClearing = false;
 
+  // اندازه کش (null = هنوز محاسبه نشده)
+  int? _cacheSizeBytes;
+
   // کلیدهای SharedPreferences
   static const String _keyUploadQuality = 'data_upload_quality';
 
@@ -33,6 +39,42 @@ class _DataStorageSettingsPageState extends State<DataStorageSettingsPage> {
   void initState() {
     super.initState();
     _loadSettings();
+    _refreshCacheSize();
+  }
+
+  /// Total size of the app temp dir — the image/file cache manager stores
+  /// its files there too, so one walk covers both.
+  Future<void> _refreshCacheSize() async {
+    try {
+      final tempDir = await getTemporaryDirectory();
+      var total = 0;
+      if (await tempDir.exists()) {
+        await for (final entity
+            in tempDir.list(recursive: true, followLinks: false)) {
+          if (entity is File) {
+            try {
+              total += await entity.length();
+            } catch (_) {
+              // File vanished mid-walk — skip.
+            }
+          }
+        }
+      }
+      if (mounted) setState(() => _cacheSizeBytes = total);
+    } catch (_) {
+      if (mounted) setState(() => _cacheSizeBytes = null);
+    }
+  }
+
+  String _formatBytes(int bytes) {
+    if (bytes < 1024) return '$bytes بایت';
+    if (bytes < 1024 * 1024) {
+      return '${(bytes / 1024).toStringAsFixed(0)} کیلوبایت';
+    }
+    if (bytes < 1024 * 1024 * 1024) {
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} مگابایت';
+    }
+    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} گیگابایت';
   }
 
   Future<void> _loadSettings() async {
@@ -129,7 +171,9 @@ class _DataStorageSettingsPageState extends State<DataStorageSettingsPage> {
                 VistaSettingsTile(
                   icon: Icons.cleaning_services_outlined,
                   title: 'پاکسازی کش',
-                  subtitle: 'حذف فایل‌های موقت و آزادسازی فضا',
+                  subtitle: _cacheSizeBytes == null
+                      ? 'حذف فایل‌های موقت و آزادسازی فضا'
+                      : 'فضای اشغال‌شده: ${_formatBytes(_cacheSizeBytes!)}',
                   showArrow: false,
                   trailing: _isClearing
                       ? const SizedBox(
@@ -294,6 +338,24 @@ class _DataStorageSettingsPageState extends State<DataStorageSettingsPage> {
     try {
       // پاکسازی کش تصاویر
       await DefaultCacheManager().emptyCache();
+
+      // پاکسازی بقیه فایل‌های موقت (مدیای دانلودشده چت، thumbnailها و …)
+      // که cache manager از آن‌ها خبر ندارد.
+      try {
+        final tempDir = await getTemporaryDirectory();
+        if (await tempDir.exists()) {
+          await for (final entity
+              in tempDir.list(recursive: false, followLinks: false)) {
+            try {
+              await entity.delete(recursive: true);
+            } catch (_) {
+              // File busy/locked — skip it, clear the rest.
+            }
+          }
+        }
+      } catch (_) {}
+
+      await _refreshCacheSize();
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

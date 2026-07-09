@@ -98,7 +98,6 @@ class _ChatConversationsScreenState
   Widget build(BuildContext context) {
     super.build(context);
     final theme = Theme.of(context);
-    _syncSystemBars(theme);
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
@@ -506,81 +505,6 @@ class _ChatConversationsScreenState
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  // Search Section
-  Widget _buildSearchSection(ThemeData theme) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 300),
-      height: _isSearchVisible ? 80 : 0,
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-        child: Container(
-          decoration: BoxDecoration(
-            color: theme.cardColor,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: theme.dividerColor.withValues(alpha: 0.3),
-              width: 1,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: theme.shadowColor.withValues(alpha: 0.08),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: TextField(
-            controller: _searchController,
-            style: TextStyle(
-              fontSize: 16,
-              color: theme.textTheme.bodyLarge?.color,
-            ),
-            decoration: InputDecoration(
-              hintText:
-                  AppLocalizations.of(context)?.searchInMessagesAndChannels ??
-                      'جستجو در پیام‌ها و کانال‌ها...',
-              hintStyle: TextStyle(
-                color: theme.hintColor,
-                fontSize: 16,
-              ),
-              prefixIcon: Icon(
-                Icons.search_rounded,
-                color: theme.hintColor,
-                size: 22,
-              ),
-              suffixIcon: ValueListenableBuilder<String>(
-                valueListenable: _searchQueryNotifier,
-                builder: (context, searchQuery, _) {
-                  if (searchQuery.isEmpty) {
-                    return const SizedBox.shrink();
-                  }
-                  return IconButton(
-                    icon: Icon(
-                      Icons.clear_rounded,
-                      color: theme.hintColor,
-                    ),
-                    onPressed: _clearSearch,
-                  );
-                },
-              ),
-              border: InputBorder.none,
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 16,
-              ),
-            ),
-            onChanged: (query) {
-              _searchDebounce?.cancel();
-              _searchDebounce = Timer(const Duration(milliseconds: 180), () {
-                _searchQueryNotifier.value = query.trim();
-              });
-            },
-          ),
-        ),
       ),
     );
   }
@@ -1491,6 +1415,10 @@ class _ChatConversationsScreenState
   void _toggleSearch() {
     if (_isSearchVisible) {
       _searchAnimController.reverse();
+      // Closing the search must also drop the active filter — the app-bar
+      // field is disposed on close, leaving no way to clear a stale query.
+      _searchDebounce?.cancel();
+      _clearSearch();
     } else {
       _searchAnimController.forward();
     }

@@ -294,6 +294,9 @@ class _ChatPartnerInfoScreenState extends ConsumerState<ChatPartnerInfoScreen>
       }
 
       if (!mounted) return;
+      // Refresh the one-shot status stream so the UI reflects the new state.
+      ref.invalidate(
+          legacy_chat.userBlockStatusProvider(widget.otherUserId));
       UserFriendlyErrorUtils.showSuccessSnackBar(
         context,
         isBlocked ? 'کاربر از حالت مسدود خارج شد' : 'کاربر مسدود شد',

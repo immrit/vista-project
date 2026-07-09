@@ -465,10 +465,18 @@ class ChatRepositoryImpl implements ChatRepository {
 
     // Encrypt BEFORE sending. For an E2EE conversation (recipient public key
     // present) a crypto failure must abort — never silently send plaintext.
+    // The quoted reply preview text must be encrypted too: it contains the
+    // decrypted body of an earlier E2EE message, and sending it plaintext
+    // would hand the server exactly what the encryption is hiding.
     final String encryptedContent;
+    final String? encryptedReplyContent;
     try {
       encryptedContent = await _encryptContent(
           payload.content, payload.recipientPublicKey);
+      encryptedReplyContent = payload.replyToContent == null
+          ? null
+          : await _encryptContent(
+              payload.replyToContent!, payload.recipientPublicKey);
     } on E2EEEncryptionException catch (e) {
       final failed = optimistic.copyWith(
         isPending: false,
@@ -502,8 +510,8 @@ class ChatRepositoryImpl implements ChatRepository {
           if (payload.duration != null) 'duration': payload.duration,
           if (payload.replyToMessageId != null)
             'reply_to_message_id': payload.replyToMessageId,
-          if (payload.replyToContent != null)
-            'reply_to_content': payload.replyToContent,
+          if (encryptedReplyContent != null)
+            'reply_to_content': encryptedReplyContent,
           if (payload.replyToSenderName != null)
             'reply_to_sender_name': payload.replyToSenderName,
           if (payload.replyToKind != null) 'reply_to_kind': payload.replyToKind,

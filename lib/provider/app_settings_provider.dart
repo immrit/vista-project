@@ -25,30 +25,14 @@ import '../DB/profile_cache_service.dart';
 
 export 'security_provider.dart';
 export '../features/auth/providers/auth_controller.dart';
+export 'settings_providers.dart' show userSettingsByIdProvider;
 
 export '../features/profile/providers/profile_controller.dart';
 // profileProvider and profileUpdateProvider moved to profile_controller.dart
 
-// user_settings providers
-final userSettingsByIdProvider =
-    FutureProvider.family<Map<String, dynamic>?, String>((ref, userId) async {
-  try {
-    final settingsCache = SettingsCacheService();
-
-    final cachedSettings = settingsCache.getCachedUserSettings(userId);
-    if (cachedSettings != null) {
-      return cachedSettings;
-    }
-
-    await settingsCache.cacheUserSettings(userId);
-
-    final settings = settingsCache.getCachedUserSettings(userId);
-    return settings;
-  } catch (e) {
-    debugPrint('Error fetching user_settings for $userId: $e');
-    return null;
-  }
-});
+// user_settings provider — the single definition lives in
+// settings_providers.dart. This file used to hold a duplicate; invalidating
+// one copy never reached consumers of the other (stale zoom/privacy values).
 
 final currentUserSettingsProvider =
     FutureProvider<Map<String, dynamic>?>((ref) async {

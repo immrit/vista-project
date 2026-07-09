@@ -92,7 +92,7 @@ final userReportNotifierProvider =
         (ref) => UserReportNotifier());
 
 final userOnlineStatusStreamProvider =
-    StreamProvider.family<bool, String>((ref, userId) {
+    StreamProvider.autoDispose.family<bool, String>((ref, userId) {
   return Stream.value(false);
 });
 
@@ -145,13 +145,8 @@ final lazyMessagesProvider = Provider((ref) => null);
 final cachedConversationsProvider = conversationsProvider;
 final cachedConversationsStreamProvider = conversationsStreamProvider;
 
-final userSettingsByIdProvider =
-    FutureProvider.family<Map<String, dynamic>?, String>((ref, userId) async {
-  return <String, dynamic>{};
-});
-
 final userBlockStatusProvider =
-    StreamProvider.family<bool, String>((ref, userId) async* {
+    StreamProvider.autoDispose.family<bool, String>((ref, userId) async* {
   final isBlocked =
       await ref.read(chatRepositoryProvider).isUserBlocked(userId);
   yield isBlocked;
@@ -160,6 +155,6 @@ final userBlockStatusProvider =
 final globalChatNotificationProvider = Provider<void>((ref) {});
 
 final deleteOldMessagesProvider =
-    FutureProvider.family<void, DateTime>((ref, cutoffDate) async {
+    FutureProvider.autoDispose.family<void, DateTime>((ref, cutoffDate) async {
   await Future.delayed(const Duration(seconds: 1));
 });

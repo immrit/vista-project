@@ -196,6 +196,12 @@ abstract class AppLocalizations {
   /// **'ذخیره‌شده‌ها'**
   String get savedItems;
 
+  /// No description provided for @requestBlueTick.
+  ///
+  /// In fa, this message translates to:
+  /// **'درخواست تیک آبی'**
+  String get requestBlueTick;
+
   /// No description provided for @changePassword.
   ///
   /// In fa, this message translates to:

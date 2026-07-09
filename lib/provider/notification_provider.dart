@@ -124,6 +124,10 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
       return;
     }
 
+    // Keep what the user already sees; a failed refresh must not blank the
+    // list (restore below), and clearing before the response only causes a
+    // flash of the empty state.
+    final previousState = state;
     if (refresh && !_isDisposed) {
       _page = 0;
       _hasMore = true;
@@ -163,12 +167,12 @@ class NotificationsNotifier extends StateNotifier<List<NotificationModel>> {
       } else {
         logError('Failed to fetch notifications', error: e, stackTrace: st);
       }
-      if (refresh && !_isDisposed) state = [];
-      _hasMore = false;
+      // Transient failure: restore what was on screen and leave _hasMore
+      // untouched so the next scroll/refresh retries instead of dead-ending.
+      if (refresh && !_isDisposed) state = previousState;
     } catch (e, st) {
       logError('Failed to fetch notifications', error: e, stackTrace: st);
-      if (refresh && !_isDisposed) state = [];
-      _hasMore = false;
+      if (refresh && !_isDisposed) state = previousState;
     } finally {
       _isFetching = false;
       _publishFetchMeta();

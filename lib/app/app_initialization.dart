@@ -70,7 +70,7 @@ class AppInitialization {
   static Future<void> initCore() async {
     // WidgetsFlutterBinding.ensureInitialized() توسط فایل main لود می‌شود
     SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-      statusBarColor: Colors.white,
+      statusBarColor: Colors.transparent,
       statusBarIconBrightness: Brightness.dark,
       statusBarBrightness: Brightness.light,
       systemStatusBarContrastEnforced: false,

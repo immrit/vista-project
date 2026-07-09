@@ -6,7 +6,7 @@ import 'package:Vista/utils/env_config.dart';
 import 'current_user_service.dart';
 import '../features/auth/providers/auth_controller.dart';
 import '../security/logging_utility.dart';
-import 'device_id_service.dart';
+import 'http_client_factory.dart';
 import 'system_status_service.dart';
 
 class PaymentService {
@@ -14,7 +14,16 @@ class PaymentService {
 
   bool _isConnected = false;
 
-  static String get _backendUrl => EnvConfig.apiBaseUrl;
+  /// Pinned client with the global interceptors (TLS pinning, token refresh,
+  /// feature-gate/maintenance handling). Payment is the one flow that must
+  /// not die on an expired access token, so never use a raw Dio here.
+  final Dio _dio = createApiV1Dio();
+
+  Future<Options?> _authOptions() async {
+    final token = await TokenStorage.getAccessToken();
+    if (token == null || token.isEmpty) return null;
+    return Options(headers: {'Authorization': 'Bearer $token'});
+  }
 
   Future<bool> init() async {
     // If Zibal, we don't need native Bazaar connection
@@ -22,13 +31,13 @@ class PaymentService {
       return true;
     }
 
-    print('🔄 [Flutter] Connecting to Native Poolakey (Bazaar)...');
+    logInfo('Connecting to Native Poolakey (Bazaar)...');
     try {
       final bool result = await platform.invokeMethod('connect');
       _isConnected = result;
       return result;
     } catch (e) {
-      print("❌ [Flutter] Connection Error: $e");
+      logWarning('Bazaar connection error', error: e);
       return false;
     }
   }
@@ -39,21 +48,11 @@ class PaymentService {
   /// its local defaults.
   Future<List<Map<String, dynamic>>> fetchSubscriptionPlans() async {
     try {
-      final accessToken = await TokenStorage.getAccessToken();
-      if (accessToken == null || accessToken.isEmpty) return [];
+      final options = await _authOptions();
+      if (options == null) return [];
 
-      final dio = Dio(BaseOptions(
-        baseUrl: '$_backendUrl/v1',
-        connectTimeout: const Duration(seconds: 15),
-        receiveTimeout: const Duration(seconds: 15),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $accessToken',
-          'X-Device-ID': DeviceIdService.id,
-        },
-      ));
-
-      final response = await dio.get('/payment/subscription-plans');
+      final response =
+          await _dio.get('/payment/subscription-plans', options: options);
       final data = response.data;
       final plans = data is Map ? data['plans'] : null;
       if (plans is List) {
@@ -70,7 +69,7 @@ class PaymentService {
   }
 
   Future<Map<String, dynamic>> purchaseSubscription(String productId) async {
-    print("🛒 [Flutter] Requesting purchase: $productId");
+    logInfo('Requesting purchase: $productId');
 
     try {
       await SystemStatusService.instance.ensureFeatureEnabled(
@@ -104,52 +103,50 @@ class PaymentService {
   }
 
   Future<Map<String, dynamic>> _processZibalPurchase(String productId) async {
-    print("💳 [Flutter] Processing via Zibal for product: $productId");
+    logInfo('Processing via Zibal for product: $productId');
     try {
-      final accessToken = await TokenStorage.getAccessToken();
-      if (accessToken == null || accessToken.isEmpty) {
+      final options = await _authOptions();
+      if (options == null) {
         return {'success': false, 'message': 'توکن احراز هویت یافت نشد.'};
       }
-
-      final dio = Dio(BaseOptions(
-        baseUrl: '$_backendUrl/v1',
-        connectTimeout: const Duration(seconds: 15),
-        receiveTimeout: const Duration(seconds: 15),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $accessToken',
-          'X-Device-ID': DeviceIdService.id,
-        },
-      ));
 
       // Callback URL needs to be your vista-web payment verification page.
       final callbackUrl = 'https://cafevista.ir/payment/callback';
 
-      final response = await dio.post(
+      final response = await _dio.post(
         '/payment/zibal/request',
         data: {
           'package_id': productId,
           'callback_url': callbackUrl,
         },
+        options: options,
       );
 
       final data = response.data;
       if (data['success'] == true || data['track_id'] != null) {
-        final paymentUrl = data['url'] ?? 'https://gateway.zibal.ir/start/${data["track_id"]}';
-        
+        final paymentUrl = data['url'] ??
+            'https://gateway.zibal.ir/start/${data["track_id"]}';
+
         final uri = Uri.parse(paymentUrl);
         if (await canLaunchUrl(uri)) {
           await launchUrl(uri, mode: LaunchMode.externalApplication);
           return {
             'success': true,
             'message': 'در حال انتقال به درگاه پرداخت زیبال...',
-            'pending_web_flow': true // Indicates to UI that payment is completing via browser
+            'pending_web_flow':
+                true // Indicates to UI that payment is completing via browser
           };
         } else {
-          return {'success': false, 'message': 'امکان باز کردن درگاه پرداخت وجود ندارد.'};
+          return {
+            'success': false,
+            'message': 'امکان باز کردن درگاه پرداخت وجود ندارد.'
+          };
         }
       } else {
-         return {'success': false, 'message': data['message'] ?? 'خطا در ایجاد تراکنش'};
+        return {
+          'success': false,
+          'message': data['message'] ?? 'خطا در ایجاد تراکنش'
+        };
       }
     } catch (e) {
       logWarning('Zibal request failed', error: e);
@@ -166,25 +163,15 @@ class PaymentService {
       return {'success': false, 'message': 'شناسه تراکنش نامعتبر است.'};
     }
     try {
-      final accessToken = await TokenStorage.getAccessToken();
-      if (accessToken == null || accessToken.isEmpty) {
+      final options = await _authOptions();
+      if (options == null) {
         return {'success': false, 'message': 'توکن احراز هویت یافت نشد.'};
       }
 
-      final dio = Dio(BaseOptions(
-        baseUrl: '$_backendUrl/v1',
-        connectTimeout: const Duration(seconds: 15),
-        receiveTimeout: const Duration(seconds: 20),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $accessToken',
-          'X-Device-ID': DeviceIdService.id,
-        },
-      ));
-
-      final response = await dio.post(
+      final response = await _dio.post(
         '/payment/zibal/verify',
         data: {'track_id': parsedTrackId},
+        options: options,
       );
 
       final data = (response.data as Map).cast<String, dynamic>();
@@ -219,7 +206,8 @@ class PaymentService {
   Future<Map<String, dynamic>> _processBazaarPurchase(String productId) async {
     try {
       final userId = await CurrentUserService.instance.resolveUserId();
-      final Map<dynamic, dynamic> result = await platform.invokeMethod('subscribe', {
+      final Map<dynamic, dynamic> result =
+          await platform.invokeMethod('subscribe', {
         'productId': productId,
         'payload': 'user_$userId',
       });
@@ -227,8 +215,9 @@ class PaymentService {
       final String purchaseToken = result['purchaseToken'];
       final String packageName = result['packageName'];
 
-      print("💎 [Flutter] Token: $purchaseToken");
-      print("📦 [Flutter] Package: $packageName");
+      // NEVER log purchaseToken — it is the credential the server uses to
+      // verify and grant the subscription.
+      logInfo('Bazaar purchase completed for package: $packageName');
 
       return await _verifyBazaarOnServer(purchaseToken, productId, packageName);
     } catch (e) {
@@ -240,7 +229,7 @@ class PaymentService {
           return {'success': false, 'message': 'خطا در پرداخت: ${e.message}'};
         }
       }
-      print("❌ [Flutter] Exception: $e");
+      logWarning('Bazaar purchase exception', error: e);
       return {'success': false, 'message': 'خطای نامشخص در پرداخت.'};
     }
   }
@@ -253,29 +242,19 @@ class PaymentService {
     }
 
     try {
-      final accessToken = await TokenStorage.getAccessToken();
-      if (accessToken == null || accessToken.isEmpty) {
+      final options = await _authOptions();
+      if (options == null) {
         return {'success': false, 'message': 'توکن احراز هویت یافت نشد.'};
       }
 
-      final dio = Dio(BaseOptions(
-        baseUrl: '$_backendUrl/v1',
-        connectTimeout: const Duration(seconds: 15),
-        receiveTimeout: const Duration(seconds: 15),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $accessToken',
-          'X-Device-ID': DeviceIdService.id,
-        },
-      ));
-
-      final response = await dio.post(
+      final response = await _dio.post(
         '/payment/bazaar-verify',
         data: {
           'purchase_token': token,
           'product_id': productId,
           'package_name': packageName,
         },
+        options: options,
       );
 
       final data = response.data as Map<String, dynamic>;

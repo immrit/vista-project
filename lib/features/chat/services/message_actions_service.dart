@@ -270,9 +270,13 @@ class MessageActionsService {
   String _extractError(DioException e) {
     final data = e.response?.data;
     if (data is Map) {
-      return data['message']?.toString() ??
-          data['error']?.toString() ??
-          'خطای سرور (${e.response?.statusCode})';
+      final message = data['message']?.toString();
+      if (message != null && message.isNotEmpty) return message;
+      // Handles both backend envelopes (nested httpapi + flat module) —
+      // a raw map toString must never reach the user.
+      final code = apiErrorCode(data);
+      if (code.isNotEmpty) return code;
+      return 'خطای سرور (${e.response?.statusCode})';
     }
     return 'خطای شبکه: ${e.message}';
   }
