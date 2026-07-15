@@ -23,16 +23,31 @@ class ChatMessages extends _$ChatMessages {
   static const int _pageSize = 20;
 
   // Cap how many newest messages the realtime watch deserializes/processes per
-  // emit. The on-screen render window (ChatMessageRenderWindow) is hard-capped
-  // at 180, so a fixed window comfortably above that feeds the UI fully while
-  // never re-mapping the entire conversation history on each change.
-  static const int _watchWindow = 300;
+  // emit. Starts at 300 (render window is hard-capped at 180) and GROWS as the
+  // user pages older history in — a fixed cap silently hid every message past
+  // the newest 300 even though loadMore had written them to Isar.
+  static const int _initialWatchWindow = 300;
+  static const int _maxWatchWindow = 2200;
+  int _watchWindow = _initialWatchWindow;
+
+  int _subscriptionGeneration = 0;
+  int _eventRevision = 0;
 
   bool _hasMore = true;
+
+  /// True while older history may still exist on the server. paginationState
+  /// reads this to stop the load-more spinner at the top of the list.
+  bool get hasMore => _hasMore;
 
   // Delta decryption cache: messageId → decrypted content
   // Avoids re-decrypting messages whose content hasn't changed between stream emits.
   final Map<String, String> _decryptCache = {};
+
+  // Cached ECDH shared secret so we don't re-derive it on every stream emit.
+  // Keyed by the peer public key: if the peer rotates keys, the key changes
+  // and the cache is invalidated automatically.
+  SecretKey? _cachedSharedSecret;
+  String? _cachedSharedSecretPeerKey;
 
   @override
   FutureOr<List<MessageModel>> build(String conversationId) async {
@@ -41,18 +56,37 @@ class ChatMessages extends _$ChatMessages {
 
     _realtimeSubscription?.cancel();
     _decryptCache.clear();
+    _cachedSharedSecret = null;
+    _cachedSharedSecretPeerKey = null;
+    _watchWindow = _initialWatchWindow;
+    _hasMore = true;
 
     // Cleanup on dispose
     ref.onDispose(() {
+      _subscriptionGeneration++;
+      _eventRevision++;
       _realtimeSubscription?.cancel();
       _decryptCache.clear();
+      _cachedSharedSecret = null;
+      _cachedSharedSecretPeerKey = null;
     });
 
-    // Return the stream from repository directly.
-    // This is the SINGLE SOURCE OF TRUTH.
-    _realtimeSubscription =
-        repository.watchMessages(conversationId, limit: _watchWindow).listen(
+    _subscribe(conversationId);
+
+    // Initial value while stream connects (Isar usually fires immediately)
+    return state.valueOrNull ?? const [];
+  }
+
+  // Return the stream from repository directly.
+  // This is the SINGLE SOURCE OF TRUTH.
+  void _subscribe(String conversationId) {
+    final generation = ++_subscriptionGeneration;
+    _realtimeSubscription?.cancel();
+    _realtimeSubscription = _chatRepository!
+        .watchMessages(conversationId, limit: _watchWindow)
+        .listen(
       (messages) async {
+        final revision = ++_eventRevision;
         final currentMessages = state.valueOrNull ?? [];
         if (currentMessages.isNotEmpty && messages.isNotEmpty) {
           final newestMessage = messages.first;
@@ -75,12 +109,21 @@ class ChatMessages extends _$ChatMessages {
         if (conversation != null && conversation.isSecret) {
           final decryptedMessages =
               await _decryptMessages(messages, conversationId);
+          if (generation != _subscriptionGeneration ||
+              revision != _eventRevision) {
+            return;
+          }
           state = AsyncValue.data(decryptedMessages);
         } else {
+          if (generation != _subscriptionGeneration ||
+              revision != _eventRevision) {
+            return;
+          }
           state = AsyncValue.data(messages);
         }
       },
       onError: (Object error, StackTrace stackTrace) {
+        if (generation != _subscriptionGeneration) return;
         logError(
           'watchMessages stream failed',
           error: error,
@@ -89,32 +132,40 @@ class ChatMessages extends _$ChatMessages {
         state = AsyncValue.error(error, stackTrace);
       },
     );
-
-    // Initial value while stream connects (Isar usually fires immediately)
-    return state.valueOrNull ?? const [];
   }
 
   Future<List<MessageModel>> _decryptMessages(
       List<MessageModel> originalMessages, String convId) async {
     final prefs = await SharedPreferences.getInstance();
     final peerPubB64 = prefs.getString('e2e_peer_pub_$convId');
-    if (peerPubB64 == null) return originalMessages;
+    if (peerPubB64 == null) return _markEncryptedUnavailable(originalMessages);
 
     final userId = await TokenStorage.getUserId();
-    if (userId == null) return originalMessages;
+    if (userId == null) return _markEncryptedUnavailable(originalMessages);
 
     final e2e = E2EEncryptionService();
     final myKeyPair = await e2e.getSavedKeyPair(userId);
-    if (myKeyPair == null) return originalMessages;
+    if (myKeyPair == null) return _markEncryptedUnavailable(originalMessages);
 
     SecretKey? sharedSecret;
-    try {
-      sharedSecret = await e2e.computeSharedSecret(
-        myKeyPair: myKeyPair,
-        peerPublicKeyBytes: base64Decode(peerPubB64),
-      );
-    } catch (_) {
-      return originalMessages;
+    if (_cachedSharedSecret != null &&
+        _cachedSharedSecretPeerKey == peerPubB64) {
+      // Same peer key as last emit → reuse the derived secret (skip ECDH).
+      sharedSecret = _cachedSharedSecret;
+    } else {
+      try {
+        sharedSecret = await e2e.computeSharedSecret(
+          myKeyPair: myKeyPair,
+          peerPublicKeyBytes: base64Decode(peerPubB64),
+        );
+        _cachedSharedSecret = sharedSecret;
+        _cachedSharedSecretPeerKey = peerPubB64;
+      } catch (_) {
+        return _markEncryptedUnavailable(originalMessages);
+      }
+    }
+    if (sharedSecret == null) {
+      return _markEncryptedUnavailable(originalMessages);
     }
 
     // Remove stale cache entries (messages no longer in the list)
@@ -134,7 +185,7 @@ class ChatMessages extends _$ChatMessages {
       // plaintext of an earlier E2EE message) — decrypt them alongside the
       // body so the quoted bubble never shows ciphertext.
       final decryptedReply =
-          await _decryptField(e2e, m.id, m.replyToContent, sharedSecret);
+          await _decryptField(e2e, m, m.replyToContent, sharedSecret);
 
       // Cache hit: same ciphertext → reuse decrypted result
       final cacheKey = '${m.id}:${m.content}';
@@ -151,8 +202,15 @@ class ChatMessages extends _$ChatMessages {
       //   legacy cipher → decrypts (raw shared secret)
       //   plaintext     → returned unchanged (MAC mismatch / not base64)
       try {
-        final decryptedContent =
-            await e2e.decryptMessage(m.content, sharedSecret);
+        final decryptedContent = await e2e.decryptMessage(
+          m.content,
+          sharedSecret,
+          binding: E2EEncryptionService.messageBinding(
+            conversationId: m.conversationId,
+            senderId: m.senderId,
+            messageId: m.id,
+          ),
+        );
         if (decryptedContent == m.content) {
           // Plaintext (or undecryptable) — don't cache, leave as-is.
           decryptedList.add(m.copyWith(replyToContent: decryptedReply));
@@ -166,7 +224,8 @@ class ChatMessages extends _$ChatMessages {
         decryptedList.add(m.copyWith(
             content: '⚠️ پیام دستکاری‌شده', replyToContent: decryptedReply));
       } catch (_) {
-        decryptedList.add(m.copyWith(replyToContent: decryptedReply));
+        decryptedList.add(m.copyWith(
+            content: '⚠️ پیام رمزگشایی نشد', replyToContent: decryptedReply));
       }
     }
     return decryptedList;
@@ -176,21 +235,45 @@ class ChatMessages extends _$ChatMessages {
   /// legacy values come back unchanged; failures degrade to the original.
   Future<String?> _decryptField(
     E2EEncryptionService e2e,
-    String messageId,
+    MessageModel message,
     String? value,
     SecretKey sharedSecret,
   ) async {
     if (value == null || value.isEmpty) return value;
-    final cacheKey = '$messageId:reply:$value';
+    final cacheKey = '${message.id}:reply:$value';
     final cached = _decryptCache[cacheKey];
     if (cached != null) return cached;
     try {
-      final decrypted = await e2e.decryptMessage(value, sharedSecret);
+      final decrypted = await e2e.decryptMessage(
+        value,
+        sharedSecret,
+        binding: E2EEncryptionService.messageBinding(
+          conversationId: message.conversationId,
+          senderId: message.senderId,
+          messageId: message.id,
+          field: 'reply',
+        ),
+      );
       if (decrypted != value) _decryptCache[cacheKey] = decrypted;
       return decrypted;
     } catch (_) {
-      return value;
+      return '⚠️ پیش‌نمایش رمزگشایی نشد';
     }
+  }
+
+  List<MessageModel> _markEncryptedUnavailable(List<MessageModel> messages) {
+    return messages.map((message) {
+      if (message.messageType == 'exchange_key' ||
+          message.messageType == 'exchange_key_reply' ||
+          message.content.isEmpty) {
+        return message;
+      }
+      return message.copyWith(
+        content: '🔒 کلید رمزگشایی در دسترس نیست',
+        replyToContent:
+            message.replyToContent == null ? null : '🔒 پیش‌نمایش رمزگشایی نشد',
+      );
+    }).toList(growable: false);
   }
 
   Future<void> loadMore() async {
@@ -215,10 +298,20 @@ class ChatMessages extends _$ChatMessages {
 
       result.fold(
         (newMessages) {
+          _hasMore = repository.hasMoreMessages(conversationId);
           if (newMessages.isEmpty) {
             _hasMore = false;
+            return;
           }
-          // No need to update state manually, saving to DB triggers the stream!
+          // The fetched page is now in Isar, but the watch only surfaces the
+          // newest [_watchWindow] rows — grow the window and resubscribe or
+          // the older page stays invisible forever.
+          final requestedWindow =
+              currentMessages.length + newMessages.length + _pageSize;
+          _watchWindow = requestedWindow > _maxWatchWindow
+              ? _maxWatchWindow
+              : requestedWindow;
+          _subscribe(conversationId);
         },
         (error) {
           logInfo('Load more failed: $error');

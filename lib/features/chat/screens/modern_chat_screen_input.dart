@@ -299,6 +299,7 @@ extension _ModernChatInputExt on _ModernChatScreenState {
                 replyToKind: params.replyToKind,
                 recipientPublicKey:
                     widget.args.isSecret ? params.recipientPublicKey : null,
+                requireEncryption: widget.args.isSecret,
               );
       if (!sendResult.isSuccess) {
         await chatRepository.markUploadFailed(
@@ -371,6 +372,7 @@ extension _ModernChatInputExt on _ModernChatScreenState {
                 replyToKind: params.replyToKind,
                 recipientPublicKey:
                     widget.args.isSecret ? params.recipientPublicKey : null,
+                requireEncryption: widget.args.isSecret,
               );
 
       if (!mounted) return;
@@ -511,6 +513,7 @@ extension _ModernChatInputExt on _ModernChatScreenState {
                   recipientPublicKey: widget.args.isSecret
                       ? _otherUserProfile?.publicKey
                       : null,
+                  requireEncryption: widget.args.isSecret,
                 );
         if (!mounted) return;
         if (result.isSuccess) {
@@ -578,7 +581,8 @@ extension _ModernChatInputExt on _ModernChatScreenState {
       bool shouldPushReplacement = false;
 
       for (int i = 0; i < chunks.length; i++) {
-        var content = chunks[i];
+        final content = chunks[i];
+        String? secretRecipientPublicKey;
 
         if (widget.args.isSecret) {
           final prefs = await SharedPreferences.getInstance();
@@ -590,20 +594,9 @@ extension _ModernChatInputExt on _ModernChatScreenState {
             return;
           }
 
-          final e2e = E2EEncryptionService();
-          final myKeyPair = await e2e.getSavedKeyPair(_currentUserId!);
-          if (myKeyPair == null) {
-            _showErrorSnackBar('خطا: کلید امنیتی محلی یافت نشد.');
-            return;
-          }
-
-          final sharedSecret = await e2e.computeSharedSecret(
-            myKeyPair: myKeyPair,
-            peerPublicKeyBytes: base64Decode(peerPubB64),
-          );
-
-          // جایگزین کردن محتوای واقعی با محتوای رمزنگاری شده
-          content = await e2e.encryptMessage(content, sharedSecret);
+          // Encryption is centralized in the repository so text, attachment,
+          // reply, retry, and optimistic reconciliation use one envelope.
+          secretRecipientPublicKey = peerPubB64;
         }
 
         if (wasEmpty && i == 0) {
@@ -639,8 +632,7 @@ extension _ModernChatInputExt on _ModernChatScreenState {
               ? _resolveReplyToKind(
                   replyTo: replyTo, pendingReply: pendingReply)
               : null,
-          recipientPublicKey:
-              widget.args.isSecret ? _otherUserProfile?.publicKey : null,
+          recipientPublicKey: secretRecipientPublicKey,
         );
 
         if (!mounted) return;
@@ -655,6 +647,7 @@ extension _ModernChatInputExt on _ModernChatScreenState {
                   replyToKind: params.replyToKind,
                   recipientPublicKey:
                       widget.args.isSecret ? params.recipientPublicKey : null,
+                  requireEncryption: widget.args.isSecret,
                 );
 
         if (!mounted) return;
@@ -671,7 +664,7 @@ extension _ModernChatInputExt on _ModernChatScreenState {
       }
 
       // بعد از ارسال تمام بخش‌ها
-      if (shouldPushReplacement) {
+      if (shouldPushReplacement && mounted) {
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
@@ -863,6 +856,7 @@ extension _ModernChatInputExt on _ModernChatScreenState {
                 mediaGroupId: mediaGroupId,
                 recipientPublicKey:
                     widget.args.isSecret ? _otherUserProfile?.publicKey : null,
+                requireEncryption: widget.args.isSecret,
               );
       if (!result.isSuccess) {
         await chatRepository.markUploadFailed(
@@ -1004,6 +998,9 @@ extension _ModernChatInputExt on _ModernChatScreenState {
               replyToKind: _isSyntheticNoteReplyId(message.replyToMessageId)
                   ? 'note'
                   : null,
+              recipientPublicKey:
+                  widget.args.isSecret ? _otherUserProfile?.publicKey : null,
+              requireEncryption: widget.args.isSecret,
             );
 
     if (!resend.isSuccess) {
@@ -1051,6 +1048,9 @@ extension _ModernChatInputExt on _ModernChatScreenState {
                 replyToKind: _isSyntheticNoteReplyId(message.replyToMessageId)
                     ? 'note'
                     : null,
+                recipientPublicKey:
+                    widget.args.isSecret ? _otherUserProfile?.publicKey : null,
+                requireEncryption: widget.args.isSecret,
               );
       if (!resend.isSuccess) {
         await chatRepository.markUploadFailed(
@@ -1139,6 +1139,9 @@ extension _ModernChatInputExt on _ModernChatScreenState {
           replyToSenderName: message.replyToSenderName,
           replyToKind:
               _isSyntheticNoteReplyId(message.replyToMessageId) ? 'note' : null,
+          recipientPublicKey:
+              widget.args.isSecret ? _otherUserProfile?.publicKey : null,
+          requireEncryption: widget.args.isSecret,
         );
 
     if (!result.isSuccess) {

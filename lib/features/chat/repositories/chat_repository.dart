@@ -138,6 +138,13 @@ abstract class ChatRepository {
     int limit = 50,
   });
 
+  /// Server-backed pagination state for [loadMoreMessages].
+  ///
+  /// The cursor is intentionally owned by the repository so UI code cannot
+  /// accidentally recreate a timestamp-only cursor and introduce gaps when
+  /// multiple messages share the same creation time.
+  bool hasMoreMessages(String conversationId);
+
   Future<ChatResult<void>> acceptMessageRequest(String conversationId);
 
   Future<ChatResult<void>> rejectMessageRequest(String conversationId);
@@ -171,6 +178,10 @@ abstract class ChatRepository {
   Future<void> refreshMessages(String conversationId);
 
   Future<void> syncPendingMessages();
+
+  /// ارسال مجدد خودکار پیام‌های خروجیِ ناموفق (isFailed) — پس از برقراری
+  /// دوباره‌ی اتصال فراخوانی می‌شود.
+  Future<void> resendFailedMessages();
 
   Future<void> cacheConversationProfile({
     required String conversationId,

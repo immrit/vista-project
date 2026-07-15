@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:isar/isar.dart';
 import 'dart:convert';
 import 'package:dio/dio.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../../../utils/env_config.dart';
 import 'package:uuid/uuid.dart';
 import '../../../model/conversation_model.dart';
@@ -20,7 +21,7 @@ import '../services/sse_manager.dart';
 import '../services/user_moderation_service.dart';
 import '../services/message_tombstone_service.dart';
 import 'chat_repository.dart';
-import '../../../../security/e2ee_service.dart';
+import '../services/e2e_encryption_service.dart';
 
 /// Thrown when a message meant to be end-to-end encrypted cannot be encrypted.
 /// Callers must fail the send rather than downgrade to plaintext.
@@ -39,10 +40,15 @@ class ChatRepositoryImpl implements ChatRepository {
 
   String? _activeConversationId;
   Timer? _heartbeatTimer;
+  late final StreamSubscription<SseConnectionState> _realtimeStateSubscription;
+  // جلوگیری از اجرای هم‌زمانِ ارسال مجدد (reconnectهای پشت‌سرهم / چند رویداد)
+  bool _resendInFlight = false;
 
-  // â”€â”€ throttle maps (Ø¨Ø±Ø§ÛŒ Ø¬Ù„ÙˆÚ¯ÛŒØ±ÛŒ Ø§Ø² sync Ø¨ÛŒØ´ Ø§Ø² Ø­Ø¯) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── throttle maps (برای جلوگیری از sync بیش از حد) ──────────────
   final Map<String, Timer?> _msgSyncTimers = {};
   final Map<String, bool> _msgSyncInFlight = {};
+  final Map<String, String?> _messageNextCursors = {};
+  final Map<String, bool> _messageHasMore = {};
   // آخرین پیام دریافتی‌ای که برایش /read فرستادیم — جلوی POST تکراری در هر sync
   final Map<String, String> _lastAckedIncomingMsgId = {};
   Timer? _convSyncTimer;
@@ -50,10 +56,8 @@ class ChatRepositoryImpl implements ChatRepository {
   int _convRateLimitedUntilMs = 0;
 
   static const int _msgPageSize = 50;
-  // Conversations are clustered server-side by a random id, not recency, so a
-  // small limit would drop arbitrary (possibly active) chats. Fetch a high
-  // ceiling that covers essentially every user until recency pagination lands.
-  static const int _convPageSize = 300;
+  static const int _convPageSize = 100;
+  static const int _maxConversationPagesPerSync = 100;
 
   static String get _base => EnvConfig.apiBaseUrl;
 
@@ -61,10 +65,11 @@ class ChatRepositoryImpl implements ChatRepository {
       : _local = localDataSource {
     _dio = createApiV1Dio(baseUrl: _base);
 
-    // âœ… SSE singleton Ø´Ø±ÙˆØ¹ Ù…ÛŒØ´Ù‡ â€” Ù‡Ù…Ù‡ provider Ù‡Ø§ Ø§Ø² ÛŒÙ‡ Ú©Ø§Ù†Ú©Ø´Ù† Ø§Ø³ØªÙØ§Ø¯Ù‡ Ù…ÛŒâ€ŒÚ©Ù†Ù†
+    // ✅ SSE singleton شروع میشه — همه provider ها از یه کانکشن استفاده می‌کنن
     SseManager.instance.start();
 
-    SseManager.instance.connectionState.listen((state) {
+    _realtimeStateSubscription =
+        SseManager.instance.connectionState.listen((state) {
       if (state == SseConnectionState.connected) {
         _userId().then((uid) {
           if (uid != null) {
@@ -72,6 +77,8 @@ class ChatRepositoryImpl implements ChatRepository {
             if (_activeConversationId != null) {
               _syncMessages(_activeConversationId!, uid);
             }
+            // شبکه دوباره وصل شد → پیام‌های ناموفق خروجی را خودکار بفرست.
+            unawaited(resendFailedMessages());
           }
         });
       }
@@ -125,17 +132,17 @@ class ChatRepositoryImpl implements ChatRepository {
   Future<ChatResult<List<ConversationModel>>> getConversations() async {
     final uid = await _userId();
     if (uid == null) {
-      return ChatResult.failure('Ú©Ø§Ø±Ø¨Ø± ÙˆØ§Ø±Ø¯ Ù†Ø´Ø¯Ù‡ Ø§Ø³Øª');
+      return ChatResult.failure('کاربر وارد نشده است');
     }
 
-    // â”€â”€ 1. local-first: Ø§Ú¯Ù‡ Ú©Ø´ Ø¯Ø§Ø±ÛŒÙ… ÙÙˆØ±Ø§Ù‹ Ø¨Ø±Ú¯Ø±Ø¯ÙˆÙ† Ùˆ Ø¯Ø± Ù¾Ø³â€ŒØ²Ù…ÛŒÙ†Ù‡ sync Ú©Ù†
+    // ── 1. local-first: اگه کش داریم فوراً برگردون و در پس‌زمینه sync کن
     final local = await _local.getConversations();
     if (local.isNotEmpty) {
       unawaited(_syncConversations(uid));
       return ChatResult.success(local);
     }
 
-    // â”€â”€ 2. Ø§Ú¯Ù‡ Ú©Ø´ Ø®Ø§Ù„ÛŒÙ‡ØŒ Ø§Ø² Ø³Ø±ÙˆØ± Ø¨Ú¯ÛŒØ±
+    // ── 2. اگه کش خالیه، از سرور بگیر
     return _fetchConversationsFromServer(uid);
   }
 
@@ -147,15 +154,15 @@ class ChatRepositoryImpl implements ChatRepository {
       return;
     }
 
-    // â”€â”€ emit Ú©Ø´ ÙÙˆØ±ÛŒ
+    // ── emit کش فوری
     final local = await _local.getConversations();
     yield local;
     unawaited(_syncConversations(uid));
 
-    // â”€â”€ Isar stream (Ø¨Ø±Ø§ÛŒ ØªØºÛŒÛŒØ±Ø§Øª local)
+    // ── Isar stream (برای تغییرات local)
     final isarStream = _local.watchConversations(uid);
 
-    // â”€â”€ SSE events (Ø¨Ø±Ø§ÛŒ ØªØºÛŒÛŒØ±Ø§Øª remote)
+    // ── SSE events (برای تغییرات remote)
     StreamSubscription? sseSub;
     sseSub = SseManager.instance.events.listen((event) async {
       final type = event['type'] as String?;
@@ -242,7 +249,7 @@ class ChatRepositoryImpl implements ChatRepository {
   Future<ChatResult<void>> deleteConversation(String conversationId) async {
     final opts = await _authOptions();
     if (opts == null) {
-      return ChatResult.failure('Ú©Ø§Ø±Ø¨Ø± ÙˆØ§Ø±Ø¯ Ù†Ø´Ø¯Ù‡ Ø§Ø³Øª');
+      return ChatResult.failure('کاربر وارد نشده است');
     }
 
     // optimistic local delete
@@ -253,6 +260,10 @@ class ChatRepositoryImpl implements ChatRepository {
       await _dio.delete('/chat/conversations/$conversationId', options: opts);
       return ChatResult.success(null);
     } on DioException catch (e) {
+      // rollback از سرور: مکالمه هنوز آنجا زنده است، دوباره sync کن تا لیست
+      // محلی با واقعیت یکی شود (وگرنه مکالمه تا restart غیب می‌ماند).
+      final uid = await _userId();
+      if (uid != null) unawaited(_syncConversations(uid));
       return ChatResult.failure(_dioError(e));
     }
   }
@@ -311,6 +322,9 @@ class ChatRepositoryImpl implements ChatRepository {
       );
       return ChatResult.success(null);
     } on DioException catch (e) {
+      // rollback: تاریخچه سمت سرور پاک نشده — دوباره بکش تا چت خالی نماند.
+      final uid = await _userId();
+      if (uid != null) unawaited(_syncMessages(conversationId, uid));
       return ChatResult.failure(_dioError(e));
     }
   }
@@ -327,7 +341,7 @@ class ChatRepositoryImpl implements ChatRepository {
   }) async {
     final uid = await _userId();
     if (uid == null) {
-      return ChatResult.failure('Ú©Ø§Ø±Ø¨Ø± ÙˆØ§Ø±Ø¯ Ù†Ø´Ø¯Ù‡ Ø§Ø³Øª');
+      return ChatResult.failure('کاربر وارد نشده است');
     }
 
     // local-first
@@ -347,10 +361,33 @@ class ChatRepositoryImpl implements ChatRepository {
 
     unawaited(_syncMessages(conversationId, uid));
 
-    // SSE: ÙˆÙ‚ØªÛŒ event Ù…Ø±Ø¨ÙˆØ· Ø¨Ù‡ Ø§ÛŒÙ† conversation Ù…ÛŒØ§Ø¯ØŒ sync Ú©Ù†
+    // SSE: وقتی event مربوط به این conversation میاد، sync کن
     StreamSubscription? sseSub;
     sseSub = SseManager.instance.events.listen((event) {
       final type = event['type'] as String?;
+
+      // حذف دوطرفه باید «سرعت نور» باشد: به‌محض رسیدن message_deleted، پیام را
+      // مستقیماً از Isar پاک کن تا watch محلی فوراً بدون آن re-emit کند. قبلاً
+      // این event در watchMessages هندل نمی‌شد و صفحه‌ی باز به listenerِ یک
+      // provider دیگر (لیست مکالمات) وابسته بود که ممکن بود زنده نباشد → تأخیر.
+      if (type == 'message_deleted') {
+        final data = event['data'] as Map<String, dynamic>?;
+        final convId = data?['conversation_id']?.toString();
+        if (convId != conversationId) return;
+        final msgId = data?['message_id']?.toString();
+        if (msgId != null && msgId.isNotEmpty) {
+          // بدون sync سرور — حذف محلی فوری، صفر round-trip.
+          unawaited(_local.deleteMessage(msgId));
+          unawaited(MessageTombstoneService()
+              .markDeletedRemotely(msgId, conversationId));
+        } else {
+          // پاک‌سازی کل مکالمه (message_id ندارد) → clear + sync.
+          unawaited(_local.clearMessages(conversationId));
+          unawaited(_syncMessages(conversationId, uid));
+        }
+        return;
+      }
+
       if (type == 'new_message' ||
           type == 'message_updated' ||
           type == 'read_receipt') {
@@ -422,7 +459,7 @@ class ChatRepositoryImpl implements ChatRepository {
     final uid = await _userId();
     final opts = await _authOptions();
     if (uid == null || opts == null) {
-      return ChatResult.failure('Ú©Ø§Ø±Ø¨Ø± ÙˆØ§Ø±Ø¯ Ù†Ø´Ø¯Ù‡ Ø§Ø³Øª');
+      return ChatResult.failure('کاربر وارد نشده است');
     }
 
     final messageId = payload.id ?? const Uuid().v4();
@@ -471,12 +508,43 @@ class ChatRepositoryImpl implements ChatRepository {
     final String encryptedContent;
     final String? encryptedReplyContent;
     try {
+      final localConversation =
+          await _local.getConversation(payload.conversationId, uid);
+      final requireEncryption = payload.requireEncryption ||
+          localConversation?.isSecret == true ||
+          (payload.recipientPublicKey?.isNotEmpty ?? false);
+      var recipientPublicKey = payload.recipientPublicKey;
+      if (requireEncryption) {
+        // The key exchanged inside this conversation is authoritative. Profile
+        // keys may be absent or rotated independently and previously caused
+        // attachment/retry sends to fail while text sends still worked.
+        final prefs = await SharedPreferences.getInstance();
+        final conversationKey =
+            prefs.getString('e2e_peer_pub_${payload.conversationId}')?.trim();
+        if (conversationKey != null && conversationKey.isNotEmpty) {
+          recipientPublicKey = conversationKey;
+        }
+      }
       encryptedContent = await _encryptContent(
-          payload.content, payload.recipientPublicKey);
+        payload.content,
+        recipientPublicKey,
+        userId: uid,
+        conversationId: payload.conversationId,
+        messageId: messageId,
+        field: 'content',
+        requiredEncryption: requireEncryption,
+      );
       encryptedReplyContent = payload.replyToContent == null
           ? null
           : await _encryptContent(
-              payload.replyToContent!, payload.recipientPublicKey);
+              payload.replyToContent!,
+              recipientPublicKey,
+              userId: uid,
+              conversationId: payload.conversationId,
+              messageId: messageId,
+              field: 'reply',
+              requiredEncryption: requireEncryption,
+            );
     } on E2EEEncryptionException catch (e) {
       final failed = optimistic.copyWith(
         isPending: false,
@@ -487,7 +555,7 @@ class ChatRepositoryImpl implements ChatRepository {
       return ChatResult.failure(e.toString());
     }
 
-    // â”€â”€ Ø§Ø±Ø³Ø§Ù„ Ø¨Ù‡ Go backend â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── ارسال به Go backend ───────────────────────────────────────
     try {
       final res = await _dio.post(
         '/chat/conversations/${payload.conversationId}/messages',
@@ -535,13 +603,46 @@ class ChatRepositoryImpl implements ChatRepository {
   }
 
   Future<String> _encryptContent(
-      String rawContent, String? recipientPublicKey) async {
-    // No key = a normal (non-E2EE) conversation; plaintext is expected.
+    String rawContent,
+    String? recipientPublicKey, {
+    required String userId,
+    required String conversationId,
+    required String messageId,
+    required String field,
+    required bool requiredEncryption,
+  }) async {
+    if (requiredEncryption &&
+        E2EEncryptionService().isEncryptedEnvelope(rawContent)) {
+      // Failed rows created by older clients may already contain ciphertext.
+      // Retrying the same id must not wrap the envelope again.
+      return rawContent;
+    }
     if (recipientPublicKey == null || recipientPublicKey.isEmpty) {
+      if (requiredEncryption) {
+        throw const E2EEEncryptionException('recipient key is unavailable');
+      }
       return rawContent;
     }
     try {
-      return await E2EEService().encryptMessage(rawContent, recipientPublicKey);
+      final e2e = E2EEncryptionService();
+      final keyPair = await e2e.getSavedKeyPair(userId);
+      if (keyPair == null) {
+        throw StateError('local E2EE key is unavailable');
+      }
+      final sharedSecret = await e2e.computeSharedSecret(
+        myKeyPair: keyPair,
+        peerPublicKeyBytes: base64Decode(recipientPublicKey),
+      );
+      return e2e.encryptMessage(
+        rawContent,
+        sharedSecret,
+        binding: E2EEncryptionService.messageBinding(
+          conversationId: conversationId,
+          senderId: userId,
+          messageId: messageId,
+          field: field,
+        ),
+      );
     } catch (e) {
       // The caller explicitly provided a recipient key, so this message was
       // meant to be end-to-end encrypted. Silently sending plaintext would be
@@ -569,7 +670,7 @@ class ChatRepositoryImpl implements ChatRepository {
   }) async {
     final uid = await _userId();
     if (uid == null) {
-      return ChatResult.failure('Ú©Ø§Ø±Ø¨Ø± ÙˆØ§Ø±Ø¯ Ù†Ø´Ø¯Ù‡ Ø§Ø³Øª');
+      return ChatResult.failure('کاربر وارد نشده است');
     }
 
     final pending = MessageModel.temporary(
@@ -640,10 +741,6 @@ class ChatRepositoryImpl implements ChatRepository {
 
     // optimistic local
     await _local.deleteMessage(messageId);
-    unawaited(_queueDeletedMessageMediaCleanup(
-      existing,
-      deleteForEveryone: forEveryone,
-    ));
 
     final opts = await _authOptions();
     if (opts == null) return ChatResult.success(null);
@@ -654,8 +751,16 @@ class ChatRepositoryImpl implements ChatRepository {
         queryParameters: {'for_everyone': forEveryone},
         options: opts,
       );
+      // پاک‌سازی مدیا فقط بعد از تأیید سرور — حذفِ زودهنگام، مدیایی را که
+      // هنوز برای طرف مقابل زنده است از storage می‌کشت.
+      unawaited(_queueDeletedMessageMediaCleanup(
+        existing,
+        deleteForEveryone: forEveryone,
+      ));
       return ChatResult.success(null);
     } on DioException catch (e) {
+      // rollback: پیام محلی را برگردان تا با سرور ناسازگار نمانیم
+      if (existing != null) await _local.saveMessage(existing);
       return ChatResult.failure(_dioError(e));
     }
   }
@@ -687,7 +792,7 @@ class ChatRepositoryImpl implements ChatRepository {
     final uid = await _userId();
     final opts = await _authOptions();
     if (uid == null || opts == null) {
-      return ChatResult.failure('Ú©Ø§Ø±Ø¨Ø± ÙˆØ§Ø±Ø¯ Ù†Ø´Ø¯Ù‡ Ø§Ø³Øª');
+      return ChatResult.failure('کاربر وارد نشده است');
     }
 
     // optimistic local update
@@ -721,7 +826,7 @@ class ChatRepositoryImpl implements ChatRepository {
     final uid = await _userId();
     final opts = await _authOptions();
     if (uid == null || opts == null) {
-      return ChatResult.failure('Ú©Ø§Ø±Ø¨Ø± ÙˆØ§Ø±Ø¯ Ù†Ø´Ø¯Ù‡ Ø§Ø³Øª');
+      return ChatResult.failure('کاربر وارد نشده است');
     }
 
     try {
@@ -749,19 +854,27 @@ class ChatRepositoryImpl implements ChatRepository {
     final uid = await _userId();
     final opts = await _authOptions();
     if (uid == null || opts == null) {
-      return ChatResult.failure('Ú©Ø§Ø±Ø¨Ø± ÙˆØ§Ø±Ø¯ Ù†Ø´Ø¯Ù‡ Ø§Ø³Øª');
+      return ChatResult.failure('کاربر وارد نشده است');
     }
 
     try {
+      if (_messageHasMore[conversationId] == false) {
+        return ChatResult.success(const []);
+      }
+      final cursor = _messageNextCursors[conversationId];
       final res = await _dio.get(
         '/chat/conversations/$conversationId/messages',
         queryParameters: {
           'limit': limit,
-          'before_time': oldestMessageDate.toUtc().toIso8601String(),
+          if (cursor != null && cursor.isNotEmpty) 'cursor': cursor,
+          if (cursor == null || cursor.isEmpty)
+            'before_time': oldestMessageDate.toUtc().toIso8601String(),
         },
         options: opts,
       );
-      final msgs = _asList(_asMap(res.data)['messages'])
+      final response = _asMap(res.data);
+      _captureMessagePageState(conversationId, response);
+      final msgs = _asList(response['messages'])
           .whereType<Map>()
           .map((e) => _msgFromGo(e.cast<String, dynamic>(), uid))
           .toList()
@@ -769,16 +882,20 @@ class ChatRepositoryImpl implements ChatRepository {
           .toList();
 
       if (msgs.isNotEmpty) {
-        final sortedServer = List<MessageModel>.from(msgs)
-          ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
-        await _local.reconcileMessages(conversationId, msgs,
-            endDate: sortedServer.last.createdAt);
+        // A history page is only a partial slice. Date-range reconciliation can
+        // delete valid local rows when several messages share the boundary
+        // timestamp but fall on adjacent composite-cursor pages.
+        await _local.saveMessages(msgs);
       }
       return ChatResult.success(msgs);
     } on DioException catch (e) {
       return ChatResult.failure(_dioError(e));
     }
   }
+
+  @override
+  bool hasMoreMessages(String conversationId) =>
+      _messageHasMore[conversationId] ?? true;
 
   @override
   Future<ChatResult<void>> acceptMessageRequest(String conversationId) async {
@@ -828,7 +945,7 @@ class ChatRepositoryImpl implements ChatRepository {
   }) async {
     final opts = await _authOptions();
     if (opts == null) {
-      return ChatResult.failure('Ú©Ø§Ø±Ø¨Ø± ÙˆØ§Ø±Ø¯ Ù†Ø´Ø¯Ù‡ Ø§Ø³Øª');
+      return ChatResult.failure('کاربر وارد نشده است');
     }
 
     try {
@@ -859,9 +976,9 @@ class ChatRepositoryImpl implements ChatRepository {
       }
     }
 
-    // SSE updates
-    await for (final event in SseManager.instance.events) {
-      if (event['type'] != 'reaction_updated') continue;
+    // SSE updates — فقط رویدادهای reaction_updated (نه هر پیام/تایپ).
+    await for (final event
+        in SseManager.instance.eventsOfType('reaction_updated')) {
       final data = event['data'] as Map<String, dynamic>?;
       if (data?['message_id']?.toString() != messageId) continue;
       yield _reactionMap(_asList(data!['reactions']));
@@ -886,7 +1003,7 @@ class ChatRepositoryImpl implements ChatRepository {
     }
   }
 
-  /// Go backend Ø¨Ø§ÛŒØ¯ Ø§ÛŒÙ† event Ø±Ùˆ Ø§Ø² SSE Ø¨ÙØ±Ø³ØªÙ‡:
+  /// Go backend باید این event رو از SSE بفرسته:
   /// { "type": "typing", "data": { "conversation_id": "...", "user_id": "...", "is_typing": true } }
   @override
   Stream<bool> watchTypingStatus(String conversationId, String userId) {
@@ -897,8 +1014,8 @@ class ChatRepositoryImpl implements ChatRepository {
     late final StreamController<bool> controller;
     controller = StreamController<bool>.broadcast(
       onListen: () {
-        subscription = SseManager.instance.events.listen((event) {
-          if (event['type'] != 'typing') return;
+        subscription =
+            SseManager.instance.eventsOfType('typing').listen((event) {
           final data = event['data'] as Map<String, dynamic>?;
           if (data == null) return;
           if (data['conversation_id']?.toString() != conversationId) return;
@@ -1083,16 +1200,39 @@ class ChatRepositoryImpl implements ChatRepository {
       }
 
       try {
-        final res = await _dio.get(
-          '/chat/conversations',
-          queryParameters: {'limit': _convPageSize},
-          options: opts,
-        );
-        final convs = _asList(_asMap(res.data)['conversations'])
-            .whereType<Map>()
-            .map((e) => _convFromGo(e.cast<String, dynamic>(), uid))
-            .toList();
-        return ChatResult.success(convs);
+        final conversationsById = <String, ConversationModel>{};
+        final seenCursors = <String>{};
+        String? cursor;
+
+        for (var page = 0; page < _maxConversationPagesPerSync; page++) {
+          final res = await _dio.get(
+            '/chat/conversations',
+            queryParameters: {
+              'limit': _convPageSize,
+              if (cursor != null) 'cursor': cursor,
+            },
+            options: opts,
+          );
+          final response = _asMap(res.data);
+          for (final raw
+              in _asList(response['conversations']).whereType<Map>()) {
+            final conversation = _convFromGo(raw.cast<String, dynamic>(), uid);
+            conversationsById[conversation.id] = conversation;
+          }
+
+          final hasMore = response['has_more'] == true;
+          final nextCursor = response['next_cursor']?.toString();
+          if (!hasMore || nextCursor == null || nextCursor.isEmpty) break;
+          if (!seenCursors.add(nextCursor)) {
+            logWarning('Conversation pagination returned a repeated cursor');
+            break;
+          }
+          cursor = nextCursor;
+        }
+
+        final conversations = conversationsById.values.toList()
+          ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+        return ChatResult.success(conversations);
       } on DioException catch (e) {
         if (e.response?.statusCode == 401 && retries == 0) {
           logInfo(
@@ -1141,8 +1281,13 @@ class ChatRepositoryImpl implements ChatRepository {
           options: opts,
         );
 
+        final response = _asMap(res.data);
+        _messageNextCursors.putIfAbsent(
+            conversationId, () => response['next_cursor']?.toString());
+        _messageHasMore.putIfAbsent(
+            conversationId, () => response['has_more'] == true);
         final tombstones = await _getTombstones(conversationId);
-        final msgs = _asList(_asMap(res.data)['messages'])
+        final msgs = _asList(response['messages'])
             .whereType<Map>()
             .map((e) => _msgFromGo(e.cast<String, dynamic>(), uid))
             .where((m) => !tombstones.contains(m.id))
@@ -1150,9 +1295,15 @@ class ChatRepositoryImpl implements ChatRepository {
             .reversed
             .toList();
 
-        await _local.reconcileMessages(conversationId, msgs);
+        if (response['has_more'] == true) {
+          // The latest server page is partial; absence from it is not evidence
+          // that an older local row was deleted.
+          await _local.saveMessages(msgs);
+        } else {
+          await _local.reconcileMessages(conversationId, msgs);
+        }
 
-        // mark seen Ø§Ú¯Ù‡ Ø§ÛŒÙ† conversation ÙØ¹Ø§Ù„Ù‡
+        // mark seen اگه این conversation فعاله
         // فقط وقتی پیام دریافتیِ جدیدی از طرف مقابل آمده باشد /read بفرست.
         // POST /read در هر sync باعث می‌شد read_receipt از SSE برگردد، sync
         // بعدی را فعال کند و بین دو کلاینتِ باز حلقه بی‌پایان درخواست بسازد
@@ -1175,8 +1326,10 @@ class ChatRepositoryImpl implements ChatRepository {
           }
         }
       } on DioException catch (e) {
+        // Error bodies may echo message payload fields; status/type are enough
+        // for diagnostics without risking plaintext, ciphertext, or media URLs.
         logWarning(
-            '_syncMessages DioException: ${e.response?.statusCode} - ${e.response?.data}');
+            '_syncMessages DioException: status=${e.response?.statusCode}, type=${e.type}');
       } catch (e) {
         logWarning('_syncMessages error: $e');
       } finally {
@@ -1212,6 +1365,59 @@ class ChatRepositoryImpl implements ChatRepository {
   }
 
   @override
+  Future<void> resendFailedMessages() async {
+    if (_resendInFlight) return;
+    _resendInFlight = true;
+    try {
+      final failed = await _local.getFailedOutgoingMessages();
+      if (failed.isEmpty) return;
+
+      SharedPreferences? prefs;
+      for (final message in failed) {
+        // آپلودِ ناتمام (فایل محلی هست ولی هنوز URL ندارد) از این مسیر رد
+        // نمی‌شود؛ نیازمند upload pipeline است، نه resend ساده‌ی متن.
+        final needsUpload = (message.localFilePath?.isNotEmpty ?? false) &&
+            (message.attachmentUrl?.isEmpty ?? true);
+        if (needsUpload) continue;
+
+        // کلید عمومی مخاطب برای secret chat — بدون آن، resend یک پیام E2EE
+        // به‌صورت plaintext ارسال می‌شود (همان باگی که در resend دستی رفع شد).
+        prefs ??= await SharedPreferences.getInstance();
+        final recipientPublicKey =
+            prefs.getString('e2e_peer_pub_${message.conversationId}');
+
+        final payload = MessagePayload(
+          conversationId: message.conversationId,
+          content: message.content,
+          id: message.id, // همان id → سرور upsert، بدون duplicate
+          recipientPublicKey: recipientPublicKey,
+          attachmentUrl: message.attachmentUrl,
+          attachmentType: message.attachmentType,
+          attachmentFileName: message.attachmentFileName,
+          attachmentMimeType: message.attachmentMimeType,
+          attachmentSizeBytes: message.attachmentSizeBytes,
+          audioTitle: message.audioTitle,
+          audioArtist: message.audioArtist,
+          audioAlbum: message.audioAlbum,
+          duration: message.duration,
+          replyToMessageId: message.replyToMessageId,
+          replyToContent: message.replyToContent,
+          replyToSenderName: message.replyToSenderName,
+          mediaGroupId: message.mediaGroupId,
+        );
+
+        // ترتیبی می‌فرستیم تا یک burst به بکند نخورد؛ شکست هر کدام دوباره
+        // isFailed می‌شود و در reconnect بعدی retry خواهد شد.
+        await sendMessage(payload);
+      }
+    } catch (e) {
+      logWarning('resendFailedMessages failed', error: e);
+    } finally {
+      _resendInFlight = false;
+    }
+  }
+
+  @override
   Future<void> cacheConversationProfile({
     required String conversationId,
     String? otherUserId,
@@ -1233,10 +1439,17 @@ class ChatRepositoryImpl implements ChatRepository {
   @override
   void dispose() {
     _heartbeatTimer?.cancel();
+    _convSyncTimer?.cancel();
+    for (final timer in _msgSyncTimers.values) {
+      timer?.cancel();
+    }
+    _msgSyncTimers.clear();
+    _msgSyncInFlight.clear();
+    unawaited(_realtimeStateSubscription.cancel());
     if (_activeConversationId != null) {
       unawaited(_setPresence(_activeConversationId!, false));
     }
-    // SseManager singleton Ø±Ùˆ dispose Ù†Ú©Ù† â€” Ø¨Ø±Ø§ÛŒ Ù‡Ù…Ù‡ Ø¨Ø±Ù†Ø§Ù…Ù‡ Ø²Ù†Ø¯Ù‡â€ŒØ³Øª
+    // SseManager singleton رو dispose نکن — برای همه برنامه زنده‌ست
   }
 
   @override
@@ -1247,6 +1460,9 @@ class ChatRepositoryImpl implements ChatRepository {
     await _local.clearMessages(conversationId);
     await _local.deleteConversation(conversationId);
     _msgSyncInFlight.remove(conversationId);
+    _msgSyncTimers.remove(conversationId)?.cancel();
+    _messageNextCursors.remove(conversationId);
+    _messageHasMore.remove(conversationId);
   }
 
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
@@ -1344,6 +1560,16 @@ class ChatRepositoryImpl implements ChatRepository {
     }
   }
 
+  void _captureMessagePageState(
+      String conversationId, Map<String, dynamic> response) {
+    final nextCursor = response['next_cursor']?.toString();
+    final hasMore = response['has_more'];
+    _messageNextCursors[conversationId] =
+        nextCursor == null || nextCursor.isEmpty ? null : nextCursor;
+    _messageHasMore[conversationId] =
+        hasMore is bool ? hasMore : nextCursor != null && nextCursor.isNotEmpty;
+  }
+
   Map<String, List<String>> _reactionMap(List<dynamic> raw) {
     final map = <String, List<String>>{};
     for (final item in raw.whereType<Map>()) {
@@ -1438,6 +1664,9 @@ class ChatRepositoryImpl implements ChatRepository {
   String? _preferStoryReplyContent(String? server, String? local) {
     final serverValue = server?.trim() ?? '';
     final localValue = local?.trim() ?? '';
+    if (E2EEncryptionService().isEncryptedEnvelope(serverValue)) {
+      return serverValue;
+    }
     if (localValue.startsWith('{') && !serverValue.startsWith('{')) {
       return localValue;
     }
@@ -1602,7 +1831,7 @@ class ChatRepositoryImpl implements ChatRepository {
     final status = e.response?.statusCode;
     final data = e.response?.data;
     logError(
-        'DioException: status=$status, data=$data, url=${e.requestOptions.path}');
+        'DioException: status=$status, type=${e.type}, path=${e.requestOptions.path}');
 
     if (status == null) {
       switch (e.type) {
@@ -1617,21 +1846,20 @@ class ChatRepositoryImpl implements ChatRepository {
       }
     }
 
+    // سرور دو شکل envelope دارد:
+    //   nested → {"error": {"code": "...", "message": "پیام فارسی"}}
+    //   flat   → {"error": "متن خطا"}
+    // پیام فارسی سرور همیشه بر متن عمومی مقدم است.
+    final serverMessage = _serverErrorMessage(data);
+    if (serverMessage != null && serverMessage.isNotEmpty) {
+      if (status == 500) logError('Chat server returned HTTP 500');
+      return serverMessage;
+    }
+
     if (status == 500) {
-      logError('Server Error 500: $data');
-      if (data is Map && data['error'] != null) {
-        return data['error'].toString();
-      }
-      return 'خطای داخلی سرور رخ داد. $data';
+      logError('Chat server returned HTTP 500');
+      return 'خطای داخلی سرور رخ داد.';
     }
-
-    if (status == 400) {
-      logError('Bad Request 400: $data');
-      if (data is Map && data['error'] != null) {
-        return data['error'].toString();
-      }
-    }
-
     if (status == 429) {
       return 'تعداد درخواست‌ها بیش از حد مجاز است. لطفاً کمی صبر کنید.';
     }
@@ -1639,6 +1867,21 @@ class ChatRepositoryImpl implements ChatRepository {
     if (status == 404) return 'آیتم مورد نظر یافت نشد';
     if (status == 401) return 'لطفاً دوباره وارد شوید';
     return e.message ?? 'خطا در ارتباط با سرور';
+  }
+
+  /// هر دو شکل envelope خطا را باز می‌کند؛ روی nested، فیلد message (فارسی)
+  /// را برمی‌گرداند نه Map.toString().
+  String? _serverErrorMessage(dynamic data) {
+    if (data is! Map) return null;
+    final err = data['error'];
+    if (err is String) return err.trim().isEmpty ? null : err;
+    if (err is Map) {
+      final msg = err['message']?.toString();
+      if (msg != null && msg.trim().isNotEmpty) return msg;
+      final code = err['code']?.toString();
+      if (code != null && code.trim().isNotEmpty) return code;
+    }
+    return null;
   }
 
   int _retryAfterSeconds(String? retryAfterHeader) {

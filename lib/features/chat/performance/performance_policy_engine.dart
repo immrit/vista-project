@@ -136,7 +136,14 @@ class PerformancePolicyEngine {
     required bool isFastScrolling,
   }) {
     if (reduceMotionHard) return ChatEffectsLevel.low;
-    if (!canRunAdaptive || !dynamicEffectsEnabled) {
+    // Disabling the rollout restores the legacy full-effects policy. Dynamic
+    // effects remains an explicit user safety switch and still scales down.
+    if (!canRunAdaptive) {
+      return gpuAccelerationEnabled
+          ? ChatEffectsLevel.high
+          : ChatEffectsLevel.medium;
+    }
+    if (!dynamicEffectsEnabled) {
       return gpuAccelerationEnabled
           ? ChatEffectsLevel.medium
           : ChatEffectsLevel.low;

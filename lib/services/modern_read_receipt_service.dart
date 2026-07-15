@@ -164,9 +164,8 @@ class ModernReadReceiptService {
   void _ensureSseSubscription() {
     if (_sseSubscription != null) return;
     SseManager.instance.start();
-    _sseSubscription = SseManager.instance.events.listen(
+    _sseSubscription = SseManager.instance.eventsOfType('read_receipt').listen(
       (event) async {
-        if (event['type'] != 'read_receipt') return;
         final data = event['data'];
         if (data is! Map) return;
 

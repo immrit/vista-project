@@ -144,22 +144,22 @@ class RetryQueueService {
         return _deleteMediaObject(item);
       }
 
+      // NOTE: chat operations are NOT handled here. They have their own
+      // optimistic + auto-resend path in ChatRepositoryImpl
+      // (resendFailedMessages() on reconnect), which is E2EE-aware. Nothing
+      // enqueues these types today; returning `true` used to report a FAKE
+      // success (message silently dropped). Return `false` so — if ever
+      // enqueued — the item is not silently marked completed.
       switch (item.type) {
         case RetryOperationType.sendMessage:
-          debugPrint('Syncing Message: ${item.payload['content']}');
-          return true;
         case RetryOperationType.uploadFile:
-          debugPrint('Syncing File Upload: ${item.payload['file_name']}');
-          return true;
         case RetryOperationType.deleteMessage:
-          debugPrint('Syncing Message Deletion: ${item.payload['message_id']}');
-          return true;
         case RetryOperationType.editMessage:
-          debugPrint('Syncing Message Edit: ${item.payload['new_content']}');
-          return true;
         case RetryOperationType.toggleReaction:
-          debugPrint('Syncing Message Reaction: ${item.payload['emoji']}');
-          return true;
+          debugPrint(
+              '⚠️ RetryQueueService: chat op ${item.type.name} is handled by '
+              'ChatRepositoryImpl, not the retry queue — skipping.');
+          return false;
       }
     } catch (e) {
       debugPrint('Error syncing task ${item.id}: $e');

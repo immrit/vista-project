@@ -3,6 +3,7 @@ import 'dart:math';
 import 'dart:typed_data';
 import 'package:cryptography/cryptography.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:Vista/security/secure_kv_store.dart';
 
 /// End-to-end encryption service for secret chats.
 ///
@@ -33,6 +34,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 class E2EEncryptionService {
   final _algorithm = X25519(); // Elliptic Curve Diffie-Hellman
   final _cipher = AesGcm.with256bits();
+  final _legacyV1Cipher = Chacha20.poly1305Aead();
 
   // Explicit Android options. On flutter_secure_storage v10 the defaults are
   // already AES/GCM/NoPadding for data + RSA-OAEP-SHA256 for key wrapping
@@ -44,6 +46,8 @@ class E2EEncryptionService {
 
   /// Envelope version tag for v1 (HKDF per-message key) ciphertext.
   static const String _kEnvelopeV1 = 'VE2E1:';
+  static const String _kEnvelopeV2 = 'VE2E2:';
+  static const String _kLegacyEnvelopeV1 = 'e2ee:v1:';
 
   /// HKDF context string — binds derived keys to this app/protocol version.
   static const String _kHkdfInfo = 'vista-e2e-msg-v1';
@@ -77,8 +81,27 @@ class E2EEncryptionService {
 
   /// بازیابی جفت کلید ذخیره شده
   Future<SimpleKeyPair?> getSavedKeyPair(String userId) async {
-    final privB64 = await _storage.read(key: 'e2e_priv_$userId');
-    final pubB64 = await _storage.read(key: 'e2e_pub_$userId');
+    var privB64 = await _storage.read(key: 'e2e_priv_$userId');
+    var pubB64 = await _storage.read(key: 'e2e_pub_$userId');
+
+    // Repository sends historically used E2EEService, whose X25519 pair lived
+    // under global legacy keys. Reuse and copy that pair instead of silently
+    // rotating identity and making every existing conversation undecryptable.
+    if (privB64 == null || pubB64 == null) {
+      final legacyPriv = await SecureKeyValueStore.read('e2ee_private_key');
+      final legacyPub = await SecureKeyValueStore.read('e2ee_public_key');
+      if (legacyPriv != null && legacyPub != null) {
+        privB64 = legacyPriv;
+        pubB64 = legacyPub;
+        try {
+          await _storage.write(key: 'e2e_priv_$userId', value: legacyPriv);
+          await _storage.write(key: 'e2e_pub_$userId', value: legacyPub);
+        } catch (_) {
+          // The legacy secure-store pair is still usable for this session.
+          // A later startup can retry the non-destructive copy.
+        }
+      }
+    }
 
     if (privB64 == null || pubB64 == null) return null;
 
@@ -141,7 +164,10 @@ class E2EEncryptionService {
 
   /// رمزنگاری پیام متنی (v1 envelope: HKDF per-message key + AES-256-GCM)
   Future<String> encryptMessage(
-      String plainText, SecretKey sharedSecret) async {
+    String plainText,
+    SecretKey sharedSecret, {
+    String? binding,
+  }) async {
     final salt = _randomBytes(_kSaltLength);
     final messageKey = await _deriveMessageKey(sharedSecret, salt);
 
@@ -149,6 +175,7 @@ class E2EEncryptionService {
     final secretBox = await _cipher.encrypt(
       clearTextBytes,
       secretKey: messageKey,
+      aad: binding == null ? const <int>[] : utf8.encode(binding),
     );
 
     // ساختار: [salt(16)] + [nonce_length (1)] + [nonce] + [mac_length (1)] + [mac] + [cipher_text]
@@ -160,7 +187,8 @@ class E2EEncryptionService {
     buffer.add(secretBox.mac.bytes);
     buffer.add(secretBox.cipherText);
 
-    return _kEnvelopeV1 + base64Encode(buffer.toBytes());
+    final prefix = binding == null ? _kEnvelopeV1 : _kEnvelopeV2;
+    return prefix + base64Encode(buffer.toBytes());
   }
 
   /// رمزگشایی پیام متنی.
@@ -169,14 +197,57 @@ class E2EEncryptionService {
   /// verification (tampering or wrong key) — callers can surface a tamper
   /// warning. For legacy/plaintext, returns best-effort (see class docs).
   Future<String> decryptMessage(
-      String encrypted, SecretKey sharedSecret) async {
+    String encrypted,
+    SecretKey sharedSecret, {
+    String? binding,
+  }) async {
+    if (encrypted.startsWith(_kLegacyEnvelopeV1)) {
+      return _decryptLegacyV1(
+          encrypted.substring(_kLegacyEnvelopeV1.length), sharedSecret);
+    }
+    if (encrypted.startsWith(_kEnvelopeV2)) {
+      if (binding == null || binding.isEmpty) {
+        throw const E2EDecryptException('v2 binding is required');
+      }
+      return _decryptEnvelope(
+        encrypted.substring(_kEnvelopeV2.length),
+        sharedSecret,
+        aad: utf8.encode(binding),
+      );
+    }
     if (encrypted.startsWith(_kEnvelopeV1)) {
-      return _decryptV1(encrypted.substring(_kEnvelopeV1.length), sharedSecret);
+      return _decryptEnvelope(
+          encrypted.substring(_kEnvelopeV1.length), sharedSecret);
     }
     return _decryptLegacy(encrypted, sharedSecret);
   }
 
-  Future<String> _decryptV1(String b64, SecretKey sharedSecret) async {
+  Future<String> _decryptLegacyV1(String b64, SecretKey sharedSecret) async {
+    try {
+      final bytes = base64Decode(b64);
+      const nonceLength = 12;
+      const macLength = 16;
+      if (bytes.length <= nonceLength + macLength) {
+        throw const FormatException('legacy v1 payload too short');
+      }
+      final nonce = bytes.sublist(0, nonceLength);
+      final cipherText = bytes.sublist(nonceLength, bytes.length - macLength);
+      final macBytes = bytes.sublist(bytes.length - macLength);
+      final clearText = await _legacyV1Cipher.decrypt(
+        SecretBox(cipherText, nonce: nonce, mac: Mac(macBytes)),
+        secretKey: sharedSecret,
+      );
+      return utf8.decode(clearText);
+    } catch (_) {
+      throw const E2EDecryptException('legacy v1 decrypt failed');
+    }
+  }
+
+  Future<String> _decryptEnvelope(
+    String b64,
+    SecretKey sharedSecret, {
+    List<int> aad = const <int>[],
+  }) async {
     final Uint8List bytes;
     try {
       bytes = base64Decode(b64);
@@ -202,6 +273,7 @@ class E2EEncryptionService {
       final clearTextBytes = await _cipher.decrypt(
         SecretBox(cipherText, nonce: nonce, mac: Mac(macBytes)),
         secretKey: messageKey,
+        aad: aad,
       );
       return utf8.decode(clearTextBytes);
     } on SecretBoxAuthenticationError {
@@ -212,9 +284,8 @@ class E2EEncryptionService {
     }
   }
 
-  /// Legacy (pre-v1) path: raw shared secret used directly as the AES key, no
-  /// version prefix. MAC verification is the oracle — failure means the bytes
-  /// were never ciphertext (i.e. plaintext), so return them unchanged.
+  /// Legacy unprefixed AES-GCM path. Failure stays fail-closed; callers decide
+  /// whether the conversation is E2EE before invoking this service.
   Future<String> _decryptLegacy(
       String encrypted, SecretKey sharedSecret) async {
     try {
@@ -238,13 +309,24 @@ class E2EEncryptionService {
       return utf8.decode(clearTextBytes);
     } catch (_) {
       // Not legacy ciphertext (MAC mismatch / not base64) → treat as plaintext.
-      return encrypted;
+      throw const E2EDecryptException('legacy decrypt failed');
     }
   }
 
   /// Whether [content] is a v1-encrypted envelope. Replaces the old
   /// length/space heuristic with an exact prefix check.
-  bool isEncryptedEnvelope(String content) => content.startsWith(_kEnvelopeV1);
+  bool isEncryptedEnvelope(String content) =>
+      content.startsWith(_kEnvelopeV1) ||
+      content.startsWith(_kEnvelopeV2) ||
+      content.startsWith(_kLegacyEnvelopeV1);
+
+  static String messageBinding({
+    required String conversationId,
+    required String senderId,
+    required String messageId,
+    String field = 'content',
+  }) =>
+      'vista-e2ee-v2|$conversationId|$senderId|$messageId|$field';
 
   /// Safety number (fingerprint) for out-of-band verification — defends against
   /// MITM key substitution. Both peers compute the SAME number by hashing the

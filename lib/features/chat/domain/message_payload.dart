@@ -19,6 +19,7 @@ class MessagePayload {
   final String? replyToKind;
   final String? mediaGroupId;
   final String? recipientPublicKey; // برای E2EE
+  final bool requireEncryption;
 
   MessagePayload({
     required this.conversationId,
@@ -39,5 +40,6 @@ class MessagePayload {
     this.replyToKind,
     this.mediaGroupId,
     this.recipientPublicKey,
+    this.requireEncryption = false,
   });
 }

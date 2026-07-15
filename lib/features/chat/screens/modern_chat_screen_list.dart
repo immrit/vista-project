@@ -293,9 +293,9 @@ extension _ModernChatListExt on _ModernChatScreenState {
                   behavior: HitTestBehavior.opaque,
                   onTap: () => _openGroupSenderProfile(message),
                   child: Padding(
-                    padding: const EdgeInsets.only(
-                      left: 14,
-                      right: 12,
+                    padding: const EdgeInsetsDirectional.only(
+                      start: 14,
+                      end: 12,
                       top: 2,
                       bottom: 1,
                     ),

@@ -447,8 +447,11 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
               if (!widget.isSecretMode &&
                   _isNetworkUrl &&
                   _transferTask != null)
+                // گوشه‌ی مقابلِ پیل ساعت — قبلاً هر دو در یک گوشه بودند و روی
+                // مدیای دریافتیِ در حال دانلود روی هم می‌افتادند.
                 Positioned(
-                  left: 8,
+                  left: widget.isMe ? 8 : null,
+                  right: widget.isMe ? null : 8,
                   bottom: 8,
                   child: _buildTransferControls(),
                 ),
@@ -714,7 +717,9 @@ class _MediaMessageBubbleState extends ConsumerState<MediaMessageBubble> {
   }
 
   Widget _buildCaption(ChatTheme theme) {
-    final captionDirection = kChatLayoutTextDirection;
+    // جهت متن کپشن باید از محتوای خودش دربیاید — LTR ثابت، کپشن فارسی را
+    // چپ‌چین و به‌هم‌ریخته نشان می‌داد.
+    final captionDirection = resolveChatTextDirection(widget.caption);
 
     return Container(
         padding: const EdgeInsets.fromLTRB(

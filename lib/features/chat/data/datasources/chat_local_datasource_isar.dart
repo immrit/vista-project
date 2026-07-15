@@ -551,6 +551,19 @@ class ChatLocalDataSourceIsar {
     return entity?.toModel();
   }
 
+  /// پیام‌های خروجیِ ناموفق (isMe && isFailed) برای ارسال مجدد خودکار پس از
+  /// برقراری دوباره‌ی اتصال. قدیمی‌ترین اول تا ترتیب مکالمه حفظ شود.
+  Future<List<MessageModel>> getFailedOutgoingMessages() async {
+    final isar = await _dbManager.instance;
+    final entities = await isar.messageEntitys
+        .filter()
+        .isMeEqualTo(true)
+        .isFailedEqualTo(true)
+        .sortByCreatedAt()
+        .findAll();
+    return entities.map((e) => e.toModel()).toList();
+  }
+
   Future<void> updateUploadProgress(String messageId, double progress) async {
     final now = DateTime.now().millisecondsSinceEpoch;
     final clamped = progress.clamp(0.0, 1.0).toDouble();

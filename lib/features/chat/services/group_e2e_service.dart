@@ -157,8 +157,18 @@ class GroupE2EService {
 
       return utf8.decode(clearTextBytes);
     } catch (_) {
-      // If decryption fails (tampering, wrong key, truncated), return raw
-      return cipherText;
+      // MAC failure / truncation on a v1 envelope means tampering or a wrong
+      // key. Never hand ciphertext to the UI as if it were the message body —
+      // surface an explicit tamper marker instead (mirrors E2EEService).
+      throw const GroupE2ETamperException();
     }
   }
+}
+
+/// Thrown when a v1 group envelope fails authentication (tamper/wrong key).
+class GroupE2ETamperException implements Exception {
+  const GroupE2ETamperException();
+
+  @override
+  String toString() => 'GroupE2ETamperException: MAC verification failed';
 }

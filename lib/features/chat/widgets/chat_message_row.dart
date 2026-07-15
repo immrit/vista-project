@@ -155,7 +155,7 @@ class ChatMessageRow extends ConsumerWidget {
           children: [
             if (selection.isSelectionMode)
               Padding(
-                padding: const EdgeInsets.only(right: 8),
+                padding: const EdgeInsetsDirectional.only(end: 8),
                 child: _SelectionCheckbox(
                   selected: isRowSelected,
                   onTap: () => bindings.onToggleRenderItemSelection(

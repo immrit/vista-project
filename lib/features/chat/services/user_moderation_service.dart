@@ -125,7 +125,7 @@ class UserModerationService {
       if (DateTime.now().difference(cached.cachedAt) < _cacheDuration) {
         return cached.status;
       }
-      _blockCache.remove(userId);
+      // منقضی‌شده را حذف نکن؛ در صورت خطای شبکه به‌عنوان fallback لازم است.
     }
     try {
       final response = await _dio.get(
@@ -143,6 +143,10 @@ class UserModerationService {
       return status;
     } catch (e, stack) {
       logError('Failed to load block status', error: e, stackTrace: stack);
+      // fail-open کامل نباش: اگر مقدار کش‌شده (حتی منقضی) داریم، همان را نگه
+      // دار — «هیچ بلاکی نیست» گفتن روی خطای شبکه، UI بلاک را اشتباه باز می‌کند.
+      final stale = _blockCache[userId];
+      if (stale != null) return stale.status;
       return BlockStatus.noBlock();
     }
   }

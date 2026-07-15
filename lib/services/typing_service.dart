@@ -109,9 +109,8 @@ class TypingService {
   void _ensureSseSubscription() {
     if (_sseSubscription != null || _isDisposed) return;
     SseManager.instance.start();
-    _sseSubscription = SseManager.instance.events.listen(
+    _sseSubscription = SseManager.instance.eventsOfType('typing').listen(
       (event) {
-        if (event['type'] != 'typing') return;
         final data = event['data'];
         if (data is! Map) return;
 

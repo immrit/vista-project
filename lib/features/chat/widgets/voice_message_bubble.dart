@@ -286,7 +286,7 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble>
     final showTrackMeta =
         (widget.attachmentType ?? '').toLowerCase() == 'audio' &&
             (playbackTitle.isNotEmpty || playbackArtist.isNotEmpty);
-    final captionDirection = kChatLayoutTextDirection;
+    final captionDirection = resolveChatTextDirection(widget.caption);
 
     return Container(
       constraints: const BoxConstraints(maxWidth: 280, minWidth: 200),

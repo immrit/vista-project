@@ -147,7 +147,7 @@ class _FileMessageBubbleState extends State<FileMessageBubble> {
     final primaryForeground = widget.isMe
         ? (isLightOutgoing ? const Color(0xFF1E293B) : Colors.white)
         : theme.textColor;
-    final captionDirection = kChatLayoutTextDirection;
+    final captionDirection = resolveChatTextDirection(widget.caption);
 
     return Container(
       constraints: const BoxConstraints(maxWidth: 285, minWidth: 220),

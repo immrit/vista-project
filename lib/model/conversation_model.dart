@@ -222,7 +222,10 @@ class ConversationModel {
       );
     } catch (e) {
       logInfo('❌ خطا در تبدیل JSON به ConversationModel: $e');
-      logInfo('📄 JSON داده: $json');
+      // Never log the raw conversation payload: it can contain message text,
+      // participant PII, media URLs, or secret-chat ciphertext.
+      logInfo(
+          'Conversation parse context: type=${json['conversation_type'] ?? json['type'] ?? 'missing'}');
       return ConversationModel.empty().copyWith(
         id: 'err_${DateTime.now().millisecondsSinceEpoch}',
         lastMessage: 'خطا در بارگزاری: $e',

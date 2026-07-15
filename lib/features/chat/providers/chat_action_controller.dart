@@ -79,6 +79,7 @@ class ChatActionController extends _$ChatActionController {
     String? replyToKind,
     String? mediaGroupId,
     String? recipientPublicKey,
+    bool requireEncryption = false,
   }) async {
     if (!await SessionManagerServiceV2.instance.ensureValidAuthSession()) {
       return const ActionResult.failure('User not logged in');
@@ -105,6 +106,7 @@ class ChatActionController extends _$ChatActionController {
       replyToKind: replyToKind,
       mediaGroupId: mediaGroupId,
       recipientPublicKey: recipientPublicKey,
+      requireEncryption: requireEncryption,
     );
 
     // Reset action state immediately — don't block UI waiting for HTTP response.

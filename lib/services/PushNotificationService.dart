@@ -22,6 +22,7 @@ import 'notification_navigation_service.dart';
 import 'session_manager_service_v2.dart';
 import 'current_chat_tracker.dart';
 import 'local_notification_center.dart';
+import 'notification_id.dart';
 import '../features/chat/data/datasources/chat_local_datasource_isar.dart';
 import '../features/chat/services/e2e_encryption_service.dart';
 import '../features/auth/providers/auth_controller.dart' show TokenStorage;
@@ -53,6 +54,9 @@ class PushNotificationService {
   static const String _fcmSyncEpochAckKey = 'fcm_sync_epoch_ack';
   static const String _fcmLastSyncOkMsKey = 'fcm_last_sync_ok_ms';
   static const String _fcmLastSyncedTokenKey = 'fcm_last_synced_token';
+  static const String _chatReadWatermarkPrefix = 'chat_notification_read_at:';
+  static const String _chatLatestNotificationPrefix =
+      'chat_notification_latest_at:';
   static const Duration _fcmMinRetryInterval = Duration(minutes: 5);
   static DateTime? _lastFcmAttemptAt;
   static int? _lastSeenSystemEpoch;
@@ -125,7 +129,38 @@ class PushNotificationService {
 
   Future<void> cancelConversationNotification(String conversationId) async {
     if (conversationId.isEmpty) return;
-    await _flutterLocalNotifications.cancel(id: conversationId.hashCode);
+    await _flutterLocalNotifications.cancel(
+      id: stableConversationNotificationId(conversationId),
+      tag: conversationId,
+    );
+  }
+
+  Future<bool> _handleNotificationControl(RemoteMessage message) async {
+    if (message.data['type']?.toString() != 'chat_notification_clear') {
+      return false;
+    }
+    final conversationId = message.data['conversation_id']?.toString() ?? '';
+    if (conversationId.isNotEmpty) {
+      final readAt = DateTime.tryParse(
+            message.data['read_at']?.toString() ?? '',
+          )?.toUtc() ??
+          DateTime.now().toUtc();
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        '$_chatReadWatermarkPrefix$conversationId',
+        readAt.toIso8601String(),
+      );
+      final latestMessageAt = DateTime.tryParse(
+        prefs.getString('$_chatLatestNotificationPrefix$conversationId') ?? '',
+      )?.toUtc();
+      if (shouldClearLatestChatNotification(latestMessageAt, readAt)) {
+        await cancelConversationNotification(conversationId);
+        logInfo('🧹 Cleared read chat notification for $conversationId');
+      } else {
+        logInfo('ℹ️ Kept newer chat notification for $conversationId');
+      }
+    }
+    return true;
   }
 
   static bool _isActionPersistable(NotificationResponse details) {
@@ -430,8 +465,9 @@ class PushNotificationService {
 
       _onMessageSubscription = FirebaseMessaging.onMessage.listen((
         RemoteMessage message,
-      ) {
+      ) async {
         logInfo('📱 Foreground Message: ${message.data}');
+        if (await _handleNotificationControl(message)) return;
         if (_isRecentDuplicate(message)) {
           logInfo('⚠️ Duplicate FCM ignored in foreground');
           return;
@@ -464,6 +500,7 @@ class PushNotificationService {
   Future<void> showBackgroundNotification(RemoteMessage message) async {
     // حیاتی: در بک‌گراند باید دستی Init کنیم تا استایل‌ها و اکشن‌ها کار کنند
     await _ensureInitialized();
+    if (await _handleNotificationControl(message)) return;
     if (_isRecentDuplicate(message)) {
       logInfo('⚠️ Duplicate background FCM ignored');
       return;
@@ -509,18 +546,86 @@ class PushNotificationService {
       // ✅ Fallback: Save to Local DB immediately
       await _saveMessageToLocalDB(data);
 
+      if (await _isCoveredByChatReadWatermark(data)) {
+        logInfo('🔕 Old chat notification suppressed by read watermark');
+        return;
+      }
+      if (await _isOlderThanLatestChatNotification(data)) {
+        logInfo('🔕 Out-of-order older chat notification suppressed');
+        return;
+      }
+
       if (await _shouldShowNotification('chat')) {
+        await _recordLatestChatNotification(data);
         await _showMessagingStyleNotification(data);
       } else {
-        logInfo('🔕 Notification suppressed by global settings or quiet hours.');
+        logInfo(
+            '🔕 Notification suppressed by global settings or quiet hours.');
       }
     } else {
       if (await _shouldShowNotification('social')) {
         await _showStandardNotification(message);
       } else {
-        logInfo('🔕 Notification suppressed by global settings or quiet hours.');
+        logInfo(
+            '🔕 Notification suppressed by global settings or quiet hours.');
       }
     }
+  }
+
+  Future<bool> _isCoveredByChatReadWatermark(
+    Map<String, dynamic> data,
+  ) async {
+    final conversationId = data['conversation_id']?.toString() ?? '';
+    if (conversationId.isEmpty) return false;
+    final createdAt = _chatMessageCreatedAt(data);
+    if (createdAt == null) return false;
+
+    final prefs = await SharedPreferences.getInstance();
+    final watermark = DateTime.tryParse(
+      prefs.getString('$_chatReadWatermarkPrefix$conversationId') ?? '',
+    )?.toUtc();
+    return watermark != null && isAtOrBeforeReadWatermark(createdAt, watermark);
+  }
+
+  Future<void> _recordLatestChatNotification(
+    Map<String, dynamic> data,
+  ) async {
+    final conversationId = data['conversation_id']?.toString() ?? '';
+    final createdAt = _chatMessageCreatedAt(data);
+    if (conversationId.isEmpty || createdAt == null) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      '$_chatLatestNotificationPrefix$conversationId',
+      createdAt.toIso8601String(),
+    );
+  }
+
+  Future<bool> _isOlderThanLatestChatNotification(
+    Map<String, dynamic> data,
+  ) async {
+    final conversationId = data['conversation_id']?.toString() ?? '';
+    final createdAt = _chatMessageCreatedAt(data);
+    if (conversationId.isEmpty || createdAt == null) return false;
+    final prefs = await SharedPreferences.getInstance();
+    final latestMessageAt = DateTime.tryParse(
+      prefs.getString('$_chatLatestNotificationPrefix$conversationId') ?? '',
+    )?.toUtc();
+    return isChatMessageOlderThanLatestNotification(
+      createdAt,
+      latestMessageAt,
+    );
+  }
+
+  DateTime? _chatMessageCreatedAt(Map<String, dynamic> data) {
+    final rawCreatedAt = data['created_at']?.toString() ?? '';
+    final parsedCreatedAt = DateTime.tryParse(rawCreatedAt)?.toUtc();
+    if (parsedCreatedAt != null) return parsedCreatedAt;
+    final rawTimestamp = data['timestamp'];
+    final millis = rawTimestamp is int
+        ? rawTimestamp
+        : int.tryParse(rawTimestamp?.toString() ?? '');
+    if (millis == null) return null;
+    return DateTime.fromMillisecondsSinceEpoch(millis, isUtc: true);
   }
 
   /// ✅ Fallback: Save incoming FCM message to Isar
@@ -615,21 +720,22 @@ class PushNotificationService {
     if (conversationId == null || conversationId.isEmpty) return;
     if (_isChatForActiveConversation(data)) return;
 
-    final int notificationId = conversationId.hashCode;
+    final int notificationId = stableConversationNotificationId(conversationId);
     final String groupKey = conversationId;
-    
+
     // واکشی اطلاعات مکالمه از دیتابیس لوکال برای تشخیص گروه و استخراج اطلاعات
     final localSource = ChatLocalDataSourceIsar();
     final conversation = await localSource.getConversation(conversationId, '');
-    
+
     // ۱. بررسی میوت بودن خود گروه/پی‌وی
     if (conversation?.isMuted == true) {
       logInfo('🔕 Notification suppressed: conversation is muted.');
       return;
     }
 
-    final bool isGroup = conversation?.isGroup == true || data['is_group'] == 'true';
-    
+    final bool isGroup =
+        conversation?.isGroup == true || data['is_group'] == 'true';
+
     String senderName = data['sender_name']?.toString() ?? 'کاربر';
     String messageContent = _buildReadableMessageBody(
       data,
@@ -639,13 +745,16 @@ class PushNotificationService {
       data['sender_avatar'],
       data['avatar_url'] ?? data['actor_avatar'],
     );
-    
+
     String? groupAvatarUrl;
     String? conversationTitle;
 
     if (isGroup) {
-      conversationTitle = conversation?.otherUserName ?? data['group_name']?.toString() ?? senderName;
-      groupAvatarUrl = AvatarAssetUtils.resolveUrl(conversation?.otherUserAvatar);
+      conversationTitle = conversation?.otherUserName ??
+          data['group_name']?.toString() ??
+          senderName;
+      groupAvatarUrl =
+          AvatarAssetUtils.resolveUrl(conversation?.otherUserAvatar);
 
       // در صورتی که نام ارسال کننده همان نام گروه باشد و پیام فرمت نام: محتوا داشته باشد
       if (conversationTitle == senderName && messageContent.contains(': ')) {
@@ -653,17 +762,19 @@ class PushNotificationService {
         senderName = parts[0];
         messageContent = parts.sublist(1).join(': ');
       }
-      
+
       // تلاش برای دریافت آخرین پیام از دیتابیس لوکال برای دقت بیشتر در مشخصات فرستنده
       try {
-        final messages = await localSource.watchMessages(conversationId, '', limit: 1).first;
+        final messages =
+            await localSource.watchMessages(conversationId, '', limit: 1).first;
         if (messages.isNotEmpty) {
-           final latestMsg = messages.first;
-           if (latestMsg.id == data['message_id']) {
-               senderName = latestMsg.senderName ?? senderName;
-               senderAvatarUrl = AvatarAssetUtils.resolveUrl(latestMsg.senderAvatar);
-               messageContent = latestMsg.content;
-           }
+          final latestMsg = messages.first;
+          if (latestMsg.id == data['message_id']) {
+            senderName = latestMsg.senderName ?? senderName;
+            senderAvatarUrl =
+                AvatarAssetUtils.resolveUrl(latestMsg.senderAvatar);
+            messageContent = latestMsg.content;
+          }
         }
       } catch (_) {}
     } else {
@@ -712,7 +823,8 @@ class PushNotificationService {
       if (isGroup) {
         if (groupBytes != null && senderBytes != null) {
           // ترکیب دو عکس برای گروه (عکس گروه در پس‌زمینه و عکس فرستنده در جلو) مثل تلگرام
-          final compositeBytes = await _createGroupCompositeAvatar(groupBytes, senderBytes);
+          final compositeBytes =
+              await _createGroupCompositeAvatar(groupBytes, senderBytes);
           if (compositeBytes != null) {
             largeIcon = ByteArrayAndroidBitmap(compositeBytes);
           } else {
@@ -730,7 +842,8 @@ class PushNotificationService {
                 height: size,
               );
               final circled = img.copyCropCircle(squared, radius: size ~/ 2);
-              largeIcon = ByteArrayAndroidBitmap(Uint8List.fromList(img.encodePng(circled)));
+              largeIcon = ByteArrayAndroidBitmap(
+                  Uint8List.fromList(img.encodePng(circled)));
             } else {
               largeIcon = ByteArrayAndroidBitmap(groupBytes);
             }
@@ -750,37 +863,39 @@ class PushNotificationService {
               height: size,
             );
             final circled = img.copyCropCircle(squared, radius: size ~/ 2);
-            largeIcon = ByteArrayAndroidBitmap(Uint8List.fromList(img.encodePng(circled)));
+            largeIcon = ByteArrayAndroidBitmap(
+                Uint8List.fromList(img.encodePng(circled)));
           } else {
             largeIcon = ByteArrayAndroidBitmap(groupBytes);
           }
         } else if (personIcon != null && senderBytes != null) {
-           // در نبود عکس گروه، عکس فرستنده را به عنوان آیکون بزرگ می‌گذاریم
-           final decodedSender = img.decodeImage(senderBytes);
-           if (decodedSender != null) {
-             final int size = decodedSender.width < decodedSender.height
-                 ? decodedSender.width
-                 : decodedSender.height;
-             final squared = img.copyCrop(
-               decodedSender,
-               x: (decodedSender.width - size) ~/ 2,
-               y: (decodedSender.height - size) ~/ 2,
-               width: size,
-               height: size,
-             );
-             final circled = img.copyCropCircle(squared, radius: size ~/ 2);
-             largeIcon = ByteArrayAndroidBitmap(Uint8List.fromList(img.encodePng(circled)));
-           } else {
-             largeIcon = ByteArrayAndroidBitmap(senderBytes);
-           }
+          // در نبود عکس گروه، عکس فرستنده را به عنوان آیکون بزرگ می‌گذاریم
+          final decodedSender = img.decodeImage(senderBytes);
+          if (decodedSender != null) {
+            final int size = decodedSender.width < decodedSender.height
+                ? decodedSender.width
+                : decodedSender.height;
+            final squared = img.copyCrop(
+              decodedSender,
+              x: (decodedSender.width - size) ~/ 2,
+              y: (decodedSender.height - size) ~/ 2,
+              width: size,
+              height: size,
+            );
+            final circled = img.copyCropCircle(squared, radius: size ~/ 2);
+            largeIcon = ByteArrayAndroidBitmap(
+                Uint8List.fromList(img.encodePng(circled)));
+          } else {
+            largeIcon = ByteArrayAndroidBitmap(senderBytes);
+          }
         }
       }
     } catch (e) {
       if (senderBytes != null) personIcon = ByteArrayAndroidIcon(senderBytes);
       if (groupBytes != null && isGroup) {
-         largeIcon = ByteArrayAndroidBitmap(groupBytes);
+        largeIcon = ByteArrayAndroidBitmap(groupBytes);
       } else if (senderBytes != null && !isGroup) {
-         largeIcon = ByteArrayAndroidBitmap(senderBytes);
+        largeIcon = ByteArrayAndroidBitmap(senderBytes);
       }
     }
 
@@ -859,7 +974,8 @@ class PushNotificationService {
     );
   }
 
-  Future<Uint8List?> _createGroupCompositeAvatar(Uint8List groupBytes, Uint8List senderBytes) async {
+  Future<Uint8List?> _createGroupCompositeAvatar(
+      Uint8List groupBytes, Uint8List senderBytes) async {
     try {
       final groupImage = img.decodeImage(groupBytes);
       final senderImage = img.decodeImage(senderBytes);
@@ -871,7 +987,9 @@ class PushNotificationService {
       final int senderY = size - senderSize - 4;
 
       // ساخت دایره برای عکس گروه
-      final int gMin = groupImage.width < groupImage.height ? groupImage.width : groupImage.height;
+      final int gMin = groupImage.width < groupImage.height
+          ? groupImage.width
+          : groupImage.height;
       final gSquared = img.copyCrop(
         groupImage,
         x: (groupImage.width - gMin) ~/ 2,
@@ -883,7 +1001,9 @@ class PushNotificationService {
       final groupCircled = img.copyCropCircle(gScaled, radius: size ~/ 2);
 
       // ساخت دایره برای عکس کاربر
-      final int sMin = senderImage.width < senderImage.height ? senderImage.width : senderImage.height;
+      final int sMin = senderImage.width < senderImage.height
+          ? senderImage.width
+          : senderImage.height;
       final sSquared = img.copyCrop(
         senderImage,
         x: (senderImage.width - sMin) ~/ 2,
@@ -891,12 +1011,14 @@ class PushNotificationService {
         width: sMin,
         height: sMin,
       );
-      final sScaled = img.copyResize(sSquared, width: senderSize, height: senderSize);
-      final senderCircled = img.copyCropCircle(sScaled, radius: senderSize ~/ 2);
+      final sScaled =
+          img.copyResize(sSquared, width: senderSize, height: senderSize);
+      final senderCircled =
+          img.copyCropCircle(sScaled, radius: senderSize ~/ 2);
 
       // ساخت پس‌زمینه شفاف
       final composite = img.Image(width: size, height: size);
-      
+
       // رسم عکس گروه
       img.compositeImage(composite, groupCircled);
 
@@ -917,7 +1039,8 @@ class PushNotificationService {
       }
 
       // رسم عکس کاربر روی قسمت بریده شده
-      img.compositeImage(composite, senderCircled, dstX: senderX, dstY: senderY);
+      img.compositeImage(composite, senderCircled,
+          dstX: senderX, dstY: senderY);
 
       return Uint8List.fromList(img.encodePng(composite));
     } catch (e) {
@@ -991,6 +1114,7 @@ class PushNotificationService {
       channelDescription: 'اعلان‌های اجتماعی (لایک، کامنت، دنبال‌کننده و ...)',
       importance: Importance.high,
       priority: Priority.high,
+      onlyAlertOnce: true,
       styleInformation: style,
       largeIcon: largeIcon,
       icon: '@mipmap/ic_launcher',
@@ -1021,7 +1145,9 @@ class PushNotificationService {
             'خبر جدید';
 
     await _flutterLocalNotifications.show(
-      id: message.hashCode,
+      id: stableNotificationId(
+        'social:${data['notification_id'] ?? data['event_id'] ?? message.messageId ?? jsonEncode(data)}',
+      ),
       title: title,
       body: _shorten(body),
       notificationDetails: NotificationDetails(
@@ -1649,6 +1775,7 @@ class PushNotificationService {
       logInfo('❌ خطا در اضافه کردن اعلان به provider: $e');
     }
   }
+
   /// ✅ تابع کمکی برای بررسی تنظیمات سراسری نوتیفیکیشن و Quiet Hours
   Future<bool> _shouldShowNotification(String type) async {
     try {
@@ -1656,7 +1783,8 @@ class PushNotificationService {
       if (currentUserId == null || currentUserId.isEmpty) return true;
 
       final settingsCache = SettingsCacheService();
-      final settings = await settingsCache.getNotificationSettings(currentUserId);
+      final settings =
+          await settingsCache.getNotificationSettings(currentUserId);
       if (settings == null) return true;
 
       // بررسی نوع نوتیفیکیشن
@@ -1673,30 +1801,36 @@ class PushNotificationService {
       // بررسی Quiet Hours (ساعات سکوت)
       final bool quietHoursEnabled = settings['quiet_hours_enabled'] == true;
       if (quietHoursEnabled) {
-        final String startStr = settings['quiet_hours_start']?.toString() ?? '22:00';
-        final String endStr = settings['quiet_hours_end']?.toString() ?? '08:00';
-        
+        final String startStr =
+            settings['quiet_hours_start']?.toString() ?? '22:00';
+        final String endStr =
+            settings['quiet_hours_end']?.toString() ?? '08:00';
+
         final now = DateTime.now();
         final currentMinutes = now.hour * 60 + now.minute;
-        
+
         int parseTime(String t) {
           final parts = t.split(':');
           if (parts.length == 2) {
-            return (int.tryParse(parts[0]) ?? 0) * 60 + (int.tryParse(parts[1]) ?? 0);
+            return (int.tryParse(parts[0]) ?? 0) * 60 +
+                (int.tryParse(parts[1]) ?? 0);
           }
           return 0;
         }
-        
+
         final startMins = parseTime(startStr);
         final endMins = parseTime(endStr);
-        
+
         bool inQuietHours = false;
         if (startMins <= endMins) {
-          inQuietHours = currentMinutes >= startMins && currentMinutes <= endMins;
-        } else { // از شب تا صبح روز بعد
-          inQuietHours = currentMinutes >= startMins || currentMinutes <= endMins;
+          inQuietHours =
+              currentMinutes >= startMins && currentMinutes <= endMins;
+        } else {
+          // از شب تا صبح روز بعد
+          inQuietHours =
+              currentMinutes >= startMins || currentMinutes <= endMins;
         }
-        
+
         if (inQuietHours) {
           return false;
         }

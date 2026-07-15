@@ -44,7 +44,11 @@ class MessageActionsService {
   }
 
   // ─── بررسی امکان ویرایش ─────────────────────────────────────────
-  bool canEditMessage(String senderId, DateTime createdAt) {
+  // senderId قبلاً نادیده گرفته می‌شد — امضای متد ادعای چک مالکیت داشت ولی
+  // فقط سن پیام را می‌سنجید. سرور هم enforce می‌کند؛ این چک لایه UI است.
+  Future<bool> canEditMessage(String senderId, DateTime createdAt) async {
+    final uid = await _currentUserId();
+    if (uid == null || uid != senderId) return false;
     final age = DateTime.now().difference(createdAt);
     return age <= editTimeLimit;
   }
@@ -301,7 +305,7 @@ class MessageActionsHandler {
 
   MessageActionsHandler(this._service);
 
-  bool canEdit(String senderId, DateTime createdAt) =>
+  Future<bool> canEdit(String senderId, DateTime createdAt) =>
       _service.canEditMessage(senderId, createdAt);
 
   Future<ActionResult<void>> edit({

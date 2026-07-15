@@ -44,9 +44,13 @@ class PaginationState {
 @riverpod
 PaginationState paginationState(PaginationStateRef ref, String conversationId) {
   final messagesState = ref.watch(chatMessagesProvider(conversationId));
+  // hasMore از خود notifier می‌آید؛ مقدار hardcode شده true باعث می‌شد
+  // اسپینر «بارگذاری بیشتر» بعد از تمام شدن تاریخچه هم بچرخد.
+  final hasMore =
+      ref.read(chatMessagesProvider(conversationId).notifier).hasMore;
   return PaginationState(
     isLoadingMore: messagesState.isLoading && messagesState.hasValue,
-    hasMore: true,
+    hasMore: hasMore,
   );
 }
 

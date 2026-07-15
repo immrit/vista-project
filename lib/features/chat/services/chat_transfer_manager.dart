@@ -10,7 +10,6 @@ import 'package:path_provider/path_provider.dart';
 
 import '../../../security/secure_kv_store.dart';
 
-
 enum TransferTaskStatus {
   queued,
   downloading,
@@ -681,8 +680,9 @@ class ChatTransferManager {
   }
 
   Future<bool> _hasConnectivity() async {
-    final result = await Connectivity().checkConnectivity();
-    return result != ConnectivityResult.none;
+    final results = await Connectivity().checkConnectivity();
+    return results.isNotEmpty &&
+        results.any((result) => result != ConnectivityResult.none);
   }
 
   String _sanitizeFileName(String fileName) {

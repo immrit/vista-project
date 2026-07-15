@@ -27,26 +27,29 @@ import 'package:Vista/services/retry_queue_service.dart';
 import 'package:Vista/services/crash_reporting_service.dart';
 import 'package:Vista/security/e2ee_service.dart';
 import 'package:Vista/features/profile/data/profile_repository.dart';
-import 'package:Vista/features/auth/providers/auth_controller.dart' show TokenStorage;
+import 'package:Vista/features/auth/providers/auth_controller.dart'
+    show TokenStorage;
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   // MUST initialize Flutter bindings before using any plugins in a background isolate!
   WidgetsFlutterBinding.ensureInitialized();
-  
+
   // Prevent duplicate initialization in background isolate.
   if (Firebase.apps.isEmpty) {
     await Firebase.initializeApp(
         options: DefaultFirebaseOptions.currentPlatform);
   }
-  debugPrint("Handling a background message: ${message.messageId} type=${message.data['type']}");
+  debugPrint(
+      "Handling a background message: ${message.messageId} type=${message.data['type']}");
   // Handle all notification types in background — not just chat_message.
   final notificationService = PushNotificationService(null);
   await notificationService.showBackgroundNotification(message);
 }
 
 @pragma('vm:entry-point')
-void notificationTapBackground(NotificationResponse notificationResponse) async {
+void notificationTapBackground(
+    NotificationResponse notificationResponse) async {
   WidgetsFlutterBinding.ensureInitialized();
   await PushNotificationService.enqueueBackgroundNotificationAction(
     notificationResponse,
@@ -93,6 +96,9 @@ class AppInitialization {
 
     // فاز ۱: سرویس‌های حیاتی پلتفرم
     await _initializeFirebase();
+    // Register before runApp/deferred initialization so Android can route
+    // data-only chat and clear controls to the background isolate reliably.
+    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
     // مدیر نشست ضروری است تا بدانیم کاربر لاگین هست یا خیر
     await SessionManagerServiceV2().initialize();
@@ -101,7 +107,8 @@ class AppInitialization {
     E2EEService.setPublicKeyRegistrar((pubBase64) async {
       final userId = await TokenStorage.getUserId();
       if (userId == null || userId.isEmpty) return;
-      await ProfileRepository().updateProfile(userId, {'public_key': pubBase64});
+      await ProfileRepository()
+          .updateProfile(userId, {'public_key': pubBase64});
     });
 
     // شناسایی دستگاه برای سیستم Firewall و پایش
@@ -118,8 +125,7 @@ class AppInitialization {
   static Future<void> loadDeferredServices() async {
     debugPrint('⏳ Starting deferred services initialization...');
 
-    // ۱. نصب نوتیفیکیشن‌های بک‌گراند
-    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+    // ۱. آماده‌سازی نمایش اعلان‌های محلی (background handler قبلاً ثبت شده)
     PushNotificationService(null)
         .ensureLocalNotificationsInitialized()
         .then((_) {

@@ -75,7 +75,8 @@ class NotificationActionResolver {
             postId: notification.postId,
           );
         }
-        if (notification.deeplink != null && notification.deeplink!.isNotEmpty) {
+        if (notification.deeplink != null &&
+            notification.deeplink!.isNotEmpty) {
           return NotificationNavigationAction(
             type: NotificationActionType.openDeepLink,
             deeplink: notification.deeplink,
@@ -90,6 +91,15 @@ class NotificationActionResolver {
           userId: notification.followerId ?? notification.senderId,
         );
       case 'suggest_post':
+        if (notification.postId == null || notification.postId!.isEmpty) {
+          final deeplink = notification.deeplink;
+          if (deeplink != null && deeplink.isNotEmpty) {
+            return NotificationNavigationAction(
+              type: NotificationActionType.openDeepLink,
+              deeplink: deeplink,
+            );
+          }
+        }
         return NotificationNavigationAction(
           type: NotificationActionType.openSuggestedPost,
           postId: notification.postId,

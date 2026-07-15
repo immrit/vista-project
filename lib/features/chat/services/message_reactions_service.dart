@@ -140,9 +140,8 @@ class MessageReactionsService {
   void _ensureSseSubscription() {
     if (_sseSubscription != null) return;
     SseManager.instance.start();
-    _sseSubscription = SseManager.instance.events.listen(
+    _sseSubscription = SseManager.instance.eventsOfType('reaction_updated').listen(
       (event) {
-        if (event['type'] != 'reaction_updated') return;
         final data = event['data'];
         if (data is! Map) return;
         final messageId = data['message_id']?.toString() ?? '';

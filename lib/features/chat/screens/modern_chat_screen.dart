@@ -109,8 +109,6 @@ import 'modern_profile_screen.dart';
 import 'modern_group_profile_screen.dart';
 import 'document_preview_screen.dart';
 import '../screens/message_info_screen.dart';
-// TODO: Use CompleteDeletionService for delete with undo
-// import '../services/complete_deletion_service.dart';
 import '../services/message_actions_service.dart';
 import '../performance/adaptive_effects_provider.dart';
 import '../performance/chat_message_render_window.dart';
@@ -280,8 +278,6 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   late final ChatRepository _chatRepository;
   late final TypingService _typingService;
   late final AdaptiveEffectsController _adaptiveEffectsController;
-  // TODO: Use CompleteDeletionService for delete with undo
-  // final _completeDeletionService = CompleteDeletionService();
 
   // Block status
   bool _isOtherUserBlocked = false;
@@ -467,7 +463,8 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
           route.animation!.addStatusListener((status) {
             if (status == AnimationStatus.completed && mounted) {
               _onTransitionSettle();
-              _messageRenderCapNotifier.value = ChatMessageRenderWindow.initialCap;
+              _messageRenderCapNotifier.value =
+                  ChatMessageRenderWindow.initialCap;
             }
           });
         }
@@ -491,7 +488,6 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       }
     }
   }
-
 
   void _bootstrapInitialReplyContext() {
     final initialContent = widget.args.initialReplyContent?.trim() ?? '';
@@ -674,6 +670,7 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     }
 
     final target = _editToMessage!;
+    final messageId = target.id;
     final original = target.displayContent.trim();
     if (content == original) {
       _messageController.clear();
@@ -682,30 +679,46 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     }
 
     if (widget.args.isSecret) {
-      final prefs = await SharedPreferences.getInstance();
-      final peerPubB64 =
-          prefs.getString('e2e_peer_pub_${widget.args.conversationId}');
-      if (peerPubB64 == null) {
-        _showErrorSnackBar(
-            'درحال تبادل کلید امنیتی با مخاطب هستیم... لطفاً کمی صبر کنید');
+      try {
+        final currentUserId = _currentUserId;
+        if (currentUserId == null || currentUserId.isEmpty) {
+          throw StateError('current user is unavailable');
+        }
+        final prefs = await SharedPreferences.getInstance();
+        final peerPubB64 =
+            prefs.getString('e2e_peer_pub_${widget.args.conversationId}');
+        if (peerPubB64 == null || peerPubB64.isEmpty) {
+          _showErrorSnackBar(
+              'درحال تبادل کلید امنیتی با مخاطب هستیم... لطفاً کمی صبر کنید');
+          return;
+        }
+
+        final e2e = E2EEncryptionService();
+        final myKeyPair = await e2e.getSavedKeyPair(currentUserId);
+        if (myKeyPair == null) {
+          _showErrorSnackBar('خطا: کلید امنیتی محلی یافت نشد.');
+          return;
+        }
+
+        final sharedSecret = await e2e.computeSharedSecret(
+          myKeyPair: myKeyPair,
+          peerPublicKeyBytes: base64Decode(peerPubB64),
+        );
+        content = await e2e.encryptMessage(
+          content,
+          sharedSecret,
+          binding: E2EEncryptionService.messageBinding(
+            conversationId: target.conversationId,
+            senderId: currentUserId,
+            messageId: messageId,
+          ),
+        );
+      } catch (_) {
+        _showErrorSnackBar('رمزنگاری ویرایش پیام ناموفق بود');
         return;
       }
-
-      final e2e = E2EEncryptionService();
-      final myKeyPair = await e2e.getSavedKeyPair(_currentUserId!);
-      if (myKeyPair == null) {
-        _showErrorSnackBar('خطا: کلید امنیتی محلی یافت نشد.');
-        return;
-      }
-
-      final sharedSecret = await e2e.computeSharedSecret(
-        myKeyPair: myKeyPair,
-        peerPublicKeyBytes: base64Decode(peerPubB64),
-      );
-      content = await e2e.encryptMessage(content, sharedSecret);
     }
 
-    final messageId = target.id;
     _messageController.clear();
     _clearEditContext(restoreDraft: false);
 
@@ -1021,16 +1034,14 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
   Future<void> _announceSecureChannel(
       List<int>? myPubBytes, String peerPubB64) async {
     if (myPubBytes == null) {
-      _addSecretSystemNotice(
-          'ارتباط رمزنگاری‌شده (E2EE) برقرار شد.');
+      _addSecretSystemNotice('ارتباط رمزنگاری‌شده (E2EE) برقرار شد.');
       return;
     }
     try {
       final peerPub = base64Decode(peerPubB64);
-      final safety = await E2EEncryptionService()
-          .computeSafetyNumber(myPubBytes, peerPub);
-      _addSecretSystemNotice(
-          'ارتباط رمزنگاری‌شده (E2EE) برقرار شد.\n'
+      final safety =
+          await E2EEncryptionService().computeSafetyNumber(myPubBytes, peerPub);
+      _addSecretSystemNotice('ارتباط رمزنگاری‌شده (E2EE) برقرار شد.\n'
           'کد امنیتی (با مخاطب مقایسه کنید):\n$safety');
     } catch (_) {
       _addSecretSystemNotice('ارتباط رمزنگاری‌شده (E2EE) برقرار شد.');
@@ -1060,14 +1071,24 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
     if (text.isEmpty) return false;
     // v1 envelope is detected by exact prefix — authoritative, no guessing.
     if (E2EEncryptionService().isEncryptedEnvelope(text)) return true;
-    // Legacy (pre-v1, unprefixed) messages: fall back to a base64-shape check.
-    // decryptMessage uses the MAC as the oracle, so a false positive here just
-    // round-trips back to plaintext rather than corrupting anything.
+    // Legacy (pre-v1, unprefixed) messages: validate the actual byte framing,
+    // not merely a base64-looking string, to avoid marking long plaintext IDs
+    // as tampered ciphertext.
     if (text.startsWith('{') || text.contains(' ') || text.contains('\n')) {
       return false;
     }
-    final base64Like = RegExp(r'^[A-Za-z0-9+/=]+$');
-    return text.length >= 32 && base64Like.hasMatch(text);
+    try {
+      final bytes = base64Decode(text);
+      if (bytes.length < 30) return false;
+      final nonceLength = bytes[0];
+      if (nonceLength < 8 || nonceLength > 32) return false;
+      if (bytes.length <= 1 + nonceLength + 1) return false;
+      final macLength = bytes[1 + nonceLength];
+      if (macLength < 8 || macLength > 32) return false;
+      return bytes.length > 1 + nonceLength + 1 + macLength;
+    } catch (_) {
+      return false;
+    }
   }
 
   bool _canAttemptSecretDecrypt(MessageModel message) {
@@ -1099,7 +1120,15 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
 
       _secretDecryptInFlight.add(message.id);
       try {
-        final clear = await e2e.decryptMessage(message.content, secret);
+        final clear = await e2e.decryptMessage(
+          message.content,
+          secret,
+          binding: E2EEncryptionService.messageBinding(
+            conversationId: message.conversationId,
+            senderId: message.senderId,
+            messageId: message.id,
+          ),
+        );
         // decryptMessage returns the input unchanged for plaintext/legacy
         // non-ciphertext; only store a genuine decryption result.
         if (clear.isNotEmpty && clear != message.content) {
@@ -1712,6 +1741,9 @@ class _ModernChatScreenState extends ConsumerState<ModernChatScreen>
       notifier.dispose();
     }
     _messageReactionNotifiers.clear();
+    // بدون این، subscription داخلی SSE و StreamControllerها بعد از بستن چت
+    // زنده می‌ماندند (نشت حافظه + پردازش event برای صفحه‌ی مرده).
+    _reactionsService.dispose();
     // FIX: نباید state یک provider را داخل dispose (فاز قفل unmount درخت) تغییر داد —
     // وگرنه StateNotifierListenerError. controller سینگلتون long-lived است، پس reset
     // velocity را به microtask موکول می‌کنیم تا بعد از پایان finalizeTree اجرا شود.
@@ -2709,7 +2741,7 @@ class _ChatMediaAlbumBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = context.chatTheme;
     final hasCaption = caption != null && caption!.trim().isNotEmpty;
-    final captionDirection = kChatLayoutTextDirection;
+    final captionDirection = resolveChatTextDirection(caption);
 
     return ConstrainedBox(
       constraints: BoxConstraints(

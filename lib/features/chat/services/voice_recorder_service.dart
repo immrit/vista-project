@@ -28,11 +28,21 @@ class VoiceRecorderService {
   // test construction (which cause MissingPluginException in unit tests).
   AudioRecorder? _audioRecorder;
 
-  // استریم برای نمایش ویژوالایزر هنگام ضبط
-  final StreamController<double> _amplitudeController =
-      StreamController<double>.broadcast();
+  // استریم برای نمایش ویژوالایزر هنگام ضبط.
+  // Lazily recreated: this service is a singleton but dispose() is called from
+  // widget dispose — a closed controller would break recording forever after
+  // the first chat screen closed (add on closed controller throws).
+  StreamController<double>? _amplitudeController;
 
-  Stream<double> get amplitudeStream => _amplitudeController.stream;
+  StreamController<double> get _amplitude {
+    final existing = _amplitudeController;
+    if (existing != null && !existing.isClosed) return existing;
+    final created = StreamController<double>.broadcast();
+    _amplitudeController = created;
+    return created;
+  }
+
+  Stream<double> get amplitudeStream => _amplitude.stream;
 
   bool _isRecording = false;
 
@@ -122,7 +132,7 @@ class VoiceRecorderService {
           if (amplitude == null) return;
           // نرمال‌سازی مقدار بین 0 تا 1
           final normalized = (amplitude.current + 160) / 160;
-          _amplitudeController.add(normalized.clamp(0.0, 1.0));
+          _amplitude.add(normalized.clamp(0.0, 1.0));
         } catch (e) {
           // خاموش نگه داشتن اگر خرابی بود
         }
@@ -136,8 +146,11 @@ class VoiceRecorderService {
   }
 
   void dispose() {
-    _audioRecorder?.dispose();
-    _amplitudeController.close();
     _stopAmplitudeTimer();
+    _audioRecorder?.dispose();
+    _audioRecorder = null; // lazily recreated on next startRecording
+    _amplitudeController?.close();
+    _amplitudeController = null; // lazily recreated on next use
+    _isRecording = false;
   }
 }
