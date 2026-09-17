@@ -165,6 +165,7 @@ flutter:
     - assets/images/vista_custom_bg.png
     - assets/images/vista_custom_bg_dark.png
     - assets/images/match_icon.png
+    - assets/images/onboarding/
     - assets/sounds/
   fonts:
     - family: Vazirmatn

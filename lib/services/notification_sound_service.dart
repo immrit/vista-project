@@ -3,7 +3,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../security/logging_utility.dart';
 
 class NotificationSoundService {
-  static final NotificationSoundService _instance = NotificationSoundService._internal();
+  static final NotificationSoundService _instance =
+      NotificationSoundService._internal();
 
   factory NotificationSoundService() {
     return _instance;
@@ -17,35 +18,46 @@ class NotificationSoundService {
   final AudioPlayer _receivedPlayer = AudioPlayer();
 
   bool _initialized = false;
+  Future<bool>? _initialization;
 
-  Future<void> init() async {
-    if (_initialized) return;
+  Future<bool> init() {
+    if (_initialized) return Future.value(true);
+    return _initialization ??=
+        _initialize().whenComplete(() => _initialization = null);
+  }
+
+  Future<bool> _initialize() async {
     try {
       final audioContext = AudioContext(
         android: AudioContextAndroid(
           isSpeakerphoneOn: false,
           stayAwake: false,
           contentType: AndroidContentType.sonification,
-          usageType: AndroidUsageType.media, // Changed from notificationEvent to media
-          audioFocus: AndroidAudioFocus.none, // Prevent ducking (lowering background music)
+          usageType: AndroidUsageType.media,
+          audioFocus: AndroidAudioFocus.none,
         ),
         iOS: AudioContextIOS(
+          // `ambient` already mixes with other audio. Passing mixWithOthers
+          // explicitly with this category violates audioplayers' assertion.
           category: AVAudioSessionCategory.ambient,
-          options: {
-            AVAudioSessionOptions.mixWithOthers
-          },
         ),
       );
-      
+
       await _sentPlayer.setAudioContext(audioContext);
       await _receivedPlayer.setAudioContext(audioContext);
-      
+
       await _sentPlayer.setSourceAsset('sounds/message-sent.mp3');
       await _receivedPlayer.setSourceAsset('sounds/message-recive.mp3');
-      // Pre-load logic if needed, but setSourceAsset is enough for quick playback usually.
       _initialized = true;
+      return true;
     } catch (e, st) {
-      logError('Failed to initialize NotificationSoundService', error: e, stackTrace: st);
+      _initialized = false;
+      logError(
+        'Failed to initialize NotificationSoundService',
+        error: e,
+        stackTrace: st,
+      );
+      return false;
     }
   }
 
@@ -58,11 +70,14 @@ class NotificationSoundService {
   Future<void> playMessageSentSound() async {
     try {
       if (!await _isSoundEnabled()) return;
-      if (!_initialized) await init();
-      
+      if (!_initialized && !await init()) return;
+
       // Stop current playback to restart it immediately if called multiple times rapidly
       await _sentPlayer.stop();
-      await _sentPlayer.play(AssetSource('sounds/message-sent.mp3'), volume: 0.4);
+      await _sentPlayer.play(
+        AssetSource('sounds/message-sent.mp3'),
+        volume: 0.4,
+      );
     } catch (e, st) {
       logError('Failed to play message sent sound', error: e, stackTrace: st);
     }
@@ -71,12 +86,16 @@ class NotificationSoundService {
   Future<void> playMessageReceivedSound() async {
     try {
       if (!await _isSoundEnabled()) return;
-      if (!_initialized) await init();
+      if (!_initialized && !await init()) return;
 
       await _receivedPlayer.stop();
-      await _receivedPlayer.play(AssetSource('sounds/message-recive.mp3'), volume: 0.4);
+      await _receivedPlayer.play(
+        AssetSource('sounds/message-recive.mp3'),
+        volume: 0.4,
+      );
     } catch (e, st) {
-      logError('Failed to play message received sound', error: e, stackTrace: st);
+      logError('Failed to play message received sound',
+          error: e, stackTrace: st);
     }
   }
 

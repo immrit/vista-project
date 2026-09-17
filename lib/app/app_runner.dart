@@ -59,7 +59,7 @@ import 'package:Vista/features/auth/screens/password_recovery_confirm_screen.dar
 import 'package:Vista/features/auth/screens/password_set_screen.dart';
 import 'package:Vista/features/auth/screens/mandatory_password_screen.dart';
 import 'package:Vista/features/auth/widgets/session_auth_wrapper.dart'; // Import SessionAuthWrapper
-import 'package:Vista/features/onboarding/screens/Onboarding.dart';
+import 'package:Vista/features/onboarding/screens/onboarding_screen.dart';
 import 'package:Vista/features/profile/screens/editeProfile.dart';
 import 'package:Vista/features/profile/screens/profile_setup_wizard_screen.dart';
 import 'package:Vista/features/settings/screens/Settings.dart';

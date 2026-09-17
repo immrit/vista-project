@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_contacts/flutter_contacts.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:Vista/core/security/input_policy.dart';
 import '../data/services_hub_repository.dart';
 import '../models/services_hub_model.dart';
@@ -30,6 +31,26 @@ class ContactsNotifier
   /// empty result — previously denial rendered as «مخاطبی در ویستا نیست»,
   /// which is a lie and gives the user no way to fix it.
   static const String permissionDenied = 'contacts_permission_denied';
+  static const String permissionRequired = 'contacts_permission_required';
+
+  /// Refreshes contacts only when permission already exists. The Services tab
+  /// uses this path so merely opening the hub never triggers a system prompt.
+  /// The explicit Contacts screen still calls [load], which is the user action
+  /// that may request permission.
+  Future<void> loadIfGranted() async {
+    if (_isLoaded && state is AsyncData) return;
+
+    try {
+      final status = await Permission.contacts.status;
+      if (status.isGranted) {
+        await load();
+        return;
+      }
+      state = AsyncValue.error(permissionRequired, StackTrace.current);
+    } catch (e, st) {
+      state = AsyncValue.error(e, st);
+    }
+  }
 
   Future<void> load() async {
     if (_isLoaded && state is AsyncData) return;

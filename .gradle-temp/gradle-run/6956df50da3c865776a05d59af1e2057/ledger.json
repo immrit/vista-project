@@ -1,0 +1,214 @@
+{
+  "command_fingerprints": {
+    "8f2120f15a6235d6f86637a12ccf520d64600bdd6c1c25f84b257a0771e18acf": 1,
+    "ddb26c887a324f8e2a99d08b59742c48ae1dc22a61d97666432d46d4bf55bec8": 1
+  },
+  "failure_fingerprints": {
+    "9aeaea178cd35c8473d52e2ad2fecbef526804be74ea1c64f92b312419aa9cf5": {
+      "excerpt": "E:\\vista_native\\.attachment-review-validation-build\\feature\\chat\\intermediates\\tmp\\manifest\\androidTest\\debug\\tempFile2ProcessTestManifest3703596193967730910.xml:18:9-21:45 Warning:",
+      "occurrences": 1
+    },
+    "c338f360f98e3e727accd16d24e657b3db57353ea7bc985d6a12c8c5d863e049": {
+      "excerpt": "E:\\vista_native\\feature\\chat\\src\\androidTest\\AndroidManifest.xml:5:9-8:45 Warning:",
+      "occurrences": 1
+    }
+  },
+  "failure_fingerprints_truncated_occurrences": 0,
+  "run_count": 2,
+  "runs": [
+    {
+      "command": "C:\\Users\\MriT.DESKTOP-UK7OADT\\.codex\\worktrees\\9a9b\\vista\\.gradle-temp\\gradlew-native-clean-env.cmd -p E:\\vista_native -I E:\\vista_native\\gradle\\attachment-review-validation.init.gradle :feature:chat:testDebugUnitTest --tests ir.coffevista.vista_native.features.chat.presentation.AttachmentSelectionTest :feature:chat:compileDebugAndroidTestKotlin --console=plain --no-scan",
+      "elapsed_seconds": 111.14,
+      "exit_status": 0,
+      "failure_fingerprints": [
+        "c338f360f98e3e727accd16d24e657b3db57353ea7bc985d6a12c8c5d863e049",
+        "9aeaea178cd35c8473d52e2ad2fecbef526804be74ea1c64f92b312419aa9cf5"
+      ],
+      "log": "0001.log",
+      "question": "Does the Native attachment review sheet compile and does album caption/group preparation pass its focused unit tests?",
+      "scope": "targeted",
+      "sequence": 1,
+      "warning_fingerprints": [
+        "c338f360f98e3e727accd16d24e657b3db57353ea7bc985d6a12c8c5d863e049",
+        "9aeaea178cd35c8473d52e2ad2fecbef526804be74ea1c64f92b312419aa9cf5"
+      ]
+    },
+    {
+      "command": "C:\\Users\\MriT.DESKTOP-UK7OADT\\.codex\\worktrees\\9a9b\\vista\\.gradle-temp\\gradlew-native-clean-env.cmd -p E:\\vista_native -I E:\\vista_native\\gradle\\attachment-review-validation.init.gradle :app:assembleProductionDebug --console=plain --no-scan",
+      "elapsed_seconds": 714.375,
+      "exit_status": 0,
+      "failure_fingerprints": [],
+      "log": "0002.log",
+      "question": "Can a fresh productionDebug APK with the Native attachment review and caption flow be assembled?",
+      "scope": "broad",
+      "sequence": 2,
+      "warning_fingerprints": [
+        "a816b262577ae01e937099aa1e43289293729297f9f7a1f50cfb0a5017797cbd",
+        "5ee26b9a610295ed5913b891becf2ea88753dd9de58675265f37a0d8c741a474",
+        "bcd1811036d0b1339b7cb3575e26751b71c8f3f35a00daf33c4822476f6ede98",
+        "a318086e71514c3b31236107a957dcf79c7f35b50c0cd0fbd43c59de7ce53de8",
+        "2846dd9c39425697232e50b7fd328b287eb108e71a3b49d7ba82faa30436066a",
+        "a1dbe2803863d979853c83000fbb23c1ebcb184412c0536dfb0fefe8acc981b2",
+        "66689e9f1da0a02138d581190d1d6240ebc0d47398bc6ecbe87e9c1b2682e51f",
+        "8b98824b794c4ed6087bbf26cfcfb0bf944cab65eb56e7f7425715fd8cc294dd"
+      ]
+    }
+  ],
+  "version": 1,
+  "warning_fingerprints": {
+    "00bdf45f11295f7ab7d25842982185a347c28532a8adebc481749c916afd6256": {
+      "excerpt": "w: file:///E:/vista_native/feature/feed/src/main/java/ir/coffevista/vista_native/features/stories/ui/editor/StoryEditorScreen.kt:466:48 'val Icons.Filled.Send: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Send.",
+      "occurrences": 1
+    },
+    "0c4f57c33a200fc5232b13f5c199a46bf1c067dec5e7611b0b57aecb495d738a": {
+      "excerpt": "w: file:///E:/vista_native/feature/profile/src/main/java/ir/coffevista/vista_native/features/profile/settings/notifications/NotificationSettingsScreen.kt:171:47 'val Icons.Outlined.Message: ImageVector' is deprecated. Use the AutoMirrored version at Ico...",
+      "occurrences": 1
+    },
+    "117c51acf7262851090f307508e5e4064525506812c96ca60c1dfd39a95d578d": {
+      "excerpt": "w: file:///E:/vista_native/feature/profile/src/main/java/ir/coffevista/vista_native/features/profile/settings/pricing/PricingScreen.kt:131:28 'val Icons.Outlined.TextSnippet: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored...",
+      "occurrences": 1
+    },
+    "266434d9fd0a176d7ebe312e251062ada9af270defa3c0b8ebfceb65b6fa3a9a": {
+      "excerpt": "w: file:///E:/vista_native/feature/feed/src/main/java/ir/coffevista/vista_native/features/feed/ui/reels/ReelsViewerScreen.kt:246:108 'val Icons.Filled.VolumeUp: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.VolumeUp.",
+      "occurrences": 1
+    },
+    "271d3c6b7c8e4825a2fd733883df5c82ad6b35c1177605c898fbc57be287b8dc": {
+      "excerpt": "w: [ksp] No dependencies reported for generated source ir.coffevista.vista_native.VistaApplication_ComponentTreeDeps.java which willprevent incremental compilation.",
+      "occurrences": 1
+    },
+    "2846dd9c39425697232e50b7fd328b287eb108e71a3b49d7ba82faa30436066a": {
+      "excerpt": "w: file:///E:/vista_native/feature/services/src/main/java/ir/coffevista/vista_native/features/services/ui/nearby/NearbyScreen.kt:722:30 'fun requestSingleUpdate(p0: String, p1: LocationListener, p2: Looper?): Unit' is deprecated. Deprecated in Java.",
+      "occurrences": 1
+    },
+    "2dac3bdbd7810b71165bbdedb0f68c27f457e46c85dfdd7f37d5a8511a7a3483": {
+      "excerpt": "w: file:///E:/vista_native/feature/profile/src/main/java/ir/coffevista/vista_native/features/profile/settings/saved/SavedPostsScreen.kt:326:70 'val Icons.Outlined.Send: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outli...",
+      "occurrences": 1
+    },
+    "34fb5d806a6e50489d2ae1479a249ee60e31b10d2a720b8047e9acb5cead7fb1": {
+      "excerpt": "w: file:///E:/vista_native/app/src/main/java/ir/coffevista/vista_native/notifications/VistaNotificationManager.kt:57:43 'static field USAGE_NOTIFICATION_COMMUNICATION_INSTANT: Int' is deprecated. Deprecated in Java.",
+      "occurrences": 1
+    },
+    "450c3229f4bfc908501e81c253be8a78b364a7a3e47da5362849121c8057eba1": {
+      "excerpt": "w: file:///E:/vista_native/feature/profile/src/main/java/ir/coffevista/vista_native/features/profile/settings/notifications/NotificationSettingsScreen.kt:218:47 'val Icons.Outlined.VolumeUp: ImageVector' is deprecated. Use the AutoMirrored version at Ic...",
+      "occurrences": 1
+    },
+    "4678c7c5e78f612f1b698e669909589fe3b4eae6f723d68c70c8cea6f1db1919": {
+      "excerpt": "w: file:///E:/vista_native/feature/profile/src/main/java/ir/coffevista/vista_native/features/profile/settings/pricing/PricingScreen.kt:161:28 'val Icons.Outlined.TrendingUp: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored....",
+      "occurrences": 1
+    },
+    "4991d8bb2930acb531db33e87baf202ec287aaec49ae1969227d0c5c91183027": {
+      "excerpt": "w: file:///E:/vista_native/feature/feed/src/main/java/ir/coffevista/vista_native/features/feed/ui/NotificationsScreen.kt:637:88 'val Icons.Filled.Reply: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Reply.",
+      "occurrences": 1
+    },
+    "4a82c0e230ffcf4a70b35ef94b0631bdb8cc57fe177dfd3f2f965da29357df63": {
+      "excerpt": "w: file:///E:/vista_native/feature/feed/src/main/java/ir/coffevista/vista_native/features/feed/ui/reels/ReelsViewerScreen.kt:556:53 'val Icons.Filled.Comment: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Comment.",
+      "occurrences": 1
+    },
+    "4b50a9e10fded01ce164b2512d37af76e284c1bb76162be2f7359f222842fbc2": {
+      "excerpt": "w: file:///E:/vista_native/feature/feed/src/main/java/ir/coffevista/vista_native/features/feed/ui/FeedScreen.kt:1003:5 'fun ClickableText(text: AnnotatedString, modifier: Modifier = ..., style: TextStyle = ..., softWrap: Boolean = ..., overflow: TextOve...",
+      "occurrences": 1
+    },
+    "506a3f4594776d34c92cceb46b9fcf542531536e7b4765ad7b78fd550d078094": {
+      "excerpt": "w: file:///E:/vista_native/feature/feed/src/main/java/ir/coffevista/vista_native/features/feed/ui/create/VideoTrimmerScreen.kt:76:1 Annotation 'androidx.media3.common.util.UnstableApi' is not annotated with '@RequiresOptIn'. '@OptIn' has no effect.",
+      "occurrences": 1
+    },
+    "59dfd595c7be0000825802a7661a468211233b957393dd3b7f16fb227990aed9": {
+      "excerpt": "w: file:///E:/vista_native/feature/profile/src/main/java/ir/coffevista/vista_native/features/profile/settings/notifications/NotificationSettingsScreen.kt:226:47 'val Icons.Outlined.VolumeUp: ImageVector' is deprecated. Use the AutoMirrored version at Ic...",
+      "occurrences": 1
+    },
+    "5c80cd4d47b6f94093f7d5648d6a482c9ab9842ab58c1843b221a247c71b6424": {
+      "excerpt": "w: file:///E:/vista_native/feature/feed/src/main/java/ir/coffevista/vista_native/features/feed/ui/CommentsBottomSheet.kt:855:5 'fun ClickableText(text: AnnotatedString, modifier: Modifier = ..., style: TextStyle = ..., softWrap: Boolean = ..., overflow:...",
+      "occurrences": 1
+    },
+    "5ee26b9a610295ed5913b891becf2ea88753dd9de58675265f37a0d8c741a474": {
+      "excerpt": "w: file:///E:/vista_native/feature/shell/src/main/java/ir/coffevista/vista_native/features/shell/VistaShell.kt:305:25 Condition is always 'true'.",
+      "occurrences": 1
+    },
+    "66689e9f1da0a02138d581190d1d6240ebc0d47398bc6ecbe87e9c1b2682e51f": {
+      "excerpt": "w: file:///E:/vista_native/feature/profile/src/main/java/ir/coffevista/vista_native/features/profile/settings/about/AboutSettingsScreen.kt:140:47 'val Icons.Outlined.ContactSupport: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoM...",
+      "occurrences": 1
+    },
+    "6b997896d50f0455eb43f9300fc4d81f76cefdad77f8559d929e39f6a151bf85": {
+      "excerpt": "w: file:///E:/vista_native/feature/profile/src/main/java/ir/coffevista/vista_native/features/profile/settings/editprofile/EditProfileScreen.kt:370:30 'fun Modifier.menuAnchor(): Modifier' is deprecated. Use overload that takes MenuAnchorType and enabled...",
+      "occurrences": 1
+    },
+    "71ac493b7f5317fd417a33af7535e7f537814e683628e43fa5832ec891dc63ba": {
+      "excerpt": "w: file:///E:/vista_native/feature/profile/src/main/java/ir/coffevista/vista_native/features/profile/settings/pricing/PricingViewModel.kt:130:54 'constructor(p0: String!): Locale' is deprecated. Deprecated in Java.",
+      "occurrences": 1
+    },
+    "733ef73fb72ee8313d6a18657b3aa7e3f5589edd05d34e2489416068d9bd8b10": {
+      "excerpt": "w: file:///E:/vista_native/feature/feed/src/main/java/ir/coffevista/vista_native/features/feed/ui/NotificationsScreen.kt:747:38 'val Icons.Filled.Reply: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Reply.",
+      "occurrences": 1
+    },
+    "77c6366b6c0b7362ae62fe3f995fdd506f408a2473f254c58915959466c6de0a": {
+      "excerpt": "w: file:///E:/vista_native/feature/profile/src/main/java/ir/coffevista/vista_native/features/profile/settings/about/FlutterFaqScreen.kt:202:56 'val Icons.Filled.Chat: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled....",
+      "occurrences": 1
+    },
+    "8b98824b794c4ed6087bbf26cfcfb0bf944cab65eb56e7f7425715fd8cc294dd": {
+      "excerpt": "w: file:///E:/vista_native/feature/profile/src/main/java/ir/coffevista/vista_native/features/profile/settings/about/AboutSettingsScreen.kt:163:47 'val Icons.Outlined.Help: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Ou...",
+      "occurrences": 1
+    },
+    "8c2bb833e27273fb4662e12db840b85644bb5d0b4553dc4107444a65c7e26683": {
+      "excerpt": "w: file:///E:/vista_native/feature/profile/src/main/java/ir/coffevista/vista_native/features/profile/settings/editprofile/EditProfileScreen.kt:437:60 'fun Modifier.menuAnchor(): Modifier' is deprecated. Use overload that takes MenuAnchorType and enabled...",
+      "occurrences": 1
+    },
+    "98ddad8c140256a3cac502727ca5a3ae78c570c915b3a7f017ec76ee2cef562e": {
+      "excerpt": "w: file:///E:/vista_native/feature/feed/src/main/java/ir/coffevista/vista_native/features/feed/ui/components/VistaFeedVideoPlayer.kt:231:92 'val Icons.Filled.VolumeUp: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled...",
+      "occurrences": 1
+    },
+    "9aeaea178cd35c8473d52e2ad2fecbef526804be74ea1c64f92b312419aa9cf5": {
+      "excerpt": "E:\\vista_native\\.attachment-review-validation-build\\feature\\chat\\intermediates\\tmp\\manifest\\androidTest\\debug\\tempFile2ProcessTestManifest3703596193967730910.xml:18:9-21:45 Warning:",
+      "occurrences": 1
+    },
+    "a1dbe2803863d979853c83000fbb23c1ebcb184412c0536dfb0fefe8acc981b2": {
+      "excerpt": "w: file:///E:/vista_native/feature/profile/src/main/java/ir/coffevista/vista_native/features/profile/settings/SettingsScreen.kt:315:47 'val Icons.Outlined.Logout: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.Lo...",
+      "occurrences": 1
+    },
+    "a318086e71514c3b31236107a957dcf79c7f35b50c0cd0fbd43c59de7ce53de8": {
+      "excerpt": "w: file:///E:/vista_native/feature/shell/src/main/java/ir/coffevista/vista_native/features/shell/VistaShell.kt:332:25 Condition is always 'true'.",
+      "occurrences": 1
+    },
+    "a48d748b496f72fe4762670789e8994191b9df3511f99575c85eb2786061b284": {
+      "excerpt": "w: file:///E:/vista_native/feature/feed/src/main/java/ir/coffevista/vista_native/features/feed/ui/reels/ReelsViewerScreen.kt:246:78 'val Icons.Filled.VolumeMute: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Volum...",
+      "occurrences": 1
+    },
+    "a5681e2862b6fbac6fe42f2a6b9f0b674ae7938ecf53622e79c2fe1a3d631819": {
+      "excerpt": "w: file:///E:/vista_native/feature/feed/src/main/java/ir/coffevista/vista_native/features/stories/ui/player/StoryPlayerScreen.kt:103:1 Annotation 'androidx.media3.common.util.UnstableApi' is not annotated with '@RequiresOptIn'. '@OptIn' has no effect.",
+      "occurrences": 1
+    },
+    "a816b262577ae01e937099aa1e43289293729297f9f7a1f50cfb0a5017797cbd": {
+      "excerpt": "w: file:///E:/vista_native/feature/shell/src/main/java/ir/coffevista/vista_native/features/shell/VistaShell.kt:281:25 Condition is always 'true'.",
+      "occurrences": 1
+    },
+    "b1a40bca18752db0de906b13759709319e128c047e9f965193f185492682c56c": {
+      "excerpt": "w: file:///E:/vista_native/feature/feed/src/main/java/ir/coffevista/vista_native/features/feed/ui/appeal/AppealScreen.kt:188:37 'fun Modifier.menuAnchor(): Modifier' is deprecated. Use overload that takes MenuAnchorType and enabled parameters.",
+      "occurrences": 1
+    },
+    "bcd1811036d0b1339b7cb3575e26751b71c8f3f35a00daf33c4822476f6ede98": {
+      "excerpt": "w: file:///E:/vista_native/feature/shell/src/main/java/ir/coffevista/vista_native/features/shell/VistaShell.kt:315:25 Condition is always 'true'.",
+      "occurrences": 1
+    },
+    "c20bf006c2436849cbe2fb2e4f53ab15faa00b8d11b83879c71437e2578af748": {
+      "excerpt": "w: file:///E:/vista_native/feature/feed/src/main/java/ir/coffevista/vista_native/features/stories/ui/player/StoryPlayerScreen.kt:608:81 'val Icons.Filled.Send: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Send.",
+      "occurrences": 1
+    },
+    "c338f360f98e3e727accd16d24e657b3db57353ea7bc985d6a12c8c5d863e049": {
+      "excerpt": "E:\\vista_native\\feature\\chat\\src\\androidTest\\AndroidManifest.xml:5:9-8:45 Warning:",
+      "occurrences": 1
+    },
+    "cc60935ce16f8502684ae2f8459b8733514b4425797734da106f3ae2e36f30a0": {
+      "excerpt": "w: file:///E:/vista_native/feature/feed/src/main/java/ir/coffevista/vista_native/features/feed/ui/NotificationsScreen.kt:636:84 'val Icons.Filled.Comment: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Comment.",
+      "occurrences": 1
+    },
+    "ed75b12d6ad5d9e0663b57ddce80678f69e7f9726f6e14d13309c9c4acce0ebd": {
+      "excerpt": "w: file:///E:/vista_native/feature/feed/src/main/java/ir/coffevista/vista_native/features/feed/ui/NotificationsScreen.kt:746:32 'val Icons.Filled.Comment: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Comment.",
+      "occurrences": 1
+    },
+    "fca91fa5a676fe48f4ee74f8a0317e8b79e36392ae3416812b1558727de9c8ac": {
+      "excerpt": "w: file:///E:/vista_native/feature/feed/src/main/java/ir/coffevista/vista_native/features/feed/ui/components/VistaFeedVideoPlayer.kt:231:62 'val Icons.Filled.VolumeMute: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Fill...",
+      "occurrences": 1
+    }
+  },
+  "warning_fingerprints_truncated_occurrences": 0,
+  "workflow": "6956df50da3c865776a05d59af1e2057"
+}

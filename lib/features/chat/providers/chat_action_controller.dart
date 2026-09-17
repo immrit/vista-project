@@ -109,21 +109,26 @@ class ChatActionController extends _$ChatActionController {
       requireEncryption: requireEncryption,
     );
 
-    // Reset action state immediately — don't block UI waiting for HTTP response.
-    // Repository writes optimistic message to Isar synchronously before the HTTP
-    // call, so the message appears in the chat list within 1 frame (16ms debounce).
-    // Send failure is reflected via isFailed=true on the message bubble (retry tap).
+    // Repository writes the optimistic message to Isar before awaiting the HTTP
+    // response, so awaiting here does not delay the bubble. It does ensure that
+    // feature/auth/local-storage failures are returned to the composer instead
+    // of being hidden behind a fire-and-forget task.
     state = const ChatActionState();
-    NotificationSoundService.instance.playMessageSentSound();
-
-    unawaited(repository.sendMessage(payload).then((result) {
-      result.fold(
-        (_) => null, // Stream confirms via Isar write — no-op here
-        (error) => logInfo('sendMessage background error: $error'),
+    try {
+      final result = await repository.sendMessage(payload);
+      return result.fold(
+        (_) {
+          // Sound is optional UI feedback and must never participate in message
+          // delivery success/failure.
+          unawaited(NotificationSoundService.instance.playMessageSentSound());
+          return const ActionResult.success();
+        },
+        (error) => ActionResult.failure(error),
       );
-    }));
-
-    return const ActionResult.success();
+    } catch (e, st) {
+      logError('sendMessage failed unexpectedly', error: e, stackTrace: st);
+      return const ActionResult.failure('ارسال پیام ناموفق بود');
+    }
   }
 
   Future<ActionResult<void>> resendMessage(MessageModel message) async {

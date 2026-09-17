@@ -22,7 +22,7 @@ Future<void> main() async {
           details.stack ?? StackTrace.current,
           fatal: true,
           source: 'flutter_error',
-        ),
+        ),  
       );
     };
 

@@ -5,7 +5,7 @@ import 'package:Vista/features/auth/data/auth_repository.dart';
 import 'package:Vista/features/auth/screens/mandatory_password_screen.dart';
 import 'package:Vista/features/auth/providers/auth_controller.dart';
 import 'package:Vista/features/home/screens/homeScreen.dart';
-import 'package:Vista/features/onboarding/screens/Onboarding.dart';
+import 'package:Vista/features/onboarding/screens/onboarding_screen.dart';
 import 'package:Vista/features/profile/screens/profile_setup_wizard_screen.dart';
 import 'package:Vista/services/onboarding_service.dart';
 import 'package:Vista/middleware/session_middleware.dart';
@@ -92,7 +92,7 @@ class _SessionAuthWrapperState extends ConsumerState<SessionAuthWrapper> {
     // این مرحله اختیاری است — اگر شکست بخورد، کاربر همچنان لاگین در نظر گرفته می‌شود
     bool requiresProfileSetup = false;
     bool requiresPasswordSetup = false;
-    
+
     if (tokenIsFresh) {
       try {
         final accessToken = await TokenStorage.getAccessToken();
@@ -103,7 +103,9 @@ class _SessionAuthWrapperState extends ConsumerState<SessionAuthWrapper> {
               );
           if (!mounted) return;
           await TokenStorage.saveUserAuthState(user);
-          ref.read(authControllerProvider.notifier).acceptAuthenticatedUser(user);
+          ref
+              .read(authControllerProvider.notifier)
+              .acceptAuthenticatedUser(user);
           requiresProfileSetup = !user.profileCompleted;
           requiresPasswordSetup = user.passwordRequired;
         }
@@ -112,7 +114,8 @@ class _SessionAuthWrapperState extends ConsumerState<SessionAuthWrapper> {
         final err = e.toString();
         if (err.contains('401') || err.contains('unauthorized')) {
           // Token expired exactly now (clock skew). Try refresh!
-          final refreshed = await SessionManagerServiceV2.instance.performSessionRefreshPublic();
+          final refreshed = await SessionManagerServiceV2.instance
+              .performSessionRefreshPublic();
           if (refreshed == RefreshResult.authError) {
             _setNotAuthenticated();
             return;

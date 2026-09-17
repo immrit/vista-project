@@ -177,9 +177,13 @@ Dio createPinnedDioClient({
   // Add a logging interceptor in debug mode.
   assert(() {
     dio.interceptors.add(LogInterceptor(
+      requestHeader: false,
+      responseHeader: false,
       requestBody: false, // never log bodies — may contain credentials
       responseBody: false,
-      logPrint: (o) => debugPrintSynchronously(o.toString()),
+      logPrint: (o) => debugPrintSynchronously(
+        redactNetworkLogLine(o.toString()),
+      ),
     ));
     return true;
   }());
@@ -230,6 +234,36 @@ String apiErrorCode(dynamic data) {
   }
   if (err is String) return err;
   return '';
+}
+
+/// Defense-in-depth for debug network logging.
+///
+/// Dio headers are disabled above, but this also protects credentials if a
+/// future Dio version/interceptor includes them in an error or URI string.
+String redactNetworkLogLine(String value) {
+  var redacted = value.replaceAll(
+    RegExp(
+      r'^(\s*(?:authorization|proxy-authorization|cookie|set-cookie)\s*:\s*).*$',
+      caseSensitive: false,
+      multiLine: true,
+    ),
+    r'$1[REDACTED]',
+  );
+  redacted = redacted.replaceAll(
+    RegExp(
+      r'\bBearer\s+[A-Za-z0-9._~+/=-]+',
+      caseSensitive: false,
+    ),
+    'Bearer [REDACTED]',
+  );
+  redacted = redacted.replaceAllMapped(
+    RegExp(
+      r'([?&](?:access_token|refresh_token|token|ticket)=)[^&\s]+',
+      caseSensitive: false,
+    ),
+    (match) => '${match.group(1)}[REDACTED]',
+  );
+  return redacted;
 }
 
 bool get kIsWebPlatform {
